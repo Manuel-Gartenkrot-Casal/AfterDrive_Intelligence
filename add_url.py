@@ -1,5 +1,10 @@
 import datetime
+import os
 import sys
+
+if not os.getenv("MONGO_URI"):
+    print("[add_url] ERROR: MONGO_URI no está configurado en el entorno.", flush=True)
+    sys.exit(1)
 
 from db import clasificar_y_guardar, col_articulos, col_trusted_urls
 from lm_studio import clasificar_articulo
@@ -8,24 +13,21 @@ from scraper import start
 
 
 def add_custom_url(url: str):
-    print(f"Procesando URL: {url}")
+    print(f"Procesando URL: {url}", flush=True)
 
-    # 1. Scraping en modo listado: buscar articulos dentro de la pagina
     max_art = get_max_articulos()
     result = start([url], modo="list", max_articulos=max_art)
     items = result.items
 
     if not items:
-        print("[FAIL] No se encontraron articulos en la URL. No se agregara a URLs Confiables.")
+        print("[FAIL] No se encontraron articulos en la URL. No se agregara a URLs Confiables.", flush=True)
         return
 
-    # 2. Clasificar y guardar articulos en la coleccion general
     res = clasificar_y_guardar(items, col_articulos, clasificar_articulo)
 
-    print(f"\nResultado: {res['aprobados']} aprobados, {res['rechazados']} rechazados.")
+    print(f"\nResultado: {res['aprobados']} aprobados, {res['rechazados']} rechazados.", flush=True)
 
     if res["aprobados"] > 0:
-        # 3. Agregar a URLs Confiables si al menos un articulo fue aprobado
         col_trusted_urls.update_one(
             {"url": url},
             {
@@ -38,9 +40,9 @@ def add_custom_url(url: str):
             },
             upsert=True,
         )
-        print("[OK] URL agregada exitosamente a la lista de URLs Confiables.")
+        print("[OK] URL agregada exitosamente a la lista de URLs Confiables.", flush=True)
     else:
-        print("[WARN] Ningun articulo fue aprobado por el clasificador. La URL no se agrego a Confiables.")
+        print("[WARN] Ningun articulo fue aprobado por el clasificador. La URL no se agrego a Confiables.", flush=True)
 
 
 if __name__ == "__main__":

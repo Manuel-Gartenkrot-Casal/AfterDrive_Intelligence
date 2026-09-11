@@ -116,6 +116,35 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/db-check", methods=["GET"])
+def db_check():
+    """Diagnóstico de conexión a MongoDB y estado de URLs confiables."""
+    import os
+    from db import MONGO_URI, col_trusted_urls
+
+    uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
+    try:
+        total = col_trusted_urls.count_documents({})
+        activas = col_trusted_urls.count_documents({"estado": "activo"})
+        muestra = [
+            {"url": d.get("url"), "estado": d.get("estado")}
+            for d in col_trusted_urls.find({}, {"url": 1, "estado": 1, "_id": 0}).limit(5)
+        ]
+        return jsonify({
+            "success": True,
+            "mongo_uri_preview": uri_log,
+            "trusted_urls_total": total,
+            "trusted_urls_activas": activas,
+            "muestra": muestra,
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "mongo_uri_preview": uri_log,
+            "error": str(e),
+        }), 500
+
+
 @app.route("/api/check-volume", methods=["GET"])
 def check_volume():
     keyword = request.args.get("keyword", "")

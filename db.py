@@ -8,9 +8,22 @@ load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/afterdrive")
 
+if not MONGO_URI or MONGO_URI == "mongodb://localhost:27017/afterdrive":
+    print("[DB] ADVERTENCIA: MONGO_URI no configurado o usando fallback local.", flush=True)
+else:
+    _uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
+    print(f"[DB] Conectando a MongoDB: {_uri_log}", flush=True)
+
 # ── Base de Datos ─────────────────────────────────────────────────────────────
 
-client = MongoClient(MONGO_URI)
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=15000,
+    connectTimeoutMS=15000,
+    socketTimeoutMS=30000,
+    retryWrites=True,
+    retryReads=True,
+)
 db = client["afterdrive"]
 
 col_articulos = db["articulos"]  # Todos los artículos scrapeados

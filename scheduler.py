@@ -26,19 +26,28 @@ def set_max_articulos(cantidad: int):
 
 
 def run_trusted_scraping():
-    print(f"[{datetime.datetime.now()}] Iniciando scraping automatizado de URLs confiables...")
+    print(f"[{datetime.datetime.now()}] Iniciando scraping automatizado de URLs confiables...", flush=True)
 
-    urls_confiables = list(col_trusted_urls.find({"estado": "activo"}))
-
-    if not urls_confiables:
-        print("No hay URLs confiables activas para procesar.")
+    try:
+        total_en_db = col_trusted_urls.count_documents({})
+        urls_confiables = list(col_trusted_urls.find({"estado": "activo"}))
+        print(f"[DB] Total en trusted_urls: {total_en_db} | Activas: {len(urls_confiables)}", flush=True)
+    except Exception as e:
+        print(f"[ERROR] No se pudo consultar la base de datos: {e}", flush=True)
         return
 
-    print(f"Procesando {len(urls_confiables)} fuentes (max {_max_articulos} artículos/fuente)...")
+    if not urls_confiables:
+        if total_en_db == 0:
+            print("No hay URLs confiables en la base de datos. Agregá una desde el panel.", flush=True)
+        else:
+            print(f"Hay {total_en_db} URL(s) en la DB pero ninguna con estado='activo'.", flush=True)
+        return
+
+    print(f"Procesando {len(urls_confiables)} fuentes (max {_max_articulos} artículos/fuente)...", flush=True)
 
     for doc in urls_confiables:
         url = doc["url"]
-        print(f"Scrapeando: {url}")
+        print(f"Scrapeando: {url}", flush=True)
 
         try:
             result = start([url], modo="list", max_articulos=_max_articulos)
@@ -46,17 +55,17 @@ def run_trusted_scraping():
 
             if items:
                 res = clasificar_y_guardar(items, col_articulos, clasificar_articulo)
-                print(f"  [OK] {res['aprobados']} nuevos artículos aprobados.")
+                print(f"  [OK] {res['aprobados']} nuevos artículos aprobados.", flush=True)
             else:
-                print(f"  [WARN] No se encontraron artículos nuevos en {url}")
+                print(f"  [WARN] No se encontraron artículos nuevos en {url}", flush=True)
 
             col_trusted_urls.update_one(
                 {"url": url}, {"$set": {"ultima_ejecucion": datetime.datetime.now(datetime.UTC).isoformat()}}
             )
         except Exception as e:
-            print(f"  [ERROR] Fallo al procesar {url}: {e}")
+            print(f"  [ERROR] Fallo al procesar {url}: {e}", flush=True)
 
-    print(f"[{datetime.datetime.now()}] Scraping automatizado finalizado.")
+    print(f"[{datetime.datetime.now()}] Scraping automatizado finalizado.", flush=True)
 
 
 def start_scheduler(interval_days=DEFAULT_INTERVAL_DAYS):
