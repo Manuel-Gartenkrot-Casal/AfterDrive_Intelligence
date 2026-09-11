@@ -370,6 +370,57 @@ def discover_sources():
     return jsonify(result), status
 
 
+@app.route("/api/trusted-urls", methods=["GET"])
+def list_trusted_urls():
+    """Lista todas las URLs confiables registradas."""
+    from db import col_trusted_urls
+    try:
+        docs = list(col_trusted_urls.find({}, {"_id": 0}).sort("fecha_agregado", -1))
+        return jsonify({"success": True, "urls": docs, "total": len(docs)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/trusted-urls", methods=["POST"])
+def add_trusted_url_direct():
+    """Agrega una URL directamente a trusted_urls sin pasar por el clasificador."""
+    import datetime
+    from db import col_trusted_urls
+    body = request.get_json(silent=True) or {}
+    url = body.get("url", "").strip()
+    nombre = body.get("nombre", "").strip()
+    if not url:
+        return jsonify({"success": False, "error": "Se requiere la URL."}), 400
+    try:
+        col_trusted_urls.update_one(
+            {"url": url},
+            {"$set": {
+                "url": url,
+                "nombre_fuente": nombre or url,
+                "estado": "activo",
+                "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
+                "ultima_ejecucion": None,
+            }},
+            upsert=True,
+        )
+        return jsonify({"success": True, "message": f"URL '{url}' agregada como activa."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/trusted-urls/<path:url>", methods=["DELETE"])
+def delete_trusted_url(url):
+    """Elimina o desactiva una URL confiable."""
+    from db import col_trusted_urls
+    try:
+        result = col_trusted_urls.delete_one({"url": url})
+        if result.deleted_count == 0:
+            return jsonify({"success": False, "error": "URL no encontrada."}), 404
+        return jsonify({"success": True, "message": "URL eliminada."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/add-url", methods=["POST"])
 def add_url():
     body = request.get_json(silent=True) or {}

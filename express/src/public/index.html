@@ -1726,13 +1726,18 @@
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Agregar URL Confiable</h3>
-          <span class="card-badge">Fuentes</span>
+          <span class="card-badge" id="trusted-urls-count">0 fuentes</span>
         </div>
         <p class="card-description">Agregá fuentes confiables para mejorar la calidad del scraping</p>
         <div class="input-row">
           <input type="text" id="url-in" class="input-field" placeholder="https://..." />
-          <button class="btn" onclick="addUrl()" id="btn-addurl">Agregar</button>
+          <button class="btn btn-primary" onclick="addUrlDirect()" id="btn-addurl-direct">Guardar</button>
+          <button class="btn" onclick="addUrl()" id="btn-addurl">+ Validar</button>
         </div>
+        <p style="font-size:0.75rem;color:var(--text-lo);margin:4px 0 var(--s3)">
+          <strong>Guardar</strong>: agrega directo sin validar. <strong>+ Validar</strong>: scrapea y clasifica primero.
+        </p>
+        <div id="trusted-urls-list" style="margin-top:var(--s3)"></div>
         <div id="url-status" class="feedback"></div>
       </div>
 
@@ -2266,6 +2271,69 @@
     /* ═══════════════════════════════════════════════════════════════════════
        ADD URL
        ═══════════════════════════════════════════════════════════════════════ */
+    async function loadTrustedUrls() {
+      try {
+        var r = await fetch('/api/trusted-urls');
+        var d = await r.json();
+        var list = $('trusted-urls-list');
+        var badge = $('trusted-urls-count');
+        if (!list) return;
+        badge.textContent = (d.urls ? d.urls.length : 0) + ' fuentes';
+        if (!d.urls || d.urls.length === 0) {
+          list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin URLs confiables. Agregá una arriba.</div>';
+          return;
+        }
+        list.innerHTML = d.urls.map(function(u) {
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--hairline)">'
+            + '<div style="min-width:0"><div style="font-size:0.8rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+u.url+'">'+u.url+'</div>'
+            + '<div style="font-size:0.7rem;color:var(--text-lo)">'+(u.estado==='activo'?'✓ activa':'✗ inactiva')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
+            + '<button onclick="deleteTrustedUrl(\''+encodeURIComponent(u.url)+'\')" style="flex-shrink:0;margin-left:8px;padding:2px 8px;font-size:0.7rem;background:transparent;border:1px solid var(--hairline);border-radius:4px;color:var(--text-lo);cursor:pointer">✕</button>'
+            + '</div>';
+        }).join('');
+      } catch(e) {}
+    }
+
+    async function addUrlDirect() {
+      var url = $('url-in').value.trim();
+      if (!url) return;
+      var el = $('url-status');
+      var btn = $('btn-addurl-direct');
+      btn.disabled = true;
+      el.className = 'feedback info';
+      el.textContent = 'Guardando...';
+      try {
+        var r = await fetch('/api/trusted-urls', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        var d = await r.json();
+        if (d.success) {
+          el.className = 'feedback ok';
+          el.textContent = 'URL guardada como activa';
+          $('url-in').value = '';
+          log('URL agregada directamente: ' + url, 'success');
+          showToast('URL guardada', 'success');
+          loadTrustedUrls();
+          updateStats();
+        } else {
+          el.className = 'feedback err';
+          el.textContent = 'Error: ' + (d.error || 'Fallo');
+        }
+      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
+      finally { btn.disabled = false; }
+    }
+
+    async function deleteTrustedUrl(encodedUrl) {
+      var url = decodeURIComponent(encodedUrl);
+      try {
+        await fetch('/api/trusted-urls/' + encodedUrl, {method: 'DELETE'});
+        log('URL eliminada: ' + url, 'warn');
+        loadTrustedUrls();
+        updateStats();
+      } catch(e) {}
+    }
+
     async function addUrl() {
       var url = $('url-in').value;
       if (!url) return;
@@ -2966,6 +3034,7 @@
       updateStats();
       checkProviders();
       fase2Init();
+      loadTrustedUrls();
 
       setTimeout(function() {
         log('Sistema operativo. Command Center activo.', 'success');
