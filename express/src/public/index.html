@@ -93,7 +93,45 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       RESET + BASE
+       FASE 1 — COLAPSABLE
+       ═══════════════════════════════════════════════════════════════════════ */
+    .fase1-section {
+      margin-bottom: var(--s6);
+    }
+    .fase1-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      padding: var(--s4) var(--s5);
+      cursor: pointer;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1rem;
+      color: var(--text-hi);
+      transition: background 140ms, border-color 140ms;
+      margin-bottom: 0;
+    }
+    .fase1-toggle:hover {
+      background: var(--surface-lo);
+      border-color: var(--brand);
+    }
+    .fase1-toggle-label { font-weight: 500; }
+    .fase1-chevron {
+      font-size: 0.75rem;
+      color: var(--text-lo);
+      transition: transform 200ms;
+    }
+    .fase1-chevron.open { transform: rotate(90deg); }
+    .fase1-body {
+      overflow: hidden;
+      margin-top: var(--s4);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       FASE 2 — GENERADOR DE NOTAS
        ═══════════════════════════════════════════════════════════════════════ */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1660,6 +1698,14 @@
       <div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
     </div>
 
+    <!-- Fase 1: Colapsable -->
+    <div class="fase1-section">
+      <button class="fase1-toggle" onclick="toggleFase1()" id="btn-fase1-toggle">
+        <span class="fase1-toggle-label">Fase <strong>1</strong> — Motor de Contenido</span>
+        <span class="fase1-chevron" id="fase1-chevron">▶</span>
+      </button>
+      <div class="fase1-body" id="fase1-body" style="display:none">
+
     <!-- Main Grid -->
     <div class="main-grid">
       <!-- Volume Filter -->
@@ -1783,6 +1829,9 @@
       </div>
     </div>
 
+      </div><!-- /fase1-body -->
+    </div><!-- /fase1-section -->
+
     <!-- Fase 2: Generador de Notas -->
     <div class="fase2-section">
       <div class="fase2-header">
@@ -1790,7 +1839,8 @@
           <h2 class="fase2-title">Generador de Notas <span style="color:var(--brand)">Fase 2</span></h2>
           <p style="font-size:0.8125rem;color:var(--text-lo);margin-top:4px">Seleccioná categorías, configurá clientes y generá notas estilo AfterDrive</p>
         </div>
-        <div style="display:flex;gap:var(--s3)">
+        <div style="display:flex;gap:var(--s3);align-items:center">
+          <button class="btn btn-primary" id="btn-f2-scrapear" onclick="runNowStream()">Scrapear</button>
           <button class="btn" id="btn-f2-scrape" onclick="fase2Scrape()">Sincronizar Ejemplos</button>
           <span class="card-badge" style="align-self:center" id="f2-ejemplos-badge">0 ejemplos</span>
         </div>
@@ -2586,6 +2636,14 @@
     var _f2Clientes = [];
     var _f2ClientesActivos = new Set();
     var _f2PuntapieActivo = false;
+
+    function toggleFase1() {
+      var body = document.getElementById('fase1-body');
+      var chevron = document.getElementById('fase1-chevron');
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      chevron.classList.toggle('open', !open);
+    }
 
     async function fase2Init() {
       await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
