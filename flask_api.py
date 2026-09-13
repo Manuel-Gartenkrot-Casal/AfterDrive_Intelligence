@@ -76,15 +76,15 @@ def run_script(script: str, extra_args: list[str] | None = None) -> dict:
 
 def _stream_output(script: str, extra_args: list[str] | None = None):
     """Ejecuta un script y produce su stdout línea por línea en tiempo real."""
-    import io
     start = time.time()
-    cmd = [sys.executable, script] + (extra_args or [])
+    cmd = [sys.executable, "-u", script] + (extra_args or [])
+    output_lines = []
     try:
         env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
             env=env,
@@ -92,7 +92,18 @@ def _stream_output(script: str, extra_args: list[str] | None = None):
             errors="replace",
         )
 
-        _LM_LOG = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|ERROR|WARN)\]")
+        _LM_LOG = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|WARN)\]")
+
+        import threading
+
+        def _read_stderr():
+            for line in process.stderr:
+                if line.strip():
+                    print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
+
+        t = threading.Thread(target=_read_stderr, daemon=True)
+        t.start()
+
         for line in process.stdout:
             if time.time() - start > _TIMEOUT:
                 process.kill()
@@ -100,9 +111,16 @@ def _stream_output(script: str, extra_args: list[str] | None = None):
                 return
             if _LM_LOG.match(line):
                 continue
+            output_lines.append(line)
             yield line
 
-        process.wait(timeout=5)
+        process.wait(timeout=10)
+        t.join(timeout=3)
+
+        if process.returncode != 0 and not output_lines:
+            yield f"[ERROR] El proceso terminó con código {process.returncode} sin output.\n"
+            yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
+
     except Exception as e:
         yield f"[ERROR] {e}\n"
 
@@ -600,5 +618,11 @@ if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=PORT, threaded=True)
 else:
-    # Gunicorn: iniciar scheduler al importar el módulo
-    scheduler.start_scheduler()
+    # Gunicorn: iniciar scheduler solo en el worker principal para evitar duplicados.
+    # Con --workers 1 esto solo corre una vez; con múltiples workers usamos una flag
+    # de entorno por proceso para que solo el primero en importar lo inicie.
+    import multiprocessing
+    if multiprocessing.current_process().name in ("MainProcess", "SpawnProcess-1") \
+            or os.getenv("_SCHEDULER_STARTED") != "1":
+        os.environ["_SCHEDULER_STARTED"] = "1"
+        scheduler.start_scheduler()

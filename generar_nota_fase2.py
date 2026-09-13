@@ -17,7 +17,21 @@ Uso:
 
 import argparse
 import datetime
+import os
 import re
+import sys
+
+# Validación temprana de variables de entorno críticas
+_provider = os.getenv("AI_PROVIDER", "local")
+if _provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
+    print("[ERROR] AI_PROVIDER=openrouter pero OPENROUTER_API_KEY no está configurado.", flush=True)
+    sys.exit(1)
+if _provider == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
+    print("[ERROR] AI_PROVIDER=nvidia pero NVIDIA_API_KEY no está configurado.", flush=True)
+    sys.exit(1)
+if not os.getenv("MONGO_URI"):
+    print("[ERROR] MONGO_URI no está configurado.", flush=True)
+    sys.exit(1)
 
 from db import db
 from lm_studio import _post, _extraer_primer_json, _post_procesar_articulo

@@ -26,17 +26,45 @@ _ram_mb: float = 0.0
 _perfil: str = ""
 
 
+def _leer_ram_container_mb() -> float:
+    """
+    En Docker/Render, psutil.virtual_memory() reporta la RAM del HOST, no del container.
+    Intentamos leer el límite real del container desde cgroups.
+    Si no está disponible (entorno local sin Docker), usamos psutil como fallback.
+    """
+    # cgroups v2 (Linux moderno, Render usa esto)
+    for path in [
+        "/sys/fs/cgroup/memory.max",         # cgroups v2
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",  # cgroups v1
+    ]:
+        try:
+            with open(path) as f:
+                val = f.read().strip()
+            if val and val != "max":
+                limit_bytes = int(val)
+                # Si el límite es absurdamente alto (> 100 GB), es que no hay límite real
+                if limit_bytes < 100 * 1024 ** 3:
+                    # Retornamos el mínimo entre el límite del container y la RAM disponible del host
+                    available_host = psutil.virtual_memory().available
+                    return min(limit_bytes, available_host) / 1024 / 1024
+        except Exception:
+            continue
+
+    # Fallback: RAM disponible del host (entorno local o sin límite de container)
+    return psutil.virtual_memory().available / 1024 / 1024
+
+
 def _calcular_perfil() -> tuple[str, float]:
     if os.getenv("DISABLE_BROWSER", "").lower() == "true":
-        ram = psutil.virtual_memory().available / 1024 / 1024
+        ram = _leer_ram_container_mb()
         return PERFIL_BAJO, ram
 
     forced = os.getenv("FORCE_PROFILE", "").lower()
     if forced in (PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO):
-        ram = psutil.virtual_memory().available / 1024 / 1024
+        ram = _leer_ram_container_mb()
         return forced, ram
 
-    ram = psutil.virtual_memory().available / 1024 / 1024
+    ram = _leer_ram_container_mb()
 
     if ram > 1500:
         return PERFIL_ALTO, ram
@@ -48,7 +76,7 @@ def _calcular_perfil() -> tuple[str, float]:
 
 _perfil, _ram_mb = _calcular_perfil()
 
-print(f"[PERFIL] RAM disponible: {_ram_mb:.0f} MB → perfil '{_perfil}'", flush=True)
+print(f"[PERFIL] RAM container: {_ram_mb:.0f} MB → perfil '{_perfil}'", flush=True)
 
 
 def get_perfil() -> str:
