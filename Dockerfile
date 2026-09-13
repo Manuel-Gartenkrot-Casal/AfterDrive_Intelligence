@@ -45,6 +45,7 @@ COPY scheduler.py .
 COPY add_url.py .
 COPY discover_sources.py .
 COPY run_automation.py .
+COPY resource_detector.py .
 
 # Dashboard estático generado en la etapa 1
 COPY --from=dash /dash/dist/public/ ./static/
@@ -55,4 +56,4 @@ USER appuser
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 4 --timeout 1800 flask_api:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 2 --timeout 1800 flask_api:app"]

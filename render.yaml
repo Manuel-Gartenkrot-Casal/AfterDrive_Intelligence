@@ -19,3 +19,7 @@ services:
         value: "mistralai/mistral-small-3.1-24b-instruct:free"
       - key: MONGO_URI
         sync: false
+      - key: FORCE_PROFILE
+        value: ""
+      - key: DISABLE_BROWSER
+        value: "false"
