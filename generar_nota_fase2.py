@@ -271,8 +271,10 @@ def generar_nota(
         "temperature": 0.72,
         "max_tokens": 4000,
         "stream": True,
-        "include_reasoning": False,
     }
+    # include_reasoning solo es válido en OpenRouter; NVIDIA lo rechaza con 400
+    if AI_PROVIDER == "openrouter":
+        payload["include_reasoning"] = False
 
     print("  Generando nota...")
     partes = []

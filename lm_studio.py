@@ -49,9 +49,9 @@ MODELO_EMB = os.getenv("LMSTUDIO_EMB_MODEL", "text-embedding-nomic-embed-text-v1
 # NVIDIA Build (cloud)
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "z-ai/glm-5.2")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "moonshotai/kimi-k3")
 NVIDIA_EMB_MODEL = os.getenv("NVIDIA_EMB_MODEL", "nvidia/nv-embedqa-e5-v5")
-NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "meta/llama-3.1-8b-instruct")
+NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b")
 
 # OpenRouter (cloud)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -617,13 +617,13 @@ def _post(
 
         if resp.status_code != 429:
             return resp
-        # Fallback para NVIDIA: GLM-5.2 -> Llama
+        # Fallback para NVIDIA: modelo principal rate-limited -> modelo alternativo
         if intento == 0 and modelo_original == NVIDIA_MODEL and NVIDIA_FALLBACK_MODEL and endpoint == "/chat/completions":
             payload_fallback = {**payload, "model": NVIDIA_FALLBACK_MODEL}
             resp_fb = requests.post(url, json=payload_fallback, headers=_get_headers(), timeout=timeout, stream=stream)
             if resp_fb.status_code == 200:
                 if not stream:
-                    print(f"[FALLBACK] GLM-5.2 rate-limited -> usando {NVIDIA_FALLBACK_MODEL}", flush=True)
+                    print(f"[FALLBACK] {NVIDIA_MODEL} rate-limited -> usando {NVIDIA_FALLBACK_MODEL}", flush=True)
                 return resp_fb
         # Fallback para OpenRouter: modelo principal -> modelo alternativo
         if intento == 0 and modelo_original == OPENROUTER_MODEL and OPENROUTER_FALLBACK_MODEL and endpoint == "/chat/completions":
@@ -844,7 +844,7 @@ def _extraer_delta(chunk: dict) -> str:
         content = delta.get("content", "")
         if content:
             return content
-        # Razonamiento (NVIDIA GLM-5.2 envia reasoning aqui)
+        # Razonamiento (modelos NVIDIA reasoning envian razonamiento aqui)
         reasoning = delta.get("reasoning_content", "")
         if reasoning:
             return reasoning
