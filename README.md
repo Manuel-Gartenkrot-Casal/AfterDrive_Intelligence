@@ -20,7 +20,7 @@ Browser → Express :3000 → Flask :5000 → Scrapling spiders → MongoDB Atla
 | API principal | Flask + Python | 5000 |
 | Scraping | Scrapling (StealthyFetcher) | — |
 | IA local | LM Studio (mistral-7b) | 1234 |
-| IA cloud | NVIDIA Build (GLM-5.2) | — |
+| IA cloud | NVIDIA Build (GLM-5.3-flash) | — |
 | Base de datos | MongoDB Atlas | — |
 
 ---
