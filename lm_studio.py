@@ -49,9 +49,9 @@ MODELO_EMB = os.getenv("LMSTUDIO_EMB_MODEL", "text-embedding-nomic-embed-text-v1
 # NVIDIA Build (cloud)
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "z-ai/glm-5.3-flash")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "moonshotai/kimi-k3")
 NVIDIA_EMB_MODEL = os.getenv("NVIDIA_EMB_MODEL", "nvidia/nv-embedqa-e5-v5")
-NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "moonshotai/kimi-k3")
+NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b")
 
 # OpenRouter (cloud)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
