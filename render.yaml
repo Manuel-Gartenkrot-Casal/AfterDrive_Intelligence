@@ -13,6 +13,16 @@ services:
         value: "1"
       - key: AI_PROVIDER
         value: openrouter
+      # OpenRouter no expone /embeddings: los embeddings tienen que ir por otro
+      # proveedor o no se calculan. Requiere NVIDIA_API_KEY y NVIDIA_EMB_MODEL.
+      - key: EMBEDDINGS_PROVIDER
+        value: nvidia
+      - key: NVIDIA_API_KEY
+        sync: false
+      # Verificar contra el catálogo del proveedor antes de fijarlo: un modelo
+      # dado de baja devuelve 410 y los embeddings quedan en None.
+      - key: NVIDIA_EMB_MODEL
+        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL

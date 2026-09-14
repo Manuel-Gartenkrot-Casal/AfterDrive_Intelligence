@@ -83,7 +83,7 @@ _FETCH_OPTS = {
     "headless": True,
     "disable_resources": True,
     "timeout": 20000,
-    "extra_args": [
+    "extra_flags": [
         "--no-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",

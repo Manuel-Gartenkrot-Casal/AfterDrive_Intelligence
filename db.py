@@ -8,11 +8,31 @@ load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/afterdrive")
 
+
+def uri_segura(uri: str) -> str:
+    """Enmascara las credenciales de una URI de Mongo para poder loguearla.
+
+    Truncar la URI a N caracteres NO alcanza: el usuario y el arranque de la
+    contraseña caen dentro de los primeros 40 y quedan en los logs del servicio,
+    que son visibles para cualquiera con acceso al panel de deploy.
+
+        mongodb+srv://user:pass@cluster.mongodb.net/db
+        -> mongodb+srv://***@cluster.mongodb.net
+
+    Se conserva el host, que es lo único con valor diagnóstico.
+    """
+    partes = uri.split("://", 1)
+    if len(partes) != 2:
+        return "***"
+    esquema, resto = partes
+    host = resto.split("@", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+    return f"{esquema}://***@{host}"
+
+
 if not MONGO_URI or MONGO_URI == "mongodb://localhost:27017/afterdrive":
     print("[DB] ADVERTENCIA: MONGO_URI no configurado o usando fallback local.", flush=True)
 else:
-    _uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
-    print(f"[DB] Conectando a MongoDB: {_uri_log}", flush=True)
+    print(f"[DB] Conectando a MongoDB: {uri_segura(MONGO_URI)}", flush=True)
 
 # ── Base de Datos ─────────────────────────────────────────────────────────────
 
