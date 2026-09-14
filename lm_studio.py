@@ -58,6 +58,17 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
 OPENROUTER_FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
 
+# Proveedor de embeddings, independiente del de chat.
+#
+# Hace falta separarlos porque OpenRouter no expone endpoint /embeddings: si el
+# chat va por OpenRouter, vectorizar tiene que ir por otro lado. Vacío = usar el
+# mismo proveedor que AI_PROVIDER, que es el comportamiento histórico.
+EMBEDDINGS_PROVIDER = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower()
+
+# Códigos que significan "este modelo ya no existe": reintentar no lo revive.
+# 404 = nunca existió con ese id; 410 = fue dado de baja por el proveedor.
+_MODELO_CAIDO = (404, 410)
+
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
 
 _SYSTEM_EVALUAR = """\
@@ -456,11 +467,42 @@ def _get_model() -> str:
     return MODELO
 
 
+def _emb_provider() -> str:
+    """Proveedor a usar para embeddings.
+
+    EMBEDDINGS_PROVIDER manda si está definido; si no, se usa el proveedor de
+    chat. Esto permite, por ejemplo, generar notas con OpenRouter y vectorizar
+    con NVIDIA, que es la única combinación viable cuando OpenRouter es el
+    proveedor de chat (no sirve embeddings).
+    """
+    return EMBEDDINGS_PROVIDER or AI_PROVIDER
+
+
 def _get_emb_model() -> str:
-    """Nombre del modelo de embeddings según el proveedor activo."""
-    if AI_PROVIDER == "nvidia" and NVIDIA_API_KEY:
+    """Nombre del modelo de embeddings según el proveedor de embeddings."""
+    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
         return NVIDIA_EMB_MODEL
     return MODELO_EMB
+
+
+def _get_emb_base_url() -> str:
+    """URL base para embeddings.
+
+    No reutiliza _get_base_url() porque el proveedor de embeddings puede diferir
+    del de chat. OpenRouter no tiene /embeddings, así que cae a LM Studio: es
+    preferible fallar contra un endpoint local inexistente que mandar la request
+    a un proveedor que va a devolver 404 igual.
+    """
+    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
+        return NVIDIA_BASE_URL
+    return LMSTUDIO_URL
+
+
+def _get_emb_headers() -> dict:
+    """Headers para embeddings, según el proveedor de embeddings."""
+    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
+        return {"Authorization": f"Bearer {NVIDIA_API_KEY}"}
+    return {}
 
 
 def _get_headers() -> dict:
@@ -472,13 +514,56 @@ def _get_headers() -> dict:
     return {}
 
 
-def _post(endpoint: str, payload: dict, timeout: int = 60, stream: bool = False, retries: int = 3) -> requests.Response:
+def _post(
+    endpoint: str,
+    payload: dict,
+    timeout: int = 60,
+    stream: bool = False,
+    retries: int = 3,
+    base_url: str | None = None,
+    headers: dict | None = None,
+) -> requests.Response:
     """POST unificado con URL, headers, timeout y retry con backoff para 429.
-    Si el modelo principal get 429, intenta con el fallback."""
-    url = f"{_get_base_url()}{endpoint}"
+
+    Si el modelo principal devuelve 429 (rate limit) o 404/410 (modelo dado de
+    baja), intenta una vez con el modelo de fallback.
+
+    Args:
+        base_url/headers: overrides para cuando el destino no es el proveedor de
+            chat activo (caso embeddings, que puede apuntar a otro proveedor).
+    """
+    url = f"{base_url if base_url is not None else _get_base_url()}{endpoint}"
+    req_headers = headers if headers is not None else _get_headers()
     modelo_original = payload.get("model", "")
     for intento in range(retries):
-        resp = requests.post(url, json=payload, headers=_get_headers(), timeout=timeout, stream=stream)
+        resp = requests.post(url, json=payload, headers=req_headers, timeout=timeout, stream=stream)
+
+        # Modelo dado de baja: reintentar es inútil, el catálogo no va a cambiar
+        # en los próximos segundos. Se intenta el fallback una sola vez y se
+        # devuelve lo que salga, para que el error llegue al usuario enseguida.
+        if resp.status_code in _MODELO_CAIDO and endpoint == "/chat/completions":
+            # El fallback se elige por proveedor activo, no comparando el nombre
+            # del modelo: si NVIDIA_MODEL y OPENROUTER_MODEL coincidieran, esa
+            # comparación elegiría el fallback del proveedor equivocado.
+            fallback = (
+                NVIDIA_FALLBACK_MODEL if AI_PROVIDER == "nvidia"
+                else OPENROUTER_FALLBACK_MODEL if AI_PROVIDER == "openrouter"
+                else ""
+            )
+            if fallback and fallback != modelo_original:
+                if not stream:
+                    print(
+                        f"[FALLBACK] '{modelo_original}' devolvió {resp.status_code} "
+                        f"(modelo dado de baja) -> probando {fallback}",
+                        flush=True,
+                    )
+                resp_fb = requests.post(
+                    url, json={**payload, "model": fallback}, headers=req_headers, timeout=timeout, stream=stream
+                )
+                if resp_fb.status_code == 200:
+                    return resp_fb
+            return resp
+
         if resp.status_code != 429:
             return resp
         # Fallback para NVIDIA: GLM-5.2 -> Llama
@@ -606,6 +691,7 @@ def verificar_provider() -> dict:
         "openrouter_available": bool(OPENROUTER_API_KEY),
         "model": _get_model(),
         "emb_model": _get_emb_model(),
+        "emb_provider": _emb_provider(),
     }
 
 
@@ -1205,27 +1291,43 @@ def calcular_embedding(texto: str, input_type: str = "passage") -> list[float] |
     texto = (texto or "").strip()
     if not texto:
         return None
-    max_chars = 1500 if AI_PROVIDER == "nvidia" else 8000
+    es_nvidia = _emb_provider() == "nvidia"
+    max_chars = 1500 if es_nvidia else 8000
     payload = {"model": _get_emb_model(), "input": texto[:max_chars]}
-    if AI_PROVIDER == "nvidia":
+    if es_nvidia:
         payload["input_type"] = input_type
 
     # Retry manual: NVIDIA a veces devuelve 400 en vez de 429 para rate limit en embeddings
     # Nota: NO usamos retries internos en _post() para evitar double-retry stack
     for intento in range(5):
         try:
-            resp = _post("/embeddings", payload, timeout=30, retries=1)
+            resp = _post(
+                "/embeddings", payload, timeout=30, retries=1,
+                base_url=_get_emb_base_url(), headers=_get_emb_headers(),
+            )
+            # Modelo de embeddings dado de baja: cortar de una. Reintentar 5 veces
+            # por artículo solo agrega minutos de espera y tapa la causa real.
+            if resp.status_code in _MODELO_CAIDO:
+                print(
+                    f"[ERROR] El modelo de embeddings '{_get_emb_model()}' devolvió "
+                    f"{resp.status_code}: ya no está disponible en el proveedor "
+                    f"'{_emb_provider()}'. Actualizá NVIDIA_EMB_MODEL.",
+                    flush=True,
+                )
+                return None
             if resp.status_code in (400, 429):
                 wait = [0.5, 1, 2, 3, 3][intento]
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
             return resp.json()["data"][0]["embedding"]
-        except Exception:
+        except Exception as e:
             if intento < 4:
                 time.sleep([0.5, 1, 2, 3, 3][intento])
                 continue
-            print(f"[AVISO] No se pudo calcular embedding tras 5 intentos.")
+            # Mostrar la causa real: un "tras 5 intentos" pelado oculta si fue
+            # timeout, DNS, auth o modelo inexistente.
+            print(f"[AVISO] No se pudo calcular embedding tras 5 intentos: {e}", flush=True)
             return None
     return None
 
@@ -1239,16 +1341,30 @@ def calcular_embeddings_batch(textos: list[str], input_type: str = "passage") ->
     if not textos_limpios:
         return []
 
-    max_chars = 1500 if AI_PROVIDER == "nvidia" else 8000
+    es_nvidia = _emb_provider() == "nvidia"
+    max_chars = 1500 if es_nvidia else 8000
     inputs = [t[:max_chars] for t in textos_limpios]
 
     payload = {"model": _get_emb_model(), "input": inputs}
-    if AI_PROVIDER == "nvidia":
+    if es_nvidia:
         payload["input_type"] = input_type
 
     for intento in range(3):
         try:
-            resp = _post("/embeddings", payload, timeout=60, retries=1)
+            resp = _post(
+                "/embeddings", payload, timeout=60, retries=1,
+                base_url=_get_emb_base_url(), headers=_get_emb_headers(),
+            )
+            # Modelo dado de baja: no tiene sentido caer al fallback uno-por-uno,
+            # que fallaría igual 10 veces seguidas.
+            if resp.status_code in _MODELO_CAIDO:
+                print(
+                    f"  [ERROR] El modelo de embeddings '{_get_emb_model()}' devolvió "
+                    f"{resp.status_code}: ya no está disponible en el proveedor "
+                    f"'{_emb_provider()}'. Actualizá NVIDIA_EMB_MODEL.",
+                    flush=True,
+                )
+                return [None] * len(textos_limpios)
             if resp.status_code in (400, 429):
                 wait = [1, 2, 4][intento]
                 print(f"  [AVISO] Embedding batch rate-limited ({resp.status_code}), retry en {wait}s...")

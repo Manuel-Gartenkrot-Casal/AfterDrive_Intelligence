@@ -4,9 +4,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from db import clasificar_y_guardar, col_articulos, col_trusted_urls
 from lm_studio import clasificar_articulo
+from resource_detector import get_startup_delay_minutes
 from scraper import start
 
-# Configuración por defecto
 DEFAULT_INTERVAL_DAYS = 1
 DEFAULT_MAX_ARTICULOS = 10
 
@@ -15,12 +15,10 @@ _max_articulos = DEFAULT_MAX_ARTICULOS
 
 
 def get_max_articulos() -> int:
-    """Devuelve el máximo de artículos por fuente."""
     return _max_articulos
 
 
 def set_max_articulos(cantidad: int):
-    """Actualiza el máximo de artículos por fuente."""
     global _max_articulos
     _max_articulos = max(1, cantidad)
 
@@ -69,24 +67,25 @@ def run_trusted_scraping():
 
 
 def start_scheduler(interval_days=DEFAULT_INTERVAL_DAYS):
-    """Inicia el scheduler con el intervalo especificado."""
-    # Eliminar trabajos previos si existen para evitar duplicados al reiniciar
     if scheduler.get_job("trusted_scraping"):
         scheduler.remove_job("trusted_scraping")
+
+    delay = get_startup_delay_minutes()
+    primera_ejecucion = datetime.datetime.now() + datetime.timedelta(minutes=delay)
+    print(f"[Scheduler] Primera ejecución en {delay} min (perfil de recursos detectado).", flush=True)
 
     scheduler.add_job(
         run_trusted_scraping,
         "interval",
         days=interval_days,
         id="trusted_scraping",
-        next_run_time=datetime.datetime.now(),  # Ejecutar inmediatamente al iniciar
+        next_run_time=primera_ejecucion,
     )
     scheduler.start()
     print(f"Scheduler iniciado. Ejecución cada {interval_days} día(s).")
 
 
 def update_scheduler_interval(days: int):
-    """Actualiza el intervalo de ejecución dinámicamente."""
     if scheduler.get_job("trusted_scraping"):
         scheduler.reschedule_job("trusted_scraping", trigger="interval", days=days)
         print(f"Intervalo actualizado a {days} día(s).")
@@ -95,7 +94,6 @@ def update_scheduler_interval(days: int):
 
 
 def get_next_execution():
-    """Devuelve la próxima fecha de ejecución programada."""
     job = scheduler.get_job("trusted_scraping")
     if job:
         return job.next_run_time.isoformat()

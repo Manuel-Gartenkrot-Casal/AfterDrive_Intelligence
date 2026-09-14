@@ -45,6 +45,7 @@ COPY scheduler.py .
 COPY add_url.py .
 COPY discover_sources.py .
 COPY run_automation.py .
+COPY resource_detector.py .
 
 # Dashboard estático generado en la etapa 1
 COPY --from=dash /dash/dist/public/ ./static/

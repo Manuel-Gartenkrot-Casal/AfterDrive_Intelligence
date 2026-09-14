@@ -25,6 +25,7 @@ from pymongo import UpdateOne
 
 from db import db
 from regiones import clasificar_region, REGIONES
+from resource_detector import get_scrape_sleep, usar_browser
 
 col_ejemplos = db["afterdrive_ejemplos"]
 
@@ -82,7 +83,7 @@ _FETCH_OPTS = {
     "headless": True,
     "disable_resources": True,
     "timeout": 20000,
-    "extra_args": [
+    "extra_flags": [
         "--no-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
@@ -102,7 +103,11 @@ def _get(url: str, timeout: int = 15) -> str | None:
 
 
 def _get_browser(url: str) -> str | None:
-    """Fetch con headless browser para sitios que requieren JS (HubSpot)."""
+    """Fetch con headless browser para sitios que requieren JS (HubSpot).
+    Solo se ejecuta si el perfil de recursos lo permite."""
+    if not usar_browser():
+        print(f"    [BROWSER SKIP] perfil bajo, omitiendo browser para {url[:60]}", flush=True)
+        return None
     try:
         from scrapling.fetchers import StealthyFetcher
         pag = StealthyFetcher.fetch(url, **_FETCH_OPTS)
@@ -112,7 +117,7 @@ def _get_browser(url: str) -> str | None:
         if hasattr(pag, "text") and pag.text:
             return pag.text
     except Exception as e:
-        print(f"    [BROWSER ERROR] {url}: {e}")
+        print(f"    [BROWSER ERROR] {url}: {e}", flush=True)
     return None
 
 
@@ -261,7 +266,7 @@ def scrape_tag(tag_slug: str, max_por_tag: int = 5) -> int:
             guardados += 1
             continue
 
-        time.sleep(0.8)
+        time.sleep(get_scrape_sleep())
         html_art = _get(link)
         art = _scrapearticulo_con_fallback(link, html_art, tag_slug)
         if not art:
