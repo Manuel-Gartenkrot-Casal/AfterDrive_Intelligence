@@ -2232,11 +2232,17 @@
 
       try {
         var r4 = await fetch('/api/health');
+        if (!r4.ok) throw new Error('HTTP ' + r4.status);
         var d4 = await r4.json();
-        if (d4.scrapers && d4.scrapers.status === 'ok') {
+        // Se aceptan las dos formas de respuesta: {status:'ok'} cuando Flask
+        // responde directo (un solo contenedor) y {scrapers:{status:'ok'}}
+        // cuando Express hace de proxy. Exigir solo la anidada dejaba el badge
+        // en "Sin Conexion" para siempre en el despliegue de un contenedor.
+        var ok = d4.status === 'ok' || (d4.scrapers && d4.scrapers.status === 'ok');
+        if (ok) {
           $('statusPulse').className = 'status-dot';
           $('statusText').textContent = 'Online';
-        } else { throw new Error(); }
+        } else { throw new Error('respuesta inesperada'); }
       } catch(e) {
         $('statusPulse').className = 'status-dot off';
         $('statusText').textContent = 'Sin Conexion';

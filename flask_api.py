@@ -129,9 +129,31 @@ def _stream_output(script: str, extra_args: list[str] | None = None):
 
 
 @app.route("/health")
-@app.route("/api/health")
 def health():
+    """Health check de la plataforma (healthCheckPath de Render).
+
+    Se mantiene mínimo y sin dependencias externas a propósito: si consultara
+    MongoDB o el proveedor de IA, una caída de esos servicios haría que Render
+    considere el contenedor no sano y lo reinicie en bucle.
+    """
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/health")
+def api_health():
+    """Health check que consume el dashboard.
+
+    Devuelve la forma anidada que el frontend espera: cuando Express hacía de
+    proxy respondía {express, scrapers}, y el dashboard chequea
+    `scrapers.status === 'ok'`. Al pasar a un solo contenedor, Flask empezó a
+    responder {"status": "ok"} sin esa clave, así que la comprobación del
+    dashboard lanzaba excepción y el badge quedaba en "Sin Conexion" de forma
+    permanente, sin importar el estado real del proveedor de IA.
+
+    La forma sirve en los dos despliegues: con Express adelante, este objeto
+    queda anidado bajo `scrapers` y la comprobación sigue dando bien.
+    """
+    return jsonify({"status": "ok", "express": "ok", "scrapers": {"status": "ok"}})
 
 
 @app.route("/api/db-check", methods=["GET"])

@@ -28,6 +28,7 @@ Nota: usa requests directamente, sin el paquete openai.
 import json
 import os
 import re
+import threading
 import time
 
 import requests
@@ -48,9 +49,9 @@ MODELO_EMB = os.getenv("LMSTUDIO_EMB_MODEL", "text-embedding-nomic-embed-text-v1
 # NVIDIA Build (cloud)
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "z-ai/glm-5.2")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "moonshotai/kimi-k3")
 NVIDIA_EMB_MODEL = os.getenv("NVIDIA_EMB_MODEL", "nvidia/nv-embedqa-e5-v5")
-NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "meta/llama-3.1-8b-instruct")
+NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b")
 
 # OpenRouter (cloud)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -68,6 +69,13 @@ EMBEDDINGS_PROVIDER = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower()
 # Códigos que significan "este modelo ya no existe": reintentar no lo revive.
 # 404 = nunca existió con ese id; 410 = fue dado de baja por el proveedor.
 _MODELO_CAIDO = (404, 410)
+
+# Segundos sin recibir un solo byte antes de dar por colgada una generación en
+# streaming. requests aplica el timeout de lectura por cada read, así que con
+# stream=True esto equivale a "si el proveedor no manda nada en N segundos,
+# cortar". Sin esto, un proveedor que acepta la conexión y después no responde
+# deja la request colgada los 30 minutos del timeout total, sin imprimir nada.
+STREAM_READ_TIMEOUT = int(os.getenv("STREAM_READ_TIMEOUT", "180"))
 
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
 
@@ -514,10 +522,52 @@ def _get_headers() -> dict:
     return {}
 
 
+def _modelos_disponibles(base_url: str, headers: dict, limite: int = 40) -> list[str]:
+    """Consulta GET /models del proveedor y devuelve los ids que ofrece hoy.
+
+    Se usa solo para enriquecer mensajes de error. Decir "el modelo está dado de
+    baja" obliga a ir a buscar el catálogo a mano; decir además cuáles hay
+    disponibles convierte el error en algo accionable. Si la consulta falla,
+    devuelve lista vacía: nunca debe tapar el error original.
+    """
+    try:
+        r = requests.get(f"{base_url}/models", headers=headers, timeout=15)
+        r.raise_for_status()
+        return [m.get("id", "") for m in r.json().get("data", []) if m.get("id")][:limite]
+    except Exception:
+        return []
+
+
+def _error_modelo_caido(modelo: str, status: int, base_url: str, headers: dict, variable: str) -> str:
+    """Arma un mensaje de error accionable para un modelo dado de baja."""
+    disponibles = _modelos_disponibles(base_url, headers)
+    detalle = (
+        "\n  Modelos disponibles hoy en este proveedor:\n    " + "\n    ".join(disponibles)
+        if disponibles
+        else "\n  (no se pudo leer el catálogo del proveedor para sugerir alternativas)"
+    )
+    return (
+        f"El modelo '{modelo}' devolvió HTTP {status}: ya no está disponible. "
+        f"Actualizá la variable de entorno {variable}.{detalle}"
+    )
+
+
+def _heartbeat(etiqueta: str, stop: threading.Event, cada: int = 20) -> None:
+    """Imprime señales de vida mientras se espera la respuesta del proveedor.
+
+    Cumple dos funciones: le avisa al usuario que el proceso no está colgado, y
+    mantiene tráfico en el stream SSE para que el proxy no corte la conexión por
+    inactividad mientras el modelo todavía no emitió el primer token.
+    """
+    t0 = time.time()
+    while not stop.wait(cada):
+        print(f"  [{int(time.time() - t0)}s] {etiqueta}", flush=True)
+
+
 def _post(
     endpoint: str,
     payload: dict,
-    timeout: int = 60,
+    timeout: int | tuple[int, int] = 60,
     stream: bool = False,
     retries: int = 3,
     base_url: str | None = None,
@@ -551,12 +601,13 @@ def _post(
                 else ""
             )
             if fallback and fallback != modelo_original:
-                if not stream:
-                    print(
-                        f"[FALLBACK] '{modelo_original}' devolvió {resp.status_code} "
-                        f"(modelo dado de baja) -> probando {fallback}",
-                        flush=True,
-                    )
+                # Se imprime también en streaming: silenciarlo hacía que un
+                # fallback fallido pareciera que el fallback nunca se intentó.
+                print(
+                    f"[FALLBACK] '{modelo_original}' devolvió {resp.status_code} "
+                    f"(modelo dado de baja) -> probando {fallback}",
+                    flush=True,
+                )
                 resp_fb = requests.post(
                     url, json={**payload, "model": fallback}, headers=req_headers, timeout=timeout, stream=stream
                 )
@@ -566,13 +617,13 @@ def _post(
 
         if resp.status_code != 429:
             return resp
-        # Fallback para NVIDIA: GLM-5.2 -> Llama
+        # Fallback para NVIDIA: modelo principal rate-limited -> modelo alternativo
         if intento == 0 and modelo_original == NVIDIA_MODEL and NVIDIA_FALLBACK_MODEL and endpoint == "/chat/completions":
             payload_fallback = {**payload, "model": NVIDIA_FALLBACK_MODEL}
             resp_fb = requests.post(url, json=payload_fallback, headers=_get_headers(), timeout=timeout, stream=stream)
             if resp_fb.status_code == 200:
                 if not stream:
-                    print(f"[FALLBACK] GLM-5.2 rate-limited -> usando {NVIDIA_FALLBACK_MODEL}", flush=True)
+                    print(f"[FALLBACK] {NVIDIA_MODEL} rate-limited -> usando {NVIDIA_FALLBACK_MODEL}", flush=True)
                 return resp_fb
         # Fallback para OpenRouter: modelo principal -> modelo alternativo
         if intento == 0 and modelo_original == OPENROUTER_MODEL and OPENROUTER_FALLBACK_MODEL and endpoint == "/chat/completions":
@@ -793,7 +844,7 @@ def _extraer_delta(chunk: dict) -> str:
         content = delta.get("content", "")
         if content:
             return content
-        # Razonamiento (NVIDIA GLM-5.2 envia reasoning aqui)
+        # Razonamiento (modelos NVIDIA reasoning envian razonamiento aqui)
         reasoning = delta.get("reasoning_content", "")
         if reasoning:
             return reasoning
@@ -946,46 +997,85 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
         "stream": True,
     }
 
-    # Heartbeat para mostrar que sigue vivo mientras espera el primer token
+    # Heartbeat real mientras se espera al proveedor. Antes este comentario
+    # prometía algo que no existía: el único print de progreso vivía DENTRO del
+    # bucle de tokens, así que si el modelo no emitía nada no se imprimía nada y
+    # la UI quedaba clavada en "Generando nota..." sin señal de vida.
+    _stop_hb = threading.Event()
+    threading.Thread(
+        target=_heartbeat,
+        args=(f"esperando respuesta de {_get_model()}...", _stop_hb),
+        daemon=True,
+    ).start()
+
     try:
-        response = _post("/chat/completions", payload, timeout=1800, stream=True, retries=5)
-    except Exception:
-        raise
+        # Timeout como tupla (conexión, lectura): el de lectura corta si el
+        # proveedor no manda un solo byte en STREAM_READ_TIMEOUT segundos.
+        # Antes era 1800 a secas y un proveedor mudo colgaba la generación 30 min.
+        response = _post(
+            "/chat/completions", payload,
+            timeout=(15, STREAM_READ_TIMEOUT), stream=True, retries=5,
+        )
+    except requests.exceptions.Timeout as e:
+        raise RuntimeError(
+            f"El proveedor no respondió en {STREAM_READ_TIMEOUT}s usando el modelo "
+            f"'{_get_model()}'. Probá con otro modelo o subí STREAM_READ_TIMEOUT."
+        ) from e
+    finally:
+        _stop_hb.set()
 
     if not response.ok:
         error_body = response.text[:2000]
         if response.status_code == 429:
             raise RuntimeError(f"Rate limit de NVIDIA (429). Esperá unos minutos y reintentá. Detalle: {error_body}")
+        if response.status_code in _MODELO_CAIDO:
+            raise RuntimeError(
+                _error_modelo_caido(
+                    _get_model(), response.status_code, _get_base_url(), _get_headers(),
+                    "NVIDIA_MODEL" if AI_PROVIDER == "nvidia" else "OPENROUTER_MODEL",
+                )
+            )
         raise RuntimeError(f"HTTP {response.status_code}: {error_body}")
 
     partes = []
     t0 = time.time()
     last_progress = t0
-    for line in response.iter_lines():
-        if not line:
-            continue
-        text = line.decode("utf-8")
-        if text.startswith("data: "):
-            text = text[6:]
-        if text == "[DONE]":
-            break
-        try:
-            chunk = json.loads(text)
-            if "error" in chunk:
-                print(f"\n[ERROR del modelo] {chunk.get('message', chunk['error'])}")
+    try:
+        for line in response.iter_lines():
+            if not line:
                 continue
-            delta = _extraer_delta(chunk)
-            partes.append(delta)
-        except json.JSONDecodeError:
-            continue
+            text = line.decode("utf-8")
+            if text.startswith("data: "):
+                text = text[6:]
+            if text == "[DONE]":
+                break
+            try:
+                chunk = json.loads(text)
+                if "error" in chunk:
+                    print(f"\n[ERROR del modelo] {chunk.get('message', chunk['error'])}")
+                    continue
+                delta = _extraer_delta(chunk)
+                partes.append(delta)
+            except json.JSONDecodeError:
+                continue
 
-        # Mostrar progreso cada 60 segundos
-        now = time.time()
-        if now - last_progress >= 60:
-            tok_count = len("".join(partes))
-            elapsed = int(now - t0)
-            print(f"  [{elapsed}s] {tok_count} tokens generados...", flush=True)
-            last_progress = now
+            # Mostrar progreso cada 60 segundos
+            now = time.time()
+            if now - last_progress >= 60:
+                tok_count = len("".join(partes))
+                elapsed = int(now - t0)
+                print(f"  [{elapsed}s] {tok_count} tokens generados...", flush=True)
+                last_progress = now
+    except requests.exceptions.Timeout as e:
+        # Si ya llegaron tokens, se devuelve lo parcial en vez de perder todo.
+        if not partes:
+            raise RuntimeError(
+                f"El modelo '{_get_model()}' aceptó la conexión pero no envió ningún "
+                f"token en {STREAM_READ_TIMEOUT}s. Suele pasar con modelos ':free' "
+                f"saturados: probá otro modelo."
+            ) from e
+        print(f"\n  [AVISO] El stream se cortó por inactividad ({STREAM_READ_TIMEOUT}s). "
+              f"Se devuelve lo generado hasta acá.", flush=True)
 
     t_total = int(time.time() - t0)
     print(f"  Generación completa en {t_total}s (total: {len(''.join(partes))} tokens)")
@@ -1309,9 +1399,10 @@ def calcular_embedding(texto: str, input_type: str = "passage") -> list[float] |
             # por artículo solo agrega minutos de espera y tapa la causa real.
             if resp.status_code in _MODELO_CAIDO:
                 print(
-                    f"[ERROR] El modelo de embeddings '{_get_emb_model()}' devolvió "
-                    f"{resp.status_code}: ya no está disponible en el proveedor "
-                    f"'{_emb_provider()}'. Actualizá NVIDIA_EMB_MODEL.",
+                    "[ERROR] " + _error_modelo_caido(
+                        _get_emb_model(), resp.status_code,
+                        _get_emb_base_url(), _get_emb_headers(), "NVIDIA_EMB_MODEL",
+                    ),
                     flush=True,
                 )
                 return None
@@ -1359,9 +1450,10 @@ def calcular_embeddings_batch(textos: list[str], input_type: str = "passage") ->
             # que fallaría igual 10 veces seguidas.
             if resp.status_code in _MODELO_CAIDO:
                 print(
-                    f"  [ERROR] El modelo de embeddings '{_get_emb_model()}' devolvió "
-                    f"{resp.status_code}: ya no está disponible en el proveedor "
-                    f"'{_emb_provider()}'. Actualizá NVIDIA_EMB_MODEL.",
+                    "  [ERROR] " + _error_modelo_caido(
+                        _get_emb_model(), resp.status_code,
+                        _get_emb_base_url(), _get_emb_headers(), "NVIDIA_EMB_MODEL",
+                    ),
                     flush=True,
                 )
                 return [None] * len(textos_limpios)
