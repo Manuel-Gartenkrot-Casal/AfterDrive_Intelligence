@@ -185,6 +185,21 @@ def db_check():
         }), 500
 
 
+@app.route("/api/articulos-stats", methods=["GET"])
+def articulos_stats():
+    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'.
+
+    Cuenta documentos en vez de reutilizar /api/check-volume, que resuelve
+    con una búsqueda $text. Esa búsqueda exige un índice de texto que solo
+    se crea al generar un artículo, así que en una base donde todavía no se
+    generó ninguno devolvía 500 y la tarjeta quedaba vacía.
+    """
+    try:
+        return jsonify({"success": True, "total": col_articulos.count_documents({})})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/check-volume", methods=["GET"])
 def check_volume():
     keyword = request.args.get("keyword", "")

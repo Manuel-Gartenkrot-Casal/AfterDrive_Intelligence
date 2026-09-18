@@ -2206,14 +2206,15 @@
       } catch(e) {}
 
       try {
-        var r2 = await fetch('/api/check-volume?keyword=autopartes');
+        var r2 = await fetch('/api/articulos-stats');
         var d2 = await r2.json();
         if (d2.success) {
-          if (_firstStatsLoad) { countUp($('statArticles'), d2.count, 1100); } else { $('statArticles').textContent = d2.count.toLocaleString(); }
+          if (_firstStatsLoad) { countUp($('statArticles'), d2.total, 1100); }
+          else { $('statArticles').textContent = d2.total.toLocaleString(); }
           $('statArticles').classList.add('flash');
           setTimeout(function() { $('statArticles').classList.remove('flash'); }, 600);
         }
-      } catch(e) {}
+      } catch(e) { console.error('Error al cargar /api/articulos-stats:', e); }
 
       try {
         var r3 = await fetch('/api/scraping-config');
