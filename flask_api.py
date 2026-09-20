@@ -649,8 +649,26 @@ def fase2_ultima_nota():
     return jsonify({"success": True, "nota": doc})
 
 
+def _keep_alive():
+    import urllib.request
+    port = int(os.getenv("PORT", 5000))
+    url = f"http://localhost:{port}/health"
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(url, timeout=10)
+        except Exception:
+            pass
+
+
+def _start_keep_alive():
+    t = threading.Thread(target=_keep_alive, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
     scheduler.start_scheduler()
+    _start_keep_alive()
 
     PORT = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=PORT, threaded=True)
@@ -663,3 +681,4 @@ else:
             or os.getenv("_SCHEDULER_STARTED") != "1":
         os.environ["_SCHEDULER_STARTED"] = "1"
         scheduler.start_scheduler()
+        _start_keep_alive()
