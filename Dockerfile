@@ -36,6 +36,7 @@ COPY db.py .
 COPY lm_studio.py .
 COPY embeddings.py .
 COPY flask_api.py .
+COPY config_store.py .
 COPY generar_articulo.py .
 COPY scraper.py .
 COPY scraper_afterdrive.py .

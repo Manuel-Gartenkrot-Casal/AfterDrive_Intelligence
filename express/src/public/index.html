@@ -1750,6 +1750,13 @@
         <p class="card-description">Configurá la ejecucion automatica del pipeline</p>
         <div class="auto-config">
           <div class="auto-field">
+            <span class="auto-label">Scraping automatico</span>
+            <div class="puntapie-toggle" id="auto-enabled-toggle" onclick="toggleAutoEnabled()" style="margin-top:0">
+              <div class="toggle-switch" id="auto-enabled-switch"></div>
+              <span id="auto-enabled-label">Activado</span>
+            </div>
+          </div>
+          <div class="auto-field">
             <span class="auto-label">Frecuencia</span>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="number" id="auto-days" value="1" min="1" class="input-field" style="width:80px" />
@@ -1775,6 +1782,48 @@
         <div class="auto-actions">
           <button class="btn" onclick="saveConfig()" id="btn-savecfg">Guardar Config</button>
           <button class="btn btn-primary" onclick="runNowStream()" id="btn-runnow">Ejecutar Ahora</button>
+        </div>
+      </div>
+
+      <!-- Generacion automatica de notas -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Generacion Automatica de Notas</h3>
+          <span class="card-badge">Fase 2</span>
+        </div>
+        <p class="card-description">Genera una nota cada X dias usando los toggles de Fase 2 que hayas dejado activos</p>
+        <div class="auto-config">
+          <div class="auto-field">
+            <span class="auto-label">Generacion automatica</span>
+            <div class="puntapie-toggle" id="gen-enabled-toggle" onclick="toggleGenEnabled()" style="margin-top:0">
+              <div class="toggle-switch" id="gen-enabled-switch"></div>
+              <span id="gen-enabled-label">Activado</span>
+            </div>
+          </div>
+          <div class="auto-field">
+            <span class="auto-label">Cada</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="number" id="gen-days" value="3" min="1" class="input-field" style="width:80px" />
+              <span class="auto-value">dias</span>
+            </div>
+          </div>
+          <div class="auto-field">
+            <span class="auto-label">Personalidad</span>
+            <select id="gen-auto-persona" class="select-field" style="width:100%">
+              <option value="comercial">Comercial</option>
+              <option value="analitico">Analítico-Técnico</option>
+              <option value="periodistico">Periodístico</option>
+              <option value="divulgativo">Divulgativo</option>
+              <option value="ejecutivo">Ejecutivo</option>
+            </select>
+          </div>
+          <div class="auto-field">
+            <span class="auto-label">Proxima generacion</span>
+            <span class="auto-value" id="gen-next-run">&mdash;</span>
+          </div>
+        </div>
+        <div class="auto-actions">
+          <button class="btn" onclick="saveGenConfig()" id="btn-savegencfg">Guardar Config</button>
         </div>
       </div>
 
@@ -2222,11 +2271,25 @@
         if (d3.success) {
           $('auto-days').value = d3.interval_days;
           if (d3.max_articulos) $('auto-max-art').value = d3.max_articulos;
+          updateAutoEnabledUI(d3.enabled !== false);
           if (d3.next_execution) {
             var nx = new Date(d3.next_execution);
             $('next-run').textContent = nx.toLocaleString('es-AR');
             $('statNextRunVal').textContent = nx.toLocaleDateString('es-AR');
             $('statInterval').textContent = 'Cada ' + d3.interval_days + ' dia(s)';
+          }
+        }
+      } catch(e) {}
+
+      try {
+        var r3b = await fetch('/api/generacion-config');
+        var d3b = await r3b.json();
+        if (d3b.success) {
+          $('gen-days').value = d3b.interval_days;
+          if (d3b.persona) $('gen-auto-persona').value = d3b.persona;
+          updateGenEnabledUI(d3b.enabled !== false);
+          if (d3b.next_execution) {
+            $('gen-next-run').textContent = new Date(d3b.next_execution).toLocaleString('es-AR');
           }
         }
       } catch(e) {}
@@ -2375,6 +2438,33 @@
     /* ═══════════════════════════════════════════════════════════════════════
        SAVE CONFIG
        ═══════════════════════════════════════════════════════════════════════ */
+    var _autoEnabled = true;
+    var _genEnabled = true;
+
+    function updateAutoEnabledUI(enabled) {
+      _autoEnabled = enabled;
+      var toggle = $('auto-enabled-toggle');
+      toggle.classList.toggle('active', enabled);
+      $('auto-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
+    }
+
+    function toggleAutoEnabled() {
+      updateAutoEnabledUI(!_autoEnabled);
+      saveConfig();
+    }
+
+    function updateGenEnabledUI(enabled) {
+      _genEnabled = enabled;
+      var toggle = $('gen-enabled-toggle');
+      toggle.classList.toggle('active', enabled);
+      $('gen-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
+    }
+
+    function toggleGenEnabled() {
+      updateGenEnabledUI(!_genEnabled);
+      saveGenConfig();
+    }
+
     async function saveConfig() {
       var days = parseInt($('auto-days').value);
       var maxArt = parseInt($('auto-max-art').value);
@@ -2382,12 +2472,27 @@
         await fetch('/api/scraping-config', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({interval_days: days, max_articulos: maxArt})
+          body: JSON.stringify({interval_days: days, max_articulos: maxArt, enabled: _autoEnabled})
         });
-        log('Configuracion guardada: ' + days + ' dia(s), ' + maxArt + ' articulos/fuente', 'success');
+        log('Configuracion guardada: ' + days + ' dia(s), ' + maxArt + ' articulos/fuente' + (_autoEnabled ? '' : ' (pausado)'), 'success');
         showToast('Configuracion guardada', 'success');
         updateStats();
       } catch(e) { log('Error al guardar configuracion', 'error'); }
+    }
+
+    async function saveGenConfig() {
+      var days = parseInt($('gen-days').value);
+      var persona = $('gen-auto-persona').value;
+      try {
+        await fetch('/api/generacion-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({interval_days: days, persona: persona, enabled: _genEnabled})
+        });
+        log('Generacion automatica: cada ' + days + ' dia(s), persona ' + persona + (_genEnabled ? '' : ' (pausada)'), 'success');
+        showToast('Generacion configurada', 'success');
+        updateStats();
+      } catch(e) { log('Error al guardar generacion', 'error'); }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2722,6 +2827,58 @@
 
     async function fase2Init() {
       await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
+      await fase2CargarConfig();
+    }
+
+    async function fase2CargarConfig() {
+      try {
+        var r = await fetch('/api/fase2/config');
+        var d = await r.json();
+        if (!d.success) return;
+        (d.categorias || []).forEach(function(c) {
+          var el = document.querySelector('#f2-categorias-grid .toggle-item[data-slug="' + c + '"]');
+          if (el) { _f2CategoriasActivas.add(c); el.classList.add('active'); }
+        });
+        (d.regiones || []).forEach(function(rg) {
+          var el = document.querySelector('#f2-regiones-grid .toggle-item[data-slug="' + rg + '"]');
+          if (el) { _f2RegionesActivas.add(rg); el.classList.add('active'); }
+        });
+        (d.clientes || []).forEach(function(c) {
+          _f2ClientesActivos.add(c);
+        });
+        if (d.puntapie_activo) {
+          _f2PuntapieActivo = true;
+          $('f2-puntapie-toggle').classList.add('active');
+          $('f2-puntapie-label').textContent = 'Activado';
+          $('f2-puntapie-url-wrap').style.display = 'block';
+        }
+        if (d.puntapie_url) $('f2-puntapie-url').value = d.puntapie_url;
+        renderClientes();
+        var genR = await fetch('/api/generacion-config');
+        var genD = await genR.json();
+        if (genD.success) {
+          if (genD.persona) $('f2-persona').value = genD.persona;
+          if (genD.tema) $('f2-tema').value = genD.tema;
+          if (genD.puntapie_url && !d.puntapie_url) $('f2-puntapie-url').value = genD.puntapie_url;
+        }
+      } catch(e) {}
+    }
+
+    async function fase2GuardarConfig() {
+      try {
+        var body = {
+          categorias: Array.from(_f2CategoriasActivas),
+          regiones: Array.from(_f2RegionesActivas),
+          clientes: Array.from(_f2ClientesActivos),
+          puntapie_activo: _f2PuntapieActivo,
+          puntapie_url: $('f2-puntapie-url').value.trim()
+        };
+        await fetch('/api/fase2/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body)
+        });
+      } catch(e) {}
     }
 
     async function fase2CargarCategorias() {
@@ -2758,6 +2915,7 @@
         _f2CategoriasActivas.add(slug);
         el.classList.add('active');
       }
+      fase2GuardarConfig();
     }
 
     async function fase2CargarRegiones() {
@@ -2792,6 +2950,7 @@
         _f2RegionesActivas.add(slug);
         el.classList.add('active');
       }
+      fase2GuardarConfig();
     }
 
     async function fase2CargarClientes() {
@@ -2835,6 +2994,7 @@
         _f2ClientesActivos.add(slug);
         el.classList.add('active');
       }
+      fase2GuardarConfig();
     }
 
     async function fase2AgregarCliente() {
@@ -2870,6 +3030,7 @@
         await fetch('/api/fase2/clientes/' + slug, { method: 'DELETE' });
         _f2ClientesActivos.delete(slug);
         await fase2CargarClientes();
+        fase2GuardarConfig();
       } catch(e) {}
     }
 
@@ -2881,6 +3042,7 @@
       toggle.classList.toggle('active', _f2PuntapieActivo);
       label.textContent = _f2PuntapieActivo ? 'Activado' : 'Desactivado';
       wrap.style.display = _f2PuntapieActivo ? 'block' : 'none';
+      fase2GuardarConfig();
     }
 
     async function fase2Scrape() {
@@ -2936,6 +3098,19 @@
         tema: $('f2-tema').value.trim() || null,
         puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
       };
+
+      try {
+        await fetch('/api/generacion-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({persona: body.persona, tema: body.tema || ''})
+        });
+        await fetch('/api/fase2/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({puntapie_url: $('f2-puntapie-url').value.trim()})
+        });
+      } catch(e) {}
 
       log('--- GENERANDO NOTA FASE 2 [' + categorias.join(', ') + '] ---', 'warn');
       var exito = false;

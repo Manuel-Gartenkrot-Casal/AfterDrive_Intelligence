@@ -5,6 +5,17 @@ import sys
 import threading
 import time
 
+# Aplicar el proveedor persistido antes de importar módulos que lo leen
+# (lm_studio captura AI_PROVIDER en tiempo de import). Si Mongo no está
+# disponible no se toca nada y se usa lo que diga el entorno.
+try:
+    import config_store
+    _p = config_store.get_provider_config()
+    if _p and not os.getenv("AI_PROVIDER_OVERRIDE"):
+        os.environ["AI_PROVIDER"] = _p
+except Exception:
+    pass
+
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
@@ -281,8 +292,15 @@ def get_scraping_config():
     job = scheduler.scheduler.get_job("trusted_scraping")
     interval = job.trigger.interval.days if job else 1
     max_art = scheduler.get_max_articulos()
+    enabled = scheduler.is_scraping_enabled()
 
-    return jsonify({"success": True, "interval_days": interval, "max_articulos": max_art, "next_execution": next_run})
+    return jsonify({
+        "success": True,
+        "interval_days": interval,
+        "max_articulos": max_art,
+        "next_execution": next_run,
+        "enabled": enabled,
+    })
 
 
 @app.route("/api/scraping-config", methods=["POST"])
@@ -290,6 +308,7 @@ def set_scraping_config():
     body = request.get_json(silent=True) or {}
     days = body.get("interval_days")
     max_art = body.get("max_articulos")
+    enabled = body.get("enabled")
 
     if days is not None:
         if not isinstance(days, int) or days < 1:
@@ -301,14 +320,72 @@ def set_scraping_config():
             return jsonify({"success": False, "error": "Se requiere 'max_articulos' como un entero >= 1."}), 400
         scheduler.set_max_articulos(max_art)
 
+    if enabled is not None:
+        scheduler.set_scraping_enabled(bool(enabled))
+
     msg_parts = []
     if days is not None:
         msg_parts.append(f"intervalo a {days} día(s)")
     if max_art is not None:
         msg_parts.append(f"max artículos a {max_art}")
+    if enabled is not None:
+        msg_parts.append("scraping " + ("habilitado" if enabled else "deshabilitado"))
     message = "Configuración actualizada: " + ", ".join(msg_parts) if msg_parts else "Sin cambios"
 
     return jsonify({"success": True, "message": message})
+
+
+@app.route("/api/generacion-config", methods=["GET"])
+def get_generacion_config():
+    import config_store
+    cfg = config_store.get_generacion_config()
+    cfg = {**cfg, "success": True, "next_execution": scheduler.get_next_generacion_execution()}
+    return jsonify(cfg)
+
+
+@app.route("/api/generacion-config", methods=["POST"])
+def set_generacion_config():
+    import config_store
+    body = request.get_json(silent=True) or {}
+    persona = body.get("persona")
+    tema = body.get("tema")
+    puntapie_url = body.get("puntapie_url")
+    days = body.get("interval_days")
+    enabled = body.get("enabled")
+
+    if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
+        return jsonify({"success": False, "error": "Persona inválida."}), 400
+    if days is not None and (not isinstance(days, int) or days < 1):
+        return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
+
+    if days is not None:
+        scheduler.update_generacion_interval(days)
+    if enabled is not None:
+        scheduler.set_generacion_enabled(bool(enabled))
+    if persona is not None or tema is not None or puntapie_url is not None:
+        config_store.set_generacion_config(persona=persona, tema=tema, puntapie_url=puntapie_url)
+
+    return jsonify({"success": True, "message": "Configuración de generación actualizada."})
+
+
+@app.route("/api/fase2/config", methods=["GET"])
+def get_fase2_config():
+    import config_store
+    return jsonify({"success": True, **config_store.get_fase2_config()})
+
+
+@app.route("/api/fase2/config", methods=["POST"])
+def set_fase2_config():
+    import config_store
+    body = request.get_json(silent=True) or {}
+    cfg = config_store.set_fase2_config(
+        categorias=body.get("categorias"),
+        regiones=body.get("regiones"),
+        clientes=body.get("clientes"),
+        puntapie_activo=body.get("puntapie_activo"),
+        puntapie_url=body.get("puntapie_url"),
+    )
+    return jsonify({"success": True, **cfg})
 
 
 @app.route("/api/run-automation", methods=["POST"])
@@ -403,6 +480,9 @@ def set_provider():
     from lm_studio import set_provider as _set_provider
 
     result = _set_provider(provider)
+    if result.get("success"):
+        import config_store
+        config_store.set_provider_config(provider)
     status = 200 if result["success"] else 400
     return jsonify(result), status
 
