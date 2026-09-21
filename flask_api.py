@@ -289,8 +289,7 @@ def stream_generar():
 @app.route("/api/scraping-config", methods=["GET"])
 def get_scraping_config():
     next_run = scheduler.get_next_execution()
-    job = scheduler.scheduler.get_job("trusted_scraping")
-    interval = job.trigger.interval.days if job else 1
+    interval = scheduler.get_interval_days()
     max_art = scheduler.get_max_articulos()
     enabled = scheduler.is_scraping_enabled()
 

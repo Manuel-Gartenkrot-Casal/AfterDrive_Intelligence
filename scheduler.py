@@ -58,6 +58,14 @@ def get_max_articulos() -> int:
     return _max_articulos
 
 
+def get_interval_days() -> int:
+    return _persisted.get("interval_days", DEFAULT_INTERVAL_DAYS)
+
+
+def get_generacion_interval() -> int:
+    return _persisted.get("gen_interval_days", DEFAULT_GENERACION_INTERVAL_DAYS)
+
+
 def set_max_articulos(cantidad: int):
     global _max_articulos
     _max_articulos = max(1, cantidad)
@@ -82,10 +90,6 @@ def set_generacion_enabled(enabled: bool):
     _persisted["gen_enabled"] = bool(enabled)
     config_store.set_generacion_config(enabled=_persisted["gen_enabled"])
     _sync_jobs()
-
-
-def get_generacion_interval() -> int:
-    return _persisted.get("gen_interval_days", DEFAULT_GENERACION_INTERVAL_DAYS)
 
 
 def update_generacion_interval(days: int):
