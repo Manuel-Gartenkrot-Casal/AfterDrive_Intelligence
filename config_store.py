@@ -23,7 +23,7 @@ DEFAULT_SCRAPING = {
 
 DEFAULT_GENERACION = {
     "enabled": True,
-    "interval_days": 3,
+    "interval_days": 1,
     "persona": "comercial",
     "tema": "",
     "puntapie_url": "",

@@ -2,6 +2,7 @@ import datetime
 import threading
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 import config_store
 from db import clasificar_y_guardar, col_articulos, col_trusted_urls
@@ -11,7 +12,14 @@ from scraper import start
 
 DEFAULT_INTERVAL_DAYS = 1
 DEFAULT_MAX_ARTICULOS = 10
-DEFAULT_GENERACION_INTERVAL_DAYS = 3
+DEFAULT_GENERACION_INTERVAL_DAYS = 1
+
+# Horarios fijos (UTC). Con el keep-alive externo la instancia queda despierta
+# 24/7, así que APScheduler puede ejecutar a hora de reloj y no relativo al boot.
+SCRAPING_HOUR = 8
+SCRAPING_MINUTE = 30
+GENERACION_HOUR = 14
+GENERACION_MINUTE = 0
 
 scheduler = BackgroundScheduler()
 _exec_lock = threading.Lock()
@@ -193,14 +201,10 @@ def _sync_jobs():
     if job:
         scheduler.remove_job("trusted_scraping")
     if _persisted["scraping_enabled"]:
-        delay = get_startup_delay_minutes()
-        primera_ejecucion = datetime.datetime.now() + datetime.timedelta(minutes=delay)
         scheduler.add_job(
             run_trusted_scraping,
-            "interval",
-            days=_persisted["interval_days"],
+            CronTrigger(hour=SCRAPING_HOUR, minute=SCRAPING_MINUTE, day=f"*/{_persisted['interval_days']}"),
             id="trusted_scraping",
-            next_run_time=primera_ejecucion,
         )
 
     # Job de generación de artículos
@@ -208,13 +212,10 @@ def _sync_jobs():
     if job:
         scheduler.remove_job("auto_generacion")
     if _persisted["gen_enabled"]:
-        primera = datetime.datetime.now() + datetime.timedelta(hours=1)
         scheduler.add_job(
             run_auto_generacion,
-            "interval",
-            days=_persisted["gen_interval_days"],
+            CronTrigger(hour=GENERACION_HOUR, minute=GENERACION_MINUTE, day=f"*/{_persisted['gen_interval_days']}"),
             id="auto_generacion",
-            next_run_time=primera,
         )
 
 
@@ -228,31 +229,29 @@ def start_scheduler(interval_days=None):
     if scheduler.get_job("auto_generacion"):
         scheduler.remove_job("auto_generacion")
 
-    delay = get_startup_delay_minutes()
-    primera_ejecucion = datetime.datetime.now() + datetime.timedelta(minutes=delay)
-
     if _persisted["scraping_enabled"]:
         scheduler.add_job(
             run_trusted_scraping,
-            "interval",
-            days=_persisted["interval_days"],
+            CronTrigger(hour=SCRAPING_HOUR, minute=SCRAPING_MINUTE, day=f"*/{_persisted['interval_days']}"),
             id="trusted_scraping",
-            next_run_time=primera_ejecucion,
         )
-        print(f"[Scheduler] Scraping cada {_persisted['interval_days']} día(s). Primera ejecución en {delay} min.", flush=True)
+        print(
+            f"[Scheduler] Scraping a las {SCRAPING_HOUR:02d}:{SCRAPING_MINUTE:02d} UTC cada {_persisted['interval_days']} día(s).",
+            flush=True,
+        )
     else:
         print("[Scheduler] Scraping automático deshabilitado por configuración.", flush=True)
 
     if _persisted["gen_enabled"]:
-        primera_gen = datetime.datetime.now() + datetime.timedelta(hours=1)
         scheduler.add_job(
             run_auto_generacion,
-            "interval",
-            days=_persisted["gen_interval_days"],
+            CronTrigger(hour=GENERACION_HOUR, minute=GENERACION_MINUTE, day=f"*/{_persisted['gen_interval_days']}"),
             id="auto_generacion",
-            next_run_time=primera_gen,
         )
-        print(f"[Scheduler] Generación automática cada {_persisted['gen_interval_days']} día(s).", flush=True)
+        print(
+            f"[Scheduler] Generación automática a las {GENERACION_HOUR:02d}:{GENERACION_MINUTE:02d} UTC cada {_persisted['gen_interval_days']} día(s).",
+            flush=True,
+        )
     else:
         print("[Scheduler] Generación automática deshabilitada por configuración.", flush=True)
 
@@ -264,8 +263,11 @@ def update_scheduler_interval(days: int):
     _persisted["interval_days"] = max(1, int(days))
     config_store.set_scraping_config(interval_days=_persisted["interval_days"])
     if scheduler.get_job("trusted_scraping"):
-        scheduler.reschedule_job("trusted_scraping", trigger="interval", days=_persisted["interval_days"])
-        print(f"Intervalo actualizado a {_persisted['interval_days']} día(s).")
+        scheduler.reschedule_job(
+            "trusted_scraping",
+            trigger=CronTrigger(hour=SCRAPING_HOUR, minute=SCRAPING_MINUTE, day=f"*/{_persisted['interval_days']}"),
+        )
+        print(f"Horario de scraping actualizado: {SCRAPING_HOUR:02d}:{SCRAPING_MINUTE:02d} UTC cada {_persisted['interval_days']} día(s).")
     else:
         start_scheduler(_persisted["interval_days"])
 
