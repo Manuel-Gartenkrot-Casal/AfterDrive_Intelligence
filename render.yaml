@@ -33,3 +33,7 @@ services:
         value: ""
       - key: DISABLE_BROWSER
         value: "false"
+      # URL pública del servicio. Render la inyecta automáticamente; se usa
+      # para el keep-alive (ver flask_api.py) y para cualquier callback externo.
+      - key: RENDER_EXTERNAL_URL
+        sync: false

@@ -730,15 +730,42 @@ def fase2_ultima_nota():
 
 
 def _keep_alive():
+    """Mantiene despierta la instancia de Render (free tier).
+
+    Render apaga el contenedor tras ~15 min SIN tráfico EXTERNO a la URL
+    pública. Un ping a localhost nunca sale del contenedor y no cuenta como
+    actividad, así que hay que pegarle a la URL pública que Render inyecta en
+    $RENDER_EXTERNAL_URL (ej: https://afterdrive-intelligence.onrender.com).
+
+    Esto reduce el spin-down pero no lo elimina al 100%: para garantía total,
+    un monitor externo (UptimeRobot, cron-job.org) debe pegar a /health cada
+    5-10 min. Sin instancia despierta, el scheduler de APScheduler no ejecuta
+    el scraping diario a la hora programada.
+    """
     import urllib.request
-    port = int(os.getenv("PORT", 5000))
-    url = f"http://localhost:{port}/health"
+
+    def _base_url() -> str | None:
+        ext = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+        if ext:
+            return ext
+        # Fallback local de desarrollo: apuntar a la URL pública configurada.
+        public = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+        if public:
+            return public
+        return None
+
+    intervalo_s = 300  # 5 min: bajo el umbral de ~15 min de inactividad de Render
     while True:
-        time.sleep(600)
+        time.sleep(intervalo_s)
+        base = _base_url()
+        if not base:
+            print("[keep-alive] Sin RENDER_EXTERNAL_URL/PUBLIC_BASE_URL, skip.", flush=True)
+            continue
+        url = f"{base}/health"
         try:
             urllib.request.urlopen(url, timeout=10)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[keep-alive] Ping a {url} falló: {e}", flush=True)
 
 
 def _start_keep_alive():
