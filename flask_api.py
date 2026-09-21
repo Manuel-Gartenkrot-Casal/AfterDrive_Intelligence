@@ -405,6 +405,16 @@ def _run_automation_thread(max_art: int):
     scheduler.run_trusted_scraping()
 
 
+@app.route("/api/run-generacion", methods=["POST"])
+def run_generacion():
+    """Dispara la generación automática de una nota (Fase 2) en background."""
+    try:
+        threading.Thread(target=scheduler.run_auto_generacion).start()
+        return jsonify({"success": True, "message": "Generación automática iniciada."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/stream/run-automation", methods=["POST"])
 def stream_run_automation():
     """Streaming SSE con el output en vivo del scraping de URLs confiables."""
