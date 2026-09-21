@@ -42,6 +42,7 @@ COPY scraper.py .
 COPY scraper_afterdrive.py .
 COPY regiones.py .
 COPY generar_nota_fase2.py .
+COPY jev_clasificador.py .
 COPY scheduler.py .
 COPY add_url.py .
 COPY discover_sources.py .

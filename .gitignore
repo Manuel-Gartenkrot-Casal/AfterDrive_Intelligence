@@ -26,3 +26,8 @@ segundo-cerebro/
 # express/src/public al correr en local). Versionarlo duplicaria el index.html
 # y las dos copias se desincronizarian.
 static/
+
+# Logs y scripts locales de dev/pruebas — no versionar
+server.log
+test-*.ps1
+opencode-server.ps1
