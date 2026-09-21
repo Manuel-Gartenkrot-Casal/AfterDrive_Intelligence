@@ -1,14 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "lmstudio/qwen2.5-coder-14b",
-  "agent": {
-    "scrapling-runner": {
-      "description": "Agente que sincroniza specs desde Drive y ejecuta el pipeline de scraping",
-      "mode": "subagent",
-      "model": "lmstudio/qwen2.5-coder-14b"
-    }
-  },
-  "default_agent": "general",
   "provider": {
     "lmstudio": {
       "npm": "@ai-sdk/openai-compatible",
@@ -17,21 +9,13 @@
         "apiKey": "lm-studio"
       },
       "models": {
-        "qwen2.5-coder-14b": {}
+        "qwen2.5-coder-14b": {
+          "limit": {
+            "context": 30000,
+            "output": 4096
+          }
+        }
       }
     }
-  },
-  "mcp": {
-    "google-drive": {
-  "type": "local",
-  "command": ["npx", "-y", "@piotr-agier/google-drive-mcp"]
-},
-    "gmail": {
-  "type": "local",
-  "command": ["npx", "@gongrzhe/server-gmail-autoauth-mcp"],
-  "environment": {
-    "GMAIL_OAUTH_PATH": "C:\\Users\\Manuel\\Desktop\\AI\\credentials.json"
-  }
-}
   }
 }

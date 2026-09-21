@@ -5,7 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config_store
 from db import clasificar_y_guardar, col_articulos, col_trusted_urls
-from lm_studio import clasificar_articulo
+from jev_clasificador import clasificar_articulo
 from resource_detector import get_startup_delay_minutes
 from scraper import start
 
