@@ -144,8 +144,14 @@ def _build_system_prompt(
         nombres = [CATEGORIAS.get(s, s) for s in categorias]
         instrucciones_extra.append(
             f"CATEGORÍAS OBJETIVO: {', '.join(nombres)}. "
-            "La nota debe enmarcarse en estas categorías. "
-            "El contenido debe ser relevante para estos temas específicos."
+            "Distribuí estas categorías de forma natural a lo largo de las secciones del artículo: "
+            "cada sección debe sustentarse en material propio de una o más de estas categorías "
+            "(datos/estadísticas para el gancho o el análisis, el producto/solución para la propuesta, "
+            "marketplaces para los casos o el cierre). "
+            "Mencioná plataformas reales por nombre si aportan a la categoría correspondiente "
+            "(ej: Alephee para e-commerce B2B, Mercado Libre para el marketplace, TecDoc para el catálogo). "
+            "Respetá SIEMPRE la estructura obligatoria de secciones ## definida en tu modo de redacción. "
+            "El contenido debe enmarcarse en estas categorías, pero la estructura de tu modo manda."
         )
 
     if clientes:

@@ -162,10 +162,10 @@ REGLAS (obligatorio):
 14. SIN REPETICIONES: NUNCA repitas la misma frase en el articulo, especialmente en conclusiones. Si ya dijiste algo, no lo vuelvas a pegar.
 15. B2B PURO: Tu audiencia NO es el conductor. Es el tallerista, el distribuidor, el gerente de e-commerce. NO le expliques al lector que "debe considerar la velocidad y el peso del vehiculo". Eso ya lo sabe. Habla de MARGENES, ROTACION, DEVOLUCIONES, INDEXACION, ERP, FITMENT.
 16. PLATAFORMAS REALES: Si el contexto menciona empresas o plataformas (Alephee, Mercado Libre, TecDoc, eBay Motors, Amazon Automotive), MENCIONALAS por nombre. NO las-generalices como "una plataforma" o "un marketplace".
-17. CTA OBLIGATORIO: El articulo DEBE terminar con una llamada a la accion (CTA). Ejemplo: "Descubre como...", "Conoce mas sobre...", "Transforma tu...". Sin CTA = articulo invalido.
+17. CTA OBLIGATORIO: El articulo DEBE terminar con una llamada a la accion (CTA). Ejemplo: "Descubre como...", "Conoce mas sobre...", "Transforma tu...". El CTA va en PRESENTE con sujeto ("Descubrí cómo", "Transformá tu"), NUNCA en infinitivo ("Descubrir", "Transformar"). La meta description en *cursiva* (max 155 chars, sin etiqueta) cierra el articulo. Sin CTA = articulo invalido.
 18. ESTRUCTURA ALEPHEE: Articulos estilo blog B2B: titulo descriptivo, introduccion con gancho, secciones con ##, viñetas para ventajas/datos, datos especificos (empresas, tiendas, porcentajes), cierre con CTA.
 19. DATOS REALES: NUNCA inventes estadisticas, porcentajes o cifras. Si el contexto no dice "70%", NO pongas "70%". Usa datos SOLO si aparecen en el contexto.
-20. ORTOGRAFIA: Escribe con tildes y puntuacion correctas. "tecnologia" NO, "tecnologia" SI. "region" NO, "region" SI. "traves" NO, "traves" SI."""
+20. ORTOGRAFIA: Escribe con tildes y puntuacion correctas. "tecnologia" NO, "tecnología" SI. "region" NO, "región" SI. "traves" NO, "a través" SI."""
 
 SISTEMAS_REDACTAR = {
     "analitico": f"""\
@@ -316,7 +316,7 @@ Tu audiencia son: repuesteros, distribuidores, gerentes de e-commerce automotor.
 Ellos necesitan: entender como funcionan las plataformas, catalogacion digital, indexacion de productos.
 Plataformas clave: Alephee (e-commerce B2B), Mercado Libre (marketplace), TecDoc (catalogo de referencias cruzadas).
 
-## Estructura obligatoria (cuatro secciones ## en Markdown)
+## Estructura obligatoria (cinco secciones ## en Markdown)
 1. **Titulo con concordancia perfecta** - Titulo claro, sin errores gramaticales. Usa palabras exactas del sector. PROHIBIDO: "Esta cambiando la juego", "La tecnologia esta revolucionando", frases genericas sin sustantivo tecnico concreto.
 2. **Concepto con analogia concreta** - Introduce el tema con una comparacion del mundo real que NO sea obvia. Ejemplo: "Un catalogo digital es como un vendedor que nunca se enferma". PROHIBIDO comparar con "la era digital" o "el mundo connected".
 3. **Como funciona en la practica** - Explicacion paso a paso del concepto, producto o plataforma. Usa datos DEL CONTEXTO: nombres de empresas, codigos de producto, precios, porcentajes reales. Si el contexto no dice un dato, NO lo inventes.
@@ -365,18 +365,18 @@ Plataformas clave: Alephee (e-commerce B2B), Mercado Libre (marketplace), TecDoc
 3. **Hoja de ruta** - Digitalizacion de la cadena de valor con plataformas reales
 4. **Recomendaciones + CTA** - ROI, eficiencia, mitigacion de riesgos + llamada a la accion
 
-## Ejemplo:
+## Ejemplo de FORMATO (cifras ilustrativas, NO datos reales — no las uses):
 ## El Futuro del E-commerce en Autopartes: Estrategias para Distribuidores
 
-El mercado de autopartes online en Latinoamerica esta creciendo a un ritmo del **25% anual**, pero muchos distribuidores aun operan sin estrategia digital definida. La presion sobre los margenes exige una revision estrategica de la cadena de suministro.
+El mercado de autopartes online en Latinoamerica esta creciendo a un ritmo del **25% anual** [CIFRA ILUSTRATIVA, NO USAR], pero muchos distribuidores aun operan sin estrategia digital definida. La presion sobre los margenes exige una revision estrategica de la cadena de suministro.
 
 ## Desafio Estrategico
 
-Los distribuidores que no integran sus catalogos con marketplaces como Mercado Libre estan perdiendo hasta el **30% de ventas potenciales**. La solucion no es solo tecnologia: es transformar el modelo de negocio.
+Los distribuidores que no integran sus catalogos con marketplaces como Mercado Libre estan perdiendo hasta el **30% de ventas potenciales** [CIFRA ILUSTRATIVA, NO USAR]. La solucion no es solo tecnologia: es transformar el modelo de negocio.
 
 ## Hoja de Ruta
 
-Plataformas como Alephee permiten a los distribuidores crear tiendas oficiales multivendedor, integrando stock fisico con ventas digitales. Esto reduce devoluciones un **40%** y aumenta la rotacion de inventario.
+Plataformas como Alephee permiten a los distribuidores crear tiendas oficiales multivendedor, integrando stock fisico con ventas digitales. Esto reduce devoluciones un **40%** [CIFRA ILUSTRATIVA, NO USAR] y aumenta la rotacion de inventario.
 
 ## Recomendaciones
 
