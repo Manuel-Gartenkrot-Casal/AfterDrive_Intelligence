@@ -1,12 +1,14 @@
 # Blueprint de Render — un solo web service (API + dashboard en el mismo contenedor).
 # Flask sirve la API en /api/* y el dashboard estático en la raíz (/).
-# Si ya tenés el servicio manual `afterdrive-intelligence` creado, este archivo no
-# es necesario: el mismo Dockerfile raíz se auto-despliega con cada push a main.
+# OJO: si ya tenés el servicio manual `afterdrive-intelligence` creado desde el
+# dashboard, aplicar este Blueprint puede duplicarlo o pedir confirmación de nombre.
 services:
   - type: web
     name: afterdrive-intelligence
     runtime: docker
+    branch: Render_Testing
     dockerfilePath: ./Dockerfile
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: PYTHONUNBUFFERED
@@ -33,3 +35,37 @@ services:
         value: ""
       - key: DISABLE_BROWSER
         value: "false"
+      # URL pública del servicio. Render la inyecta automáticamente; se usa
+      # para el keep-alive (ver flask_api.py) y para cualquier callback externo.
+      - key: RENDER_EXTERNAL_URL
+        sync: false
+
+# ────────────────────────────────────────────────────────────────────────────────
+# CRON JOBS (SOLO PLAN PAGO — Render no permite cron en free tier)
+#
+# Un cron de Render corre un COMANDO en una instancia aparte (schema exige
+# `runtime` + `startCommand`, no "request"). Acá el comando hace un POST HTTP al
+# endpoint del web service: eso despierta la instancia y dispara scraping/generación.
+#
+# Si querés esto en free tier NO es posible con cron de Render. La alternativa
+# gratis y más confiable es el keep-alive interno (ya corregido para pegar a la
+# URL pública) + un monitor externo (cron-job.org / UptimeRobot) pegando a:
+#   POST https://afterdrive-intelligence.onrender.com/api/run-automation   (scraping)
+#   POST https://afterdrive-intelligence.onrender.com/api/run-generacion  (generación)
+# ────────────────────────────────────────────────────────────────────────────────
+  - type: cron
+    name: afterdrive-scrape-diario
+    runtime: python
+    branch: Render_Testing
+    schedule: "30 8 * * *"   # 08:30 UTC = 05:30 ART
+    plan: starter            # cron no existe en plan free
+    buildCommand: pip install requests
+    startCommand: python -c "import requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-automation', timeout=120)"
+  - type: cron
+    name: afterdrive-generacion-diaria
+    runtime: python
+    branch: Render_Testing
+    schedule: "0 14 * * *"   # 14:00 UTC = 11:00 ART
+    plan: starter            # cron no existe en plan free
+    buildCommand: pip install requests
+    startCommand: python -c "import requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-generacion', timeout=120)"
