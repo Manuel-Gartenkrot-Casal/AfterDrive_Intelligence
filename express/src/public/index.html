@@ -7,7 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>
     (function () {
       var t = null;
@@ -19,9 +19,10 @@
 <link rel="stylesheet" href="/static/workspace.css">
 </head>
 <body>
+<div aria-hidden="true" class="particles-canvas" id="particles"></div>
 <a class="skip-link" href="#workspace-main">Saltar al contenido</a>
 <aside aria-label="Navegación principal" class="workspace-nav">
-<a class="workspace-brand" href="#redaccion"><span class="brand-monogram">AD<span>↗</span></span><strong>AfterDrive<small>INTELLIGENCE</small></strong></a>
+<a class="workspace-brand" href="#redaccion"><svg aria-hidden="true" class="brand-mark" viewBox="0 0 32 32"><rect height="32" rx="8" width="32"/><path d="M10 22 L16 10 L22 22" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"/></svg><strong>AfterDrive<small>Intelligence</small></strong></a>
 <div class="nav-caption">ESPACIO EDITORIAL</div>
 <nav>
 <a aria-current="page" data-workspace="redaccion" href="#redaccion"><span aria-hidden="true">▤</span> Redacción</a>
@@ -50,7 +51,7 @@
 <div class="status-dot off" id="statusPulse"></div>
 <span id="statusText">Conectando…</span>
 </div>
-<button aria-label="Cambiar tema" class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">☾</button>
+<button aria-label="Cambiar tema" class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema"><span>☾</span></button>
 </div>
 </header><div class="stats-grid">
 <div class="stat-card">
@@ -348,6 +349,7 @@
 </div>
 </div>
 <aside aria-label="Actividad en vivo" class="execution-dock" id="execution-dock">
+<div aria-label="Redimensionar la consola" aria-orientation="horizontal" class="execution-resizer" id="execution-resizer" role="separator" tabindex="0" title="Arrastrá para cambiar el alto"></div>
 <div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span></button><span class="execution-elapsed" id="execution-elapsed"></span><button class="btn btn-sm" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)">Minimizar</button></div>
 <div hidden="" id="execution-content"><div aria-live="polite" class="pipeline-hud" id="pipelineHud" role="status">
 <div class="pipeline-label">Pipeline de Procesamiento</div>
@@ -474,12 +476,12 @@
       var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       html.setAttribute('data-theme', next);
       localStorage.setItem('ad-theme', next);
-      $('themeBtn').innerHTML = next === 'dark' ? '&#9790;' : '&#9728;';
+      $('themeBtn').innerHTML = '<span>' + (next === 'dark' ? '&#9790;' : '&#9728;') + '</span>';
     }
 
     (function() {
       var current = document.documentElement.getAttribute('data-theme');
-      $('themeBtn').innerHTML = current === 'dark' ? '&#9790;' : '&#9728;';
+      $('themeBtn').innerHTML = '<span>' + (current === 'dark' ? '&#9790;' : '&#9728;') + '</span>';
     })();
 
     /* ═══════════════════════════════════════════════════════════════════════

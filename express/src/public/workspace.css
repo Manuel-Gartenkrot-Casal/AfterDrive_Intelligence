@@ -1,6 +1,6 @@
 /* Shared primitives and component states. No inherited neumorphic stylesheet. */
 :root {
- --font: 'IBM Plex Sans', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+ --font: 'Inter', system-ui, -apple-system, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
  --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:12px; --r-pill:999px;
  --t-fast:160ms; --t-med:240ms; --ease-out:cubic-bezier(.22,1,.36,1);
@@ -74,18 +74,20 @@ a { color: var(--brand); }
 .icon-btn { border:1px solid var(--hairline); border-radius:5px; background:var(--paper); width:32px; min-height:32px; }
 .log-entry { font:11px/1.8 var(--mono); overflow-wrap:anywhere; white-space:pre-wrap; }
 .log-info { color:var(--text-mid); } .log-success { color:var(--ok); } .log-warn { color:var(--warn); } .log-error { color:var(--err); }
-.log-ts { color:var(--text-lo); } .console-prompt { color:var(--brand); }
+/* El rojo queda reservado para .log-error: el prompt y la hora son cronica,
+   no incidencias. El JS escribe 'log-timestamp', no 'log-ts'. */
+.log-timestamp { color:var(--text-lo); } .console-prompt { color:var(--text-lo); font-weight:600; }
 .console-header { padding:8px 0; font-size:11px; }
 .modal-overlay { display:none; position:fixed; inset:0; background:#080412b8; z-index:1000; padding:24px; align-items:center; justify-content:center; }
 .modal-overlay.open { display:flex; }
 .modal { display:flex; width:min(1120px,96vw); max-height:90dvh; overflow:auto; }
 .modal-main { flex:1; min-width:0; display:flex; flex-direction:column; }
 .modal-header { display:flex; align-items:center; justify-content:space-between; padding:24px; border-bottom:1px solid var(--hairline); }
-.modal-title { font:600 24px var(--display); }
+.modal-title { font:700 21px var(--display); letter-spacing:-.6px; }
 .modal-close { min-width:36px; min-height:36px; background:var(--field); font-size:24px; }
 .modal-body { padding:24px; overflow:auto; }
 .modal-body :is(h1,h2,h3,p,ul,ol) { margin-bottom:18px; }
-.modal-body h1 { font:600 36px/1.2 var(--display); }
+.modal-body h1 { font:700 30px/1.25 var(--display); letter-spacing:-1px; }
 .modal-footer { padding:16px 24px; display:flex; gap:12px; border-top:1px solid var(--hairline); }
 .modal-sidebar { width:280px; padding:24px; flex-shrink:0; }
 .sidebar-title { font-size:15px; margin-bottom:16px; }
@@ -110,7 +112,7 @@ a { color: var(--brand); }
   --ok: #176a49; --err: #b02c38; --warn: #845400; --info: #285fa1;
   --surface: var(--paper); --surface-lo: var(--field); --surface-panel: var(--paper);
   --surface-input: var(--field); --surface-raised: var(--paper);
-  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --display: 'Inter', system-ui, sans-serif;
 }
 [data-theme="dark"] {
   --bg: #0d0919; --bg-deep: #140e22; --paper: #1b1030; --field: #241640;
@@ -130,10 +132,11 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .skip-link:focus { top: 12px; }
 .workspace-nav { position: fixed; inset: 0 auto 0 0; width: 222px; background: #241338; color: #d4c6f0; padding: 32px 18px; display: flex; flex-direction: column; z-index: 20; }
 .workspace-brand { display: flex; gap: 12px; align-items: center; text-decoration: none; color: #fff; margin: 0 6px 54px; }
-.brand-monogram { font-family: var(--display); font-size: 27px; border: 1px solid #7b648f; padding: 5px 8px; position: relative; }
-.brand-monogram span { font: 14px var(--font); position: absolute; right: -5px; top: -8px; background: #241338; color: #f08aa1; }
+.brand-mark { width: 32px; height: 32px; flex-shrink: 0; }
+.brand-mark rect { fill: var(--brand); }
+.brand-mark path { stroke: #241338; }
 .workspace-brand strong { font-size: 19px; letter-spacing: -.6px; }
-.workspace-brand small { display: block; font: 9px var(--mono); letter-spacing: 2px; color: #c5b8d9; margin-top: 2px; }
+.workspace-brand small { display: block; font: 500 9px var(--font); letter-spacing: 1.8px; text-transform: uppercase; color: #c5b8d9; margin-top: 3px; }
 .nav-caption { font: 9px var(--mono); letter-spacing: 1.4px; color: #c5b8d9; margin: 0 12px 14px; display: block; }
 .workspace-nav nav { display: grid; gap: 7px; }
 .workspace-nav nav a { display: flex; align-items: center; gap: 12px; padding: 12px; text-decoration: none; border-radius: 6px; color: #d4c6f0; border: 1px solid transparent; }
@@ -158,11 +161,11 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .stat-card:last-child { border-right: 0; }
 .stat-label { font: 11px var(--font); color: var(--text-mid); margin-bottom: 7px; }
 .stat-row { box-shadow: none; padding: 0; min-height: 29px; background: none; }
-.stat-value { font: 600 27px var(--display); color: var(--text-hi); }
+.stat-value { font: 700 25px var(--display); letter-spacing: -.8px; color: var(--text-hi); font-variant-numeric: tabular-nums; }
 .stat-sub { font-size: 10px; min-height: 15px; margin-top: 4px; }
 .workspace-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 26px; }
 .eyebrow { font: 10px var(--mono); letter-spacing: 1.6px; color: var(--brand); margin-bottom: 6px; }
-.workspace-heading h1 { font: 600 46px/1.1 var(--display); letter-spacing: -.5px; }
+.workspace-heading h1 { font: 700 38px/1.1 var(--display); letter-spacing: -1.4px; }
 .workspace-heading p { font-size: 13px; color: var(--text-mid); margin-top: 10px; }
 .writing-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .writing-tabs button { background: none; border: 0; border-bottom: 3px solid transparent; color: var(--text-mid); cursor: pointer; text-align: left; padding: 8px 0 13px; font-weight: 600; }
@@ -215,7 +218,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .fuentes-cols .input-row { flex-wrap: wrap; }
 .fuentes-cols .input-row input { flex-basis: 100%; }
 .console-section { background: var(--paper); padding: 0 16px 12px; }
-.console-container { background: var(--field); border: 1px solid var(--hairline); border-radius: 4px; height: 180px; overflow: auto; padding: 12px 16px; }
+.console-container { background: var(--field); border: 1px solid var(--hairline); border-radius: 4px; height: var(--console-h, 180px); overflow: auto; padding: 12px 16px; }
 
 
 .modal { background: var(--paper); border: 1px solid var(--hairline); border-radius: 10px; box-shadow: 0 20px 80px #0005; }
@@ -304,7 +307,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .execution-dock[data-result="error"] .execution-indicator { background:var(--err); }
 .execution-dock[data-result="success"] .execution-indicator { background:var(--ok); }
 .execution-dock.expanded #execution-content { animation:enter 200ms ease-out; }
-body.console-expanded .app-container { padding-bottom:380px; }
+body.console-expanded .app-container { padding-bottom:calc(var(--console-h, 180px) + 200px); }
 .pipeline-hud { display:none; padding:0 16px 8px; }
 .pipeline-hud.visible { display:block; }
 .pipeline-label, .pipeline-hud > .btn { display:none; }
@@ -322,7 +325,7 @@ body.console-expanded .app-container { padding-bottom:380px; }
 @media (max-width:1150px) { .execution-dock { left:190px; } .brief-options { grid-template-columns:1fr; } .brief-options > .fase2-grupo-title { grid-column:auto; } }
 @media (max-width:700px) {
  .execution-dock { left:0; } .execution-bar { padding:8px 12px; gap:8px; } .execution-toggle { flex-wrap:wrap; gap:4px 8px; }
- #execution-state { width:100%; padding-left:16px; } .console-container { height:160px; } .pipeline-flow { overflow:auto; }
+ #execution-state { width:100%; padding-left:16px; } .console-container { height:min(var(--console-h, 160px), 45vh); } .pipeline-flow { overflow:auto; }
  .pipeline-node { font-size:9px; white-space:nowrap; } .pipeline-edge { min-width:5px; }
  .modal { flex-direction:column; } .modal-sidebar { width:100%; } .modal-body { overflow:visible; }
 }
@@ -391,3 +394,65 @@ body.op-running .execution-dock { border-top-color:var(--brand); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:1ms !important; animation-iteration-count:1 !important; transition-duration:1ms !important; }
 }
+
+/* Agarre para redimensionar la consola, como la terminal de un editor.
+   Arrastre con el mouse y flechas con el teclado; el alto se recuerda. */
+.execution-dock { --console-h: 180px; }
+.execution-resizer {
+  position:absolute; top:0; left:0; right:0; height:7px; margin-top:-3px;
+  cursor:ns-resize; background:transparent; touch-action:none; z-index:2;
+}
+.execution-resizer::before {
+  content:''; position:absolute; left:50%; top:2px; width:46px; height:3px; margin-left:-23px;
+  border-radius:2px; background:var(--control-border); opacity:0; transition:opacity 140ms;
+}
+.execution-resizer:hover::before, .execution-resizer:focus-visible::before,
+.execution-dock.resizing .execution-resizer::before { opacity:1; background:var(--brand); }
+.execution-resizer:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
+.execution-dock:not(.expanded) .execution-resizer { display:none; }
+/* Durante el arrastre el texto no debe seleccionarse ni la consola animarse. */
+body.resizing-console { user-select:none; cursor:ns-resize; }
+body.resizing-console .log-entry { animation:none; }
+
+/* ═══ Atmosfera y respuesta al toque ═══════════════════════════════════════ */
+
+/* Particulas de fondo. Van detras de todo y no reciben eventos; durante una
+   corrida suben mas rapido y con mas presencia, asi el fondo tambien informa. */
+.particles-canvas { position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:0; contain:strict; }
+.particle {
+  position:absolute; bottom:-8px; border-radius:50%;
+  opacity:0; will-change:transform, opacity;
+  animation:ad-float linear infinite;
+}
+@keyframes ad-float {
+  0%   { transform:translateY(0) translateX(0) scale(.7); opacity:0; }
+  12%  { opacity:var(--p-op, .34); }
+  88%  { opacity:var(--p-op, .34); }
+  100% { transform:translateY(-102vh) translateX(var(--p-drift, 30px)) scale(1); opacity:0; }
+}
+body.op-running .particle { animation-duration:var(--p-fast, 5s); opacity:1; }
+/* Solo el contenedor necesita contexto: el riel y el dock ya son fixed con
+   z-index propio, y ponerlos en relative les rompe el posicionamiento. */
+.app-container { position:relative; z-index:1; }
+
+/* Pulsacion de botones: hundido breve + onda desde el punto del click. */
+.btn, .prov-btn, .topic-chip, .theme-toggle, .modal-close { position:relative; overflow:hidden; }
+.btn:active:not(:disabled), .prov-btn:active, .topic-chip:active, .theme-toggle:active { transform:translateY(1px) scale(.985); }
+.ad-ripple {
+  position:absolute; border-radius:50%; pointer-events:none;
+  background:currentColor; opacity:.28; transform:translate(-50%,-50%) scale(0);
+  animation:ad-ripple 460ms var(--ease-out) forwards;
+}
+@keyframes ad-ripple { to { transform:translate(-50%,-50%) scale(1); opacity:0; } }
+
+/* Cambio de tema: el icono gira y se funde en vez de saltar. */
+.theme-toggle { transition:background 160ms, border-color 160ms, transform 160ms; }
+.theme-toggle span { display:inline-block; transition:transform 420ms var(--ease-out), opacity 220ms; }
+.theme-toggle.swapping span { transform:rotate(180deg) scale(.6); opacity:0; }
+/* El cambio de paleta se funde en lugar de cortar de golpe. */
+body, .workspace-nav, .card, .fase2-grupo, .stats-grid, .execution-dock, .console-container, .input-field, .select-field, .btn, .toggle-item {
+  transition:background-color 320ms ease, color 320ms ease, border-color 320ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) { .particles-canvas { display:none; } }
+@media (max-width:700px) { .particles-canvas { display:none; } }

@@ -205,3 +205,135 @@ Object.entries(operationLabels).forEach(([name, title]) => {
 });
 
 openWorkspace(location.hash.slice(1), false);
+
+// ── Consola redimensionable ────────────────────────────────────────────────
+// Arrastre vertical como la terminal de un editor. El alto vive en una variable
+// CSS del dock para que el hueco del contenido lo siga sin recalcular nada.
+const CONSOLE_MIN = 120;
+const CONSOLE_KEY = 'afterdrive:console-h';
+const consoleDock = document.getElementById('execution-dock');
+const consoleResizer = document.getElementById('execution-resizer');
+
+const consoleMax = () => Math.max(CONSOLE_MIN, Math.round(window.innerHeight * 0.7));
+
+function setConsoleHeight(px, persist = true) {
+  const value = Math.min(Math.max(Math.round(px), CONSOLE_MIN), consoleMax());
+  consoleDock.style.setProperty('--console-h', value + 'px');
+  consoleResizer.setAttribute('aria-valuenow', String(value));
+  consoleResizer.setAttribute('aria-valuemax', String(consoleMax()));
+  if (persist) {
+    // Puede fallar en modo privado o con el almacenamiento bloqueado.
+    try { localStorage.setItem(CONSOLE_KEY, String(value)); } catch {}
+  }
+  return value;
+}
+
+function currentConsoleHeight() {
+  const raw = parseInt(consoleDock.style.getPropertyValue('--console-h'), 10);
+  return Number.isFinite(raw) ? raw : 180;
+}
+
+consoleResizer.setAttribute('aria-valuemin', String(CONSOLE_MIN));
+let storedConsoleHeight = null;
+try { storedConsoleHeight = localStorage.getItem(CONSOLE_KEY); } catch {}
+setConsoleHeight(parseInt(storedConsoleHeight, 10) || 180, false);
+
+consoleResizer.addEventListener('pointerdown', event => {
+  if (!consoleDock.classList.contains('expanded')) return;
+  event.preventDefault();
+  const startY = event.clientY;
+  const startHeight = currentConsoleHeight();
+  consoleResizer.setPointerCapture(event.pointerId);
+  consoleDock.classList.add('resizing');
+  document.body.classList.add('resizing-console');
+
+  const onMove = move => setConsoleHeight(startHeight + (startY - move.clientY));
+  const onUp = () => {
+    consoleResizer.removeEventListener('pointermove', onMove);
+    consoleDock.classList.remove('resizing');
+    document.body.classList.remove('resizing-console');
+  };
+  consoleResizer.addEventListener('pointermove', onMove);
+  consoleResizer.addEventListener('pointerup', onUp, {once: true});
+  consoleResizer.addEventListener('pointercancel', onUp, {once: true});
+});
+
+consoleResizer.addEventListener('keydown', event => {
+  const paso = event.shiftKey ? 64 : 24;
+  const acciones = {
+    ArrowUp: () => currentConsoleHeight() + paso,
+    ArrowDown: () => currentConsoleHeight() - paso,
+    Home: () => CONSOLE_MIN,
+    End: consoleMax
+  };
+  const siguiente = acciones[event.key];
+  if (!siguiente) return;
+  event.preventDefault();
+  if (!consoleDock.classList.contains('expanded')) setConsoleOpen(true);
+  setConsoleHeight(siguiente());
+});
+
+// Al achicar la ventana el tope baja: reencuadrar sin pisar la preferencia.
+window.addEventListener('resize', () => setConsoleHeight(currentConsoleHeight(), false));
+
+// ── Atmosfera de fondo ─────────────────────────────────────────────────────
+// Particulas en los cuatro colores semanticos de la paleta. Es decoracion
+// deliberada, por eso queda fuera del arbol de accesibilidad y se apaga con
+// prefers-reduced-motion y en pantallas chicas (via CSS).
+function initParticles() {
+  const canvas = document.getElementById('particles');
+  if (!canvas || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  canvas.textContent = '';
+  const tonos = ['--warn', '--brand', '--ok', '--info'];
+  const total = innerWidth < 1100 ? 16 : 28;
+  for (let i = 0; i < total; i++) {
+    const p = document.createElement('div');
+    const size = 1.5 + Math.random() * 2.5;
+    p.className = 'particle';
+    p.style.left = (Math.random() * 94).toFixed(2) + '%';
+    p.style.width = p.style.height = size.toFixed(1) + 'px';
+    // El amarillo pesa el doble: es el tono que da la sensacion de actividad.
+    p.style.background = `var(${tonos[Math.random() < 0.4 ? 0 : 1 + Math.floor(Math.random() * 3)]})`;
+    p.style.animationDuration = (16 + Math.random() * 20).toFixed(1) + 's';
+    p.style.animationDelay = '-' + (Math.random() * 30).toFixed(1) + 's';
+    p.style.setProperty('--p-drift', (Math.random() * 120 - 60).toFixed(0) + 'px');
+    p.style.setProperty('--p-op', (0.18 + Math.random() * 0.26).toFixed(2));
+    p.style.setProperty('--p-fast', (4 + Math.random() * 4).toFixed(1) + 's');
+    canvas.appendChild(p);
+  }
+}
+initParticles();
+
+let reflowParticles;
+addEventListener('resize', () => {
+  clearTimeout(reflowParticles);
+  reflowParticles = setTimeout(initParticles, 400);
+});
+
+// ── Onda al pulsar ─────────────────────────────────────────────────────────
+document.addEventListener('pointerdown', event => {
+  const control = event.target.closest('.btn, .prov-btn, .topic-chip, .theme-toggle, .modal-close');
+  if (!control || control.disabled) return;
+  const caja = control.getBoundingClientRect();
+  const onda = document.createElement('span');
+  onda.className = 'ad-ripple';
+  const lado = Math.max(caja.width, caja.height) * 2.2;
+  onda.style.width = onda.style.height = lado + 'px';
+  onda.style.left = event.clientX - caja.left + 'px';
+  onda.style.top = event.clientY - caja.top + 'px';
+  control.appendChild(onda);
+  onda.addEventListener('animationend', () => onda.remove(), {once: true});
+});
+
+// ── Cambio de tema ─────────────────────────────────────────────────────────
+// toggleTheme() vive en index.html; lo envolvemos para animar el icono sin
+// duplicar la logica de persistencia.
+const themeButton = document.getElementById('themeBtn');
+if (themeButton && typeof window.toggleTheme === 'function') {
+  const cambiarTema = window.toggleTheme;
+  window.toggleTheme = function (...args) {
+    themeButton.classList.add('swapping');
+    setTimeout(() => themeButton.classList.remove('swapping'), 220);
+    return cambiarTema.apply(this, args);
+  };
+}
