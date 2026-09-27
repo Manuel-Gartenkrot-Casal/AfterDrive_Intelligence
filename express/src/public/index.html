@@ -338,47 +338,121 @@
     .stat-sub { font-size: 0.75rem; color: var(--text-lo); min-height: 1.1em; }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       FASE 1 (colapsable)
+       PROGRAMACIÓN AUTOMÁTICA (relojes)
        ═══════════════════════════════════════════════════════════════════════ */
-    .fase1-section { margin-bottom: var(--s7); }
-    .fase1-toggle {
-      width: 100%;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: var(--s4) var(--s5);
-      border: 0;
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    .section-head { margin-bottom: var(--s5); }
+    .section-title { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; }
+    .section-sub { font-size: 0.85rem; color: var(--text-lo); margin-top: 4px; max-width: 65ch; }
+
+    .agenda { margin-bottom: var(--s7); }
+    .agenda-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
+    .agenda-card {
+      display: flex; flex-direction: column; gap: var(--s5);
+      padding: var(--s5) var(--s6) var(--s6);
       border-radius: var(--r-lg);
       background: var(--bg);
       box-shadow: var(--raised);
-      color: var(--text-hi);
-      font-family: var(--font);
-      font-size: 1rem;
-      cursor: pointer;
-      transition: box-shadow var(--t-med) var(--ease-out);
+      min-width: 0;
+      transition: opacity var(--t-med);
     }
-    .fase1-toggle:hover .fase1-chevron { color: var(--brand); }
-    .fase1-toggle:active { box-shadow: var(--inset-sm); }
-    .fase1-toggle-label { font-weight: 500; }
-    .fase1-toggle-label strong { color: var(--brand); font-weight: 600; }
-    .fase1-chevron {
-      width: 32px; height: 32px;
-      display: grid; place-items: center;
+    .agenda-card.pausada .reloj,
+    .agenda-card.pausada .hora-row,
+    .agenda-card.pausada .agenda-fields { opacity: 0.45; }
+    .agenda-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }
+    .agenda-card-title { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+    .agenda-card-sub { font-size: 0.8rem; color: var(--text-lo); margin-top: 2px; }
+    .agenda-card-head .puntapie-toggle { flex-shrink: 0; }
+
+    /* Reloj: disco en relieve con cara hundida; agujas arrastrables */
+    .reloj {
+      width: min(260px, 72vw);
+      aspect-ratio: 1;
+      margin: 0 auto;
+      padding: 14px;
       border-radius: 50%;
-      box-shadow: var(--raised-xs);
-      font-size: 0.65rem;
-      color: var(--text-lo);
-      transition: transform var(--t-med) var(--ease-out), color var(--t-fast);
+      background: var(--bg);
+      box-shadow: var(--raised);
+      transition: opacity var(--t-med);
     }
-    .fase1-chevron.open { transform: rotate(90deg); box-shadow: var(--inset-sm); }
-    .fase1-body { margin-top: var(--s6); }
+    .reloj-cara {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      box-shadow: var(--inset);
+      display: grid; place-items: center;
+    }
+    .reloj svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: pointer; user-select: none; }
+    .reloj svg:focus-visible { outline: none; }
+    .reloj-cara:has(svg:focus-visible) { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
+    .reloj .tick { stroke: var(--text-lo); stroke-width: 1; opacity: 0.55; }
+    .reloj .tick-hora { stroke: var(--text-mid); stroke-width: 2.2; opacity: 1; }
+    .reloj .num { fill: var(--text-mid); font-family: var(--font); font-size: 11px; font-weight: 500; }
+    .reloj .num-cardinal { fill: var(--text-hi); font-weight: 600; font-size: 13px; }
+    .reloj .momento { fill: var(--text-lo); font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .reloj .aguja { transition: transform 420ms var(--ease-out); transform-origin: 100px 100px; transform-box: view-box; }
+    .reloj.arrastrando .aguja { transition: none; }
+    .reloj .aguja-hora line { stroke: var(--text-hi); stroke-width: 6; stroke-linecap: round; }
+    .reloj .aguja-min line { stroke: var(--brand); stroke-width: 3.5; stroke-linecap: round; }
+    .reloj .perilla { fill: var(--bg); stroke-width: 2.5; cursor: grab; filter: drop-shadow(1px 1px 1.5px var(--sh-dark)); }
+    .reloj .aguja-hora .perilla { stroke: var(--text-hi); }
+    .reloj .aguja-min .perilla { stroke: var(--brand); }
+    .reloj.arrastrando .perilla { cursor: grabbing; }
+    .reloj .centro { fill: var(--brand); stroke: var(--bg); stroke-width: 3; }
+
+    .hora-row { display: flex; align-items: center; justify-content: center; gap: var(--s4); flex-wrap: wrap; }
+    .hora-input {
+      width: 9.5ch;
+      min-height: 56px;
+      padding: 8px 14px;
+      border: 0;
+      border-radius: var(--r-md);
+      background: var(--bg);
+      box-shadow: var(--inset-sm);
+      color: var(--text-hi);
+      font-family: var(--mono);
+      font-size: 1.6rem;
+      font-weight: 500;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .hora-input:focus { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
+    .hora-input::-webkit-calendar-picker-indicator { display: none; }
+    .ampm { display: flex; gap: 4px; padding: 5px; border-radius: var(--r-pill); box-shadow: var(--inset-sm); }
+    .ampm button {
+      border: 0; background: transparent; cursor: pointer;
+      min-width: 48px; padding: 8px 12px;
+      border-radius: var(--r-pill);
+      font-family: var(--mono); font-size: 0.8rem; font-weight: 500;
+      color: var(--text-lo);
+      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
+    }
+    .ampm button.on { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs); }
+
+    .agenda-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s3) var(--s5); }
+    .agenda-field { display: flex; align-items: center; gap: var(--s2); font-size: 0.85rem; color: var(--text-mid); }
+    .agenda-field .input-field { width: 72px; min-height: 40px; padding: 6px 10px; text-align: center; }
+    .agenda-field-wide .select-field { min-height: 40px; padding-top: 6px; padding-bottom: 6px; }
+
+    .agenda-foot {
+      display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap;
+      margin-top: auto;
+      padding: var(--s3) var(--s4);
+      border-radius: var(--r-md);
+      box-shadow: var(--inset-sm);
+    }
+    .agenda-next { display: flex; flex-direction: column; min-width: 0; }
+    .agenda-next span { font-size: 0.72rem; color: var(--text-lo); }
+    .agenda-next strong { font-family: var(--mono); font-size: 0.95rem; font-weight: 500; color: var(--text-data); }
+    .agenda-estado { font-style: normal; font-size: 0.72rem; color: var(--ok); min-height: 1em; }
+    .agenda-estado.err { color: var(--err); }
+    .agenda-hint { font-size: 0.75rem; color: var(--text-lo); max-width: 30ch; text-align: right; }
 
     /* ═══════════════════════════════════════════════════════════════════════
        CARDS
        ═══════════════════════════════════════════════════════════════════════ */
-    .main-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--s6);
-    }
     .card {
       padding: var(--s5) var(--s5) var(--s5);
       border-radius: var(--r-lg);
@@ -388,16 +462,9 @@
       display: flex; flex-direction: column;
       animation: rise 0.5s var(--ease-out) both;
     }
-    .main-grid .card:nth-child(2) { animation-delay: 60ms; }
-    .main-grid .card:nth-child(3) { animation-delay: 120ms; }
-    .main-grid .card:nth-child(4) { animation-delay: 180ms; }
-    .main-grid .card:nth-child(5) { animation-delay: 240ms; }
-    .main-grid .card:nth-child(6) { animation-delay: 300ms; }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
     .card-full { grid-column: 1 / -1; }
-    /* Card que queda sola en su fila (impar y anteúltima, antes de la full): ocupa el ancho */
-    .main-grid > .card:not(.card-full):nth-child(odd):nth-last-child(2) { grid-column: 1 / -1; }
     .card-header {
       display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
       margin-bottom: var(--s2);
@@ -559,20 +626,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        AUTOMATIZACIÓN / SUGERENCIAS / GENERADOR
        ═══════════════════════════════════════════════════════════════════════ */
-    .auto-config {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--s3) var(--s4);
-      padding: var(--s4);
-      border-radius: var(--r-md);
-      box-shadow: var(--inset-sm);
-      margin-bottom: var(--s4);
-    }
-    .auto-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-    .auto-label { font-size: 0.75rem; font-weight: 500; color: var(--text-lo); }
-    .auto-value { font-family: var(--mono); font-size: 0.82rem; color: var(--text-data); }
-    .auto-actions { display: flex; gap: var(--s3); margin-top: auto; }
-    .auto-actions .btn { flex: 1; }
 
     .suggestions-list { display: flex; flex-direction: column; gap: var(--s3); }
     .suggestion-item {
@@ -624,27 +677,6 @@
     }
     #trusted-urls-list > div:last-child { border-bottom: 0 !important; }
 
-    .generation-controls {
-      display: flex; gap: var(--s5); align-items: flex-start; flex-wrap: wrap;
-    }
-    .control-group { min-width: 0; }
-
-    .topic-chips { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s4); }
-    .topic-chip {
-      padding: 7px 16px;
-      border: 0;
-      border-radius: var(--r-pill);
-      background: var(--bg);
-      box-shadow: var(--raised-xs);
-      color: var(--text-mid);
-      font-family: var(--font);
-      font-size: 0.8rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
-    }
-    .topic-chip:hover { color: var(--brand); box-shadow: var(--raised-sm); }
-    .topic-chip:active { box-shadow: var(--inset-sm); }
 
     /* ═══════════════════════════════════════════════════════════════════════
        PIPELINE HUD
@@ -1015,7 +1047,7 @@
     @media (max-width: 1024px) {
       .fuentes-cols { gap: var(--s5); }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); }
-      .main-grid, .fase2-grupos { grid-template-columns: minmax(0, 1fr); }
+      .fase2-grupos, .agenda-grid { grid-template-columns: minmax(0, 1fr); }
       .modal { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
       .modal-sidebar { order: 2; }
       .header { flex-direction: column; align-items: flex-start; }
@@ -1031,13 +1063,12 @@
       .stat-sparkline { display: none; }
       .fase2-section { padding: var(--s4); }
       .fase2-grupo { padding: var(--s4); }
-      .auto-config { grid-template-columns: minmax(0, 1fr); }
       .fuentes-cols { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+      .agenda-card { padding: var(--s4); }
+      .agenda-hint { text-align: left; }
       .pipeline-hud { bottom: var(--s3); padding: var(--s3) var(--s4); }
       .pipeline-node .node-dot { width: 26px; height: 26px; }
       .pipeline-node .node-dot::after { inset: 8px; }
-      .generation-controls { flex-direction: column; align-items: stretch; }
-      .generation-controls .control-group { flex: 1 1 auto !important; width: 100%; }
       .pipeline-flow { overflow-x: auto; padding: 6px 4px 8px; }
       .pipeline-edge { min-width: 18px; }
       .provider-toggle { flex-wrap: wrap; border-radius: var(--r-md); }
@@ -1135,173 +1166,109 @@
       <div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
     </div>
 
-    <!-- Fase 1: Colapsable -->
-    <div class="fase1-section">
-      <button class="fase1-toggle" onclick="toggleFase1()" id="btn-fase1-toggle">
-        <span class="fase1-toggle-label">Fase <strong>1</strong>: Motor de contenido</span>
-        <span class="fase1-chevron" id="fase1-chevron">▶</span>
-      </button>
-      <div class="fase1-body" id="fase1-body" style="display:none">
-
-    <!-- Main Grid -->
-    <div class="main-grid">
-      <!-- Volume Filter -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Filtro de Volumen</h3>
-          <span class="card-badge">Inteligencia</span>
-        </div>
-        <p class="card-description">Consultá el volumen de artículos disponibles por keyword</p>
-        <div class="input-row">
-          <input type="text" id="vol-kw" class="input-field" placeholder="Ej: frenos, filtros, embrague..." />
-          <button class="btn" onclick="checkVolume()">Consultar</button>
-        </div>
-        <div id="vol-res" class="feedback"></div>
+    <!-- Programación automática -->
+    <section class="agenda" aria-labelledby="agenda-title">
+      <div class="section-head">
+        <h2 class="section-title" id="agenda-title">Programación automática</h2>
+        <p class="section-sub">Arrastrá las agujas o escribí la hora. Los cambios se guardan solos. Hora de Argentina.</p>
       </div>
-
-      <!-- Automation -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Automatizacion</h3>
-          <span class="card-badge" id="autoActiveBadge">0 activas</span>
-        </div>
-        <p class="card-description">Configurá la ejecucion automatica del pipeline</p>
-        <div class="auto-config">
-          <div class="auto-field">
-            <span class="auto-label">Scraping automatico</span>
-            <div class="puntapie-toggle" id="auto-enabled-toggle" onclick="toggleAutoEnabled()" style="margin-top:0">
-              <div class="toggle-switch" id="auto-enabled-switch"></div>
-              <span id="auto-enabled-label">Activado</span>
+      <div class="agenda-grid">
+        <article class="agenda-card" id="agenda-scraping">
+          <header class="agenda-card-head">
+            <div>
+              <h3 class="agenda-card-title">Scraping</h3>
+              <p class="agenda-card-sub">Lee tus fuentes y guarda los artículos nuevos</p>
+            </div>
+            <div class="puntapie-toggle active" id="sw-scraping" role="switch" tabindex="0" aria-checked="true" aria-label="Scraping automático">
+              <div class="toggle-switch"></div><span>Activo</span>
+            </div>
+          </header>
+          <div class="reloj" id="reloj-scraping"></div>
+          <div class="hora-row">
+            <label class="sr-only" for="hora-scraping">Hora de scraping</label>
+            <input type="time" id="hora-scraping" class="hora-input" step="300" required />
+            <div class="ampm" id="ampm-scraping" role="group" aria-label="Mañana o tarde">
+              <button type="button" data-p="am">AM</button>
+              <button type="button" data-p="pm">PM</button>
             </div>
           </div>
-          <div class="auto-field">
-            <span class="auto-label">Frecuencia</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="number" id="auto-days" value="1" min="1" class="input-field" style="width:80px" />
-              <span class="auto-value">dias</span>
+          <div class="agenda-fields">
+            <label class="agenda-field">
+              <span>Cada</span>
+              <input type="number" id="dias-scraping" class="input-field" min="1" max="30" value="1" />
+              <span>día(s)</span>
+            </label>
+            <label class="agenda-field">
+              <span>Hasta</span>
+              <input type="number" id="max-scraping" class="input-field" min="1" max="50" value="10" />
+              <span>artículos por fuente</span>
+            </label>
+          </div>
+          <footer class="agenda-foot">
+            <div class="agenda-next">
+              <span>Próxima corrida</span>
+              <strong id="next-scraping">-</strong>
+              <em class="agenda-estado" id="estado-scraping" aria-live="polite"></em>
+            </div>
+            <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()">Scrapear ahora</button>
+          </footer>
+        </article>
+        <article class="agenda-card" id="agenda-generacion">
+          <header class="agenda-card-head">
+            <div>
+              <h3 class="agenda-card-title">Generación de nota</h3>
+              <p class="agenda-card-sub">Escribe una nota nueva con lo último que se scrapeó</p>
+            </div>
+            <div class="puntapie-toggle active" id="sw-generacion" role="switch" tabindex="0" aria-checked="true" aria-label="Generación de nota automático">
+              <div class="toggle-switch"></div><span>Activo</span>
+            </div>
+          </header>
+          <div class="reloj" id="reloj-generacion"></div>
+          <div class="hora-row">
+            <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
+            <input type="time" id="hora-generacion" class="hora-input" step="300" required />
+            <div class="ampm" id="ampm-generacion" role="group" aria-label="Mañana o tarde">
+              <button type="button" data-p="am">AM</button>
+              <button type="button" data-p="pm">PM</button>
             </div>
           </div>
-          <div class="auto-field">
-            <span class="auto-label">Articulos/fuente</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="number" id="auto-max-art" value="10" min="1" max="50" class="input-field" style="width:80px" />
-              <span class="auto-value">max</span>
+          <div class="agenda-fields">
+            <label class="agenda-field">
+              <span>Cada</span>
+              <input type="number" id="dias-generacion" class="input-field" min="1" max="30" value="1" />
+              <span>día(s)</span>
+            </label>
+            <label class="agenda-field agenda-field-wide">
+              <span>Tono</span>
+              <select id="persona-generacion" class="select-field">
+                <option value="comercial">Comercial</option>
+                <option value="analitico">Analítico-técnico</option>
+                <option value="periodistico">Periodístico</option>
+                <option value="divulgativo">Divulgativo</option>
+                <option value="ejecutivo">Ejecutivo</option>
+              </select>
+            </label>
+          </div>
+          <footer class="agenda-foot">
+            <div class="agenda-next">
+              <span>Próxima nota</span>
+              <strong id="next-generacion">-</strong>
+              <em class="agenda-estado" id="estado-generacion" aria-live="polite"></em>
             </div>
-          </div>
-          <div class="auto-field">
-            <span class="auto-label">Proxima ejecucion</span>
-            <span class="auto-value" id="next-run">&mdash;</span>
-          </div>
-          <div class="auto-field">
-            <span class="auto-label">Ultima ejecucion</span>
-            <span class="auto-value" id="last-run">&mdash;</span>
-          </div>
-        </div>
-        <div class="auto-actions">
-          <button class="btn" onclick="saveConfig()" id="btn-savecfg">Guardar Config</button>
-          <button class="btn btn-primary" onclick="runNowStream()" id="btn-runnow">Ejecutar Ahora</button>
-        </div>
+            <p class="agenda-hint">Usa las categorías, regiones y clientes que dejes activos en el generador de abajo.</p>
+          </footer>
+        </article>
       </div>
+    </section>
 
-      <!-- Generacion automatica de notas -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Generacion Automatica de Notas</h3>
-          <span class="card-badge">Fase 2</span>
-        </div>
-        <p class="card-description">Genera una nota cada X dias usando los toggles de Fase 2 que hayas dejado activos</p>
-        <div class="auto-config">
-          <div class="auto-field">
-            <span class="auto-label">Generacion automatica</span>
-            <div class="puntapie-toggle" id="gen-enabled-toggle" onclick="toggleGenEnabled()" style="margin-top:0">
-              <div class="toggle-switch" id="gen-enabled-switch"></div>
-              <span id="gen-enabled-label">Activado</span>
-            </div>
-          </div>
-          <div class="auto-field">
-            <span class="auto-label">Cada</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="number" id="gen-days" value="3" min="1" class="input-field" style="width:80px" />
-              <span class="auto-value">dias</span>
-            </div>
-          </div>
-          <div class="auto-field">
-            <span class="auto-label">Personalidad</span>
-            <select id="gen-auto-persona" class="select-field" style="width:100%">
-              <option value="comercial">Comercial</option>
-              <option value="analitico">Analítico-Técnico</option>
-              <option value="periodistico">Periodístico</option>
-              <option value="divulgativo">Divulgativo</option>
-              <option value="ejecutivo">Ejecutivo</option>
-            </select>
-          </div>
-          <div class="auto-field">
-            <span class="auto-label">Proxima generacion</span>
-            <span class="auto-value" id="gen-next-run">&mdash;</span>
-          </div>
-        </div>
-        <div class="auto-actions">
-          <button class="btn" onclick="saveGenConfig()" id="btn-savegencfg">Guardar Config</button>
-        </div>
-      </div>
-
-      <!-- Article Generator -->
-      <div class="card card-full" style="overflow:visible">
-        <div class="card-header">
-          <h3 class="card-title">Generador de Articulos con IA</h3>
-          <span class="card-badge">Redaccion</span>
-        </div>
-        <p class="card-description">Generá artículos profesionales optimizados para SEO</p>
-        <div class="generation-controls">
-          <div class="control-group" style="flex:2">
-            <div class="control-label">Tema</div>
-            <div class="input-row">
-              <input type="text" id="gen-tema" class="input-field" placeholder="Ej: frenos, filtros de aceite, mercado aftermarket..." />
-              <button class="btn" onclick="checkVolumeGen()">Volumen</button>
-            </div>
-            <div id="gen-vol-res" class="feedback"></div>
-            <div class="topic-chips">
-              <button class="topic-chip" onclick="applyTopic('frenos')">Frenos</button>
-              <button class="topic-chip" onclick="applyTopic('filtros')">Filtros</button>
-              <button class="topic-chip" onclick="applyTopic('aftermarket')">Aftermarket</button>
-              <button class="topic-chip" onclick="applyTopic('embrague')">Embrague</button>
-              <button class="topic-chip" onclick="applyTopic('suspension')">Suspension</button>
-              <button class="topic-chip" onclick="applyTopic('motor')">Motor</button>
-            </div>
-          </div>
-          <div class="control-group" style="flex:1;min-width:200px">
-            <div class="control-label">Personalidad</div>
-            <select id="gen-persona" class="select-field" style="width:100%">
-              <option value="analitico">Analitico-Tecnico</option>
-              <option value="periodistico">Periodistico</option>
-              <option value="comercial">Comercial</option>
-              <option value="divulgativo">Divulgativo</option>
-              <option value="ejecutivo">Ejecutivo</option>
-            </select>
-          </div>
-          <div class="control-group" style="flex:0 0 auto;min-width:0">
-            <div class="control-label" aria-hidden="true">&nbsp;</div>
-            <div style="display:flex;gap:var(--s3)">
-              <button class="btn btn-primary btn-large" id="btn-gen" onclick="generarStream()">Generar</button>
-              <button class="btn" onclick="verUltimo()">Ultimo Articulo</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-      </div><!-- /fase1-body -->
-    </div><!-- /fase1-section -->
-
-    <!-- Fase 2: Generador de Notas -->
+    <!-- Generador de notas -->
     <div class="fase2-section">
       <div class="fase2-header">
         <div>
-          <h2 class="fase2-title">Generador de Notas <span style="color:var(--brand)">Fase 2</span></h2>
+          <h2 class="fase2-title">Generador de notas</h2>
           <p style="font-size:0.8125rem;color:var(--text-lo);margin-top:4px">Seleccioná categorías, configurá clientes y generá notas estilo AfterDrive</p>
         </div>
         <div style="display:flex;gap:var(--s3);align-items:center">
-          <button class="btn btn-primary" id="btn-f2-scrapear" onclick="runNowStream()">Scrapear</button>
           <button class="btn" id="btn-f2-scrape" onclick="fase2Scrape()">Sincronizar Ejemplos</button>
           <span class="card-badge" style="align-self:center" id="f2-ejemplos-badge">0 ejemplos</span>
         </div>
@@ -1587,10 +1554,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        TOPIC CHIPS
        ═══════════════════════════════════════════════════════════════════════ */
-    function applyTopic(topic) {
-      $('gen-tema').value = topic;
-      $('gen-tema').focus();
-    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        PIPELINE HUD
@@ -1725,14 +1688,11 @@
           $('statUrls').classList.add('flash');
           setTimeout(function() { $('statUrls').classList.remove('flash'); }, 600);
           $('statUrlsSub').textContent = d.total + ' registradas';
-          $('autoActiveBadge').textContent = d.activas + ' activas';
           if (d.ultima_ejecucion) {
             var dt = new Date(d.ultima_ejecucion);
             $('statLastRun').textContent = dt.toLocaleDateString('es-AR');
-            $('last-run').textContent = dt.toLocaleString('es-AR');
           } else {
             $('statLastRun').textContent = 'Nunca';
-            $('last-run').textContent = 'Nunca';
           }
         }
       } catch(e) {}
@@ -1752,28 +1712,8 @@
         var r3 = await fetch('/api/scraping-config');
         var d3 = await r3.json();
         if (d3.success) {
-          $('auto-days').value = d3.interval_days;
-          if (d3.max_articulos) $('auto-max-art').value = d3.max_articulos;
-          updateAutoEnabledUI(d3.enabled !== false);
-          if (d3.next_execution) {
-            var nx = new Date(d3.next_execution);
-            $('next-run').textContent = nx.toLocaleString('es-AR');
-            $('statNextRunVal').textContent = nx.toLocaleDateString('es-AR');
-            $('statInterval').textContent = 'Cada ' + d3.interval_days + ' dia(s)';
-          }
-        }
-      } catch(e) {}
-
-      try {
-        var r3b = await fetch('/api/generacion-config');
-        var d3b = await r3b.json();
-        if (d3b.success) {
-          $('gen-days').value = d3b.interval_days;
-          if (d3b.persona) $('gen-auto-persona').value = d3b.persona;
-          updateGenEnabledUI(d3b.enabled !== false);
-          if (d3b.next_execution) {
-            $('gen-next-run').textContent = new Date(d3b.next_execution).toLocaleString('es-AR');
-          }
+          $('statNextRunVal').textContent = d3.next_execution ? new Date(d3.next_execution).toLocaleDateString('es-AR') : 'Pausado';
+          $('statInterval').textContent = 'A las ' + d3.hora + ', cada ' + d3.interval_days + ' día(s)';
         }
       } catch(e) {}
 
@@ -1801,25 +1741,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        CHECK VOLUME
        ═══════════════════════════════════════════════════════════════════════ */
-    async function checkVolume() {
-      var kw = $('vol-kw').value;
-      if (!kw) return;
-      var el = $('vol-res');
-      el.className = 'feedback info';
-      el.textContent = 'Consultando...';
-      try {
-        var r = await fetch('/api/check-volume?keyword=' + encodeURIComponent(kw));
-        var d = await r.json();
-        if (d.success) {
-          el.className = 'feedback ok';
-          el.textContent = d.count + ' articulos disponibles para "' + kw + '"';
-
-        } else {
-          el.className = 'feedback err';
-          el.textContent = 'Error al consultar';
-        }
-      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
-    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        ADD URL
@@ -1921,61 +1842,269 @@
     /* ═══════════════════════════════════════════════════════════════════════
        SAVE CONFIG
        ═══════════════════════════════════════════════════════════════════════ */
-    var _autoEnabled = true;
-    var _genEnabled = true;
 
-    function updateAutoEnabledUI(enabled) {
-      _autoEnabled = enabled;
-      var toggle = $('auto-enabled-toggle');
-      toggle.classList.toggle('active', enabled);
-      $('auto-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
+
+
+
+
+
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       RELOJ ANALÓGICO INTERACTIVO
+       Arrastrar la aguja corta mueve la hora; la larga, los minutos (de a 5).
+       Con teclado: flechas = ±5 min, Shift + flechas = ±1 h.
+       ═══════════════════════════════════════════════════════════════════════ */
+    function crearReloj(host, onInput, onCommit) {
+      var NS = 'http://www.w3.org/2000/svg';
+      var C = 100;
+      function el(tag, attrs, parent) {
+        var n = document.createElementNS(NS, tag);
+        for (var k in attrs) n.setAttribute(k, attrs[k]);
+        if (parent) parent.appendChild(n);
+        return n;
+      }
+      function polar(r, deg) {
+        var rad = (deg - 90) * Math.PI / 180;
+        return [C + r * Math.cos(rad), C + r * Math.sin(rad)];
+      }
+
+      var cara = document.createElement('div');
+      cara.className = 'reloj-cara';
+      var svg = el('svg', { viewBox: '0 0 200 200', role: 'slider', tabindex: '0',
+                            'aria-valuemin': '0', 'aria-valuemax': '1439' });
+      for (var i = 0; i < 60; i++) {
+        var hora = i % 5 === 0;
+        var a = polar(88, i * 6), b = polar(hora ? 78 : 83, i * 6);
+        el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: hora ? 'tick tick-hora' : 'tick' }, svg);
+      }
+      for (var h = 1; h <= 12; h++) {
+        var pnum = polar(66, h * 30);
+        var t = el('text', { x: pnum[0], y: pnum[1] + 4, 'text-anchor': 'middle',
+                             class: h % 3 === 0 ? 'num num-cardinal' : 'num' }, svg);
+        t.textContent = h;
+      }
+      var momento = el('text', { x: C, y: 136, 'text-anchor': 'middle', class: 'momento' }, svg);
+      var gH = el('g', { class: 'aguja aguja-hora' }, svg);
+      el('line', { x1: C, y1: C, x2: C, y2: 56 }, gH);
+      el('circle', { cx: C, cy: 56, r: 7, class: 'perilla', 'data-aguja': 'h' }, gH);
+      var gM = el('g', { class: 'aguja aguja-min' }, svg);
+      el('line', { x1: C, y1: C, x2: C, y2: 30 }, gM);
+      el('circle', { cx: C, cy: 30, r: 6, class: 'perilla', 'data-aguja': 'm' }, gM);
+      el('circle', { cx: C, cy: C, r: 6, class: 'centro' }, svg);
+      cara.appendChild(svg);
+      host.appendChild(cara);
+
+      var estado = { h: 0, m: 0 };
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      function texto() { return pad(estado.h) + ':' + pad(estado.m); }
+      function nombreMomento(h) {
+        return h < 6 ? 'madrugada' : h < 12 ? 'mañana' : h < 20 ? 'tarde' : 'noche';
+      }
+      function pintar() {
+        gH.style.transform = 'rotate(' + ((estado.h % 12) * 30 + estado.m * 0.5) + 'deg)';
+        gM.style.transform = 'rotate(' + (estado.m * 6) + 'deg)';
+        momento.textContent = nombreMomento(estado.h);
+        svg.setAttribute('aria-valuenow', estado.h * 60 + estado.m);
+        svg.setAttribute('aria-valuetext', texto() + ' (' + nombreMomento(estado.h) + ')');
+      }
+      function fijar(h, m, emitir) {
+        var total = ((h * 60 + m) % 1440 + 1440) % 1440;
+        estado.h = Math.floor(total / 60);
+        estado.m = total % 60;
+        pintar();
+        if (emitir) onInput(texto());
+      }
+
+      function angulo(ev) {
+        var r = svg.getBoundingClientRect();
+        var x = (ev.clientX - r.left) / r.width * 200 - C;
+        var y = (ev.clientY - r.top) / r.height * 200 - C;
+        return { deg: (Math.atan2(y, x) * 180 / Math.PI + 90 + 360) % 360, dist: Math.sqrt(x * x + y * y) };
+      }
+      var aguja = null;
+      function mover(ev) {
+        var a = angulo(ev);
+        if (aguja === 'm') {
+          var m = Math.round(a.deg / 30) * 5 % 60;
+          var h = estado.h;
+          if (estado.m >= 45 && m <= 15) h++;          // pasó las 12 hacia adelante
+          else if (estado.m <= 15 && m >= 45) h--;     // y hacia atrás
+          fijar(h, m, true);
+        } else {
+          var h12 = Math.round(a.deg / 30) % 12;
+          fijar(h12 + (estado.h >= 12 ? 12 : 0), estado.m, true);
+        }
+      }
+      svg.addEventListener('pointerdown', function(ev) {
+        var marcada = ev.target.getAttribute && ev.target.getAttribute('data-aguja');
+        aguja = marcada || (angulo(ev).dist < 52 ? 'h' : 'm');
+        host.classList.add('arrastrando');
+        svg.setPointerCapture(ev.pointerId);
+        mover(ev);
+        ev.preventDefault();
+      });
+      svg.addEventListener('pointermove', function(ev) { if (aguja) mover(ev); });
+      function soltar() {
+        if (!aguja) return;
+        aguja = null;
+        host.classList.remove('arrastrando');
+        onCommit(texto());
+      }
+      svg.addEventListener('pointerup', soltar);
+      svg.addEventListener('pointercancel', soltar);
+      svg.addEventListener('keydown', function(ev) {
+        var paso = ev.shiftKey ? 60 : 5;
+        var delta = { ArrowUp: paso, ArrowRight: paso, ArrowDown: -paso, ArrowLeft: -paso }[ev.key];
+        if (!delta) return;
+        ev.preventDefault();
+        fijar(estado.h, estado.m + delta, true);
+        onCommit(texto());
+      });
+
+      return {
+        set: function(hhmm) {
+          var partes = (hhmm || '00:00').split(':');
+          fijar(+partes[0], +partes[1], false);
+        },
+        get: texto
+      };
     }
 
-    function toggleAutoEnabled() {
-      updateAutoEnabledUI(!_autoEnabled);
-      saveConfig();
+    /* ═══════════════════════════════════════════════════════════════════════
+       PROGRAMACIÓN AUTOMÁTICA
+       Cada tarjeta = reloj + input de hora + AM/PM + campos. Todo se guarda
+       solo (con un pequeño retardo para no mandar un POST por cada paso).
+       ═══════════════════════════════════════════════════════════════════════ */
+    var AGENDA = {
+      scraping: {
+        endpoint: '/api/scraping-config',
+        extra: function() { return { max_articulos: parseInt($('max-scraping').value, 10) || 10 }; },
+        cargarExtra: function(d) { if (d.max_articulos) $('max-scraping').value = d.max_articulos; },
+        extraIds: ['max-scraping']
+      },
+      generacion: {
+        endpoint: '/api/generacion-config',
+        extra: function() { return { persona: $('persona-generacion').value }; },
+        cargarExtra: function(d) { if (d.persona) $('persona-generacion').value = d.persona; },
+        extraIds: ['persona-generacion']
+      }
+    };
+    var _zona = 'America/Argentina/Buenos_Aires';
+
+    function formatearProxima(iso) {
+      if (!iso) return 'Pausado';
+      return new Date(iso).toLocaleString('es-AR', {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: _zona
+      });
     }
 
-    function updateGenEnabledUI(enabled) {
-      _genEnabled = enabled;
-      var toggle = $('gen-enabled-toggle');
-      toggle.classList.toggle('active', enabled);
-      $('gen-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
+    function pintarAmPm(tipo, hhmm) {
+      var pm = parseInt(hhmm.split(':')[0], 10) >= 12;
+      $('ampm-' + tipo).querySelectorAll('button').forEach(function(b) {
+        var on = (b.dataset.p === 'pm') === pm;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on);
+      });
     }
 
-    function toggleGenEnabled() {
-      updateGenEnabledUI(!_genEnabled);
-      saveGenConfig();
+    function pintarActivo(tipo, activo) {
+      var sw = $('sw-' + tipo);
+      sw.classList.toggle('active', activo);
+      sw.setAttribute('aria-checked', activo);
+      sw.querySelector('span').textContent = activo ? 'Activo' : 'Pausado';
+      $('agenda-' + tipo).classList.toggle('pausada', !activo);
     }
 
-    async function saveConfig() {
-      var days = parseInt($('auto-days').value);
-      var maxArt = parseInt($('auto-max-art').value);
+    function estadoAgenda(tipo, texto, error) {
+      var el = $('estado-' + tipo);
+      el.textContent = texto;
+      el.classList.toggle('err', !!error);
+    }
+
+    function guardarAgenda(tipo) {
+      var cfg = AGENDA[tipo];
+      clearTimeout(cfg.timer);
+      estadoAgenda(tipo, 'Guardando...');
+      cfg.timer = setTimeout(async function() {
+        var body = Object.assign({
+          hora: $('hora-' + tipo).value,
+          interval_days: Math.max(1, parseInt($('dias-' + tipo).value, 10) || 1),
+          enabled: $('sw-' + tipo).classList.contains('active')
+        }, cfg.extra());
+        try {
+          var r = await fetch(cfg.endpoint, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+          });
+          var d = await r.json();
+          if (!d.success) throw new Error(d.error || 'No se pudo guardar');
+          await cargarAgenda(tipo);
+          estadoAgenda(tipo, 'Guardado');
+          setTimeout(function() { estadoAgenda(tipo, ''); }, 2500);
+          updateStats();
+        } catch(e) {
+          estadoAgenda(tipo, e.message, true);
+          log('No se pudo guardar la programación de ' + tipo + ': ' + e.message, 'error');
+        }
+      }, 450);
+    }
+
+    async function cargarAgenda(tipo) {
       try {
-        await fetch('/api/scraping-config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({interval_days: days, max_articulos: maxArt, enabled: _autoEnabled})
-        });
-        log('Configuracion guardada: ' + days + ' dia(s), ' + maxArt + ' articulos/fuente' + (_autoEnabled ? '' : ' (pausado)'), 'success');
-        showToast('Configuracion guardada', 'success');
-        updateStats();
-      } catch(e) { log('Error al guardar configuracion', 'error'); }
+        var r = await fetch(AGENDA[tipo].endpoint);
+        var d = await r.json();
+        if (!d.success) return;
+        if (d.zona) _zona = d.zona;
+        var hora = d.hora || (tipo === 'scraping' ? '05:30' : '11:00');
+        if (document.activeElement !== $('hora-' + tipo)) $('hora-' + tipo).value = hora;
+        AGENDA[tipo].reloj.set(hora);
+        pintarAmPm(tipo, hora);
+        $('dias-' + tipo).value = d.interval_days || 1;
+        AGENDA[tipo].cargarExtra(d);
+        pintarActivo(tipo, d.enabled !== false);
+        $('next-' + tipo).textContent = d.enabled === false ? 'Pausado' : formatearProxima(d.next_execution);
+      } catch(e) {}
     }
 
-    async function saveGenConfig() {
-      var days = parseInt($('gen-days').value);
-      var persona = $('gen-auto-persona').value;
-      try {
-        await fetch('/api/generacion-config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({interval_days: days, persona: persona, enabled: _genEnabled})
+    function initAgenda() {
+      Object.keys(AGENDA).forEach(function(tipo) {
+        var input = $('hora-' + tipo);
+        AGENDA[tipo].reloj = crearReloj($('reloj-' + tipo),
+          function(hhmm) { input.value = hhmm; pintarAmPm(tipo, hhmm); },
+          function() { guardarAgenda(tipo); });
+        $('reloj-' + tipo).querySelector('svg').setAttribute('aria-label', 'Hora de ' + tipo);
+
+        input.addEventListener('input', function() {
+          if (!input.value) return;
+          AGENDA[tipo].reloj.set(input.value);
+          pintarAmPm(tipo, input.value);
         });
-        log('Generacion automatica: cada ' + days + ' dia(s), persona ' + persona + (_genEnabled ? '' : ' (pausada)'), 'success');
-        showToast('Generacion configurada', 'success');
-        updateStats();
-      } catch(e) { log('Error al guardar generacion', 'error'); }
+        input.addEventListener('change', function() { if (input.value) guardarAgenda(tipo); });
+
+        $('ampm-' + tipo).addEventListener('click', function(ev) {
+          var b = ev.target.closest('button');
+          if (!b || !input.value) return;
+          var partes = input.value.split(':');
+          var h = parseInt(partes[0], 10);
+          if (b.dataset.p === 'pm' && h < 12) h += 12;
+          if (b.dataset.p === 'am' && h >= 12) h -= 12;
+          input.value = (h < 10 ? '0' : '') + h + ':' + partes[1];
+          AGENDA[tipo].reloj.set(input.value);
+          pintarAmPm(tipo, input.value);
+          guardarAgenda(tipo);
+        });
+
+        var sw = $('sw-' + tipo);
+        function alternar() { pintarActivo(tipo, !sw.classList.contains('active')); guardarAgenda(tipo); }
+        sw.addEventListener('click', alternar);
+        sw.addEventListener('keydown', function(ev) {
+          if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); alternar(); }
+        });
+
+        ['dias-' + tipo].concat(AGENDA[tipo].extraIds).forEach(function(id) {
+          $(id).addEventListener('change', function() { guardarAgenda(tipo); });
+        });
+        cargarAgenda(tipo);
+      });
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2026,6 +2155,7 @@
         botones.forEach(function(b, i) { b.disabled = false; b.textContent = textos[i]; });
         updateStats();
         loadTrustedUrls();
+        cargarAgenda('scraping');
       }
     }
 
@@ -2167,24 +2297,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        CHECK VOLUME (GEN)
        ═══════════════════════════════════════════════════════════════════════ */
-    async function checkVolumeGen() {
-      var kw = $('gen-tema').value;
-      if (!kw) return;
-      var el = $('gen-vol-res');
-      el.className = 'feedback info';
-      el.textContent = 'Consultando...';
-      try {
-        var r = await fetch('/api/check-volume?keyword=' + encodeURIComponent(kw));
-        var d = await r.json();
-        if (d.success) {
-          el.className = 'feedback ok';
-          el.textContent = d.count + ' articulos disponibles para "' + kw + '"';
-        } else {
-          el.className = 'feedback err';
-          el.textContent = 'Error al consultar';
-        }
-      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
-    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        GENERATE (STREAMING)
@@ -2200,131 +2312,10 @@
       } catch(e) {}
     }
 
-    async function generarStream() {
-      var btn = $('btn-gen');
-      btn.disabled = true;
-      var tema = $('gen-tema').value.trim();
-      var persona = $('gen-persona').value;
-      log('--- INICIANDO GENERACION DE ARTICULO (' + persona + ')' + (tema ? ' -- Tema: ' + tema : '') + ' ---', 'warn');
-      showPipeline();
-      $('pipelineTicker').textContent = 'Buscando en memoria semantica...';
-      var exito = false;
-      try {
-        var res = await fetch('/api/stream/generar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tema: tema, persona: persona })
-        });
-        var fullOutput = '';
-        await leerLineas(res, function(l) {
-            fullOutput += l + '\n';
-            advancePipeline(l);
-            if (l.indexOf('[ERROR]') >= 0) {
-              log(l, 'error');
-            } else if (l.match(/^  \[\d+s\]/)) {
-              log(l.trim(), 'info');
-            } else if (l.match(/^  Generaci.n/)) {
-              log(l.trim(), 'success');
-            } else if (l.trim() === '[OK]') {
-              if (!exito) log('Articulo generado correctamente', 'success');
-            }
-        });
-        exito = fullOutput.indexOf('[OK]') >= 0;
-
-        if (exito) {
-          finishPipeline(true);
-          hidePipelineHeader();
-          playClick();
-          showToast('Articulo generado exitosamente', 'success');
-          var modal = $('modal-art');
-          var body = $('art-body');
-          var check = $('check-list');
-          var comm = $('eval-comms');
-          modal.classList.add('open');
-          body.innerHTML = 'Cargando articulo...';
-          check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Evaluando...</div>';
-          comm.textContent = '';
-
-          try {
-            var r = await fetch('/api/ultimo-articulo');
-            var d = await r.json();
-            if (!d.success) { body.innerHTML = '<p style="color:var(--text-mid)">Articulo generado pero no encontrado.</p>'; return; }
-            body.innerHTML = marked.parse(d.articulo.contenido);
-            var evR = await fetch('/api/evaluate-article', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ articulo: d.articulo.contenido })
-            });
-            var evD = await evR.json();
-            if (evD.success) {
-              check.innerHTML = '';
-              Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
-                var k = entry[0], v = entry[1];
-                var item = document.createElement('div');
-                item.className = 'check-item ' + (v ? 'ok' : 'fail');
-                item.innerHTML = '<div class="check-dot"></div> ' + k.replace(/_/g, ' ');
-                check.appendChild(item);
-              });
-              if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
-            } else {
-              check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Evaluacion no disponible</div>';
-            }
-          } catch(e) {
-            body.innerHTML = '<p style="color:var(--text-mid)">Error al cargar el articulo.</p>';
-            check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Error en evaluacion</div>';
-          }
-        } else {
-          finishPipeline(false);
-          hidePipelineHeader();
-          log('--- NO SE PUDO GENERAR ARTICULO NUEVO ---', 'warn');
-          log('Revise la consola: puede que el contenido ya exista o no haya suficientes fuentes.', 'warn');
-          log('No se pudo generar articulo nuevo.', 'warn');
-          showToast('No se pudo generar articulo nuevo', 'warn');
-        }
-      } catch(e) {
-        log('Error en generacion: ' + e.message, 'error');
-        finishPipeline(false);
-        hidePipelineHeader();
-        log('Error en generacion: ' + e.message, 'error');
-      }
-      finally { btn.disabled = false; updateStats(); }
-    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        VIEW LAST ARTICLE
        ═══════════════════════════════════════════════════════════════════════ */
-    async function verUltimo() {
-      var modal = $('modal-art');
-      var body = $('art-body');
-      var check = $('check-list');
-      var comm = $('eval-comms');
-      modal.classList.add('open');
-      body.innerHTML = 'Cargando...';
-      check.innerHTML = '';
-      comm.textContent = '';
-      try {
-        var r = await fetch('/api/ultimo-articulo');
-        var d = await r.json();
-        if (!d.success) { body.innerHTML = '<p style="color:var(--text-mid)">Todavia no hay articulos generados.</p>'; return; }
-        body.innerHTML = marked.parse(d.articulo.contenido);
-        var evR = await fetch('/api/evaluate-article', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({articulo: d.articulo.contenido})
-        });
-        var evD = await evR.json();
-        if (evD.success) {
-          Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
-            var k = entry[0], v = entry[1];
-            var item = document.createElement('div');
-            item.className = 'check-item ' + (v ? 'ok' : 'fail');
-            item.innerHTML = '<div class="check-dot"></div> ' + k.replace(/_/g, ' ');
-            check.appendChild(item);
-          });
-          if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
-        }
-      } catch(e) { body.innerHTML = '<p style="color:var(--text-mid)">Error al cargar el articulo.</p>'; }
-    }
 
     function cerrar() { $('modal-art').classList.remove('open'); }
 
@@ -2345,13 +2336,6 @@
     var _f2ClientesActivos = new Set();
     var _f2PuntapieActivo = false;
 
-    function toggleFase1() {
-      var body = document.getElementById('fase1-body');
-      var chevron = document.getElementById('fase1-chevron');
-      var open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : 'block';
-      chevron.classList.toggle('open', !open);
-    }
 
     async function fase2Init() {
       await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
@@ -2728,6 +2712,7 @@
 
       updateStats();
       checkProviders();
+      initAgenda();
       fase2Init();
       loadTrustedUrls();
       loadSugerencias();

@@ -6,9 +6,14 @@ Interfaz:
     aplicar()   reagenda después de un cambio de config
     proximas()  {"scraping": iso | None, "generacion": iso | None}
 
-La config (habilitado, intervalo, max artículos) es de config_store; este
-módulo no guarda copia propia, así que no hay dos fuentes de verdad.
+La config (habilitado, hora, intervalo, max artículos) es de config_store;
+este módulo no guarda copia propia, así que no hay dos fuentes de verdad.
+
+Las horas se interpretan en ZONA (hora de Argentina por defecto), que es la
+que ve y edita el usuario en el dashboard.
 """
+
+import os
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -16,15 +21,16 @@ from apscheduler.triggers.cron import CronTrigger
 import config_store
 import corridas
 
-# Horarios fijos (UTC). Con el keep-alive externo la instancia queda despierta
-# 24/7, así que APScheduler puede ejecutar a hora de reloj y no relativo al boot.
-SCRAPING_HORA = (8, 30)
-GENERACION_HORA = (14, 0)
+ZONA = os.getenv("SCHEDULER_TZ", "America/Argentina/Buenos_Aires")
 
+# Con el keep-alive externo la instancia queda despierta 24/7, así que
+# APScheduler puede ejecutar a hora de reloj y no relativo al boot.
 _JOBS = {
-    # id: (lector de config, hora, qué correr)
-    "scraping": (lambda: config_store.get_scraping_config(), SCRAPING_HORA, corridas.scraping),
-    "generacion": (lambda: config_store.get_generacion_config(), GENERACION_HORA, corridas.generacion),
+    # id: (lector de config, hora por defecto, qué correr)
+    "scraping": (lambda: config_store.get_scraping_config(), config_store.DEFAULT_SCRAPING["hora"], corridas.scraping),
+    "generacion": (
+        lambda: config_store.get_generacion_config(), config_store.DEFAULT_GENERACION["hora"], corridas.generacion,
+    ),
 }
 
 _scheduler = BackgroundScheduler()
@@ -32,16 +38,18 @@ _scheduler = BackgroundScheduler()
 
 def aplicar() -> None:
     """Deja los jobs exactamente como dice la config guardada."""
-    for job_id, (leer_config, (hora, minuto), correr) in _JOBS.items():
+    for job_id, (leer_config, hora_default, correr) in _JOBS.items():
         cfg = leer_config()
+        hora, minuto = (int(x) for x in (cfg.get("hora") or hora_default).split(":"))
         if _scheduler.get_job(job_id):
             _scheduler.remove_job(job_id)
         if not cfg.get("enabled", True):
             print(f"[Scheduler] {job_id}: deshabilitado por configuración.", flush=True)
             continue
         dias = max(1, int(cfg.get("interval_days", 1)))
-        _scheduler.add_job(correr, CronTrigger(hour=hora, minute=minuto, day=f"*/{dias}"), id=job_id)
-        print(f"[Scheduler] {job_id}: {hora:02d}:{minuto:02d} UTC cada {dias} día(s).", flush=True)
+        trigger = CronTrigger(hour=hora, minute=minuto, day=f"*/{dias}", timezone=ZONA)
+        _scheduler.add_job(correr, trigger, id=job_id)
+        print(f"[Scheduler] {job_id}: {hora:02d}:{minuto:02d} ({ZONA}) cada {dias} día(s).", flush=True)
 
 
 def iniciar() -> None:

@@ -212,6 +212,8 @@ def get_scraping_config():
         "success": True,
         "interval_days": cfg["interval_days"],
         "max_articulos": cfg["max_articulos"],
+        "hora": cfg["hora"],
+        "zona": scheduler.ZONA,
         "next_execution": scheduler.proximas()["scraping"],
         "enabled": cfg["enabled"],
     })
@@ -221,22 +223,35 @@ def _entero_valido(valor) -> bool:
     return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 1
 
 
+_HORA = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_ERROR_HORA = "Se requiere 'hora' en formato HH:MM (24 h)."
+
+
+def _hora_valida(valor) -> bool:
+    return isinstance(valor, str) and bool(_HORA.match(valor))
+
+
 @app.route("/api/scraping-config", methods=["POST"])
 def set_scraping_config():
     body = request.get_json(silent=True) or {}
     days = body.get("interval_days")
     max_art = body.get("max_articulos")
     enabled = body.get("enabled")
+    hora = body.get("hora")
 
     if days is not None and not _entero_valido(days):
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
     if max_art is not None and not _entero_valido(max_art):
         return jsonify({"success": False, "error": "Se requiere 'max_articulos' como un entero >= 1."}), 400
+    if hora is not None and not _hora_valida(hora):
+        return jsonify({"success": False, "error": _ERROR_HORA}), 400
 
-    config_store.set_scraping_config(enabled=enabled, interval_days=days, max_articulos=max_art)
+    config_store.set_scraping_config(enabled=enabled, interval_days=days, max_articulos=max_art, hora=hora)
     scheduler.aplicar()
 
     msg_parts = []
+    if hora is not None:
+        msg_parts.append(f"hora {hora}")
     if days is not None:
         msg_parts.append(f"intervalo a {days} día(s)")
     if max_art is not None:
@@ -251,7 +266,7 @@ def set_scraping_config():
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
     cfg = config_store.get_generacion_config()
-    return jsonify({**cfg, "success": True, "next_execution": scheduler.proximas()["generacion"]})
+    return jsonify({**cfg, "success": True, "zona": scheduler.ZONA, "next_execution": scheduler.proximas()["generacion"]})
 
 
 @app.route("/api/generacion-config", methods=["POST"])
@@ -259,11 +274,14 @@ def set_generacion_config():
     body = request.get_json(silent=True) or {}
     persona = body.get("persona")
     days = body.get("interval_days")
+    hora = body.get("hora")
 
     if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
         return jsonify({"success": False, "error": "Persona inválida."}), 400
     if days is not None and not _entero_valido(days):
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
+    if hora is not None and not _hora_valida(hora):
+        return jsonify({"success": False, "error": _ERROR_HORA}), 400
 
     config_store.set_generacion_config(
         enabled=body.get("enabled"),
@@ -271,6 +289,7 @@ def set_generacion_config():
         persona=persona,
         tema=body.get("tema"),
         puntapie_url=body.get("puntapie_url"),
+        hora=hora,
     )
     scheduler.aplicar()
     return jsonify({"success": True, "message": "Configuración de generación actualizada."})

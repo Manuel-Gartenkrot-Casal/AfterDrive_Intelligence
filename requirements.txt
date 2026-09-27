@@ -10,3 +10,4 @@ lxml
 apscheduler
 flask-cors
 psutil
+tzdata

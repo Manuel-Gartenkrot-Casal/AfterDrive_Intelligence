@@ -24,7 +24,7 @@ def test_aplicar_agenda_los_habilitados(config):
     ids = {j.id for j in scheduler._scheduler.get_jobs()}
     assert ids == {"scraping", "generacion"}
     trigger = str(scheduler._scheduler.get_job("generacion").trigger)
-    assert "day='*/2'" in trigger and "hour='14'" in trigger
+    assert "day='*/2'" in trigger and "hour='11'" in trigger
 
 
 def test_deshabilitar_saca_el_job(config):
@@ -44,3 +44,21 @@ def test_cambio_de_intervalo_reagenda(config):
 def test_proximas_sin_arrancar_no_explota(config):
     scheduler.aplicar()
     assert scheduler.proximas() == {"scraping": None, "generacion": None}
+
+
+def test_la_hora_configurada_define_el_trigger_en_hora_argentina(config):
+    config["scraping"]["hora"] = "06:45"
+    config["generacion"]["hora"] = "19:05"
+    scheduler.aplicar()
+    scraping = str(scheduler._scheduler.get_job("scraping").trigger)
+    generacion = str(scheduler._scheduler.get_job("generacion").trigger)
+    assert "hour='6'" in scraping and "minute='45'" in scraping
+    assert "hour='19'" in generacion and "minute='5'" in generacion
+    assert scheduler._scheduler.get_job("scraping").trigger.timezone.key == "America/Argentina/Buenos_Aires"
+
+
+def test_sin_hora_guardada_se_usa_la_de_siempre(config):
+    # 05:30 y 11:00 en Argentina = 08:30 y 14:00 UTC, los horarios fijos de antes.
+    scheduler.aplicar()
+    assert "hour='5'" in str(scheduler._scheduler.get_job("scraping").trigger)
+    assert "hour='11'" in str(scheduler._scheduler.get_job("generacion").trigger)

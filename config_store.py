@@ -15,14 +15,18 @@ _col = db["config"]
 
 # ── Valores por defecto ───────────────────────────────────────────────────────
 
+# Horas en la zona del scheduler (Argentina). 05:30 y 11:00 = 08:30 y 14:00
+# UTC, los horarios fijos que había antes de hacerlos configurables.
 DEFAULT_SCRAPING = {
     "enabled": True,
+    "hora": "05:30",
     "interval_days": 1,
     "max_articulos": 10,
 }
 
 DEFAULT_GENERACION = {
     "enabled": True,
+    "hora": "11:00",
     "interval_days": 1,
     "persona": "comercial",
     "tema": "",
@@ -71,8 +75,15 @@ def get_scraping_config() -> dict:
     return _get_section("scraping", DEFAULT_SCRAPING)
 
 
-def set_scraping_config(enabled: bool | None = None, interval_days: int | None = None, max_articulos: int | None = None):
+def set_scraping_config(
+    enabled: bool | None = None,
+    interval_days: int | None = None,
+    max_articulos: int | None = None,
+    hora: str | None = None,
+):
     cfg = get_scraping_config()
+    if hora is not None:
+        cfg["hora"] = hora
     if enabled is not None:
         cfg["enabled"] = bool(enabled)
     if interval_days is not None:
@@ -96,8 +107,11 @@ def set_generacion_config(
     persona: str | None = None,
     tema: str | None = None,
     puntapie_url: str | None = None,
+    hora: str | None = None,
 ):
     cfg = get_generacion_config()
+    if hora is not None:
+        cfg["hora"] = hora
     if enabled is not None:
         cfg["enabled"] = bool(enabled)
     if interval_days is not None:
