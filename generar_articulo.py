@@ -19,9 +19,9 @@ import argparse
 import datetime
 import re
 
+import llm
 from db import col_afterdrive, crear_indices_texto, db
 from embeddings import coseno
-from lm_studio import calcular_embedding
 from lm_studio import generar_articulo as lm_generar
 
 _PAYWALL_PATTERNS = [
@@ -97,7 +97,7 @@ def _cargar_generados_emb() -> list[list[float]]:
     for g in col_generados.find():
         vec = g.get("embedding")
         if not vec:
-            vec = calcular_embedding(g.get("contenido", ""))
+            vec = llm.embeber([g.get("contenido", "")])[0]
             if vec:
                 col_generados.update_one({"_id": g["_id"]}, {"$set": {"embedding": vec}})
         if vec:
@@ -219,17 +219,17 @@ def main():
     if modo_tema:
         print(f"Modo tema específico: '{args.tema}'")
         query_expandido = f"{args.tema} autopartes aftermarket repuestos"
-        emb_tema = calcular_embedding(query_expandido, input_type="query") if candidatos else None
+        emb_tema = llm.embeber([query_expandido], tipo="query")[0] if candidatos else None
         paquete = None
         if emb_tema:
             scored = [(d, d["_fuente"], coseno(emb_tema, d["embedding"])) for d in candidatos if d.get("embedding")]
-            scored.sort(key=lambda x: x[1], reverse=True)
+            scored.sort(key=lambda x: x[2], reverse=True)
             scored = [x for x in scored if x[2] >= 0.50]
             if scored:
                 paquete = scored[:25]
                 print(f"  {len(paquete)} artículos por similitud semántica (mejor: {scored[0][2]:.3f})")
             else:
-                print(f"  Sin coincidencias semánticas, intentando búsqueda por texto...")
+                print("  Sin coincidencias semánticas, intentando búsqueda por texto...")
         if paquete is None:
             texto_docs = _buscar_por_tema(args.tema, limite=30)
             if not texto_docs:
@@ -396,7 +396,7 @@ def main():
         return
 
     # ── 7. Dedup de salida ───────────────────────────────────────────────
-    emb_art = calcular_embedding(articulo)
+    emb_art = llm.embeber([articulo])[0]
     if emb_art and generados:
         parecido = max(coseno(emb_art, g) for g in generados)
         if parecido >= UMBRAL_DEDUP:

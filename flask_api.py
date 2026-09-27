@@ -1,31 +1,28 @@
 import os
 import re
-import subprocess
-import sys
 import threading
 import time
 
-# Aplicar el proveedor persistido antes de importar módulos que lo leen
-# (lm_studio captura AI_PROVIDER en tiempo de import). Si Mongo no está
-# disponible no se toca nada y se usa lo que diga el entorno.
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+from flask_cors import CORS
+
+import config_store
+import corridas
+import llm
+import scheduler
+from db import col_articulos, db
+
+# Aplicar el proveedor elegido en el dashboard. llm lee AI_PROVIDER en cada
+# llamada y los subprocesos heredan os.environ, así que alcanza con setearlo.
 try:
-    import config_store
     _p = config_store.get_provider_config()
     if _p and not os.getenv("AI_PROVIDER_OVERRIDE"):
         os.environ["AI_PROVIDER"] = _p
 except Exception:
     pass
 
-from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
-from flask_cors import CORS
-
-import scheduler
-from db import col_articulos, db
-
 app = Flask(__name__)
 CORS(app)
-
-_TIMEOUT = 1800  # 30 min (generación IA ~15-25 min en CPU)
 
 # Dashboard estático (build del frontend Express). Si no está presente
 # (dev local sin build), se responde el JSON de estado de la API.
@@ -55,85 +52,12 @@ def not_found(_error):
 def internal_error(_error):
     return jsonify({"success": False, "error": "Error interno del servidor"}), 500
 
-# ── Helper: ejecutar script y capturar salida completa ────────────────────────
-
-
-def run_script(script: str, extra_args: list[str] | None = None) -> dict:
-    cmd = [sys.executable, script] + (extra_args or [])
-    _LM_LOG = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|ERROR|WARN)\]")
-    _FILTERED_ERR_LOG = re.compile(r".*Channel Error.*", re.IGNORECASE)
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_TIMEOUT,
-        )
-        out_lines = [line for line in result.stdout.splitlines(True) if not _LM_LOG.match(line)]
-        err_lines = [line for line in result.stderr.splitlines(True) if not _FILTERED_ERR_LOG.match(line)]
-        return {
-            "success": result.returncode == 0,
-            "output": "".join(out_lines),
-            "error": "".join(err_lines) if result.returncode != 0 else "",
-        }
-    except subprocess.TimeoutExpired:
-        return {"success": False, "output": "", "error": "Timeout: el proceso tardó más de 30 minutos."}
-    except Exception as e:
-        return {"success": False, "output": "", "error": str(e)}
-
-
-# ── Helper: ejecutar script y transmitir salida línea por línea ────────────────
-
-
-def _stream_output(script: str, extra_args: list[str] | None = None):
-    """Ejecuta un script y produce su stdout línea por línea en tiempo real."""
-    start = time.time()
-    cmd = [sys.executable, "-u", script] + (extra_args or [])
-    output_lines = []
-    try:
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            env=env,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-        _LM_LOG = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|WARN)\]")
-
-        import threading
-
-        def _read_stderr():
-            for line in process.stderr:
-                if line.strip():
-                    print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
-
-        t = threading.Thread(target=_read_stderr, daemon=True)
-        t.start()
-
-        for line in process.stdout:
-            if time.time() - start > _TIMEOUT:
-                process.kill()
-                yield "[TIME OUT] El proceso superó el límite de tiempo.\n"
-                return
-            if _LM_LOG.match(line):
-                continue
-            output_lines.append(line)
-            yield line
-
-        process.wait(timeout=10)
-        t.join(timeout=3)
-
-        if process.returncode != 0 and not output_lines:
-            yield f"[ERROR] El proceso terminó con código {process.returncode} sin output.\n"
-            yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
-
-    except Exception as e:
-        yield f"[ERROR] {e}\n"
+def _sse(lineas):
+    return Response(
+        stream_with_context(lineas),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Endpoints de Gestión de Datos ────────────────────────────────────────────────
@@ -170,7 +94,6 @@ def api_health():
 @app.route("/api/db-check", methods=["GET"])
 def db_check():
     """Diagnóstico de conexión a MongoDB y estado de URLs confiables."""
-    import os
     from db import MONGO_URI, col_trusted_urls
 
     uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
@@ -263,7 +186,7 @@ def _parse_request_args(body: dict) -> list[str]:
 def generar():
     body = request.get_json(silent=True) or {}
     args_list = _parse_request_args(body)
-    result = run_script("generar_articulo.py", args_list)
+    result = corridas.script("generar_articulo.py", args_list)
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -276,11 +199,7 @@ def generar():
 def stream_generar():
     body = request.get_json(silent=True) or {}
     args_list = _parse_request_args(body)
-    return Response(
-        stream_with_context(_stream_output("generar_articulo.py", args_list)),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _sse(corridas.stream("generar_articulo.py", args_list))
 
 
 # ── Endpoints para URLs Custom (Nuevas) ──────────────────────────────────────────
@@ -288,18 +207,18 @@ def stream_generar():
 
 @app.route("/api/scraping-config", methods=["GET"])
 def get_scraping_config():
-    next_run = scheduler.get_next_execution()
-    interval = scheduler.get_interval_days()
-    max_art = scheduler.get_max_articulos()
-    enabled = scheduler.is_scraping_enabled()
-
+    cfg = config_store.get_scraping_config()
     return jsonify({
         "success": True,
-        "interval_days": interval,
-        "max_articulos": max_art,
-        "next_execution": next_run,
-        "enabled": enabled,
+        "interval_days": cfg["interval_days"],
+        "max_articulos": cfg["max_articulos"],
+        "next_execution": scheduler.proximas()["scraping"],
+        "enabled": cfg["enabled"],
     })
+
+
+def _entero_valido(valor) -> bool:
+    return isinstance(valor, int) and not isinstance(valor, bool) and valor >= 1
 
 
 @app.route("/api/scraping-config", methods=["POST"])
@@ -309,18 +228,13 @@ def set_scraping_config():
     max_art = body.get("max_articulos")
     enabled = body.get("enabled")
 
-    if days is not None:
-        if not isinstance(days, int) or days < 1:
-            return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
-        scheduler.update_scheduler_interval(days)
+    if days is not None and not _entero_valido(days):
+        return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
+    if max_art is not None and not _entero_valido(max_art):
+        return jsonify({"success": False, "error": "Se requiere 'max_articulos' como un entero >= 1."}), 400
 
-    if max_art is not None:
-        if not isinstance(max_art, int) or max_art < 1:
-            return jsonify({"success": False, "error": "Se requiere 'max_articulos' como un entero >= 1."}), 400
-        scheduler.set_max_articulos(max_art)
-
-    if enabled is not None:
-        scheduler.set_scraping_enabled(bool(enabled))
+    config_store.set_scraping_config(enabled=enabled, interval_days=days, max_articulos=max_art)
+    scheduler.aplicar()
 
     msg_parts = []
     if days is not None:
@@ -336,46 +250,39 @@ def set_scraping_config():
 
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
-    import config_store
     cfg = config_store.get_generacion_config()
-    cfg = {**cfg, "success": True, "next_execution": scheduler.get_next_generacion_execution()}
-    return jsonify(cfg)
+    return jsonify({**cfg, "success": True, "next_execution": scheduler.proximas()["generacion"]})
 
 
 @app.route("/api/generacion-config", methods=["POST"])
 def set_generacion_config():
-    import config_store
     body = request.get_json(silent=True) or {}
     persona = body.get("persona")
-    tema = body.get("tema")
-    puntapie_url = body.get("puntapie_url")
     days = body.get("interval_days")
-    enabled = body.get("enabled")
 
     if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
         return jsonify({"success": False, "error": "Persona inválida."}), 400
-    if days is not None and (not isinstance(days, int) or days < 1):
+    if days is not None and not _entero_valido(days):
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
 
-    if days is not None:
-        scheduler.update_generacion_interval(days)
-    if enabled is not None:
-        scheduler.set_generacion_enabled(bool(enabled))
-    if persona is not None or tema is not None or puntapie_url is not None:
-        config_store.set_generacion_config(persona=persona, tema=tema, puntapie_url=puntapie_url)
-
+    config_store.set_generacion_config(
+        enabled=body.get("enabled"),
+        interval_days=days,
+        persona=persona,
+        tema=body.get("tema"),
+        puntapie_url=body.get("puntapie_url"),
+    )
+    scheduler.aplicar()
     return jsonify({"success": True, "message": "Configuración de generación actualizada."})
 
 
 @app.route("/api/fase2/config", methods=["GET"])
 def get_fase2_config():
-    import config_store
     return jsonify({"success": True, **config_store.get_fase2_config()})
 
 
 @app.route("/api/fase2/config", methods=["POST"])
 def set_fase2_config():
-    import config_store
     body = request.get_json(silent=True) or {}
     cfg = config_store.set_fase2_config(
         categorias=body.get("categorias"),
@@ -389,40 +296,26 @@ def set_fase2_config():
 
 @app.route("/api/run-automation", methods=["POST"])
 def run_automation():
-    """Dispara la ejecución inmediata del scraping de URLs confiables."""
-    try:
-        max_art = scheduler.get_max_articulos()
-        threading.Thread(target=lambda: _run_automation_thread(max_art)).start()
-        return jsonify({"success": True, "message": "Scraping automatizado iniciado manualmente."})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-def _run_automation_thread(max_art: int):
-    from scheduler import set_max_articulos
-    set_max_articulos(max_art)
-    scheduler.run_trusted_scraping()
+    """Dispara ya el scraping de URLs confiables (en background)."""
+    if corridas.en_curso():
+        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
+    corridas.en_segundo_plano(corridas.scraping)
+    return jsonify({"success": True, "message": "Scraping automatizado iniciado manualmente."})
 
 
 @app.route("/api/run-generacion", methods=["POST"])
 def run_generacion():
-    """Dispara la generación automática de una nota (Fase 2) en background."""
-    try:
-        threading.Thread(target=scheduler.run_auto_generacion).start()
-        return jsonify({"success": True, "message": "Generación automática iniciada."})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    """Dispara ya la generación de una Nota Fase 2 con la config guardada (en background)."""
+    if corridas.en_curso():
+        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
+    corridas.en_segundo_plano(corridas.generacion)
+    return jsonify({"success": True, "message": "Generación automática iniciada."})
 
 
 @app.route("/api/stream/run-automation", methods=["POST"])
 def stream_run_automation():
     """Streaming SSE con el output en vivo del scraping de URLs confiables."""
-    max_art = scheduler.get_max_articulos()
-    return Response(
-        stream_with_context(_stream_output("run_automation.py", [str(max_art)])),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _sse(corridas.stream("run_automation.py"))
 
 
 @app.route("/api/trusted-urls-stats", methods=["GET"])
@@ -473,27 +366,21 @@ def evaluate_article():
 @app.route("/api/providers", methods=["GET"])
 def get_providers():
     """Estado actual del proveedor de IA y disponibilidad."""
-    from lm_studio import verificar_provider
-
-    return jsonify({"success": True, **verificar_provider()})
+    return jsonify({"success": True, **llm.estado()})
 
 
 @app.route("/api/providers", methods=["POST"])
 def set_provider():
-    """Cambiar proveedor de IA (local / nvidia)."""
+    """Cambiar proveedor de IA (local / nvidia / openrouter)."""
     body = request.get_json(silent=True) or {}
     provider = body.get("provider", "")
     if not provider:
         return jsonify({"success": False, "error": "Se requiere el campo 'provider'."}), 400
 
-    from lm_studio import set_provider as _set_provider
-
-    result = _set_provider(provider)
+    result = llm.set_proveedor(provider)
     if result.get("success"):
-        import config_store
         config_store.set_provider_config(provider)
-    status = 200 if result["success"] else 400
-    return jsonify(result), status
+    return jsonify(result), 200 if result["success"] else 400
 
 
 @app.route("/api/suggested-urls", methods=["GET"])
@@ -509,7 +396,7 @@ def suggested_urls():
 
 @app.route("/api/discover-sources", methods=["POST"])
 def discover_sources():
-    result = run_script("discover_sources.py")
+    result = corridas.script("discover_sources.py")
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -529,6 +416,7 @@ def list_trusted_urls():
 def add_trusted_url_direct():
     """Agrega una URL directamente a trusted_urls sin pasar por el clasificador."""
     import datetime
+
     from db import col_trusted_urls
     body = request.get_json(silent=True) or {}
     url = body.get("url", "").strip()
@@ -573,7 +461,7 @@ def add_url():
         return jsonify({"success": False, "error": "Se requiere la URL."}), 400
 
     # Ejecutamos el nuevo script add_url.py
-    result = run_script("add_url.py", [url])
+    result = corridas.script("add_url.py", [url])
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -585,11 +473,7 @@ def stream_add_url():
     if not url:
         return jsonify({"success": False, "error": "Se requiere la URL."}), 400
 
-    return Response(
-        stream_with_context(_stream_output("add_url.py", [url])),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _sse(corridas.stream("add_url.py", [url]))
 
 
 # ── Fase 2: Endpoints ─────────────────────────────────────────────────────────
@@ -619,7 +503,7 @@ def fase2_scrape():
     body = request.get_json(silent=True) or {}
     tags = body.get("tags") or None
     max_por_tag = int(body.get("max", 5))
-    result = run_script("scraper_afterdrive.py",
+    result = corridas.script("scraper_afterdrive.py",
                         (["--tags"] + tags if tags else []) + ["--max", str(max_por_tag)])
     return jsonify(result), 200 if result["success"] else 500
 
@@ -630,11 +514,7 @@ def fase2_stream_scrape():
     tags = body.get("tags") or []
     max_por_tag = str(body.get("max", 5))
     extra = (["--tags"] + tags if tags else []) + ["--max", max_por_tag]
-    return Response(
-        stream_with_context(_stream_output("scraper_afterdrive.py", extra)),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _sse(corridas.stream("scraper_afterdrive.py", extra))
 
 
 @app.route("/api/fase2/clientes", methods=["GET"])
@@ -683,15 +563,14 @@ def fase2_generar():
     if not categorias:
         return jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400
 
-    from generar_nota_fase2 import generar_nota
-    resultado = generar_nota(
-        categorias=categorias,
-        clientes_ids=clientes,
-        puntapie_url=puntapie_url,
-        persona=persona,
-        tema=tema,
-        regiones=regiones,
-    )
+    resultado = corridas.generacion({
+        "categorias": categorias,
+        "clientes_ids": clientes,
+        "puntapie_url": puntapie_url,
+        "persona": persona,
+        "tema": tema,
+        "regiones": regiones,
+    })
     status = 200 if resultado["success"] else 500
     return jsonify(resultado), status
 
@@ -720,11 +599,7 @@ def fase2_stream_generar():
     if tema:
         extra += ["--tema", tema]
 
-    return Response(
-        stream_with_context(_stream_output("generar_nota_fase2.py", extra)),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _sse(corridas.stream("generar_nota_fase2.py", extra))
 
 
 @app.route("/api/fase2/ultima-nota", methods=["GET"])
@@ -783,7 +658,7 @@ def _start_keep_alive():
 
 
 if __name__ == "__main__":
-    scheduler.start_scheduler()
+    scheduler.iniciar()
     _start_keep_alive()
 
     PORT = int(os.getenv("PORT", 5000))
@@ -796,5 +671,5 @@ else:
     if multiprocessing.current_process().name in ("MainProcess", "SpawnProcess-1") \
             or os.getenv("_SCHEDULER_STARTED") != "1":
         os.environ["_SCHEDULER_STARTED"] = "1"
-        scheduler.start_scheduler()
+        scheduler.iniciar()
         _start_keep_alive()

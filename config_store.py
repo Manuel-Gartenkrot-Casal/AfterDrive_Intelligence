@@ -43,7 +43,12 @@ DEFAULT_PROVIDER = {
 
 
 def _get_section(key: str, defaults: dict) -> dict:
-    doc = _col.find_one({"key": key})
+    try:
+        doc = _col.find_one({"key": key})
+    except Exception as e:
+        # Sin Mongo el sistema sigue con los defaults en vez de no arrancar.
+        print(f"[config_store] No se pudo leer '{key}', usando defaults: {e}", flush=True)
+        doc = None
     value = doc.get("value") if doc else None
     merged = dict(defaults)
     if isinstance(value, dict):

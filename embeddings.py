@@ -12,8 +12,8 @@ Uso:
 
 import math
 
+import llm
 from db import col_afterdrive, col_articulos
-from lm_studio import calcular_embedding
 
 # Colecciones de contenido (excluye 'articulos_descartados').
 COLECCIONES_CONTENIDO = [col_articulos, col_afterdrive]
@@ -43,7 +43,7 @@ def asegurar_embedding(doc: dict, coleccion) -> bool:
     """
     if doc.get("embedding"):
         return False
-    vec = calcular_embedding(texto_para_embedding(doc))
+    vec = llm.embeber([texto_para_embedding(doc)])[0]
     if not vec:
         return False
     coleccion.update_one({"_id": doc["_id"]}, {"$set": {"embedding": vec}})

@@ -1,7 +1,16 @@
+"""
+jev_clasificador.py — Adapter del clasificador Jev (TypeSafe System One).
+
+clasificar() devuelve None cuando Jev no está configurado o falla: qué hacer
+entonces (caer al clasificador LLM) lo decide ingesta.clasificar.
+"""
+
 import os
+
 import requests
-import json
-from lm_studio import clasificar_articulo as llm_clasificar
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── Config ──────────────────────────────────────────────────────────────────
 TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
@@ -9,16 +18,13 @@ JEV_ENDPOINT = os.getenv("JEV_ENDPOINT", "https://api.typesafe.ai/v1/systemone")
 JEV_MODEL = os.getenv("JEV_MODEL", "jev-latest")
 JEV_THRESHOLD = float(os.getenv("JEV_THRESHOLD", "0.5"))
 
-def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
-    """
-    Clasificador de relevancia usando Jev (TypeSafe System One).
-    Si no hay key o falla, hace fallback al LLM clásico.
-    """
+def clasificar(titulo: str, cuerpo: str) -> dict | None:
+    """{"aprobado": bool, "razon": str}, o None si Jev no está disponible."""
     if not TYPESAFE_API_KEY:
-        return llm_clasificar(titulo, cuerpo)
+        return None
 
     cuerpo_truncado = (cuerpo or "")[:2000]
-    
+
     payload = {
         "model": JEV_MODEL,
         "state": f"Título: {titulo}\n\nCuerpo: {cuerpo_truncado}",
@@ -51,15 +57,15 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
         )
         resp.raise_for_status()
         data = resp.json()
-        
+
         relevante_score = data["answers"]["relevante"]["noul"]
         motivo = data["answers"]["motivo"]["choice"]
-        
+
         aprobado = relevante_score >= JEV_THRESHOLD
         razon = "Relevante" if aprobado else f"Motivo: {motivo} (conf: {relevante_score:.2f})"
-        
+
         return {"aprobado": aprobado, "razon": razon}
-        
+
     except Exception as e:
-        print(f"[Jev Error] Fallo al llamar Jev, fallback al LLM: {e}", flush=True)
-        return llm_clasificar(titulo, cuerpo)
+        print(f"[Jev Error] Fallo al llamar Jev: {e}", flush=True)
+        return None

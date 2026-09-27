@@ -192,9 +192,10 @@ def demo_generacion():
     print("  FASE 2: GENERACION DE ARTICULO (modo demo)")
     print("=" * 60)
 
-    from lm_studio import verificar_conexion, generar_articulo as lm_generar
+    import llm
+    from lm_studio import generar_articulo as lm_generar
 
-    if not verificar_conexion():
+    if not llm.disponible():
         print("  [ERROR] LM Studio no disponible")
         return None
 
@@ -247,8 +248,8 @@ def demo_scheduler():
     print("  FASE 3: SCHEDULER (verificacion)")
     print("=" * 60)
 
-    from scheduler import get_next_execution
-    next_run = get_next_execution()
+    from scheduler import proximas
+    next_run = proximas()["scraping"]
     if next_run:
         print(f"  Scheduler activo. Proxima ejecucion: {next_run}")
     else:

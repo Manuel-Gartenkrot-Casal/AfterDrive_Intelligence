@@ -1,81 +1,22 @@
 """
-lm_studio.py
+lm_studio.py — Prompts y tareas de IA del pipeline.
 
-Cliente unificado para LLM con soporte triple:
-  - Local: LM Studio (API compatible con OpenAI)
-  - Cloud: NVIDIA Build (API compatible con OpenAI)
-  - Cloud: OpenRouter (API compatible con OpenAI)
+Tareas (todas hablan con el proveedor a través del módulo LLM, llm.py):
+  clasificar_articulo   ¿vale la pena guardar este artículo scrapeado?
+  evaluar_lineamientos  checklist de calidad de una nota generada
+  generar_articulo      nota Fase 1 a partir de un contexto
+  extraer_temas         3 temas principales de un lote de artículos
+  research_contexto     brief de datos duros de un contexto
 
-Usa dos system prompts separados (evaluación y redacción):
-
-  <EVALUAR>  → clasifica artículos por relevancia + calidad
-  <REDACTAR> → genera artículos originales a partir de contexto
-
-Configuración vía .env:
-  AI_PROVIDER         (default: "local", opciones: "local", "nvidia", "openrouter")
-  LMSTUDIO_URL        (default: http://localhost:1234/v1)
-  LMSTUDIO_MODEL      (default: mistral-7b-instruct-v0.3)
-  NVIDIA_API_KEY      (requerido para "nvidia")
-  NVIDIA_BASE_URL     (default: https://integrate.api.nvidia.com/v1)
-  NVIDIA_MODEL        (default: z-ai/glm-5.2)
-  NVIDIA_EMB_MODEL    (default: nvidia/nv-embedqa-e5-v5)
-  OPENROUTER_API_KEY  (requerido para "openrouter")
-  OPENROUTER_MODEL    (default: mistralai/mistral-small-3.1-24b-instruct:free)
-
-Nota: usa requests directamente, sin el paquete openai.
+El nombre del archivo es histórico (empezó como cliente de LM Studio); el
+proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
 """
 
 import json
-import os
 import re
-import threading
-import time
 
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ── Config desde .env ──────────────────────────────────────────────────────────
-
-# Proveedor activo
-AI_PROVIDER = os.getenv("AI_PROVIDER", "local")
-
-# LM Studio (local)
-LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://localhost:1234/v1")
-MODELO = os.getenv("LMSTUDIO_MODEL", "mistral-7b-instruct-v0.3")
-MODELO_EMB = os.getenv("LMSTUDIO_EMB_MODEL", "text-embedding-nomic-embed-text-v1.5")
-
-# NVIDIA Build (cloud)
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "moonshotai/kimi-k3")
-NVIDIA_EMB_MODEL = os.getenv("NVIDIA_EMB_MODEL", "nvidia/nemotron-3-embed-1b")
-NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b")
-
-# OpenRouter (cloud)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-small-3.1-24b-instruct:free")
-OPENROUTER_FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "mistralai/mistral-small-3.1-24b-instruct:free")
-
-# Proveedor de embeddings, independiente del de chat.
-#
-# Hace falta separarlos porque OpenRouter no expone endpoint /embeddings: si el
-# chat va por OpenRouter, vectorizar tiene que ir por otro lado. Vacío = usar el
-# mismo proveedor que AI_PROVIDER, que es el comportamiento histórico.
-EMBEDDINGS_PROVIDER = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower()
-
-# Códigos que significan "este modelo ya no existe": reintentar no lo revive.
-# 404 = nunca existió con ese id; 410 = fue dado de baja por el proveedor.
-_MODELO_CAIDO = (404, 410)
-
-# Segundos sin recibir un solo byte antes de dar por colgada una generación en
-# streaming. requests aplica el timeout de lectura por cada read, así que con
-# stream=True esto equivale a "si el proveedor no manda nada en N segundos,
-# cortar". Sin esto, un proveedor que acepta la conexión y después no responde
-# deja la request colgada los 30 minutos del timeout total, sin imprimir nada.
-STREAM_READ_TIMEOUT = int(os.getenv("STREAM_READ_TIMEOUT", "180"))
+import llm
+from saneo import sanear
 
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
 
@@ -451,228 +392,14 @@ Responde UNICAMENTE con este JSON:
   "comentarios": "string (breve observacion general)"
 }"""
 
-_DISPONIBLE = True
-
-
-# ── Helpers internos ───────────────────────────────────────────────────────────
-
-
-def _get_base_url() -> str:
-    """URL base según el proveedor activo."""
-    if AI_PROVIDER == "openrouter" and OPENROUTER_API_KEY:
-        return OPENROUTER_BASE_URL
-    if AI_PROVIDER == "nvidia" and NVIDIA_API_KEY:
-        return NVIDIA_BASE_URL
-    return LMSTUDIO_URL
-
-
-def _get_model() -> str:
-    """Nombre del modelo según el proveedor activo."""
-    if AI_PROVIDER == "openrouter" and OPENROUTER_API_KEY:
-        return OPENROUTER_MODEL
-    if AI_PROVIDER == "nvidia" and NVIDIA_API_KEY:
-        return NVIDIA_MODEL
-    return MODELO
-
-
-def _emb_provider() -> str:
-    """Proveedor a usar para embeddings.
-
-    EMBEDDINGS_PROVIDER manda si está definido; si no, se usa el proveedor de
-    chat. Esto permite, por ejemplo, generar notas con OpenRouter y vectorizar
-    con NVIDIA, que es la única combinación viable cuando OpenRouter es el
-    proveedor de chat (no sirve embeddings).
-    """
-    return EMBEDDINGS_PROVIDER or AI_PROVIDER
-
-
-def _get_emb_model() -> str:
-    """Nombre del modelo de embeddings según el proveedor de embeddings."""
-    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
-        return NVIDIA_EMB_MODEL
-    return MODELO_EMB
-
-
-def _get_emb_base_url() -> str:
-    """URL base para embeddings.
-
-    No reutiliza _get_base_url() porque el proveedor de embeddings puede diferir
-    del de chat. OpenRouter no tiene /embeddings, así que cae a LM Studio: es
-    preferible fallar contra un endpoint local inexistente que mandar la request
-    a un proveedor que va a devolver 404 igual.
-    """
-    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
-        return NVIDIA_BASE_URL
-    return LMSTUDIO_URL
-
-
-def _get_emb_headers() -> dict:
-    """Headers para embeddings, según el proveedor de embeddings."""
-    if _emb_provider() == "nvidia" and NVIDIA_API_KEY:
-        return {"Authorization": f"Bearer {NVIDIA_API_KEY}"}
-    return {}
-
-
-def _get_headers() -> dict:
-    """Headers HTTP según el proveedor activo."""
-    if AI_PROVIDER == "openrouter" and OPENROUTER_API_KEY:
-        return {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-    if AI_PROVIDER == "nvidia" and NVIDIA_API_KEY:
-        return {"Authorization": f"Bearer {NVIDIA_API_KEY}"}
-    return {}
-
-
-def _modelos_disponibles(base_url: str, headers: dict, limite: int = 40) -> list[str]:
-    """Consulta GET /models del proveedor y devuelve los ids que ofrece hoy.
-
-    Se usa solo para enriquecer mensajes de error. Decir "el modelo está dado de
-    baja" obliga a ir a buscar el catálogo a mano; decir además cuáles hay
-    disponibles convierte el error en algo accionable. Si la consulta falla,
-    devuelve lista vacía: nunca debe tapar el error original.
-    """
-    try:
-        r = requests.get(f"{base_url}/models", headers=headers, timeout=15)
-        r.raise_for_status()
-        return [m.get("id", "") for m in r.json().get("data", []) if m.get("id")][:limite]
-    except Exception:
-        return []
-
-
-def _error_modelo_caido(modelo: str, status: int, base_url: str, headers: dict, variable: str) -> str:
-    """Arma un mensaje de error accionable para un modelo dado de baja."""
-    disponibles = _modelos_disponibles(base_url, headers)
-    detalle = (
-        "\n  Modelos disponibles hoy en este proveedor:\n    " + "\n    ".join(disponibles)
-        if disponibles
-        else "\n  (no se pudo leer el catálogo del proveedor para sugerir alternativas)"
-    )
-    return (
-        f"El modelo '{modelo}' devolvió HTTP {status}: ya no está disponible. "
-        f"Actualizá la variable de entorno {variable}.{detalle}"
-    )
-
-
-def _heartbeat(etiqueta: str, stop: threading.Event, cada: int = 20) -> None:
-    """Imprime señales de vida mientras se espera la respuesta del proveedor.
-
-    Cumple dos funciones: le avisa al usuario que el proceso no está colgado, y
-    mantiene tráfico en el stream SSE para que el proxy no corte la conexión por
-    inactividad mientras el modelo todavía no emitió el primer token.
-    """
-    t0 = time.time()
-    while not stop.wait(cada):
-        print(f"  [{int(time.time() - t0)}s] {etiqueta}", flush=True)
-
-
-def _post(
-    endpoint: str,
-    payload: dict,
-    timeout: int | tuple[int, int] = 60,
-    stream: bool = False,
-    retries: int = 3,
-    base_url: str | None = None,
-    headers: dict | None = None,
-) -> requests.Response:
-    """POST unificado con URL, headers, timeout y retry con backoff para 429.
-
-    Si el modelo principal devuelve 429 (rate limit) o 404/410 (modelo dado de
-    baja), intenta una vez con el modelo de fallback.
-
-    Args:
-        base_url/headers: overrides para cuando el destino no es el proveedor de
-            chat activo (caso embeddings, que puede apuntar a otro proveedor).
-    """
-    url = f"{base_url if base_url is not None else _get_base_url()}{endpoint}"
-    req_headers = headers if headers is not None else _get_headers()
-    modelo_original = payload.get("model", "")
-    for intento in range(retries):
-        resp = requests.post(url, json=payload, headers=req_headers, timeout=timeout, stream=stream)
-
-        # Modelo dado de baja: reintentar es inútil, el catálogo no va a cambiar
-        # en los próximos segundos. Se intenta el fallback una sola vez y se
-        # devuelve lo que salga, para que el error llegue al usuario enseguida.
-        if resp.status_code in _MODELO_CAIDO and endpoint == "/chat/completions":
-            # El fallback se elige por proveedor activo, no comparando el nombre
-            # del modelo: si NVIDIA_MODEL y OPENROUTER_MODEL coincidieran, esa
-            # comparación elegiría el fallback del proveedor equivocado.
-            fallback = (
-                NVIDIA_FALLBACK_MODEL if AI_PROVIDER == "nvidia"
-                else OPENROUTER_FALLBACK_MODEL if AI_PROVIDER == "openrouter"
-                else ""
-            )
-            if fallback and fallback != modelo_original:
-                # Se imprime también en streaming: silenciarlo hacía que un
-                # fallback fallido pareciera que el fallback nunca se intentó.
-                print(
-                    f"[FALLBACK] '{modelo_original}' devolvió {resp.status_code} "
-                    f"(modelo dado de baja) -> probando {fallback}",
-                    flush=True,
-                )
-                resp_fb = requests.post(
-                    url, json={**payload, "model": fallback}, headers=req_headers, timeout=timeout, stream=stream
-                )
-                if resp_fb.status_code == 200:
-                    return resp_fb
-            return resp
-
-        if resp.status_code != 429:
-            return resp
-        # Fallback para NVIDIA: modelo principal rate-limited -> modelo alternativo
-        if intento == 0 and modelo_original == NVIDIA_MODEL and NVIDIA_FALLBACK_MODEL and endpoint == "/chat/completions":
-            payload_fallback = {**payload, "model": NVIDIA_FALLBACK_MODEL}
-            resp_fb = requests.post(url, json=payload_fallback, headers=_get_headers(), timeout=timeout, stream=stream)
-            if resp_fb.status_code == 200:
-                if not stream:
-                    print(f"[FALLBACK] {NVIDIA_MODEL} rate-limited -> usando {NVIDIA_FALLBACK_MODEL}", flush=True)
-                return resp_fb
-        # Fallback para OpenRouter: modelo principal -> modelo alternativo
-        if intento == 0 and modelo_original == OPENROUTER_MODEL and OPENROUTER_FALLBACK_MODEL and endpoint == "/chat/completions":
-            payload_fallback = {**payload, "model": OPENROUTER_FALLBACK_MODEL}
-            resp_fb = requests.post(url, json=payload_fallback, headers=_get_headers(), timeout=timeout, stream=stream)
-            if resp_fb.status_code == 200:
-                if not stream:
-                    print(f"[FALLBACK] {OPENROUTER_MODEL} rate-limited -> usando {OPENROUTER_FALLBACK_MODEL}", flush=True)
-                return resp_fb
-        wait = min(5 * (2 ** intento), 60)
-        if not stream:
-            print(f"[RETRY] 429 en {endpoint} - esperando {wait}s (intento {intento+1}/{retries})", flush=True)
-        time.sleep(wait)
-    return resp
-
-
-def _call_lm(
-    mensaje_usuario: str, temperature: float = 0.1, max_tokens: int = 2048, system_prompt: str | None = None
-) -> str:
-    """Envía un mensaje sin streaming y devuelve el texto completo."""
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": mensaje_usuario})
-    payload = {
-        "model": _get_model(),
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": False,
-    }
-    resp = _post("/chat/completions", payload, retries=5)
-    if resp.status_code == 429:
-        raise RuntimeError("Rate limit de NVIDIA (429). Esperá unos minutos y reintentá.")
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
-
 
 def _extraer_json(texto: str) -> dict:
-    """
-    Parsea el JSON de la respuesta del modelo de forma tolerante.
+    """Parsea el JSON de la respuesta del modelo de forma tolerante.
 
-    Los modelos reasoning a veces anteponen un bloque <think>...</think>, fences
-    markdown (```json) o prosa antes del objeto. En vez de exigir que TODA la
-    respuesta sea JSON, quitamos ese ruido y tomamos del primer "{" al último "}".
+    Quita un bloque <think>...</think>, fences y prosa envolvente, y toma del
+    primer "{" al último "}".
     """
-    # Quitar bloque de razonamiento <think>...</think>
     texto = re.sub(r"<think>.*?</think>", "", texto, flags=re.DOTALL)
-    # Tomar del primer "{" al último "}" (descarta fences y prosa envolvente)
     inicio = texto.find("{")
     fin = texto.rfind("}")
     if inicio == -1 or fin == -1 or fin < inicio:
@@ -680,116 +407,25 @@ def _extraer_json(texto: str) -> dict:
     return json.loads(texto[inicio : fin + 1])
 
 
-def _extraer_primer_json(texto: str) -> dict:
-    """Extrae el PRIMER objeto JSON completo respetando strings."""
-    inicio = texto.find("{")
-    if inicio == -1:
-        raise json.JSONDecodeError("sin '{' en la respuesta", texto, 0)
-    depth = 0
-    en_string = False
-    escape = False
-    for i in range(inicio, len(texto)):
-        ch = texto[i]
-        if en_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                en_string = False
-            continue
-        if ch == '"':
-            en_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return json.loads(texto[inicio : i + 1])
-    raise json.JSONDecodeError("JSON sin cerrar en la respuesta", texto, inicio)
-
-
-def verificar_conexion() -> bool:
-    """Verifica que el proveedor activo responda. Devuelve True si está disponible."""
-    global _DISPONIBLE
-    try:
-        url = f"{_get_base_url()}/models"
-        requests.get(url, headers=_get_headers(), timeout=5)
-        _DISPONIBLE = True
-    except Exception:
-        _DISPONIBLE = False
-        proveedores = {"nvidia": "NVIDIA", "openrouter": "OpenRouter"}
-        proveedor = proveedores.get(AI_PROVIDER, "LM Studio")
-        print(f"[AVISO] {proveedor} ({_get_base_url()}) no disponible. Los artículos se guardarán sin filtrar.")
-    return _DISPONIBLE
-
-
-def _check_local() -> bool:
-    """Verifica si LM Studio local está disponible."""
-    try:
-        requests.get(f"{LMSTUDIO_URL}/models", timeout=5)
-        return True
-    except Exception:
-        return False
-
-
-def verificar_provider() -> dict:
-    """Estado actual del proveedor y disponibilidad."""
-    return {
-        "provider": AI_PROVIDER,
-        "local_available": _check_local(),
-        "nvidia_available": bool(NVIDIA_API_KEY),
-        "openrouter_available": bool(OPENROUTER_API_KEY),
-        "model": _get_model(),
-        "emb_model": _get_emb_model(),
-        "emb_provider": _emb_provider(),
-    }
-
-
-def set_provider(provider: str) -> dict:
-    """
-    Cambia el proveedor de IA en tiempo de ejecución.
-
-    Args:
-        provider: "local" o "nvidia"
-
-    Returns:
-        {"success": bool, "provider": str, ...} o {"success": False, "error": str}
-    """
-    global AI_PROVIDER
-    if provider not in ("local", "nvidia", "openrouter"):
-        return {"success": False, "error": "Proveedor inválido. Usá 'local', 'nvidia' u 'openrouter'."}
-    if provider == "nvidia" and not NVIDIA_API_KEY:
-        return {"success": False, "error": "No hay API key de NVIDIA configurada."}
-    if provider == "openrouter" and not OPENROUTER_API_KEY:
-        return {"success": False, "error": "No hay API key de OpenRouter configurada."}
-    AI_PROVIDER = provider
-    os.environ["AI_PROVIDER"] = provider
-    verificar_conexion()
-    return {"success": True, "provider": AI_PROVIDER, **verificar_provider()}
-
-
-# ── API pública ────────────────────────────────────────────────────────────────
+# ── Tareas ─────────────────────────────────────────────────────────────────────
 
 
 def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
-    """
-    Evalúa si un artículo merece guardarse en la BD.
+    """Evalúa si un artículo merece guardarse en la BD.
 
-    Si LM Studio no está disponible, aprueba todo (modo degradado).
+    Política de fallos: si el proveedor no está o falla la llamada, se aprueba
+    (modo degradado: no perder artículos por una caída ajena al contenido). Si
+    el modelo respondió basura, se rechaza (el juicio existe pero no se lee).
 
     Returns:
         {"aprobado": bool, "razon": str}
     """
-    if not _DISPONIBLE:
-        return {"aprobado": True, "razon": "modo degradado: LM Studio no disponible"}
+    if not llm.disponible():
+        return {"aprobado": True, "razon": "modo degradado: proveedor de IA no disponible"}
 
-    cuerpo_truncado = (cuerpo or "")[:2000]
-    mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {cuerpo_truncado}"
-
+    mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
     try:
-        respuesta = _call_lm(mensaje, temperature=0.1, system_prompt=_SYSTEM_EVALUAR)
-        data = _extraer_json(respuesta)
+        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1))
         return {
             "aprobado": data.get("aprobado", False),
             "razon": data.get("razon", "Sin razón especificada"),
@@ -797,477 +433,60 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     except json.JSONDecodeError:
         return {"aprobado": False, "razon": "error: respuesta inválida del modelo"}
     except Exception as e:
-        return {"aprobado": True, "razon": f"modo degradado: {str(e)}"}
+        return {"aprobado": True, "razon": f"modo degradado: {e}"}
 
 
 def evaluar_lineamientos(articulo: str) -> dict:
-    """
-    Analiza un artículo generado y verifica el cumplimiento de los lineamientos.
-    Retorna un checklist de booleanos.
-    """
-    if not _DISPONIBLE:
-        return {"error": "LM Studio no disponible para evaluación"}
-
-    payload = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": _SYSTEM_EVALUAR_CONTENIDO},
-            {"role": "user", "content": f"Analizá el siguiente artículo:\n\n{articulo}"},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 1024,
-        "stream": False,
-    }
-
-    ultimo_error = ""
-    for intento in range(3):
-        try:
-            resp = _post("/chat/completions", payload)
-            resp.raise_for_status()
-            texto = resp.json()["choices"][0]["message"]["content"].strip()
-            return _extraer_json(texto)
-        except Exception as e:
-            ultimo_error = str(e)
-            if intento < 2:
-                time.sleep(2**intento)  # backoff: 1s, 2s
-            continue
-    return {"error": ultimo_error, "lineamientos": {}}
-
-
-def _extraer_delta(chunk: dict) -> str:
-    """Extrae contenido de un chunk de streaming, sea formato OpenAI o nativo llama.cpp."""
-    # Formato OpenAI: {"choices":[{"delta":{"content":"..."}}]}
-    choices = chunk.get("choices", [])
-    if choices:
-        delta = choices[0].get("delta", {})
-        # Contenido principal
-        content = delta.get("content", "")
-        if content:
-            return content
-        # Razonamiento (modelos NVIDIA reasoning envian razonamiento aqui)
-        reasoning = delta.get("reasoning_content", "")
-        if reasoning:
-            return reasoning
-    # Formato nativo llama.cpp: {"content":"...","stop":false}
-    return chunk.get("content", "")
-
-
-def _post_procesar_articulo(texto: str) -> str:
-    """Post-procesamiento: detecta y elimina repeticiones, limpia artefactos comunes de modelos debiles."""
-    if not texto or len(texto) < 100:
-        return texto
-
-    lineas = texto.split("\n")
-
-    # 1. Eliminar conclusiones duplicadas (misma frase pegada 2+ veces al final)
-    if len(lineas) >= 3:
-        ultima_no_vacia = ""
-        for ln in reversed(lineas):
-            stripped = ln.strip()
-            if stripped and not stripped.startswith("*"):
-                ultima_no_vacia = stripped
-                break
-        if ultima_no_vacia:
-            conteo = sum(1 for ln in lineas if ln.strip() == ultima_no_vacia)
-            if conteo >= 2:
-                nueva_lineas = []
-                primera_encontrada = False
-                for ln in lineas:
-                    if ln.strip() == ultima_no_vacia and not primera_encontrada:
-                        nueva_lineas.append(ln)
-                        primera_encontrada = True
-                    elif ln.strip() != ultima_no_vacia:
-                        nueva_lineas.append(ln)
-                lineas = nueva_lineas
-
-    # 2. Eliminar oraciones repetidas dentro de un mismo parrafo
-    resultado_intermedio = []
-    for ln in lineas:
-        stripped = ln.strip()
-        if len(stripped) > 80 and stripped.count(".") >= 2:
-            oraciones = [o.strip() for o in stripped.split(".") if o.strip()]
-            vistas = set()
-            oraciones_unicas = []
-            for o in oraciones:
-                normalizada = re.sub(r'\s+', ' ', o.lower())
-                if normalizada not in vistas:
-                    vistas.add(normalizada)
-                    oraciones_unicas.append(o)
-            if len(oraciones_unicas) < len(oraciones):
-                resultado_intermedio.append(". ".join(oraciones_unicas) + ".")
-                continue
-        resultado_intermedio.append(ln)
-
-    # 3. Detectar y eliminar secciones duplicadas (mismo contenido en dos bloques ##)
-    bloques = []
-    bloque_actual = {"titulo": "", "lineas": []}
-    for ln in resultado_intermedio:
-        if ln.strip().startswith("## "):
-            if bloque_actual["lineas"]:
-                bloques.append(bloque_actual)
-            bloque_actual = {"titulo": ln.strip(), "lineas": []}
-        else:
-            bloque_actual["lineas"].append(ln)
-    if bloque_actual["lineas"] or bloque_actual["titulo"]:
-        bloques.append(bloque_actual)
-
-    if len(bloques) >= 2:
-        bloques_unicos = [bloques[0]]
-        for b in bloques[1:]:
-            texto_b = re.sub(r'\s+', ' ', " ".join(b["lineas"]).lower().strip())
-            duplicado = False
-            for existente in bloques_unicos:
-                texto_existente = re.sub(r'\s+', ' ', " ".join(existente["lineas"]).lower().strip())
-                if texto_b and texto_existente:
-                    palabras_b = set(texto_b.split())
-                    palabras_existente = set(texto_existente.split())
-                    if len(palabras_b) > 10 and len(palabras_existente) > 10:
-                        interseccion = len(palabras_b & palabras_existente)
-                        union = len(palabras_b | palabras_existente)
-                        if union > 0 and interseccion / union > 0.6:
-                            duplicado = True
-                            break
-            if not duplicado:
-                bloques_unicos.append(b)
-
-        if len(bloques_unicos) < len(bloques):
-            resultado_final = []
-            for b in bloques_unicos:
-                if b["titulo"]:
-                    resultado_final.append(b["titulo"])
-                resultado_final.extend(b["lineas"])
-            lineas = resultado_final
-        else:
-            lineas = resultado_intermedio
-    else:
-        lineas = resultado_intermedio
-
-    # 4. Eliminar CTA repetido (misma frase "Descubre" o "Conoce" aparece 2+ veces)
-    patron_cta = re.compile(r'(descubre|conoce|transforma|descarga|accede|visita)\b', re.IGNORECASE)
-    cta_count = sum(1 for ln in lineas if patron_cta.search(ln) and not ln.strip().startswith("#"))
-    if cta_count >= 2:
-        primera_cta_encontrada = False
-        nuevas_lineas = []
-        for ln in lineas:
-            if patron_cta.search(ln) and not ln.strip().startswith("#"):
-                if primera_cta_encontrada:
-                    continue
-                primera_cta_encontrada = True
-            nuevas_lineas.append(ln)
-        lineas = nuevas_lineas
-
-    return "\n".join(lineas)
+    """Checklist de lineamientos de una nota generada."""
+    if not llm.disponible():
+        return {"error": "Proveedor de IA no disponible para evaluación"}
+    try:
+        texto = llm.completar(
+            _SYSTEM_EVALUAR_CONTENIDO,
+            f"Analizá el siguiente artículo:\n\n{articulo}",
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        return _extraer_json(texto)
+    except Exception as e:
+        return {"error": str(e), "lineamientos": {}}
 
 
 def generar_articulo(contexto: str, research: str = "", persona: str = "analitico", tema: str = "") -> str:
-    """
-    Genera un artículo original a partir del contexto (varios documentos)
-    y opcionalmente un research brief con datos extraídos.
+    """Genera una nota Fase 1 (Markdown) a partir del contexto.
 
     Args:
-        contexto: documentos de contexto
-        research: research brief opcional
-        persona: personalidad de redacción ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo")
-        tema: tema específico solicitado por el usuario (ej: "frenos")
+        persona: "analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"
+        tema: tema específico pedido por el usuario (ej: "frenos")
 
-    Returns:
-        str — artículo generado en Markdown
+    Raises:
+        llm.ErrorLLM si el proveedor falla o si no sale una nota publicable.
     """
-    if not _DISPONIBLE:
-        raise RuntimeError("LM Studio no está disponible. Iniciá el servidor y reintentá.")
-
-    system_prompt = get_system_prompt_redactar(persona)
+    if not llm.disponible():
+        raise llm.ErrorLLM("El proveedor de IA no está disponible. Revisá la configuración y reintentá.")
 
     if tema:
         contexto = f"TEMA: {tema}\n\n{contexto}"
-
+    mensaje = (
+        "Redacta un articulo B2B estilo blog sobre el siguiente contexto. "
+        f"Usa la estructura y reglas de tu system prompt.\n\nCONTEXTO:\n{contexto}"
+    )
     if research:
-        mensaje = f"Redacta un articulo B2B estilo blog sobre el siguiente contexto. Usa la estructura y reglas de tu system prompt.\n\nCONTEXTO:\n{contexto}\n\nRESEARCH:\n{research}"
-    else:
-        mensaje = f"Redacta un articulo B2B estilo blog sobre el siguiente contexto. Usa la estructura y reglas de tu system prompt.\n\nCONTEXTO:\n{contexto}"
+        mensaje += f"\n\nRESEARCH:\n{research}"
 
-    payload = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": mensaje},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 4000,
-        "stream": True,
-    }
-
-    # Heartbeat real mientras se espera al proveedor. Antes este comentario
-    # prometía algo que no existía: el único print de progreso vivía DENTRO del
-    # bucle de tokens, así que si el modelo no emitía nada no se imprimía nada y
-    # la UI quedaba clavada en "Generando nota..." sin señal de vida.
-    _stop_hb = threading.Event()
-    threading.Thread(
-        target=_heartbeat,
-        args=(f"esperando respuesta de {_get_model()}...", _stop_hb),
-        daemon=True,
-    ).start()
+    crudo = llm.completar(
+        get_system_prompt_redactar(persona), mensaje, temperature=0.7, max_tokens=4000, stream=True
+    )
+    saneo = sanear(crudo)
+    if not saneo.ok:
+        raise llm.ErrorLLM(f"No se obtuvo una nota publicable: {saneo.motivo}")
 
     try:
-        # Timeout como tupla (conexión, lectura): el de lectura corta si el
-        # proveedor no manda un solo byte en STREAM_READ_TIMEOUT segundos.
-        # Antes era 1800 a secas y un proveedor mudo colgaba la generación 30 min.
-        response = _post(
-            "/chat/completions", payload,
-            timeout=(15, STREAM_READ_TIMEOUT), stream=True, retries=5,
-        )
-    except requests.exceptions.Timeout as e:
-        raise RuntimeError(
-            f"El proveedor no respondió en {STREAM_READ_TIMEOUT}s usando el modelo "
-            f"'{_get_model()}'. Probá con otro modelo o subí STREAM_READ_TIMEOUT."
-        ) from e
-    finally:
-        _stop_hb.set()
-
-    if not response.ok:
-        error_body = response.text[:2000]
-        if response.status_code == 429:
-            raise RuntimeError(f"Rate limit de NVIDIA (429). Esperá unos minutos y reintentá. Detalle: {error_body}")
-        if response.status_code in _MODELO_CAIDO:
-            raise RuntimeError(
-                _error_modelo_caido(
-                    _get_model(), response.status_code, _get_base_url(), _get_headers(),
-                    "NVIDIA_MODEL" if AI_PROVIDER == "nvidia" else "OPENROUTER_MODEL",
-                )
-            )
-        raise RuntimeError(f"HTTP {response.status_code}: {error_body}")
-
-    partes = []
-    t0 = time.time()
-    last_progress = t0
-    try:
-        for line in response.iter_lines():
-            if not line:
-                continue
-            text = line.decode("utf-8")
-            if text.startswith("data: "):
-                text = text[6:]
-            if text == "[DONE]":
-                break
-            try:
-                chunk = json.loads(text)
-                if "error" in chunk:
-                    print(f"\n[ERROR del modelo] {chunk.get('message', chunk['error'])}")
-                    continue
-                delta = _extraer_delta(chunk)
-                partes.append(delta)
-            except json.JSONDecodeError:
-                continue
-
-            # Mostrar progreso cada 60 segundos
-            now = time.time()
-            if now - last_progress >= 60:
-                tok_count = len("".join(partes))
-                elapsed = int(now - t0)
-                print(f"  [{elapsed}s] {tok_count} tokens generados...", flush=True)
-                last_progress = now
-    except requests.exceptions.Timeout as e:
-        # Si ya llegaron tokens, se devuelve lo parcial en vez de perder todo.
-        if not partes:
-            raise RuntimeError(
-                f"El modelo '{_get_model()}' aceptó la conexión pero no envió ningún "
-                f"token en {STREAM_READ_TIMEOUT}s. Suele pasar con modelos ':free' "
-                f"saturados: probá otro modelo."
-            ) from e
-        print(f"\n  [AVISO] El stream se cortó por inactividad ({STREAM_READ_TIMEOUT}s). "
-              f"Se devuelve lo generado hasta acá.", flush=True)
-
-    t_total = int(time.time() - t0)
-    print(f"  Generación completa en {t_total}s (total: {len(''.join(partes))} tokens)")
-    articulo_raw = "".join(partes)
-    if not articulo_raw:
-        return ""
-
-    def _limpiar_articulo(texto: str) -> str:
-        if not texto:
-            return ""
-        texto = texto.strip()
-        # El modelo a veces envuelve en ```markdown ... ```
-        texto = re.sub(r"^```(?:markdown)?\s*", "", texto)
-        texto = re.sub(r"\s*```$", "", texto)
-        # Eliminar etiquetas <ARTICULO> y </ARTICULO>
-        texto = re.sub(r"</?ARTICULO>", "", texto)
-        # Eliminar lineas que son corchetes literales (borrador que se colo)
-        texto = re.sub(r"^\[.*?\]\s*", "", texto, flags=re.MULTILINE)
-        # Eliminar etiquetas sueltas de Meta Description o SEO
-        texto = re.sub(r"(?i)(?:^|\n)\s*Meta Description:\s*", "\n", texto)
-        texto = re.sub(r"(?i)(?:^|\n)\s*SEO:\s*", "\n", texto)
-
-        # ── Intento 1: extraer texto legible que viene DESPUES del JSON ──
-        # El modelo a veces genera JSON de metadata y luego el articulo plano
-        lines = texto.split("\n")
-        articulo_start = -1
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith("## ") or stripped.startswith("# "):
-                articulo_start = i
-                break
-        if articulo_start >= 0:
-            possible = "\n".join(lines[articulo_start:]).strip()
-            if len(possible) > 100:
-                return possible
-
-        # ── Intento 2: parsear JSON conocidos ──
-        for match in reversed(list(re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', texto, re.DOTALL))):
-            try:
-                data = json.loads(match.group(0))
-                partes = []
-                # Formato: "contenido"
-                if contenido := data.get("contenido"):
-                    if t := data.get("titulo"):
-                        partes.append(f"# {t}")
-                    partes.append(contenido)
-                    if md := data.get("meta_description"):
-                        partes.append(f"\n*{md.strip('*')}*")
-                    if partes:
-                        return "\n".join(partes)
-                # Formato: texto_seccion1/2/3
-                if data.get("texto_seccion1"):
-                    if t := data.get("titulo"):
-                        partes.append(f"# {t}")
-                    for i in range(1, 5):
-                        kt = f"seccion{i}"
-                        kv = f"texto_seccion{i}"
-                        if kv in data:
-                            st = data.get(kt, "")
-                            st = re.sub(r'^\*{1,2}', '', st).strip()
-                            st = re.sub(r'\*{1,2}$', '', st).strip()
-                            if st:
-                                partes.append(f"\n## {st}")
-                            partes.append(data[kv])
-                    if md := data.get("meta_description"):
-                        partes.append(f"\n*{md.strip('*')}*")
-                    if partes:
-                        return "\n".join(partes)
-                # Formato: "estructura"
-                if estructura := data.get("estructura"):
-                    if t := data.get("titulo"):
-                        partes.append(f"# {t}")
-                    if isinstance(estructura, list):
-                        for sec in estructura:
-                            if isinstance(sec, dict):
-                                if st := sec.get("sectionTitle") or sec.get("titulo"):
-                                    partes.append(f"\n## {st}")
-                                if tx := sec.get("content") or sec.get("texto"):
-                                    partes.append(tx)
-                    elif isinstance(estructura, dict):
-                        for key in sorted(estructura):
-                            val = estructura[key]
-                            if isinstance(val, str) and len(val) > 20:
-                                partes.append(f"\n## {key}")
-                                partes.append(val)
-                    if md := data.get("meta_description"):
-                        partes.append(f"\n*{md.strip('*')}*")
-                    if partes:
-                        return "\n".join(partes)
-                # Formato: seccion1/seccion2/seccion3
-                if any(f"seccion{i}" in data for i in range(1, 5)):
-                    if t := data.get("titulo"):
-                        partes.append(f"# {t}")
-                    for key in sorted(k for k in data if k.startswith("seccion")):
-                        sec = data[key]
-                        if isinstance(sec, dict):
-                            if st := sec.get("titulo"):
-                                partes.append(f"\n## {st}")
-                            if tx := sec.get("texto"):
-                                partes.append(tx)
-                        elif isinstance(sec, str) and len(sec) > 20:
-                            partes.append(f"\n## {key}")
-                            partes.append(sec)
-                    if md := data.get("meta_description"):
-                        partes.append(f"\n*{md.strip('*')}*")
-                    if partes:
-                        return "\n".join(partes)
-                # Formato: "texto" con sub-objetos {"#1": ..., "#2": ...}
-                if texto_val := data.get("texto"):
-                    if isinstance(texto_val, dict):
-                        if t := data.get("titulo"):
-                            partes.append(f"# {t}")
-                        for key in sorted(texto_val.keys()):
-                            val = texto_val[key]
-                            if isinstance(val, str) and len(val) > 10:
-                                partes.append(val)
-                        if md := data.get("meta_description"):
-                            partes.append(f"\n*{md.strip('*')}*")
-                        if partes:
-                            return "\n".join(partes)
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-        # ── Intento 3: extraer cualquier string largo de JSONs ──
-        textos_extraidos = []
-        for match in re.finditer(r'"(?:texto|content|contenido)":\s*"((?:[^"\\]|\\.){50,})"', texto):
-            textos_extraidos.append(match.group(1).replace("\\n", "\n").replace('\\"', '"'))
-        if textos_extraidos:
-            return "\n\n".join(textos_extraidos)
-
-        # ── Intento 4: limpiar artefactos JSON y devolver lo que quede ──
-        limpio = re.sub(r'"[^"]*":\s*"[^"]{0,40}",?\s*\n?', "", texto)
-        limpio = re.sub(r'[{}]', "", limpio)
-        limpio = re.sub(r'\n{3,}', '\n\n', limpio).strip()
-        if len(limpio) > 100:
-            return limpio
-
-        return texto.strip()
-
-    result = ""
-    try:
-        data = _extraer_primer_json('{"accion": "redaccion",' + articulo_raw)
-        articulo = data.get("articulo", "")
-        if articulo.strip():
-            result = _limpiar_articulo(articulo)
-    except Exception:
-        pass
-
-    if not result:
-        try:
-            data = _extraer_json(articulo_raw)
-            articulo = data.get("articulo", "")
-            if articulo.strip():
-                result = _limpiar_articulo(articulo)
-        except Exception:
-            pass
-
-    if not result:
-        m = re.search(r'"articulo"\s*:\s*"(.+)"\s*}', articulo_raw, re.DOTALL)
-        if m:
-            result = _limpiar_articulo(m.group(1).replace("\\n", "\n").replace('\\"', '"'))
-        else:
-            # Intentar parsear streaming JSON (multiples objetos JSON separados por newline)
-            partes_stream = []
-            meta_desc = ""
-            for line in articulo_raw.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get("texto"):
-                        partes_stream.append(obj["texto"])
-                    if obj.get("accion") == "meta_description" and obj.get("texto"):
-                        meta_desc = obj["texto"].strip("*")
-                except json.JSONDecodeError:
-                    continue
-            if partes_stream:
-                result = "\n\n".join(partes_stream)
-                if meta_desc:
-                    result += f"\n\n*{meta_desc}*"
-            else:
-                result = _limpiar_articulo(articulo_raw)
-
-    result = _post_procesar_articulo(result)
-
-    try:
-        print(result)
+        print(saneo.texto)
     except UnicodeEncodeError:
-        print(result.encode("utf-8", errors="replace").decode("utf-8"))
+        print(saneo.texto.encode("utf-8", errors="replace").decode("utf-8"))
     print("\n[OK]")
-    return result
+    return saneo.texto
 
 
 # ── Prompt para extracción de temas ────────────────────────────────────────────
@@ -1282,10 +501,12 @@ Devolvé exactamente esta estructura:
   "temas": ["tema1", "tema2", "tema3"]
 }"""
 
+_TEMA_DEFAULT = ["autopartes aftermarket argentina"]
+
 
 def extraer_temas(articulos: list[dict]) -> list[str]:
-    if not articulos or not _DISPONIBLE:
-        return ["autopartes aftermarket argentina"]
+    if not articulos or not llm.disponible():
+        return _TEMA_DEFAULT
 
     texto = ""
     for i, doc in enumerate(articulos[:5], 1):
@@ -1293,25 +514,11 @@ def extraer_temas(articulos: list[dict]) -> list[str]:
         cuerpo = doc.get("cuerpo", doc.get("bajada", ""))
         texto += f"Artículo {i}: {titulo}\n{cuerpo[:500]}\n\n"
 
-    payload = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": PROMPT_TEMAS},
-            {"role": "user", "content": texto},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 512,
-        "stream": False,
-    }
-
     try:
-        resp = _post("/chat/completions", payload, retries=5)
-        resp.raise_for_status()
-        data = _extraer_json(resp.json()["choices"][0]["message"]["content"])
-        temas = data.get("temas", [])
-        return temas[:3] if temas else ["autopartes aftermarket argentina"]
+        data = _extraer_json(llm.completar(PROMPT_TEMAS, texto, temperature=0.3, max_tokens=512))
+        return data.get("temas", [])[:3] or _TEMA_DEFAULT
     except Exception:
-        return ["autopartes aftermarket argentina"]
+        return _TEMA_DEFAULT
 
 
 # ── Research pass ──────────────────────────────────────────────────────────────
@@ -1337,166 +544,25 @@ Devolvé exactamente esta estructura JSON:
   "tema_principal": "..."
 }"""
 
+_RESEARCH_VACIO = '{"empresas":[],"ejecutivos":[],"datos":[],"tendencias":[],"tema_principal":""}'
+
 
 def research_contexto(contexto: str) -> str:
-    if not _DISPONIBLE:
-        return '{"empresas":[],"ejecutivos":[],"datos":[],"tendencias":[],"tema_principal":""}'
-
-    payload = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": PROMPT_RESEARCH},
-            {"role": "user", "content": contexto},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 1024,
-        "stream": False,
-    }
-
+    if not llm.disponible():
+        return _RESEARCH_VACIO
     try:
-        resp = _post("/chat/completions", payload, retries=5)
-        resp.raise_for_status()
-        texto = resp.json()["choices"][0]["message"]["content"].strip()
-        data = _extraer_json(texto)
+        data = _extraer_json(llm.completar(PROMPT_RESEARCH, contexto, temperature=0.1, max_tokens=1024))
         return json.dumps(data, ensure_ascii=False)
     except Exception:
-        return '{"empresas":[],"ejecutivos":[],"datos":[],"tendencias":[],"tema_principal":""}'
-
-
-# ── Embeddings ─────────────────────────────────────────────────────────────────
-
-
-def calcular_embedding(texto: str, input_type: str = "passage") -> list[float] | None:
-    """
-    Devuelve el vector de embedding (significado) del texto, o None si falla.
-
-    El vector se calcula UNA vez por articulo y se guarda en la BD; agrupar y
-    comparar despues es pura matematica (similitud coseno), sin volver a llamar
-    al modelo. El modelo nomic admite ~8k tokens, truncamos por seguridad.
-
-    Args:
-        texto: texto a vectorizar
-        input_type: "passage" (contenido) o "query" (busqueda). Solo aplica para NVIDIA.
-    """
-    texto = (texto or "").strip()
-    if not texto:
-        return None
-    es_nvidia = _emb_provider() == "nvidia"
-    max_chars = 1500 if es_nvidia else 8000
-    payload = {"model": _get_emb_model(), "input": texto[:max_chars]}
-    if es_nvidia:
-        payload["input_type"] = input_type
-
-    # Retry manual: NVIDIA a veces devuelve 400 en vez de 429 para rate limit en embeddings
-    # Nota: NO usamos retries internos en _post() para evitar double-retry stack
-    for intento in range(5):
-        try:
-            resp = _post(
-                "/embeddings", payload, timeout=30, retries=1,
-                base_url=_get_emb_base_url(), headers=_get_emb_headers(),
-            )
-            # Modelo de embeddings dado de baja: cortar de una. Reintentar 5 veces
-            # por artículo solo agrega minutos de espera y tapa la causa real.
-            if resp.status_code in _MODELO_CAIDO:
-                print(
-                    "[ERROR] " + _error_modelo_caido(
-                        _get_emb_model(), resp.status_code,
-                        _get_emb_base_url(), _get_emb_headers(), "NVIDIA_EMB_MODEL",
-                    ),
-                    flush=True,
-                )
-                return None
-            if resp.status_code in (400, 429):
-                wait = [0.5, 1, 2, 3, 3][intento]
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
-        except Exception as e:
-            if intento < 4:
-                time.sleep([0.5, 1, 2, 3, 3][intento])
-                continue
-            # Mostrar la causa real: un "tras 5 intentos" pelado oculta si fue
-            # timeout, DNS, auth o modelo inexistente.
-            print(f"[AVISO] No se pudo calcular embedding tras 5 intentos: {e}", flush=True)
-            return None
-    return None
-
-
-def calcular_embeddings_batch(textos: list[str], input_type: str = "passage") -> list[list[float] | None]:
-    """
-    Calcula embeddings en batch (una sola llamada API para todos los textos).
-    Si falla el batch, cae a uno por uno como fallback.
-    """
-    textos_limpios = [(t or "").strip() for t in textos]
-    if not textos_limpios:
-        return []
-
-    es_nvidia = _emb_provider() == "nvidia"
-    max_chars = 1500 if es_nvidia else 8000
-    inputs = [t[:max_chars] for t in textos_limpios]
-
-    payload = {"model": _get_emb_model(), "input": inputs}
-    if es_nvidia:
-        payload["input_type"] = input_type
-
-    for intento in range(3):
-        try:
-            resp = _post(
-                "/embeddings", payload, timeout=60, retries=1,
-                base_url=_get_emb_base_url(), headers=_get_emb_headers(),
-            )
-            # Modelo dado de baja: no tiene sentido caer al fallback uno-por-uno,
-            # que fallaría igual 10 veces seguidas.
-            if resp.status_code in _MODELO_CAIDO:
-                print(
-                    "  [ERROR] " + _error_modelo_caido(
-                        _get_emb_model(), resp.status_code,
-                        _get_emb_base_url(), _get_emb_headers(), "NVIDIA_EMB_MODEL",
-                    ),
-                    flush=True,
-                )
-                return [None] * len(textos_limpios)
-            if resp.status_code in (400, 429):
-                wait = [1, 2, 4][intento]
-                print(f"  [AVISO] Embedding batch rate-limited ({resp.status_code}), retry en {wait}s...")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            data_sorted = sorted(data, key=lambda x: x.get("index", 0))
-            return [d["embedding"] for d in data_sorted]
-        except Exception as e:
-            if intento < 2:
-                time.sleep([1, 2][intento])
-                continue
-            print(f"  [AVISO] Batch embedding falló: {e}. Usando fallback uno por uno.")
-            break
-
-    # Fallback: uno por uno
-    resultados = []
-    for i, texto in enumerate(textos_limpios):
-        print(f"  Embedding fallback [{i+1}/{len(textos_limpios)}]")
-        resultados.append(calcular_embedding(texto, input_type))
-    return resultados
-
-
-# ── Verificar conectividad al importar ────────────────────────────────────────
-
-verificar_conexion()
+        return _RESEARCH_VACIO
 
 
 # ── Test rápido (python lm_studio.py) ─────────────────────────────────────────
 
 if __name__ == "__main__":
-    print(f"🔌 Proveedor: {AI_PROVIDER} | Modelo: {_get_model()}")
-    print(f"   URL: {_get_base_url()}")
-    try:
-        r = clasificar_articulo(
-            "Nueva línea de frenos para camiones",
-            "La empresa XYZ lanzó una nueva línea de pastillas de freno para camiones pesados.",
-        )
-        print(f"Resultado: {json.dumps(r, indent=2, ensure_ascii=False)}")
-    except Exception as e:
-        print(f"❌ Error de conexión: {e}")
-        print("Verificá la configuración del proveedor en .env")
+    print(f"Proveedor: {llm.estado()}")
+    r = clasificar_articulo(
+        "Nueva línea de frenos para camiones",
+        "La empresa XYZ lanzó una nueva línea de pastillas de freno para camiones pesados.",
+    )
+    print(f"Resultado: {json.dumps(r, indent=2, ensure_ascii=False)}")

@@ -6,16 +6,16 @@ if not os.getenv("MONGO_URI"):
     print("[add_url] ERROR: MONGO_URI no está configurado en el entorno.", flush=True)
     sys.exit(1)
 
-from db import clasificar_y_guardar, col_articulos, col_trusted_urls
-from jev_clasificador import clasificar_articulo
-from scheduler import get_max_articulos
+import config_store
+from db import col_trusted_urls
+from ingesta import ingerir
 from scraper import start
 
 
 def add_custom_url(url: str):
     print(f"Procesando URL: {url}", flush=True)
 
-    max_art = get_max_articulos()
+    max_art = config_store.get_scraping_config()["max_articulos"]
     result = start([url], modo="list", max_articulos=max_art)
     items = result.items
 
@@ -23,7 +23,7 @@ def add_custom_url(url: str):
         print("[FAIL] No se encontraron articulos en la URL. No se agregara a URLs Confiables.", flush=True)
         return
 
-    res = clasificar_y_guardar(items, col_articulos, clasificar_articulo)
+    res = ingerir(items)
 
     print(f"\nResultado: {res['aprobados']} aprobados, {res['rechazados']} rechazados.", flush=True)
 

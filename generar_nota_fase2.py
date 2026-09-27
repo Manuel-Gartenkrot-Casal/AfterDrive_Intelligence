@@ -18,28 +18,14 @@ Uso:
 import argparse
 import datetime
 import os
-import re
 import sys
 
-# Validación temprana de variables de entorno críticas
-_provider = os.getenv("AI_PROVIDER", "local")
-if _provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
-    print("[ERROR] AI_PROVIDER=openrouter pero OPENROUTER_API_KEY no está configurado.", flush=True)
-    sys.exit(1)
-if _provider == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
-    print("[ERROR] AI_PROVIDER=nvidia pero NVIDIA_API_KEY no está configurado.", flush=True)
-    sys.exit(1)
-if not os.getenv("MONGO_URI"):
-    print("[ERROR] MONGO_URI no está configurado.", flush=True)
-    sys.exit(1)
-
+import llm
 from db import db
-from lm_studio import _post, _extraer_primer_json, _post_procesar_articulo
-from lm_studio import get_system_prompt_redactar, calcular_embedding
-from scraper_afterdrive import get_ejemplos_por_tags, CATEGORIAS
-from regiones import REGIONES, REGION_SLUGS
-import json
-import time
+from lm_studio import get_system_prompt_redactar
+from regiones import REGION_SLUGS, REGIONES
+from saneo import sanear
+from scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
 
 col_notas_fase2 = db["notas_fase2"]
 col_clientes = db["clientes"]
@@ -250,7 +236,6 @@ def generar_nota(
 
     clientes_docs = []
     if clientes_ids:
-        from bson import ObjectId
         for cid in clientes_ids:
             doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
             if doc:
@@ -266,69 +251,17 @@ def generar_nota(
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones)
     user_msg = _build_few_shot_prompt(ejemplos, categorias, clientes_docs, puntapie_url, tema, regiones)
 
-    from lm_studio import AI_PROVIDER, _get_model, _get_headers, _get_base_url
-
-    payload = {
-        "model": _get_model(),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_msg},
-        ],
-        "temperature": 0.72,
-        "max_tokens": 4000,
-        "stream": True,
-    }
-    # include_reasoning solo es válido en OpenRouter; NVIDIA lo rechaza con 400
-    if AI_PROVIDER == "openrouter":
-        payload["include_reasoning"] = False
-
-    print("  Generando nota...")
-    partes = []
-    t0 = time.time()
-
+    print("  Generando nota...", flush=True)
     try:
-        response = _post("/chat/completions", payload, timeout=1800, stream=True, retries=5)
-    except Exception as e:
+        crudo = llm.completar(system, user_msg, temperature=0.72, max_tokens=4000, stream=True)
+    except llm.ErrorLLM as e:
         return {"success": False, "error": str(e)}
 
-    if not response.ok:
-        return {"success": False, "error": f"HTTP {response.status_code}: {response.text[:500]}"}
-
-    last_progress = t0
-    for line in response.iter_lines():
-        if not line:
-            continue
-        text = line.decode("utf-8")
-        if text.startswith("data: "):
-            text = text[6:]
-        if text == "[DONE]":
-            break
-        try:
-            chunk = json.loads(text)
-            choices = chunk.get("choices", [])
-            if choices:
-                delta = choices[0].get("delta", {})
-                content = delta.get("content") or ""
-                partes.append(content)
-        except Exception:
-            continue
-        now = time.time()
-        if now - last_progress >= 60:
-            print(f"  [{int(now-t0)}s] {len(''.join(partes))} chars...", flush=True)
-            last_progress = now
-
-    t_total = int(time.time() - t0)
-    print(f"  Generación completa en {t_total}s")
-
-    articulo_raw = "".join(partes)
-    if not articulo_raw:
-        return {"success": False, "error": "Respuesta vacía del modelo"}
-
-    articulo = _limpiar_y_extraer(articulo_raw)
-    if not articulo:
-        return {"success": False, "error": "No se pudo extraer el texto del artículo"}
-
-    articulo = _post_procesar_articulo(articulo)
+    saneo = sanear(crudo)
+    if not saneo.ok:
+        print(f"  [WARN] {saneo.motivo}. Se descarta.", flush=True)
+        return {"success": False, "error": f"No se obtuvo una nota publicable: {saneo.motivo}"}
+    articulo = saneo.texto
 
     doc = {
         "contenido": articulo,
@@ -342,85 +275,34 @@ def generar_nota(
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 
-    emb = calcular_embedding(articulo)
+    emb = llm.embeber([articulo])[0]
     if emb:
         doc["embedding"] = emb
 
-    col_notas_fase2.insert_one(doc)
-    print(f"[OK] Nota guardada en 'notas_fase2'.")
+    col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
+    print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
-    return {"success": True, "contenido": articulo, "meta": doc}
-
-
-def _limpiar_y_extraer(texto: str) -> str:
-    texto = texto.strip()
-    texto = re.sub(r"^```(?:markdown)?\s*", "", texto)
-    texto = re.sub(r"\s*```$", "", texto)
-    texto = re.sub(r"</?ARTICULO>", "", texto)
-    texto = re.sub(r"(?i)(?:^|\n)\s*Meta Description:\s*", "\n", texto)
-
-    # ── Defensa anti-razonamiento ──
-    # Algunos modelos (ej: nemotron-3.5-lightning) emiten su cadena de
-    # pensamiento como si fuera el artículo: "I need to...", "Let me structure...",
-    # "## 1. Gancho con dato real - 1 paragraph...". Si hay marcas de planning,
-    # NO es un artículo publicable: descartar y reintentar/fallar.
-    patrones_razonamiento = re.compile(
-        r"\b(I need to|I'll |I would|Let me|Now let|Let's (think|see)|"
-        r"I can reference|I should use|Let me think|we need to|Let me draft|"
-        r"First, the title|Possible angle|I'm going to|Let me write the|"
-        r"I will make sure|Actually, re-reading|Let me check|Word count|"
-        r"I'll aim|I need to be careful|Let me re-read)\b",
-        re.IGNORECASE,
-    )
-    conteo = len(patrones_razonamiento.findall(texto))
-    # Si el texto es en su mayoría planning en inglés (≠ idioma objetivo),
-    # el "título" con ## no alcanza para validarlo.
-    if conteo >= 3 and not _es_articulo_publicable(texto):
-        print(f"  [WARN] El modelo devolvió razonamiento ({conteo} marcadores de planning). Se descarta.")
-        return ""
-
-    lineas = texto.split("\n")
-    for i, line in enumerate(lineas):
-        if line.strip().startswith("# ") or line.strip().startswith("## "):
-            posible = "\n".join(lineas[i:]).strip()
-            if len(posible) > 200:
-                return posible
-    return texto if len(texto) > 200 else ""
-
-
-def _es_articulo_publicable(texto: str) -> bool:
-    """Heurística mínima: distingue un artículo final de un borrador/plan.
-
-    Un artículo publicable tiene secciones ## coherentes (no copia literal de la
-    tarea), frases completas en el idioma objetivo y marcadores de cierre
-    (CTA, meta description). El planning del modelo es casi todo en inglés y
-    repite los títulos de la estructura pedida sin desarrollo real.
-    """
-    t = texto.lower()
-    secciones = re.findall(r"^#{1,2}\s+(.+)$", t, re.MULTILINE)
-    # Copia de la estructura de la tarea = sospechoso
-    estructura_copiada = ["gancho con dato real", "la solucion concreta",
-                          "casos de exito", "cta + meta description",
-                          "panorama macro", "desafio estrategico",
-                          "1 paragraph", "paragraphs"]
-    coincidencias = sum(1 for s in secciones if any(p in s for p in estructura_copiada))
-    # Frases de planning en inglés predominantes
-    planning_ingles = len(re.findall(
-        r"\b(the examples|the instructions|the context|a solution|an article|"
-        r"the article|the title|the reader|the user says|let me)\b", t))
-    en_ingles = len(re.findall(r"\b(I|you|the|and|from|with)\b", t))
-    en_espanol = len(re.findall(r"\b(la|el|los|las|una|para|con|del|de los)\b", t))
-    # El planning tiene muchas más palabras inglesas que hispanas
-    predomina_ingles = en_ingles > en_espanol * 3
-    return not (predomina_ingles and (coincidencias >= 2 or planning_ingles >= 3))
+    meta = {k: v for k, v in doc.items() if k != "embedding"}
+    return {"success": True, "contenido": articulo, "meta": meta}
 
 
 def get_ultima_nota() -> dict | None:
     return col_notas_fase2.find_one({}, sort=[("generado_en", -1)])
 
 
+def _validar_entorno() -> None:
+    """Falla temprano y con mensaje claro si falta configuración crítica."""
+    provider = os.getenv("AI_PROVIDER", "local")
+    if provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
+        sys.exit("[ERROR] AI_PROVIDER=openrouter pero OPENROUTER_API_KEY no está configurado.")
+    if provider == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
+        sys.exit("[ERROR] AI_PROVIDER=nvidia pero NVIDIA_API_KEY no está configurado.")
+    if not os.getenv("MONGO_URI"):
+        sys.exit("[ERROR] MONGO_URI no está configurado.")
+
+
 if __name__ == "__main__":
-    import io, sys, os
+    import io
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
@@ -435,6 +317,7 @@ if __name__ == "__main__":
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
     args = parser.parse_args()
+    _validar_entorno()
 
     resultado = generar_nota(
         categorias=args.categorias,

@@ -34,6 +34,10 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuse
 # Copiar código fuente
 COPY db.py .
 COPY lm_studio.py .
+COPY llm.py .
+COPY saneo.py .
+COPY ingesta.py .
+COPY corridas.py .
 COPY embeddings.py .
 COPY flask_api.py .
 COPY config_store.py .

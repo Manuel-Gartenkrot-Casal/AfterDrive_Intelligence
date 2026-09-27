@@ -16,15 +16,18 @@ _host = mongo_uri.split("://", 1)[-1].split("@", 1)[-1].split("/", 1)[0].split("
 print(f"[run_automation] MONGO_URI detectado (host): {_host or '***'}", flush=True)
 
 try:
-    from scheduler import run_trusted_scraping, set_max_articulos
+    import corridas
 except Exception as e:
     print(f"[run_automation] ERROR al importar módulos (posible fallo de DB): {e}", flush=True)
     sys.exit(1)
 
 if __name__ == "__main__":
+    max_articulos = None
     if len(sys.argv) > 1:
         try:
-            set_max_articulos(int(sys.argv[1]))
+            max_articulos = int(sys.argv[1])
         except ValueError:
             pass
-    run_trusted_scraping()
+    # Corre bajo el lock del proceso padre (flask); acá solo se ejecuta.
+    resultado = corridas.scraping(max_articulos)
+    sys.exit(0 if resultado.get("success") else 1)

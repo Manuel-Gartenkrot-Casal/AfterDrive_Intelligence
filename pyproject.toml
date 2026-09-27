@@ -21,7 +21,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["db", "scraper", "scheduler", "lm_studio", "embeddings"]
+known-first-party = ["db", "scraper", "scheduler", "lm_studio", "embeddings", "llm", "saneo", "ingesta", "corridas", "config_store", "jev_clasificador"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -34,6 +34,10 @@ dependencies = [
     "flask",
     "flask-cors"
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.vercel]
 entrypoint = "flask_api:app"

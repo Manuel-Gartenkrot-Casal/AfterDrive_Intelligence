@@ -1,8 +1,7 @@
-import datetime
 import os
 
 from dotenv import load_dotenv
-from pymongo import MongoClient, ReplaceOne, UpdateOne
+from pymongo import MongoClient, ReplaceOne
 
 load_dotenv()
 
@@ -91,77 +90,6 @@ def guardar_items(items, coleccion):
     operaciones = [ReplaceOne({"url": item["url"]}, item, upsert=True) for item in items]
     resultado = coleccion.bulk_write(operaciones)
     return resultado.upserted_count + resultado.modified_count
-
-
-def clasificar_y_guardar(items, coleccion, clasificador_fn):
-    """
-    Clasifica cada item usando clasificador_fn y guarda solo los aprobados.
-    Los rechazados se persisten en la colección 'articulos_descartados' para auditoría.
-
-    clasificador_fn(titulo, cuerpo) -> {"aprobado": bool, "razon": str}
-    Returns:
-        {"total": int, "aprobados": int, "rechazados": int, "detalles": list[dict]}
-    """
-    if not items:
-        return {"total": 0, "aprobados": 0, "rechazados": 0, "detalles": []}
-
-    aprobados = []
-    detalles = []
-    total = len(items)
-
-    for i, item in enumerate(items, 1):
-        titulo = item.get("titulo", "(sin título)")
-        cuerpo = item.get("cuerpo", item.get("bajada", ""))
-        print(f"  Clasificando [{i}/{total}]: {titulo[:70]}")
-
-        resultado = clasificador_fn(titulo, cuerpo)
-
-        if resultado["aprobado"]:
-            print("    -> Aprobado")
-            aprobados.append(item)
-            detalles.append({"titulo": titulo, "estado": "aprobado"})
-        else:
-            print(f"    -> Rechazado: {resultado.get('razon', '')[:80]}")
-            col_descartados.replace_one(
-                {"url": item.get("url", "")},
-                {
-                    "url": item.get("url", ""),
-                    "fecha_descarte": datetime.datetime.now(datetime.UTC).isoformat(),
-                },
-                upsert=True,
-            )
-            detalles.append(
-                {
-                    "titulo": titulo,
-                    "estado": "rechazado",
-                    "razon": resultado.get("razon", ""),
-                }
-            )
-
-    if aprobados:
-        print(f"  Generando embeddings para {len(aprobados)} artículo(s) aprobado(s)...")
-        from embeddings import texto_para_embedding
-        from lm_studio import calcular_embeddings_batch
-
-        textos = [texto_para_embedding(item) for item in aprobados]
-        embeddings = calcular_embeddings_batch(textos)
-
-        for item, vec in zip(aprobados, embeddings):
-            if vec:
-                item["embedding"] = vec
-
-        operaciones = [
-            UpdateOne({"url": item["url"]}, {"$set": item, "$setOnInsert": {"usado_para_articulo": False}}, upsert=True)
-            for item in aprobados
-        ]
-        coleccion.bulk_write(operaciones)
-
-    return {
-        "total": len(items),
-        "aprobados": len(aprobados),
-        "rechazados": len(items) - len(aprobados),
-        "detalles": detalles,
-    }
 
 
 def obtener_urls_procesados() -> set[str]:
