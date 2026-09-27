@@ -128,3 +128,12 @@ def test_rechaza_vacio_y_corto():
     corto = sanear("# Título\nMuy poco.")
     assert not corto.ok
     assert "largo" in corto.motivo
+
+
+def test_rechaza_texto_degenerado():
+    # Salida real de nemotron-3.5-lightning:free en OpenRouter (27/9): bucle de tokens.
+    basura = ("Here andellsellsellsellsellsells andellsellsells where fromellsellsellsellsells weellsellsellsells "
+              "deepellsellsellsellsellsells fromellsellsellsells rigor rigorellsellsellsellsells ") * 12
+    r = sanear(basura)
+    assert not r.ok
+    assert "degenerad" in r.motivo

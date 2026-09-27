@@ -188,7 +188,7 @@ def generar_nota(
 
     print("  Generando nota...", flush=True)
     try:
-        crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=4000, stream=True)
+        crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True)
     except llm.ErrorLLM as e:
         return {"success": False, "error": str(e)}
 

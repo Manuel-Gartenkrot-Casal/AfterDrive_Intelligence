@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import zlib
 from dataclasses import dataclass
 
 LARGO_MINIMO = 200
@@ -42,6 +43,9 @@ def sanear(crudo: str) -> Saneo:
 
     texto = _desenvolver_json(crudo) or crudo
     texto = _limpiar_artefactos(texto)
+
+    if _es_degenerado(texto):
+        return Saneo("", "el modelo devolvió texto degenerado (repeticiones sin sentido)")
 
     marcas = len(_PLANNING.findall(texto))
     if marcas >= 3 and not _parece_nota(texto):
@@ -168,6 +172,18 @@ def _texto_de_json_embebido(texto: str) -> str:
         if len(partes) > 1 or (partes and not data.get("titulo")):
             return "\n".join(partes)
     return ""
+
+
+def _es_degenerado(texto: str) -> bool:
+    """Bucles de tokens ("ellsellsells...") que algunos modelos free emiten.
+
+    Un texto real comprime a ~45% de su tamaño; un bucle repetitivo, a menos
+    del 25%. Solo se mide con texto suficiente para que la señal sea estable.
+    """
+    datos = texto.encode("utf-8")
+    if len(datos) < 400:
+        return False
+    return len(zlib.compress(datos)) / len(datos) < 0.28
 
 
 # ── Razonamiento filtrado ─────────────────────────────────────────────────────

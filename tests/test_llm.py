@@ -217,3 +217,41 @@ def test_set_proveedor_valida_y_persiste_en_entorno(transporte, monkeypatch):
     assert r["success"] and r["provider"] == "nvidia"
     import os
     assert os.environ["AI_PROVIDER"] == "nvidia"
+
+
+def test_stream_que_solo_razona_reintenta_con_el_fallback(transporte, nvidia):
+    solo_razona = sse({"choices": [{"delta": {"reasoning_content": "pienso " * 50}}]},
+                      {"choices": [{"delta": {}, "finish_reason": "length"}]})
+    ok = sse({"choices": [{"delta": {"content": "# Nota"}}]})
+    t = transporte([Resp(lineas=solo_razona), Resp(lineas=ok)])
+    assert llm.completar("s", "u", stream=True, max_tokens=4000) == "# Nota"
+    assert [p["json"]["model"] for p in t.posts] == ["kimi", "gpt-oss"]
+
+
+def test_stream_que_solo_razona_da_error_explicativo(transporte, nvidia):
+    solo_razona = sse({"choices": [{"delta": {"reasoning_content": "pienso " * 50}}]},
+                      {"choices": [{"delta": {}, "finish_reason": "length"}]})
+    transporte([Resp(lineas=solo_razona), Resp(lineas=solo_razona)])
+    with pytest.raises(llm.ErrorLLM, match="razonando"):
+        llm.completar("s", "u", stream=True)
+
+
+def test_embeddings_sin_servidor_fallan_rapido(transporte, openrouter, monkeypatch):
+    import requests as rq
+    intentos = []
+
+    def rechazado(url, **kw):
+        intentos.append(url)
+        raise rq.exceptions.ConnectionError("Connection refused")
+
+    t = transporte([])
+    monkeypatch.setattr(llm, "_transporte", {"post": rechazado, "get": t.get})
+    assert llm.embeber(["a", "b"]) == [None, None]
+    assert len(intentos) == 1        # antes: 3 en lote + 5 por texto
+
+
+def test_con_openrouter_los_embeddings_van_a_nvidia_si_hay_key(transporte, openrouter, monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nv")
+    t = transporte([Resp(body={"data": [{"index": 0, "embedding": [1.0]}]})])
+    llm.embeber(["x"])
+    assert t.posts[0]["url"].startswith("https://integrate.api.nvidia.com")

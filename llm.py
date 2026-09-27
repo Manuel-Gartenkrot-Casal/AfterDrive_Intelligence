@@ -59,6 +59,7 @@ class Redaccion:
     con REDACCION_TEMPERATURA si hace falta.
     """
     temperatura: float = 0.6
+    max_tokens: int = 4000        # los modelos que razonan gastan tokens antes de escribir
     compacto: bool = False        # prompt corto para modelos chicos
     max_ejemplos: int = 3         # notas de referencia de estilo
     chars_ejemplo: int = 1500
@@ -104,7 +105,9 @@ def _perfil(nombre: str) -> Perfil:
             emb_input_type=True,
             # kimi y el fallback gpt-oss son modelos que razonan: si se les
             # escapa el plan, la nota sale inservible (ver saneo.py).
-            redaccion=Redaccion(temperatura=0.6, directiva=_ANTI_RAZONAMIENTO),
+            # Razonan antes de escribir: con 4000 tokens kimi-k3 los gastaba todos
+            # pensando y devolvía la nota vacía.
+            redaccion=Redaccion(temperatura=0.6, max_tokens=16000, directiva=_ANTI_RAZONAMIENTO),
         )
     if nombre == "openrouter" and env("OPENROUTER_API_KEY"):
         return Perfil(
@@ -150,8 +153,10 @@ def _perfil_emb() -> Perfil:
     un endpoint local que mandar la request a un proveedor que devuelve 404.
     """
     nombre = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower() or proveedor_activo()
-    perfil = _perfil(nombre)
-    return perfil if perfil.nombre != "openrouter" else _perfil("local")
+    if nombre == "openrouter":
+        # OpenRouter no tiene /embeddings. NVIDIA si hay key; si no, LM Studio.
+        nombre = "nvidia" if os.getenv("NVIDIA_API_KEY") else "local"
+    return _perfil(nombre)
 
 
 def _stream_read_timeout() -> int:
@@ -201,7 +206,7 @@ def ajustes_redaccion() -> Redaccion:
     r = _perfil_chat().redaccion
     temp = os.getenv("REDACCION_TEMPERATURA", "").strip()
     if temp.replace(".", "", 1).isdigit():
-        r = Redaccion(float(temp), r.compacto, r.max_ejemplos, r.chars_ejemplo, r.directiva)
+        r = Redaccion(float(temp), r.max_tokens, r.compacto, r.max_ejemplos, r.chars_ejemplo, r.directiva)
     return r
 
 
@@ -329,8 +334,16 @@ def _contenido_de_chunk(chunk: dict) -> str:
     return chunk.get("content") or ""  # formato nativo llama.cpp
 
 
-def _leer_stream(perfil: Perfil, resp: requests.Response) -> str:
+@dataclass
+class _Stream:
+    texto: str = ""
+    razonamiento: int = 0         # chars de reasoning_content recibidos (se descartan)
+    fin: str | None = None        # finish_reason del último chunk
+
+
+def _leer_stream(perfil: Perfil, resp: requests.Response) -> _Stream:
     partes: list[str] = []
+    info = _Stream()
     t0 = last = time.time()
     try:
         for line in resp.iter_lines():
@@ -349,6 +362,11 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> str:
                 print(f"[ERROR del modelo] {chunk.get('message', chunk['error'])}", flush=True)
                 continue
             partes.append(_contenido_de_chunk(chunk))
+            choices = chunk.get("choices") or []
+            if choices:
+                delta = choices[0].get("delta") or {}
+                info.razonamiento += len(delta.get("reasoning_content") or delta.get("reasoning") or "")
+                info.fin = choices[0].get("finish_reason") or info.fin
             now = time.time()
             if now - last >= 60:
                 print(f"  [{int(now - t0)}s] {len(''.join(partes))} chars...", flush=True)
@@ -361,9 +379,10 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> str:
                 f"{_stream_read_timeout()}s. Suele pasar con modelos ':free' saturados: probá otro modelo."
             ) from e
         print("  [AVISO] El stream se cortó por inactividad. Se devuelve lo generado hasta acá.", flush=True)
-    texto = "".join(partes)
-    print(f"  Generación completa en {int(time.time() - t0)}s ({len(texto)} chars)", flush=True)
-    return texto
+    info.texto = "".join(partes)
+    extra = f", {info.razonamiento} chars de razonamiento descartados" if info.razonamiento else ""
+    print(f"  Generación completa en {int(time.time() - t0)}s ({len(info.texto)} chars{extra})", flush=True)
+    return info
 
 
 def completar(
@@ -404,8 +423,26 @@ def completar(
         _levantar_si_falla(perfil, resp)
         return (resp.json()["choices"][0]["message"]["content"] or "").strip()
 
+    info = _completar_stream(perfil, payload)
+    if info.texto.strip() or not info.razonamiento:
+        return info.texto
+    # Solo razonó: agotó los tokens pensando y no escribió. Un intento con el
+    # modelo de respaldo antes de rendirse.
+    if perfil.modelo_fallback and perfil.modelo_fallback != payload["model"]:
+        print(f"[FALLBACK] '{payload['model']}' solo razonó ({info.razonamiento} chars, fin={info.fin}) "
+              f"-> probando {perfil.modelo_fallback}", flush=True)
+        info = _completar_stream(perfil, {**payload, "model": perfil.modelo_fallback})
+        if info.texto.strip() or not info.razonamiento:
+            return info.texto
+    raise ErrorLLM(
+        f"El modelo '{payload['model']}' gastó todo el presupuesto ({max_tokens} tokens) razonando y no "
+        f"escribió la nota. Probá con otro modelo o subí max_tokens para este proveedor."
+    )
+
+
+def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
     stop = threading.Event()
-    threading.Thread(target=_heartbeat, args=(f"esperando respuesta de {perfil.modelo}...", stop), daemon=True).start()
+    threading.Thread(target=_heartbeat, args=(f"esperando respuesta de {payload['model']}...", stop), daemon=True).start()
     try:
         resp = _post_chat(perfil, payload, timeout=(15, _stream_read_timeout()), stream=True)
     except requests.exceptions.Timeout as e:
@@ -448,6 +485,8 @@ def _embeber_uno(perfil: Perfil, texto: str, tipo: str) -> list[float] | None:
                 continue
             resp.raise_for_status()
             return resp.json()["data"][0]["embedding"]
+        except requests.exceptions.ConnectionError:
+            return None                  # servidor inexistente: reintentar no lo levanta
         except Exception as e:
             if intento < len(esperas) - 1:
                 _dormir(espera)
@@ -477,6 +516,17 @@ def embeber(textos: list[str], tipo: str = "passage") -> list[list[float] | None
     for espera in (1, 2, 4):
         try:
             resp = _post_emb(perfil, entrada, tipo, timeout=60)
+        except requests.exceptions.ConnectionError as e:
+            # Conexión rechazada (p. ej. LM Studio en localhost dentro de Render):
+            # reintentar 3 + 5 veces solo sumaba ~14 s por llamada.
+            print(f"  [AVISO] El servidor de embeddings de '{perfil.nombre}' no responde ({perfil.base_url}): "
+                  f"se sigue sin embeddings. Configurá EMBEDDINGS_PROVIDER=nvidia. Detalle: {e}", flush=True)
+            return resultado
+        except Exception as e:
+            print(f"  [AVISO] Batch embedding falló: {e}", flush=True)
+            _dormir(espera)
+            continue
+        try:
             if resp.status_code in _MODELO_CAIDO:
                 # Caer al uno-por-uno fallaría igual N veces seguidas.
                 print("[ERROR] " + _error_modelo_caido(perfil, perfil.modelo_emb, resp.status_code,

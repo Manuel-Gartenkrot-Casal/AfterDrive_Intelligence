@@ -3293,7 +3293,6 @@
           st.textContent = 'Nota generada correctamente.';
           showToast('Nota generada', 'success');
           playClick();
-          await fase2MostrarUltima();
         } else {
           st.className = 'feedback err';
           var motivo = (fullOutput.match(/\[ERROR\]\s*(.+)/) || [])[1];
@@ -3306,6 +3305,9 @@
       } finally {
         setBtnLoading(btn, false);
       }
+      // Recién ahora se abre la nota: si la evaluación con IA tarda (o el
+      // proveedor reintenta), el botón ya está libre para generar otra.
+      if (exito) fase2MostrarUltima();
     }
 
     async function fase2VerUltima() {

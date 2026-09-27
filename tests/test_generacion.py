@@ -12,14 +12,19 @@ from contexto_noticias import Noticia
 NOTA = """# El catálogo digital llega al mostrador
 
 ## Qué pasó
-""" + ("Los distribuidores integran su catálogo con fitment por año y motor. " * 8) + """
+Frasle invirtió en ampliar su planta de pastillas de freno en Caxias do Sul y apunta a abastecer
+a distribuidores de toda la región. La compañía busca acortar los plazos de reposición, que hoy
+pesan sobre la rotación de los mayoristas. Automechanika Buenos Aires, por su parte, abrió las
+acreditaciones para su edición 2026 en La Rural.
 
 ## Qué cambia para el distribuidor
-""" + ("Menos devoluciones y más rotación en marketplaces. " * 8) + """
+Con más oferta local, el distribuidor puede sostener stock de alta rotación sin inmovilizar capital
+en importaciones. El desafío pasa a ser el catálogo: publicar fichas con compatibilidad por año,
+motor y versión evita devoluciones por fitment incorrecto y mejora la conversión en Mercado Libre.
 
 Descubrí cómo Alephee conecta tu catálogo con los principales marketplaces.
 
-*Catálogo digital y fitment para distribuidores de autopartes.*"""
+*Frasle amplía su planta y el catálogo digital se vuelve clave para la rotación de repuestos.*"""
 
 
 class ColFake:
