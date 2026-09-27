@@ -1153,6 +1153,101 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
+       CARRUSEL (vista cliente): la sección activa al frente y un adelanto de la
+       anterior y la siguiente a los costados. Pestañas arriba para ver todo lo
+       que hay y saltar directo.
+       ═══════════════════════════════════════════════════════════════════════ */
+    [data-modo="cliente"] .carrusel { order: 1; }
+    .carrusel { margin-bottom: var(--s7); }
+    .carrusel-nav {
+      display: flex; justify-content: center; gap: 6px; flex-wrap: wrap;
+      width: fit-content; max-width: 100%;
+      margin: 0 auto var(--s5);
+      padding: 6px;
+      border-radius: var(--r-pill);
+      box-shadow: var(--inset-sm);
+    }
+    .carrusel-tab {
+      border: 0; background: transparent; cursor: pointer;
+      padding: 9px 18px;
+      border-radius: var(--r-pill);
+      font-family: var(--font); font-size: 0.88rem; font-weight: 500;
+      color: var(--text-mid);
+      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
+    }
+    .carrusel-tab:hover { color: var(--text-hi); }
+    .carrusel-tab[aria-selected="true"] { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs); }
+
+    .carrusel-viewport {
+      position: relative;
+      overflow: hidden;
+      /* aire para que no se corten las sombras neumórficas */
+      padding: 24px 0 36px;
+      margin: -24px 0 -36px;
+      touch-action: pan-y;
+      transition: height 380ms var(--ease-out);
+    }
+    .carrusel-track {
+      display: flex; align-items: flex-start;
+      gap: var(--carrusel-gap, 32px);
+      transition: transform 520ms var(--ease-out);
+      will-change: transform;
+    }
+    .slide {
+      flex: 0 0 var(--slide-w, 80%);
+      position: relative;
+      transition: transform 520ms var(--ease-out), opacity 520ms var(--ease-out);
+      transform-origin: center top;
+    }
+    .slide > section, .slide > div { margin-bottom: 0 !important; }
+    .slide:not(.activa) { transform: scale(0.9); opacity: 0.5; }
+    .slide-velo {
+      position: absolute; inset: 0; z-index: 2;
+      display: none;
+      border: 0; background: transparent; cursor: pointer;
+      border-radius: var(--r-lg);
+    }
+    .slide:not(.activa) .slide-velo { display: block; }
+    .slide:not(.activa):hover { opacity: 0.7; }
+
+    .carrusel-flecha {
+      position: absolute; top: 140px; z-index: 3;
+      width: 48px; height: 48px;
+      border: 0; border-radius: 50%;
+      background: var(--bg);
+      box-shadow: var(--raised-sm);
+      color: var(--text-mid);
+      font-size: 1.6rem; line-height: 1;
+      cursor: pointer;
+      display: grid; place-items: center;
+      transition: box-shadow var(--t-fast), color var(--t-fast), opacity var(--t-fast);
+    }
+    .carrusel-flecha:hover { color: var(--brand); }
+    .carrusel-flecha:active { box-shadow: var(--inset-sm); }
+    .carrusel-flecha:disabled { opacity: 0; pointer-events: none; }
+    /* centradas en la franja del adelanto, sin pisar la tarjeta activa */
+    .carrusel-flecha.prev { left: calc((100% - var(--slide-w-px, 80%)) / 4 - 24px); }
+    .carrusel-flecha.next { right: calc((100% - var(--slide-w-px, 80%)) / 4 - 24px); }
+
+    /* Accesos directos de la bienvenida */
+    .hero-kpis .kpi {
+      border: 0; background: var(--bg); text-align: left; cursor: pointer; font: inherit; color: inherit;
+      transition: box-shadow var(--t-fast) var(--ease-out);
+    }
+    .hero-kpis .kpi:hover { box-shadow: var(--raised-xs); }
+    .hero-kpis .kpi:hover strong { color: var(--brand); }
+    .hero-kpis .kpi:active { box-shadow: var(--inset); }
+    .hero-ctas { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+
+    @media (max-width: 640px) {
+      .carrusel-tab { padding: 8px 12px; font-size: 0.8rem; }
+      .carrusel-flecha { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .carrusel-track, .slide, .carrusel-viewport { transition: none; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
        RESPONSIVE
        ═══════════════════════════════════════════════════════════════════════ */
     @media (max-width: 1280px) {
@@ -1231,6 +1326,16 @@
       </div>
     </header>
 
+    <!-- Carrusel de secciones (vista cliente). Las secciones se mueven adentro por JS. -->
+    <div class="carrusel solo-cliente" id="carrusel" role="region" aria-roledescription="carrusel" aria-label="Secciones">
+      <div class="carrusel-nav" role="tablist" aria-label="Secciones" id="carrusel-nav"></div>
+      <div class="carrusel-viewport" id="carrusel-viewport">
+        <button type="button" class="carrusel-flecha prev" id="carrusel-prev" aria-label="Sección anterior">&#8249;</button>
+        <div class="carrusel-track" id="carrusel-track"></div>
+        <button type="button" class="carrusel-flecha next" id="carrusel-next" aria-label="Sección siguiente">&#8250;</button>
+      </div>
+    </div>
+
     <!-- Stats -->
     <div class="stats-grid solo-dev">
       <div class="stat-card">
@@ -1290,9 +1395,13 @@
         <h2 class="hero-title" id="hero-title">Tu contenido de AfterDrive</h2>
         <p class="hero-sub">El sistema busca noticias del sector y escribe notas por vos. Desde acá ves cómo va y creás una nota cuando quieras.</p>
         <div class="hero-kpis">
-          <div class="kpi"><strong id="c-articulos">-</strong><span>noticias listas para usar</span></div>
-          <div class="kpi"><strong id="c-fuentes">-</strong><span>fuentes activas</span></div>
-          <div class="kpi"><strong id="c-proxima">-</strong><span>próxima nota automática</span></div>
+          <button type="button" class="kpi" onclick="irASeccion('crear')"><strong id="c-articulos">-</strong><span>noticias listas para usar</span></button>
+          <button type="button" class="kpi" onclick="irASeccion('fuentes')"><strong id="c-fuentes">-</strong><span>fuentes activas</span></button>
+          <button type="button" class="kpi" onclick="irASeccion('programacion')"><strong id="c-proxima">-</strong><span>próxima nota automática</span></button>
+        </div>
+        <div class="hero-ctas">
+          <button type="button" class="btn btn-primary" onclick="irASeccion('crear')">Crear una nota</button>
+          <button type="button" class="btn" onclick="irASeccion('programacion')">Ver programación</button>
         </div>
       </div>
       <article class="ultima-nota" aria-labelledby="c-ultima-titulo">
@@ -2282,6 +2391,148 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
+       CARRUSEL (vista cliente)
+       Las secciones se mueven adentro de las diapositivas al entrar en modo
+       cliente y vuelven a su lugar (marcado con un ancla) al salir: mismos
+       nodos, así conservan IDs, estado y handlers.
+       ═══════════════════════════════════════════════════════════════════════ */
+    var CARRUSEL = [
+      { id: 'inicio',       nombre: 'Inicio',       sel: '.hero-cliente' },
+      { id: 'crear',        nombre: 'Crear nota',   sel: '.fase2-section' },
+      { id: 'programacion', nombre: 'Programación', sel: '.agenda' },
+      { id: 'fuentes',      nombre: 'Fuentes',      sel: '.fuentes-seccion' }
+    ];
+    var _carrusel = { i: 0, listo: false, slides: [] };
+
+    function initCarrusel() {
+      var nav = $('carrusel-nav'), track = $('carrusel-track');
+      CARRUSEL.forEach(function(c, i) {
+        var sec = document.querySelector(c.sel);
+        var ancla = document.createElement('span');
+        ancla.hidden = true;
+        ancla.className = 'ancla-seccion';
+        sec.parentNode.insertBefore(ancla, sec);
+        c.seccion = sec; c.ancla = ancla;
+
+        var slide = document.createElement('div');
+        slide.className = 'slide';
+        slide.id = 'slide-' + c.id;
+        slide.setAttribute('role', 'tabpanel');
+        slide.setAttribute('aria-roledescription', 'diapositiva');
+        slide.setAttribute('aria-label', (i + 1) + ' de ' + CARRUSEL.length + ': ' + c.nombre);
+        var velo = document.createElement('button');
+        velo.type = 'button';
+        velo.className = 'slide-velo';
+        velo.tabIndex = -1;
+        velo.setAttribute('aria-label', 'Ir a ' + c.nombre);
+        velo.onclick = function() { irASeccion(i); };
+        slide.appendChild(velo);
+        track.appendChild(slide);
+        c.slide = slide;
+
+        var tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'carrusel-tab';
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', slide.id);
+        tab.textContent = c.nombre;
+        tab.onclick = function() { irASeccion(i); };
+        nav.appendChild(tab);
+        c.tab = tab;
+      });
+
+      nav.addEventListener('keydown', function(ev) {
+        var d = { ArrowRight: 1, ArrowLeft: -1 }[ev.key];
+        if (!d) return;
+        ev.preventDefault();
+        irASeccion(_carrusel.i + d);
+        CARRUSEL[_carrusel.i].tab.focus();
+      });
+      $('carrusel-prev').onclick = function() { irASeccion(_carrusel.i - 1); };
+      $('carrusel-next').onclick = function() { irASeccion(_carrusel.i + 1); };
+
+      // Swipe con el dedo (el mouse usa flechas, pestañas o los adelantos).
+      var inicio = null;
+      var vp = $('carrusel-viewport');
+      vp.addEventListener('pointerdown', function(ev) {
+        if (ev.pointerType !== 'touch') return;
+        if (ev.target.closest('input, select, textarea, .reloj, .toggle-item')) return;
+        inicio = { x: ev.clientX, y: ev.clientY };
+      });
+      vp.addEventListener('pointerup', function(ev) {
+        if (!inicio) return;
+        var dx = ev.clientX - inicio.x, dy = ev.clientY - inicio.y;
+        inicio = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) irASeccion(_carrusel.i + (dx < 0 ? 1 : -1));
+      });
+      vp.addEventListener('pointercancel', function() { inicio = null; });
+
+      window.addEventListener('resize', function() { if (_carrusel.listo) posicionarCarrusel(); });
+      if ('ResizeObserver' in window) {
+        var ro = new ResizeObserver(function() { if (_carrusel.listo) ajustarAltura(); });
+        CARRUSEL.forEach(function(c) { ro.observe(c.slide); });
+      }
+      try { var guardado = localStorage.getItem('ad-seccion'); } catch(e) {}
+      var idx = CARRUSEL.findIndex(function(c) { return c.id === guardado; });
+      _carrusel.i = idx >= 0 ? idx : 0;
+    }
+
+    function montarCarrusel(activo) {
+      if (activo === _carrusel.listo) return;
+      CARRUSEL.forEach(function(c) {
+        if (activo) c.slide.appendChild(c.seccion);
+        else {
+          c.ancla.parentNode.insertBefore(c.seccion, c.ancla.nextSibling);
+          c.seccion.inert = false;
+        }
+      });
+      _carrusel.listo = activo;
+      if (activo) irASeccion(_carrusel.i, true);
+    }
+
+    function posicionarCarrusel() {
+      var vp = $('carrusel-viewport'), track = $('carrusel-track');
+      var ancho = vp.clientWidth;
+      var movil = ancho < 700;
+      var w = Math.round(ancho * (movil ? 0.88 : 0.8));
+      var gap = movil ? 16 : 32;
+      track.style.setProperty('--slide-w', w + 'px');
+      track.style.setProperty('--carrusel-gap', gap + 'px');
+      vp.style.setProperty('--slide-w-px', w + 'px');
+      var x = ancho / 2 - (_carrusel.i * (w + gap) + w / 2);
+      track.style.transform = 'translateX(' + x + 'px)';
+      ajustarAltura();
+    }
+
+    function ajustarAltura() {
+      var slide = CARRUSEL[_carrusel.i].slide;
+      $('carrusel-viewport').style.height = (slide.offsetHeight + 60) + 'px';
+    }
+
+    function irASeccion(destino, sinScroll) {
+      if (typeof destino === 'string') destino = CARRUSEL.findIndex(function(c) { return c.id === destino; });
+      destino = Math.max(0, Math.min(CARRUSEL.length - 1, destino));
+      _carrusel.i = destino;
+      try { localStorage.setItem('ad-seccion', CARRUSEL[destino].id); } catch(e) {}
+      CARRUSEL.forEach(function(c, i) {
+        var activa = i === destino;
+        c.slide.classList.toggle('activa', activa);
+        c.seccion.inert = !activa;               // lo que se asoma no se puede tocar ni enfocar
+        c.slide.setAttribute('aria-hidden', !activa);
+        c.tab.setAttribute('aria-selected', activa);
+        c.tab.tabIndex = activa ? 0 : -1;
+      });
+      $('carrusel-prev').disabled = destino === 0;
+      $('carrusel-next').disabled = destino === CARRUSEL.length - 1;
+      if (!_carrusel.listo) return;
+      posicionarCarrusel();
+      if (!sinScroll) {
+        var top = $('carrusel').getBoundingClientRect().top;
+        if (top < 0) window.scrollBy({ top: top - 16, behavior: 'smooth' });
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
        MODOS DE VISTA
        ═══════════════════════════════════════════════════════════════════════ */
     function setModo(modo) {
@@ -2301,6 +2552,7 @@
       var fuentes = $('fuentes-grupo');
       var destino = $(modo === 'cliente' ? 'slot-fuentes-cliente' : 'slot-fuentes-dev');
       if (fuentes && destino && fuentes.parentNode !== destino) destino.appendChild(fuentes);
+      montarCarrusel(modo === 'cliente');
     }
 
     function toggleMasOpciones() {
@@ -2958,6 +3210,7 @@
 
       updateStats();
       checkProviders();
+      initCarrusel();
       setModo(document.documentElement.getAttribute('data-modo'));
       initAgenda();
       fase2Init();
