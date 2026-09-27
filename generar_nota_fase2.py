@@ -1,17 +1,20 @@
 """
-generar_nota_fase2.py — Generador de Notas Fase 2
+generar_nota_fase2.py — Generador de notas estilo AfterDrive by Alephee.
 
-Genera notas estilo AfterDrive by Alephee usando:
-  - Few-shot con notas reales scrapeadas del blog (afterdrive_ejemplos)
-  - Categorías seleccionadas via toggles
-  - Mención opcional de clientes (de la colección 'clientes')
-  - Modo "puntapié a link": nota pensada para redirigir a una URL externa
+Recorrido de una nota:
+  1. Noticias de contexto: las noticias scrapeadas más útiles para el pedido
+     (contexto_noticias). Son la única fuente de cifras, empresas y casos.
+  2. Referencias de estilo: notas reales del blog (afterdrive_ejemplos).
+  3. Prompt: system de redaccion.py (persona + región) ajustado al proveedor
+     activo (llm.ajustes_redaccion) + pedido con noticias y referencias.
+  4. Generación, saneo (saneo.py) y evaluación de calidad, que se guarda con
+     la nota para no re-evaluarla cada vez que se abre.
 
 Uso:
-    python generar_nota_fase2.py \
-        --categorias autopartes marketplaces \
-        --clientes cliente_a cliente_b \
-        --puntapie https://alephee.com/landing \
+    python generar_nota_fase2.py \\
+        --categorias autopartes marketplaces \\
+        --clientes cliente_a cliente_b \\
+        --puntapie https://alephee.com/landing \\
         --persona comercial
 """
 
@@ -20,9 +23,10 @@ import datetime
 import os
 import sys
 
+import contexto_noticias
 import llm
+import redaccion
 from db import db
-from lm_studio import get_system_prompt_redactar
 from regiones import REGION_SLUGS, REGIONES
 from saneo import sanear
 from scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
@@ -31,65 +35,39 @@ col_notas_fase2 = db["notas_fase2"]
 col_clientes = db["clientes"]
 
 EJEMPLOS_POR_CATEGORIA = 2
-MAX_CHARS_EJEMPLO = 1200
-MAX_EJEMPLOS_TOTAL = 6
+NOTICIAS_POR_NOTA = 5
 
 
-def _formatear_ejemplos(ejemplos: list[dict]) -> str:
-    if not ejemplos:
-        return ""
+def _recortar_parrafos(texto: str, limite: int) -> str:
+    """Corta en el último párrafo completo que entra, para no imitar notas truncadas."""
+    texto = (texto or "").strip()
+    if len(texto) <= limite:
+        return texto
+    corte = texto.rfind("\n", 0, limite)
+    return texto[:corte].rstrip() if corte > limite * 0.5 else texto[:limite].rstrip() + "..."
+
+
+def _formatear_ejemplos(ejemplos: list[dict], chars: int) -> str:
     bloques = []
     for i, ej in enumerate(ejemplos, 1):
-        cuerpo = ej.get("cuerpo", "")[:MAX_CHARS_EJEMPLO]
         bloques.append(
-            f"--- EJEMPLO {i} [{ej.get('categoria', '')}] ---\n"
-            f"TÍTULO: {ej.get('titulo', '')}\n"
-            f"CONTENIDO:\n{cuerpo}\n"
+            f"--- Referencia {i} ---\n"
+            f"# {ej.get('titulo', '')}\n"
+            f"{_recortar_parrafos(ej.get('cuerpo', ''), chars)}"
         )
-    return "\n".join(bloques)
+    return "\n\n".join(bloques)
 
 
 def _formatear_clientes(clientes: list[dict]) -> str:
-    if not clientes:
-        return ""
     lines = []
     for c in clientes:
-        nombre = c.get("nombre", "")
-        descripcion = c.get("descripcion", "")
-        productos = c.get("productos", [])
-        linea = f"- {nombre}"
-        if descripcion:
-            linea += f": {descripcion}"
-        if productos:
-            linea += f" | Productos/servicios: {', '.join(productos)}"
+        linea = f"- {c.get('nombre', '')}"
+        if c.get("descripcion"):
+            linea += f": {c['descripcion']}"
+        if c.get("productos"):
+            linea += f" | Productos/servicios: {', '.join(c['productos'])}"
         lines.append(linea)
     return "\n".join(lines)
-
-
-_IDIOMAS_REGION = {
-    "argentina": "español rioplatense",
-    "brasil": "portugués brasileño",
-    "mexico": "español mexicano",
-    "latinoamerica": "español latinoamericano",
-    "europa": "español (mercado europeo; escribí en español)",
-    "china": "chino mandarín simplificado",
-    "asia": "inglés (mercado asiático internacional)",
-}
-
-# Notas sobre el idioma de cada región para el user prompt
-_NOTAS_IDIOMA = {
-    "china": "Escribí toda la nota en chino mandarín simplificado. "
-             "Usa terminología automotriz china: 零部件 (autopartes), 后市场 (aftermarket), 电子商务 (e-commerce). "
-             "Menciona marcas chinas: BYD, NIO, Geely, Chery, Great Wall.",
-    "asia": "Escribí toda la nota en inglés. "
-            "Enfocate en el mercado asiático de autopartes: Japón, Corea, India, Tailandia. "
-            "Menciona marcas: Toyota, Hyundai, Tata Motors, Denso, AISIN.",
-    "brasil": "Escribí toda la nota en portugués brasileño.",
-    "argentina": "Escribí toda la nota en español rioplatense.",
-    "mexico": "Escribí toda la nota en español mexicano.",
-    "latinoamerica": "Escribí toda la nota en español latinoamericano.",
-    "europa": "Escribí toda la nota en español. El mercado objetivo es Europa.",
-}
 
 
 def _build_system_prompt(
@@ -98,129 +76,82 @@ def _build_system_prompt(
     puntapie_url: str | None,
     persona: str,
     regiones: list[str] | None = None,
+    ajustes: "llm.Redaccion | None" = None,
 ) -> str:
-    base = get_system_prompt_redactar(persona)
-
-    instrucciones_extra = []
-
+    ajustes = ajustes or llm.Redaccion()
+    base = redaccion.system_prompt(
+        persona,
+        region=regiones,
+        compacto=ajustes.compacto,
+        extension="entre 600 y 900 palabras" if puntapie_url else None,
+        puntapie_url=puntapie_url,
+    )
+    extra = []
     if regiones:
-        nombres_regiones = [REGIONES.get(s, s) for s in regiones]
-        instrucciones_extra.append(
-            f"REGIÓN(ES) OBJETIVO: {', '.join(nombres_regiones)}. "
-            "La nota debe estar contextualizada en esta(s) región(es): "
-            "usá datos, casos, marcas y referencias de mercado de esa región. "
-            "NO mezcles datos de otras regiones salvo como comparación puntual."
+        nombres = [REGIONES.get(s, s) for s in regiones]
+        extra.append(
+            f"- Región: {', '.join(nombres)}. Contextualizá la nota en ese mercado; datos de otras "
+            "regiones solo como comparación puntual."
         )
-
-        # Forzar idioma según región con notas detalladas
-        idiomas = []
-        for s in regiones:
-            lang = _IDIOMAS_REGION.get(s, "español latinoamericano")
-            nota = _NOTAS_IDIOMA.get(s, f"Escribí en {lang}.")
-            idiomas.append(nota)
-
-        idioma_texto = " ".join(idiomas)
-        instrucciones_extra.append(f"IDIOMA Y CONTENIDO:\n{idioma_texto}")
-    else:
-        instrucciones_extra.append(
-            "IDIOMA: Español latinoamericano (default)."
-        )
-
     if categorias:
         nombres = [CATEGORIAS.get(s, s) for s in categorias]
-        instrucciones_extra.append(
-            f"CATEGORÍAS OBJETIVO: {', '.join(nombres)}. "
-            "Distribuí estas categorías de forma natural a lo largo de las secciones del artículo: "
-            "cada sección debe sustentarse en material propio de una o más de estas categorías "
-            "(datos/estadísticas para el gancho o el análisis, el producto/solución para la propuesta, "
-            "marketplaces para los casos o el cierre). "
-            "Mencioná plataformas reales por nombre si aportan a la categoría correspondiente "
-            "(ej: Alephee para e-commerce B2B, Mercado Libre para el marketplace, TecDoc para el catálogo). "
-            "Respetá SIEMPRE la estructura obligatoria de secciones ## definida en tu modo de redacción. "
-            "El contenido debe enmarcarse en estas categorías, pero la estructura de tu modo manda."
+        extra.append(
+            f"- Categorías: {', '.join(nombres)}. La nota tiene que encuadrarse en ellas, respetando la "
+            "estructura de secciones de arriba."
         )
-
     if clientes:
-        info_clientes = _formatear_clientes(clientes)
-        instrucciones_extra.append(
-            f"MENCIONAR CLIENTES: Sí. Integra naturalmente la mención a estos clientes "
-            f"como casos de éxito o como ejemplo del sector. "
-            f"NO hagas publicidad explícita: mencionalos con contexto real.\n{info_clientes}"
+        extra.append(
+            "- Clientes a mencionar como casos o ejemplos del sector, con contexto real y sin tono "
+            f"publicitario:\n{_formatear_clientes(clientes)}"
         )
     else:
-        instrucciones_extra.append(
-            "CLIENTES: No mencionar clientes específicos en esta nota."
-        )
-
-    if puntapie_url:
-        instrucciones_extra.append(
-            f"MODO PUNTAPIÉ A LINK: Esta nota tiene como objetivo principal redirigir "
-            f"al lector a la siguiente URL: {puntapie_url}\n"
-            "Estructura la nota para generar curiosidad y llevar al lector a hacer clic. "
-            "El CTA final DEBE incluir un link explícito a esa URL. "
-            "La nota debe ser más concisa (600-900 palabras) y con gancho fuerte desde el inicio."
-        )
-    else:
-        instrucciones_extra.append(
-            "EXTENSIÓN: Nota completa estilo blog AfterDrive (900-1400 palabras). "
-            "El CTA final es hacia Alephee como plataforma general."
-        )
-
-    if instrucciones_extra:
-        return base + "\n\n## Instrucciones adicionales para esta generación\n" + "\n\n".join(instrucciones_extra)
-    return base
+        extra.append("- No menciones clientes específicos de Alephee.")
+    prompt = base + "\n\n## Para esta nota\n" + "\n".join(extra)
+    # La indicación propia del modelo va al final: es lo último que lee.
+    return prompt + ("\n\n" + ajustes.directiva if ajustes.directiva else "")
 
 
-def _build_few_shot_prompt(
+def _build_user_prompt(
+    noticias: list,
     ejemplos: list[dict],
     categorias: list[str],
-    clientes: list[dict],
-    puntapie_url: str | None,
     tema: str | None,
-    regiones: list[str] | None = None,
+    ajustes: "llm.Redaccion | None" = None,
 ) -> str:
+    ajustes = ajustes or llm.Redaccion()
     partes = []
-
-    if ejemplos:
+    if noticias:
         partes.append(
-            "A continuación hay notas REALES publicadas en AfterDrive by Alephee. "
-            "Úsalas como referencia de tono, estructura y nivel de profundidad. "
-            "NO copies su contenido, solo imita el estilo.\n\n"
-            + _formatear_ejemplos(ejemplos)
+            "## Noticias de contexto\n"
+            "Son la única fuente de hechos concretos para esta nota (cifras, empresas, casos, citas).\n\n"
+            + contexto_noticias.formatear(noticias, max_chars=3500 if ajustes.compacto else 7000)
         )
     else:
         partes.append(
-            "No hay notas de referencia disponibles en la base de datos. "
-            "Generá la nota directamente siguiendo las instrucciones del system prompt. "
-            "Estilo blog B2B AfterDrive by Alephee: título descriptivo, introducción con gancho, "
-            "secciones con ##, datos específicos del sector, cierre con CTA."
+            "## Noticias de contexto\n"
+            "No hay noticias recientes para este tema. Escribí un análisis sin cifras, empresas ni "
+            "casos concretos: explicá el tema con criterio de negocio."
         )
-
-    instrucciones = ["Redactá una nota B2B estilo AfterDrive by Alephee."]
-
+    if ejemplos:
+        partes.append(
+            "## Notas publicadas de referencia\n"
+            "Imitá su tono, estructura y profundidad. No copies su contenido ni sus datos.\n\n"
+            + _formatear_ejemplos(ejemplos, ajustes.chars_ejemplo)
+        )
+    pedido = "Escribí la nota."
     if tema:
-        instrucciones.append(f"TEMA: {tema}")
-
-    if categorias:
-        nombres = [CATEGORIAS.get(s, s) for s in categorias]
-        instrucciones.append(f"CATEGORÍAS: {', '.join(nombres)}")
-
-    if regiones:
-        nombres_regiones = [REGIONES.get(s, s) for s in regiones]
-        instrucciones.append(f"REGIÓN(ES): {', '.join(nombres_regiones)}")
-
-        idiomas = [_IDIOMAS_REGION.get(s, "español") for s in regiones]
-        idioma_unico = list(dict.fromkeys(idiomas))
-        instrucciones.append(f"IDIOMA: {', '.join(idioma_unico)}")
-
-    if puntapie_url:
-        instrucciones.append(
-            f"OBJETIVO: generar curiosidad y redirigir al lector a {puntapie_url}. "
-            "El CTA final debe ser un link directo a esa URL."
-        )
-
-    partes.append(" | ".join(instrucciones))
+        pedido = f"Escribí la nota sobre este tema: {tema}."
+    elif categorias:
+        pedido = f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
+    partes.append("## Pedido\n" + pedido)
     return "\n\n".join(partes)
+
+
+def _consulta(categorias: list[str], tema: str | None, regiones: list[str]) -> str:
+    """Texto con el que se buscan las noticias de contexto."""
+    base = tema or ", ".join(CATEGORIAS.get(s, s) for s in categorias)
+    region = " ".join(REGIONES.get(s, s) for s in regiones)
+    return f"{base} {region} autopartes aftermarket".strip()
 
 
 def generar_nota(
@@ -233,27 +164,31 @@ def generar_nota(
 ) -> dict:
     clientes_ids = clientes_ids or []
     regiones = regiones or []
+    ajustes = llm.ajustes_redaccion()
 
     clientes_docs = []
-    if clientes_ids:
-        for cid in clientes_ids:
-            doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
-            if doc:
-                clientes_docs.append(doc)
+    for cid in clientes_ids:
+        doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
+        if doc:
+            clientes_docs.append(doc)
+
+    noticias = contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=NOTICIAS_POR_NOTA)
+    print(f"  Noticias de contexto: {len(noticias)}", flush=True)
+    for n in noticias:
+        print(f"    - {n.titulo[:80]}", flush=True)
+    if not noticias:
+        print("  [WARN] No hay noticias scrapeadas: la nota se escribe sin datos concretos.", flush=True)
 
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
-    ejemplos = ejemplos[:MAX_EJEMPLOS_TOTAL]
-    print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}" +
-          (f" — regiones {regiones}" if regiones else ""))
-    if not ejemplos:
-        print("  [WARN] Sin ejemplos en DB — ejecuta scraper_afterdrive.py primero.")
+    ejemplos = ejemplos[: ajustes.max_ejemplos]
+    print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}", flush=True)
 
-    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones)
-    user_msg = _build_few_shot_prompt(ejemplos, categorias, clientes_docs, puntapie_url, tema, regiones)
+    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes)
+    user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes)
 
     print("  Generando nota...", flush=True)
     try:
-        crudo = llm.completar(system, user_msg, temperature=0.72, max_tokens=4000, stream=True)
+        crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=4000, stream=True)
     except llm.ErrorLLM as e:
         return {"success": False, "error": str(e)}
 
@@ -263,6 +198,10 @@ def generar_nota(
         return {"success": False, "error": f"No se obtuvo una nota publicable: {saneo.motivo}"}
     articulo = saneo.texto
 
+    print("  Evaluando calidad...", flush=True)
+    from lm_studio import evaluar_lineamientos
+    evaluacion = evaluar_lineamientos(articulo)
+
     doc = {
         "contenido": articulo,
         "categorias": categorias,
@@ -271,7 +210,10 @@ def generar_nota(
         "puntapie_url": puntapie_url,
         "persona": persona,
         "tema": tema,
+        "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],
         "ejemplos_usados": [e.get("url") for e in ejemplos],
+        "evaluacion": evaluacion if not evaluacion.get("error") else None,
+        "proveedor": llm.proveedor_activo(),
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 
@@ -280,6 +222,7 @@ def generar_nota(
         doc["embedding"] = emb
 
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
+    contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
     meta = {k: v for k, v in doc.items() if k != "embedding"}

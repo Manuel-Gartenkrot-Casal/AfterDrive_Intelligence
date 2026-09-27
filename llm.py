@@ -5,6 +5,7 @@ Interfaz:
     completar(system, user, temperature=..., max_tokens=..., stream=False) -> str
     embeber(textos, tipo="passage") -> list[vector | None]
     disponible() -> bool
+    ajustes_redaccion() -> Redaccion
     estado() -> dict
     set_proveedor(nombre) -> dict
     ErrorLLM
@@ -44,6 +45,26 @@ class ErrorLLM(RuntimeError):
     """Fallo del proveedor con un mensaje accionable para el usuario."""
 
 
+_ANTI_RAZONAMIENTO = (
+    "Importante: este modelo tiende a escribir su razonamiento. No lo hagas: la respuesta "
+    "empieza directamente con el título de la nota (\"# ...\") y termina con la meta description."
+)
+
+
+@dataclass(frozen=True)
+class Redaccion:
+    """Cómo conviene pedirle una nota a este proveedor.
+
+    Valores razonados por familia de modelo, no benchmarkeados: ajustables
+    con REDACCION_TEMPERATURA si hace falta.
+    """
+    temperatura: float = 0.6
+    compacto: bool = False        # prompt corto para modelos chicos
+    max_ejemplos: int = 3         # notas de referencia de estilo
+    chars_ejemplo: int = 1500
+    directiva: str = ""           # instrucción extra específica del modelo
+
+
 @dataclass(frozen=True)
 class Perfil:
     nombre: str
@@ -56,6 +77,7 @@ class Perfil:
     modelo_emb: str = ""
     emb_max_chars: int = 8000
     emb_input_type: bool = False  # NVIDIA exige input_type en /embeddings
+    redaccion: Redaccion = field(default_factory=Redaccion)
 
     @property
     def headers(self) -> dict:
@@ -80,6 +102,9 @@ def _perfil(nombre: str) -> Perfil:
             modelo_emb=env("NVIDIA_EMB_MODEL", "nvidia/nemotron-3-embed-1b"),
             emb_max_chars=1500,
             emb_input_type=True,
+            # kimi y el fallback gpt-oss son modelos que razonan: si se les
+            # escapa el plan, la nota sale inservible (ver saneo.py).
+            redaccion=Redaccion(temperatura=0.6, directiva=_ANTI_RAZONAMIENTO),
         )
     if nombre == "openrouter" and env("OPENROUTER_API_KEY"):
         return Perfil(
@@ -92,6 +117,9 @@ def _perfil(nombre: str) -> Perfil:
             # include_reasoning solo existe en OpenRouter; NVIDIA lo rechaza con 400.
             extra_payload={"include_reasoning": False},
             # OpenRouter no tiene /embeddings: _perfil_emb() nunca lo elige.
+            # mistral-small instruct sigue bien prompts largos; algo menos de
+            # temperatura reduce datos "creativos" sin volver rígido el texto.
+            redaccion=Redaccion(temperatura=0.55),
         )
     return Perfil(
         nombre="local",
@@ -100,6 +128,9 @@ def _perfil(nombre: str) -> Perfil:
         modelo=env("LMSTUDIO_MODEL", "mistral-7b-instruct-v0.3"),
         variable_modelo="LMSTUDIO_MODEL",
         modelo_emb=env("LMSTUDIO_EMB_MODEL", "text-embedding-nomic-embed-text-v1.5"),
+        # Modelos locales chicos (7B): prompt compacto, menos ejemplos y menos
+        # temperatura, porque con prompts largos pierden instrucciones.
+        redaccion=Redaccion(temperatura=0.45, compacto=True, max_ejemplos=2, chars_ejemplo=700),
     )
 
 
@@ -163,6 +194,15 @@ def disponible() -> bool:
             _disponible_cache[perfil.nombre] = False
             print(f"[AVISO] Proveedor '{perfil.nombre}' ({perfil.base_url}) no disponible.", flush=True)
     return _disponible_cache[perfil.nombre]
+
+
+def ajustes_redaccion() -> Redaccion:
+    """Ajustes de redacción del proveedor de chat activo."""
+    r = _perfil_chat().redaccion
+    temp = os.getenv("REDACCION_TEMPERATURA", "").strip()
+    if temp.replace(".", "", 1).isdigit():
+        r = Redaccion(float(temp), r.compacto, r.max_ejemplos, r.chars_ejemplo, r.directiva)
+    return r
 
 
 def estado() -> dict:

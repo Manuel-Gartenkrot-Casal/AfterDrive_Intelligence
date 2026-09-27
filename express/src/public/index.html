@@ -925,6 +925,10 @@
     }
     .modal-overlay.open { display: flex; }
     body.modal-abierto { overflow: hidden; }
+    .fuentes-nota { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--s4); padding: var(--s3); border-radius: var(--r-md); box-shadow: var(--inset-sm); }
+    .fuentes-nota-titulo { font-size: 0.75rem; font-weight: 600; color: var(--text-mid); }
+    .fuentes-nota a { font-size: 0.78rem; color: var(--text-hi); text-decoration: none; line-height: 1.35; }
+    .fuentes-nota a:hover { color: var(--brand); text-decoration: underline; }
     .modal-meta { font-size: 0.78rem; color: var(--text-lo); margin-top: 2px; }
     .evaluando { font-size: 0.8rem; color: var(--text-lo); display: flex; align-items: center; gap: var(--s2); }
     .evaluando::before {
@@ -1164,10 +1168,12 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       CARRUSEL (vista cliente): coverflow infinito. La sección activa al
-       frente; la anterior y la siguiente asoman grandes detrás, escaladas y
-       fundiéndose con el fondo hacia afuera.
+       CARRUSEL (vista cliente): infinito, a lo ancho de toda la pantalla.
+       La sección activa va sola al centro; la anterior y la siguiente viven en
+       los márgenes laterales (sin solaparse con la activa) y se desvanecen
+       hasta el borde de la pantalla. Las 4 secciones son el mismo panel.
        ═══════════════════════════════════════════════════════════════════════ */
+    html { overflow-x: clip; }
     [data-modo="cliente"] .carrusel { order: 1; }
     .carrusel { margin-bottom: var(--s7); }
     .carrusel-nav {
@@ -1190,47 +1196,62 @@
     .carrusel-tab[aria-selected="true"] { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs); }
 
     .carrusel-viewport {
-      --dur: 700ms;
-      --curva: cubic-bezier(0.22, 0.8, 0.18, 1);
+      --dur: 760ms;
+      --curva: cubic-bezier(0.2, 0.75, 0.15, 1);
       position: relative;
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
       overflow: hidden;
-      /* margen interno para que no se corten las sombras neumórficas */
-      margin: -24px calc(-1 * var(--s6)) -40px;
       touch-action: pan-y;
       transition: height var(--dur) var(--curva);
-      /* el escenario entero se disuelve en los bordes */
-      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
-              mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
     }
     .carrusel-track { position: relative; height: 100%; }
     .slide {
-      position: absolute; top: 24px; left: 50%;
-      width: var(--slide-w, 64%);
+      position: absolute; top: 28px; left: 50%;
+      width: var(--slide-w, 64vw);
       transform-origin: center top;
-      /* Opaca: la activa tapa limpio a las que pasan por detrás (sin textos mezclados) */
-      background: var(--bg);
-      border-radius: var(--r-lg);
       transition:
         transform var(--dur) var(--curva),
-        opacity var(--dur) var(--curva),
-        filter var(--dur) var(--curva);
+        opacity var(--dur) var(--curva);
       will-change: transform, opacity;
     }
     .carrusel.arrastrando .slide { transition: none; }
-    .slide > section, .slide > div { margin-bottom: 0 !important; }
     .slide.oculta { visibility: hidden; }
-    .slide:not(.activa) { filter: saturate(0.7); }
 
-    /* Desvanecido de los adelantos hacia el borde exterior */
+    /* Todas las secciones: el mismo panel en relieve, con el título adentro */
+    .slide > section {
+      margin: 0 !important;
+      padding: var(--s6);
+      border-radius: var(--r-lg);
+      background: var(--bg);
+      box-shadow: var(--raised);
+    }
+    .slide .section-head { margin-bottom: var(--s5); }
+    .slide .hero-cliente { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--s5); }
+    .slide .hero-intro { padding: 0; }
+    .slide .hero-title { font-size: clamp(1.5rem, 2vw, 1.9rem); }
+    .slide .ultima-nota { box-shadow: var(--inset); }
+    .slide .agenda-card { box-shadow: var(--inset); }
+    .slide .agenda-grid { gap: var(--s5); }
+    .slide .fuentes-seccion .fuentes-grupo { padding: 0; }
+
+    /* Desvanecido: de suave en el borde interno del vecino a opaco en el borde
+       de la pantalla (--fade-fin lo calcula el JS según el margen disponible) */
     .slide::after {
       content: ''; position: absolute; z-index: 3;
-      inset: -30px -30px -40px;
+      inset: -28px -24px -40px;
       pointer-events: none;
       opacity: 0;
       transition: opacity var(--dur) var(--curva);
     }
-    .slide.lado-izq::after { background: linear-gradient(90deg, var(--bg) 6%, color-mix(in srgb, var(--bg) 72%, transparent) 45%, color-mix(in srgb, var(--bg) 38%, transparent) 100%); opacity: 1; }
-    .slide.lado-der::after { background: linear-gradient(270deg, var(--bg) 6%, color-mix(in srgb, var(--bg) 72%, transparent) 45%, color-mix(in srgb, var(--bg) 38%, transparent) 100%); opacity: 1; }
+    .slide.lado-der::after {
+      opacity: 1;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 22%, transparent) 0%, var(--bg) var(--fade-fin, 30%));
+    }
+    .slide.lado-izq::after {
+      opacity: 1;
+      background: linear-gradient(270deg, color-mix(in srgb, var(--bg) 22%, transparent) 0%, var(--bg) var(--fade-fin, 30%));
+    }
 
     .slide-velo {
       position: absolute; inset: 0; z-index: 4;
@@ -1239,9 +1260,17 @@
     }
     .slide:not(.activa) .slide-velo { display: block; }
 
+    /* Entrada del contenido de la sección que llega, escalonada */
+    @keyframes entrarContenido { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    .slide.entrando > :not(.slide-velo) > * {
+      animation: entrarContenido 620ms var(--curva) both;
+      animation-delay: calc(140ms + var(--i, 0) * 80ms);
+    }
+
     .carrusel-flecha {
-      position: absolute; top: 150px; z-index: 10;
+      position: absolute; top: 170px; z-index: 10;
       width: 52px; height: 52px;
+      margin-left: -26px;
       border: 0; border-radius: 50%;
       background: var(--bg);
       box-shadow: var(--raised-sm);
@@ -1253,8 +1282,8 @@
     }
     .carrusel-flecha:hover { color: var(--brand); transform: scale(1.06); }
     .carrusel-flecha:active { box-shadow: var(--inset-sm); transform: scale(0.96); }
-    .carrusel-flecha.prev { left: calc(var(--s6) + 1.5%); }
-    .carrusel-flecha.next { right: calc(var(--s6) + 1.5%); }
+    .carrusel-flecha.prev { left: var(--flecha-izq, 8%); }
+    .carrusel-flecha.next { left: var(--flecha-der, 92%); }
 
     /* Accesos directos de la bienvenida */
     .hero-kpis .kpi {
@@ -1266,17 +1295,18 @@
     .hero-kpis .kpi:active { box-shadow: var(--inset); }
     .hero-ctas { display: flex; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
 
+    @media (max-width: 1024px) {
+      .slide .hero-cliente { grid-template-columns: minmax(0, 1fr); }
+    }
     @media (max-width: 640px) {
       .carrusel-tab { padding: 8px 12px; font-size: 0.8rem; }
       .carrusel-flecha { display: none; }
-      .carrusel-viewport {
-        margin-left: calc(-1 * var(--s4)); margin-right: calc(-1 * var(--s4));
-        -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
-                mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
-      }
+      .slide > section { padding: var(--s4); }
     }
+    /* Con "reducir movimiento" no hay desplazamientos: solo un fundido corto */
     @media (prefers-reduced-motion: reduce) {
-      .carrusel-viewport { --dur: 1ms; }
+      .carrusel-viewport .slide { transition: opacity 280ms ease !important; transition-duration: 280ms !important; }
+      .slide.entrando > :not(.slide-velo) > * { animation: none; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -1320,7 +1350,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
+      *:not(.slide), *::before, *::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
@@ -2564,28 +2594,34 @@
 
     function ubicar() {
       var vp = $('carrusel-viewport');
-      var ancho = vp.clientWidth;
+      var ancho = vp.clientWidth;               // ancho completo de la pantalla
       var movil = ancho < 700;
-      var w = Math.round(ancho * (movil ? 0.8 : 0.62));
-      var paso = w * (movil ? 0.86 : 0.74);      // cuánto asoman los vecinos
-      var escala = movil ? 0.86 : 0.84;
-      var arrastre = _carrusel.arrastre / paso;   // fracción de paso arrastrada
+      var w = movil ? Math.round(ancho * 0.84) : Math.round(Math.min(1080, Math.max(560, ancho * 0.64)));
+      var escala = movil ? 0.9 : 0.82;
+      var hueco = movil ? 14 : 44;
+      var paso = w / 2 + hueco + (w * escala) / 2;  // centro a centro, sin solaparse
+      var arrastre = _carrusel.arrastre / paso;
       $('carrusel-track').style.setProperty('--slide-w', w + 'px');
+
+      // Parte visible del vecino = margen lateral libre; el fade la recorre entera.
+      var visible = Math.max(0, ancho / 2 - w / 2 - hueco);
+      var fadeFin = Math.min(100, Math.max(20, visible / (w * escala) * 100));
+      vp.style.setProperty('--flecha-izq', (ancho / 2 - w / 2 - hueco / 2 - 40) + 'px');
+      vp.style.setProperty('--flecha-der', (ancho / 2 + w / 2 + hueco / 2 + 40) + 'px');
 
       CARRUSEL.forEach(function(c, i) {
         var off = offsetCircular(i) + arrastre;
         var abs = Math.abs(off);
-        var sc = 1 - Math.min(abs, 2) * (1 - escala);
-        var x = off * paso;
-        // Opacidad solo para las que entran o salen de escena; el atenuado de
-        // los vecinos lo hace el velo degradado (::after).
-        var op = abs <= 1 ? 1 : Math.max(0, 1 - (abs - 1) * 1.15);
+        var sc = abs <= 1 ? 1 - abs * (1 - escala) : escala - (abs - 1) * 0.08;
+        var x = abs <= 1 ? off * paso : Math.sign(off) * (paso + (abs - 1) * paso * 0.9);
+        var op = abs <= 1 ? 1 : Math.max(0, 1 - (abs - 1) * 1.2);
         var el = c.slide;
         el.style.transform = 'translateX(calc(-50% + ' + x.toFixed(1) + 'px)) scale(' + sc.toFixed(3) + ')';
         el.style.opacity = op.toFixed(3);
         el.style.zIndex = String(10 - Math.round(abs * 3));
-        el.classList.toggle('lado-izq', off < -0.25);
-        el.classList.toggle('lado-der', off > 0.25);
+        el.style.setProperty('--fade-fin', fadeFin.toFixed(1) + '%');
+        el.classList.toggle('lado-izq', off < -0.2);
+        el.classList.toggle('lado-der', off > 0.2);
         el.classList.toggle('oculta', abs >= 1.98);
       });
       ajustarAltura();
@@ -2593,7 +2629,14 @@
 
     function ajustarAltura() {
       var slide = CARRUSEL[_carrusel.i].slide;
-      $('carrusel-viewport').style.height = (slide.offsetHeight + 64) + 'px';
+      $('carrusel-viewport').style.height = (slide.offsetHeight + 72) + 'px';
+    }
+
+    function animarEntrada(c) {
+      Array.prototype.forEach.call(c.seccion.children, function(el, k) { el.style.setProperty('--i', k); });
+      c.slide.classList.remove('entrando');
+      void c.slide.offsetWidth;                 // reinicia la animación
+      c.slide.classList.add('entrando');
     }
 
     function mover(delta) {
@@ -2621,6 +2664,7 @@
       });
       if (!_carrusel.listo) return;
       ubicar();
+      animarEntrada(CARRUSEL[destino]);
       if (!sinScroll) {
         var top = $('carrusel').getBoundingClientRect().top;
         if (top < 0) window.scrollBy({ top: top - 16, behavior: 'smooth' });
@@ -2679,7 +2723,9 @@
 
     /* Progreso de la generación en lenguaje simple (los dos modos) */
     var PASOS_GENERACION = [
+      [/noticias de contexto:\s*(\d+)/i, function(m) { return +m[1] ? 'Leyendo ' + m[1] + ' noticias recientes...' : 'No hay noticias recientes: se escribe sin datos concretos...'; }],
       [/few-shot|ejemplo\(s\) cargado/i, 'Buscando notas de referencia...'],
+      [/evaluando calidad/i, 'Revisando la calidad...'],
       [/generando nota/i, 'Escribiendo la nota...'],
       [/^\s*\[(\d+)s\]/, function(m) {
         var seg = +m[1], min = Math.floor(seg / 60), resto = seg % 60;
@@ -3289,12 +3335,23 @@
           check.appendChild(info);
         }
 
+        if (d.nota.fuentes && d.nota.fuentes.length) {
+          var fu = document.createElement('div');
+          fu.className = 'fuentes-nota';
+          fu.innerHTML = '<div class="fuentes-nota-titulo">Noticias usadas</div>' + d.nota.fuentes.map(function(f) {
+            return '<a href="' + escHtml(f.url || '#') + '" target="_blank" rel="noopener">' + escHtml(f.titulo) + '</a>';
+          }).join('');
+          check.appendChild(fu);
+        }
+
         var evaluando = document.createElement('div');
         evaluando.className = 'evaluando';
         evaluando.textContent = 'Evaluando la nota...';
-        check.appendChild(evaluando);
         var evD = { success: false };
-        try {
+        if (d.nota.evaluacion) {
+          evD = { success: true, evaluation: d.nota.evaluacion };   // guardada al generar
+        } else try {
+          check.appendChild(evaluando);
           var evR = await fetch('/api/evaluate-article', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},

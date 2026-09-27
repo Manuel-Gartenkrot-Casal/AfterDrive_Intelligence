@@ -38,6 +38,8 @@ COPY llm.py .
 COPY saneo.py .
 COPY ingesta.py .
 COPY corridas.py .
+COPY redaccion.py .
+COPY contexto_noticias.py .
 COPY embeddings.py .
 COPY flask_api.py .
 COPY config_store.py .
