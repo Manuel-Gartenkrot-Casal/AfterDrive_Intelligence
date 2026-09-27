@@ -179,7 +179,7 @@
 <div class="control-label">Tema</div>
 <div class="input-row">
 <input class="input-field" id="gen-tema" placeholder="Ej: frenos, filtros de aceite, mercado aftermarket..." type="text"/>
-<button class="btn" onclick="checkVolumeGen()">Volumen</button>
+<button class="btn" onclick="checkVolumeGen()">Consultar fuentes</button>
 </div>
 <div class="feedback" id="gen-vol-res"></div>
 <div class="topic-chips">
@@ -333,7 +333,7 @@
 <button class="btn" id="btn-savegencfg" onclick="saveGenConfig()">Guardar programación</button>
 </div>
 </div></div><p class="section-note">Los cambios se aplican al guardar. El servidor permite una sola corrida a la vez.</p></section>
-<section aria-label="Actividad" class="workspace-view" hidden="" id="view-actividad"><p class="section-note">La consola inferior reúne la actividad de esta sesión y se abre al iniciar una operación.</p><button class="btn" onclick="setConsoleOpen(true)">Abrir consola</button></section>
+<section aria-label="Actividad" class="workspace-view" hidden="" id="view-actividad"><div class="card activity-summary"><h2 id="activity-operation">Todavía no iniciaste una operación</h2><p id="activity-result">Al recopilar noticias o redactar, verás acá el estado de la última operación de esta sesión.</p><button class="btn" onclick="setConsoleOpen(true)">Abrir consola</button><small>El registro inferior muestra los detalles. Esta vista se reinicia al recargar la página.</small></div></section>
 </main><footer class="workspace-footer">AfterDrive Intelligence </footer>
 </div><div aria-labelledby="result-title" aria-modal="true" class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()" role="dialog">
 <div class="modal">
@@ -357,7 +357,7 @@
 </div>
 <aside aria-label="Actividad en vivo" class="execution-dock" id="execution-dock">
 <div aria-label="Redimensionar la consola" aria-orientation="horizontal" class="execution-resizer" id="execution-resizer" role="separator" tabindex="0" title="Arrastrá para cambiar el alto"></div>
-<div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span></button><span class="execution-elapsed" id="execution-elapsed"></span><button aria-label="Cerrar la consola" class="execution-close" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)" title="Cerrar la consola">&#215;</button></div>
+<div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span><svg aria-hidden="true" class="execution-chevron" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button><span class="execution-elapsed" id="execution-elapsed"></span><button aria-label="Cerrar la consola" class="execution-close" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)" title="Minimizar la consola">×</button></div>
 <div hidden="" id="execution-content"><div aria-live="polite" class="pipeline-hud" id="pipelineHud" role="status">
 <div class="pipeline-label">Pipeline de Procesamiento</div>
 <div class="pipeline-flow">
@@ -387,6 +387,10 @@
        UTILITIES
        ═══════════════════════════════════════════════════════════════════════ */
     const $ = id => document.getElementById(id);
+    function scheduleZoneLabel(zone) {
+      return !zone || zone === 'America/Argentina/Buenos_Aires' ? 'Hora de Argentina (UTC−3)' : 'Zona horaria: ' + zone;
+    }
+
     function now() { return new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 
     function log(msg, type='info') {
@@ -407,22 +411,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        BUTTON RIPPLE EFFECT
        ═══════════════════════════════════════════════════════════════════════ */
-    document.addEventListener('click', function(e) {
-      var btn = e.target.closest('.btn');
-      if (!btn || btn.disabled) return;
-      var rect = btn.getBoundingClientRect();
-      var ripple = document.createElement('span');
-      ripple.className = 'btn-ripple';
-      var size = Math.max(rect.width, rect.height);
-      ripple.style.width = ripple.style.height = size + 'px';
-      ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
-      ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
-      btn.style.position = btn.style.position || 'relative';
-      btn.style.overflow = 'hidden';
-      btn.appendChild(ripple);
-      setTimeout(function() { ripple.remove(); }, 650);
-    });
-
     /* ═══════════════════════════════════════════════════════════════════════
        TOAST NOTIFICATIONS
        ═══════════════════════════════════════════════════════════════════════ */
@@ -482,7 +470,7 @@
       var html = document.documentElement;
       var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       html.setAttribute('data-theme', next);
-      localStorage.setItem('ad-theme', next);
+      try { localStorage.setItem('ad-theme', next); } catch {}
       $('themeBtn').innerHTML = '<span>' + (next === 'dark' ? '&#9790;' : '&#9728;') + '</span>';
     }
 
@@ -671,7 +659,7 @@
         if (d3.success) {
           if (!_autoConfigLoaded) {
             $('auto-hora').value = d3.hora || '05:30';
-            $('auto-zona').textContent = d3.zona || 'America/Argentina/Buenos_Aires';
+            $('auto-zona').textContent = scheduleZoneLabel(d3.zona);
             $('auto-days').value = d3.interval_days;
             if (d3.max_articulos) $('auto-max-art').value = d3.max_articulos;
             updateAutoEnabledUI(d3.enabled !== false);
@@ -679,8 +667,8 @@
           }
           if (d3.next_execution) {
             var nx = new Date(d3.next_execution);
-            $('next-run').textContent = nx.toLocaleString('es-AR');
-            $('statNextRunVal').textContent = nx.toLocaleDateString('es-AR');
+            $('next-run').textContent = nx.toLocaleString('es-AR', {timeZone: d3.zona || 'America/Argentina/Buenos_Aires'});
+            $('statNextRunVal').textContent = nx.toLocaleDateString('es-AR', {timeZone: d3.zona || 'America/Argentina/Buenos_Aires'});
             $('statInterval').textContent = 'Cada ' + d3.interval_days + ' día(s)';
           } else {
             $('statNextRunVal').textContent = d3.enabled === false ? 'Pausada' : 'Sin programar';
@@ -696,14 +684,14 @@
         if (d3b.success) {
           if (!_genConfigLoaded) {
             $('gen-hora').value = d3b.hora || '11:00';
-            $('gen-zona').textContent = d3b.zona || 'America/Argentina/Buenos_Aires';
+            $('gen-zona').textContent = scheduleZoneLabel(d3b.zona);
             $('gen-days').value = d3b.interval_days;
             if (d3b.persona) $('gen-auto-persona').value = d3b.persona;
             updateGenEnabledUI(d3b.enabled !== false);
             _genConfigLoaded = true;
           }
           if (d3b.next_execution) {
-            $('gen-next-run').textContent = new Date(d3b.next_execution).toLocaleString('es-AR');
+            $('gen-next-run').textContent = new Date(d3b.next_execution).toLocaleString('es-AR', {timeZone: d3b.zona || 'America/Argentina/Buenos_Aires'});
           } else { $('gen-next-run').textContent = d3b.enabled === false ? 'Pausada' : 'Sin programar'; }
         }
       } catch(e) {}
@@ -923,7 +911,7 @@
     async function runNowStream() {
       var botones = [$('btn-runnow'), $('btn-f2-scrapear')].filter(Boolean);
       var textos = botones.map(function(b) { return b.textContent; });
-      botones.forEach(function(b) { b.disabled = true; b.textContent = 'Scrapeando...'; });
+      botones.forEach(function(b) { b.disabled = true; });
       log('--- INICIANDO SCRAPING MANUAL ---', 'warn');
       showPipeline();
       var extraidos = 0, aprobados = 0, errores = 0, ocupado = false;

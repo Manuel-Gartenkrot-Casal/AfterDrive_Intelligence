@@ -17,7 +17,7 @@ DATA = {
     "/api/providers": {"success": True, "provider": "openrouter", "providers": {}},
     "/api/trusted-urls-stats": {"success": True, "activas": 3, "total": 3, "ultima_ejecucion": "2026-09-27T08:30:00Z"},
     "/api/articulos-stats": {"success": True, "total": 124},
-    "/api/scraping-config": {"success": True, "interval_days": 1, "max_articulos": 10, "enabled": False},
+    "/api/scraping-config": {"success": True, "interval_days": 1, "max_articulos": 10, "enabled": True, "hora": "05:30", "zona": "America/Argentina/Buenos_Aires", "next_execution": "2026-09-28T05:30:00-03:00"},
     "/api/generacion-config": {"success": True, "interval_days": 3, "persona": "periodistico", "enabled": False},
     "/api/fase2/config": {"success": True, "categorias": ["industria"], "regiones": [], "clientes": []},
     "/api/fase2/categorias": {
@@ -58,6 +58,8 @@ def main():
     writes = []
     failures = set()
     errors = []
+    held_streams = []
+    hold_stream = False
     article = {
         "contenido": "# Repuestos: una mirada al sector\n\nContenido de prueba para revisar la experiencia editorial.",
         "categorias": ["industria"],
@@ -83,6 +85,8 @@ def main():
             writes.append((path, request.request.post_data_json if request.request.post_data else None))
         if (path, method) in failures:
             request.fulfill(status=500, json={"success": False, "error": "Fallo simulado"})
+        elif "stream" in path and hold_stream:
+            held_streams.append(request)
         elif "stream" in path:
             request.fulfill(
                 content_type="text/event-stream",
@@ -103,13 +107,68 @@ def main():
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page = browser.new_page(viewport={"width": 1440, "height": 1000}, timezone_id="UTC")
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.route("**/*", route)
         page.goto("http://afterdrive.test", wait_until="networkidle")
         expect(page.locator('#f2-categorias-grid [aria-checked="true"]')).to_have_count(1)
         page.wait_for_function("document.getElementById('statArticles').textContent === '124'")
+        expect(page.locator("#next-run")).to_have_text("28/9/2026, 05:30:00")
+        print("PASS: programación en hora argentina incluso con navegador en UTC")
         page.screenshot(path=str(args.output / "after-desktop.png"), full_page=True)
+
+        # The button must keep a readable label and visibly rotate during a
+        # pending response. No real operation is sent to the backend.
+        page.emulate_media(reduced_motion="no-preference")
+        hold_stream = True
+        page.locator("#btn-f2-generar").click()
+        expect(page.locator("#btn-f2-generar")).to_contain_text("Redactando nota")
+        expect(page.locator("#btn-f2-generar")).to_have_attribute("aria-busy", "true")
+        expect(page.locator("#btn-f2-scrapear")).to_have_text("Recopilar noticias")
+        expect(page.locator("#btn-f2-scrapear")).to_be_disabled()
+        expect(page.locator("#btn-addurl-direct")).to_be_enabled()
+        def transform():
+            return page.locator("#btn-f2-generar").evaluate("el => getComputedStyle(el, '::after').transform")
+
+        first = transform()
+        page.wait_for_timeout(130)
+        assert transform() != first, "El indicador no gira"
+        page.screenshot(path=str(args.output / "running.png"), full_page=True)
+        page.locator("#execution-collapse").click()
+        expect(page.locator("#execution-content")).to_have_attribute("inert", "")
+        expect(page.locator("#execution-content")).to_be_hidden()
+        expect(page.locator("#execution-toggle")).to_be_focused()
+        # Repeated toggles must settle correctly, including interrupted animation.
+        page.locator("#execution-toggle").click()
+        page.locator("#execution-toggle").click()
+        expect(page.locator("#execution-content")).to_be_hidden()
+        page.locator("#execution-toggle").click()
+        expect(page.locator("#execution-content")).to_be_visible()
+        for pending in held_streams:
+            pending.fulfill(content_type="text/event-stream", body="data: [ERROR] Fallo de prueba\n\n")
+        hold_stream = False
+        expect(page.locator("#btn-f2-generar")).to_be_enabled()
+        expect(page.locator("#btn-f2-generar")).to_have_text("Generar nota")
+        expect(page.locator("#execution-state")).to_contain_text("errores")
+        expect(page.locator("#btn-f2-scrapear")).to_be_enabled()
+        print("PASS: indicador en movimiento, etiquetas preservadas, bloqueo selectivo y recuperación tras error")
+        print("PASS: consola animada, cierre sin foco oculto y cambios rápidos")
+        # Verify the theme has actual intermediate colors, not an instant swap.
+        initial_theme = page.locator("html").get_attribute("data-theme")
+        before = page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor")
+        page.locator("#themeBtn").click()
+        page.wait_for_timeout(100)
+        middle = page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor")
+        page.wait_for_timeout(400)
+        after = page.locator("body").evaluate("el => getComputedStyle(el).backgroundColor")
+        assert middle != before and middle != after, (before, middle, after)
+        page.locator("#themeBtn").click()
+        expect(page.locator("html")).to_have_attribute("data-theme", initial_theme)
+        page.emulate_media(reduced_motion="reduce")
+        page.locator("#execution-collapse").click()
+        expect(page.locator("#execution-content")).to_be_hidden()
+        print("PASS: colores intermedios durante el cambio de tema y cierre con movimiento reducido")
+        page.emulate_media(reduced_motion="no-preference")
 
         # Real keyboard interaction must persist the expected filter payload.
         option = page.locator('#f2-categorias-grid [data-slug="repuestos"]')
@@ -117,14 +176,14 @@ def main():
         page.keyboard.press("Space")
         expect(option).to_have_attribute("aria-checked", "true")
         expect(page.locator("#editorial-save-status")).to_have_text("Selecciones guardadas")
-        assert any(path == "/api/fase2/config" and "repuestos" in body["categorias"] for path, body in writes)
+        assert any(path == "/api/fase2/config" and "repuestos" in body.get("categorias", []) for path, body in writes)
         print("PASS: teclado, selección de filtros y payload de guardado")
 
         page.locator("#tab-nota").focus()
         page.keyboard.press("ArrowRight")
         expect(page.locator("#writing-articulo")).to_be_visible()
         page.locator("#gen-tema").fill("frenos")
-        page.get_by_role("button", name="Volumen", exact=True).click()
+        page.get_by_role("button", name="Consultar fuentes", exact=True).click()
         expect(page.locator("#gen-vol-res")).to_contain_text("12")
         page.get_by_role("button", name="Último artículo", exact=True).click()
         expect(page.locator("#modal-art")).to_have_class("modal-overlay open")
@@ -198,6 +257,13 @@ def main():
                 page.evaluate("openWorkspace('redaccion', false); selectWriting('nota')")
                 if width in {1440, 390}:
                     page.screenshot(path=str(args.output / f"{theme}-{width}.png"), full_page=True)
+        page.set_viewport_size({"width":390,"height":844})
+        page.evaluate("openWorkspace('redaccion', false); selectWriting('nota'); setConsoleOpen(false)")
+        assert not page.locator(".nav-foot").is_visible()
+        voice = page.locator("#f2-persona").bounding_box()
+        category = page.locator("#f2-categorias-grid").bounding_box()
+        assert voice["y"] < category["y"], "El enfoque debe preceder a las categorías en móvil"
+        print("PASS: móvil compacto y enfoque antes de cobertura")
         print("PASS: 32 combinaciones de sección/tema/ancho sin desborde horizontal")
 
         # Loading failure is actionable; recovery restores available controls.

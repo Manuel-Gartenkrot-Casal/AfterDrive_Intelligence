@@ -43,6 +43,9 @@ function openWorkspace(name, focus = true) {
 }
 
 function selectWriting(kind) {
+  document.querySelector('.editorial-guidance').textContent = kind === 'nota'
+    ? 'Elegí el enfoque, la cobertura y la voz. Revisá el resultado antes de usarlo.'
+    : 'Consultá el material sobre tu tema, elegí una voz y revisá el artículo generado.';
   ['nota', 'articulo'].forEach(name => {
     const active = name === kind;
     const tab = document.getElementById('tab-' + name);
@@ -107,12 +110,13 @@ document.querySelectorAll('.feedback').forEach(el => { el.setAttribute('role', '
 // Keep focus within the review dialog and return to the opening control.
 const resultDialog = document.getElementById('modal-art');
 let returnFocus = null;
+let operationTrigger = null;
 let dialogWasOpen = false;
 new MutationObserver(() => {
   const open = resultDialog.classList.contains('open');
   if (open === dialogWasOpen) return;
   dialogWasOpen = open;
-  if (open) returnFocus = document.activeElement;
+  if (open) returnFocus = operationTrigger || document.activeElement;
   document.querySelector('.app-container').inert = open;
   document.querySelector('.workspace-nav').inert = open;
   document.getElementById('pipelineHud').inert = open;
@@ -131,13 +135,37 @@ resultDialog.addEventListener('keydown', event => {
 });
 let activeOperation = null;
 let operationTimer = null;
+let consoleAnimation = null;
 
 function setConsoleOpen(open) {
-  document.getElementById('execution-dock').classList.toggle('expanded', open);
-  document.getElementById('execution-content').hidden = !open;
+  const dock = document.getElementById('execution-dock');
+  const content = document.getElementById('execution-content');
+  const toggle = document.getElementById('execution-toggle');
+  const height = content.getBoundingClientRect().height;
+  if (consoleAnimation) consoleAnimation.cancel();
+  consoleAnimation = null;
+  if (!open && content.contains(document.activeElement)) toggle.focus({preventScroll:true});
+  if (!open && document.activeElement.id === 'execution-collapse') toggle.focus({preventScroll:true});
+  content.hidden = false;
+  content.inert = !open;
+  dock.classList.toggle('expanded', open);
   document.getElementById('execution-collapse').hidden = !open;
-  document.getElementById('execution-toggle').setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-expanded', String(open));
   document.body.classList.toggle('console-expanded', open);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    content.hidden = !open;
+    return;
+  }
+  const animation = content.animate([
+    {height: `${height}px`, opacity: height ? 1 : 0},
+    {height: `${open ? content.scrollHeight : 0}px`, opacity: open ? 1 : 0}
+  ], {duration: 280, easing: 'cubic-bezier(.22,1,.36,1)'});
+  consoleAnimation = animation;
+  animation.finished.then(() => {
+    if (consoleAnimation !== animation) return;
+    content.hidden = !open;
+    consoleAnimation = null;
+  }).catch(() => {}); // A second click reverses the current transition.
 }
 
 function observeOperationLine(line) {
@@ -161,6 +189,44 @@ const operationLabels = {
   fase2GenerarStream: 'Redactando nota', addUrl: 'Validando fuente',
   verUltimo: 'Consultando artículo', fase2VerUltima: 'Consultando nota'
 };
+// Lock only controls that launch a serialized operation. Other actions retain
+// their labels and availability; only the originating button shows progress.
+function markOperationControls(name, title) {
+  const selector = Object.keys(operationLabels).map(key => `button[onclick*="${key}("]`).join(',');
+  const controls = [...document.querySelectorAll(selector)];
+  const candidates = controls.filter(button => button.getAttribute('onclick').includes(name + '('));
+  const trigger = candidates.includes(document.activeElement) ? document.activeElement :
+    candidates.find(button => button.getClientRects().length);
+  const snapshots = controls.map(button => ({button, disabled:button.disabled, title:button.getAttribute('title')}));
+  const originalText = trigger?.textContent;
+  operationTrigger = trigger;
+  controls.forEach(button => {
+    button.disabled = true;
+    button.dataset.operationBlocked = 'true';
+    button.title = 'Esperá a que termine la operación en curso';
+  });
+  if (trigger) {
+    trigger.removeAttribute('data-operation-blocked');
+    trigger.classList.add('is-running');
+    trigger.setAttribute('aria-busy', 'true');
+    trigger.textContent = title + '…';
+    trigger.title = title;
+  }
+  return () => {
+    snapshots.forEach(({button, disabled, title: previousTitle}) => {
+      button.disabled = disabled;
+      button.removeAttribute('data-operation-blocked');
+      if (previousTitle === null) button.removeAttribute('title');
+      else button.title = previousTitle;
+    });
+    if (trigger) {
+      trigger.classList.remove('is-running');
+      trigger.removeAttribute('aria-busy');
+      trigger.textContent = originalText;
+    }
+    operationTrigger = null;
+  };
+}
 Object.entries(operationLabels).forEach(([name, title]) => {
   const execute = window[name];
   window[name] = async function(...args) {
@@ -172,6 +238,8 @@ Object.entries(operationLabels).forEach(([name, title]) => {
     if (name === 'fase2GenerarStream' && !_f2CategoriasActivas.size) {
       showToast('Seleccioná al menos una categoría', 'warn'); return;
     }
+    if (name === 'addUrl' && !document.getElementById('url-in').value.trim()) return;
+    const restoreControls = markOperationControls(name, title);
     const dock = document.getElementById('execution-dock');
     activeOperation = {started: Date.now(), error: false, blocked: false};
     dock.dataset.result = '';
@@ -179,6 +247,8 @@ Object.entries(operationLabels).forEach(([name, title]) => {
     document.body.classList.add('op-running');
     document.getElementById('execution-title').textContent = title;
     document.getElementById('execution-state').textContent = 'En curso';
+    document.getElementById('activity-operation').textContent = title;
+    document.getElementById('activity-result').textContent = 'En curso · seguí el registro en la consola inferior.';
     setConsoleOpen(true);
     const updateElapsed = () => {
       const seconds = Math.floor((Date.now() - activeOperation.started) / 1000);
@@ -187,7 +257,11 @@ Object.entries(operationLabels).forEach(([name, title]) => {
     updateElapsed();
     operationTimer = setInterval(updateElapsed, 1000);
     try {
-      return await execute(...args);
+      const result = await execute(...args);
+      if (name === 'fase2GenerarStream' && document.getElementById('f2-status').classList.contains('err')) {
+        activeOperation.error = true;
+      }
+      return result;
     } catch (error) {
       activeOperation.error = true;
       log(error.message || 'La operación no pudo completarse.', 'error');
@@ -199,12 +273,16 @@ Object.entries(operationLabels).forEach(([name, title]) => {
       dock.dataset.result = failed ? 'error' : 'success';
       document.getElementById('execution-state').textContent = activeOperation.blocked ?
         'No ejecutada: servidor ocupado' : failed ? 'Terminó con errores · revisá el registro' : 'Finalizada';
+      document.getElementById('activity-result').textContent = document.getElementById('execution-state').textContent +
+        ' · ' + document.getElementById('execution-elapsed').textContent;
+      restoreControls();
       activeOperation = null;
     }
   };
 });
 
 openWorkspace(location.hash.slice(1), false);
+selectWriting('nota');
 
 // ── Consola redimensionable ────────────────────────────────────────────────
 // Arrastre vertical como la terminal de un editor. El alto vive en una variable
@@ -213,6 +291,10 @@ const CONSOLE_MIN = 120;
 const CONSOLE_KEY = 'afterdrive:console-h';
 const consoleDock = document.getElementById('execution-dock');
 const consoleResizer = document.getElementById('execution-resizer');
+// Reserve the actual dock height, including its animation and resized content.
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--console-space', consoleDock.offsetHeight + 24 + 'px');
+}).observe(consoleDock);
 
 const consoleMax = () => Math.max(CONSOLE_MIN, Math.round(window.innerHeight * 0.7));
 
@@ -328,24 +410,25 @@ document.addEventListener('pointerdown', event => {
 });
 
 // ── Cambio de tema ─────────────────────────────────────────────────────────
-// toggleTheme() vive en index.html; lo envolvemos para animar sin duplicar la
-// logica de persistencia. Con View Transitions la paleta entra en un circulo
-// que nace en el boton; sin soporte, cae a la transicion de color del CSS.
+// Interpolate the palette itself, including browsers without View Transitions.
+// A rapid second click reverses from the current colors instead of flashing.
 const themeButton = document.getElementById('themeBtn');
 if (themeButton && typeof window.toggleTheme === 'function') {
   const cambiarTema = window.toggleTheme;
+  let themeTimer;
   window.toggleTheme = function (...args) {
-    themeButton.classList.add('swapping');
-    setTimeout(() => themeButton.classList.remove('swapping'), 240);
-
-    const caja = themeButton.getBoundingClientRect();
     const raiz = document.documentElement;
-    raiz.style.setProperty('--rx', `${caja.left + caja.width / 2}px`);
-    raiz.style.setProperty('--ry', `${caja.top + caja.height / 2}px`);
-
-    const reducido = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!document.startViewTransition || reducido) return cambiarTema.apply(this, args);
-    document.startViewTransition(() => cambiarTema.apply(this, args));
+    clearTimeout(themeTimer);
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      raiz.classList.add('theme-changing');
+      themeButton.classList.add('swapping');
+      getComputedStyle(document.body).backgroundColor;
+    }
+    cambiarTema.apply(this, args);
+    themeTimer = setTimeout(() => {
+      raiz.classList.remove('theme-changing');
+      themeButton.classList.remove('swapping');
+    }, 420);
   };
 }
 

@@ -57,8 +57,8 @@ a { color: var(--brand); }
 .feedback.ok { color:var(--ok); background:var(--brand-soft); }
 .feedback.err { color:var(--err); }
 .feedback.info { color:var(--info); }
-.btn.loading { position:relative; padding-right:38px; }
-.btn.loading::after { content:''; position:absolute; right:12px; top:calc(50% - 7px); width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin 850ms linear infinite; }
+.btn.loading, .btn.is-running { position:relative; padding-right:38px; }
+.btn.loading::after, .btn.is-running::after { content:''; position:absolute; right:12px; top:calc(50% - 7px); width:14px; height:14px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin 850ms linear infinite; }
 .fuentes-head, .fuentes-sug-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
 .fuentes-head .fase2-grupo-title { margin:0; }
 .fuentes-cols { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
@@ -205,7 +205,8 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .btn:hover { background: var(--field); border-color: var(--brand); transform: none; }
 .btn-primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .btn-primary:hover { background: var(--brand-hover); color: var(--on-brand); }
-.btn:disabled { opacity: .6; cursor: wait; }
+.btn:disabled { opacity: .65; cursor: not-allowed; }
+.btn.is-running { opacity:1; cursor:progress; }
 .btn-large { min-height: 44px; font-size: 13px; }
 .card-badge { background: var(--field); border: 1px solid var(--hairline); border-radius: 4px; font: 10px var(--mono); color: var(--text-mid); }
 .card-description { font-size: 12px; }
@@ -285,9 +286,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   .modal { width: calc(100vw - 20px); max-height: 94dvh; }
   .modal-sidebar { border-left: 0; border-top: 1px solid var(--hairline); }
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none; transition: none; scroll-behavior: auto; }
-}
+
 
 /* Brief: a single reading order, with a compact full-width configuration row. */
 .brief-options { display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:0 24px; border-top:3px solid var(--brand); }
@@ -309,8 +308,10 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .execution-dock.running::before { content:''; position:absolute; top:-2px; left:0; width:24%; height:2px; background:var(--brand); animation:activity 2.6s ease-in-out infinite; }
 .execution-dock[data-result="error"] .execution-indicator { background:var(--err); }
 .execution-dock[data-result="success"] .execution-indicator { background:var(--ok); }
-.execution-dock.expanded #execution-content { animation:enter 200ms ease-out; }
-body.console-expanded .app-container { padding-bottom:calc(var(--console-h, 180px) + 200px); }
+#execution-content { overflow:hidden; }
+.app-container { padding-bottom:var(--console-space, 90px); }
+.execution-chevron { width:16px; height:16px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.7; margin-left:auto; transition:transform 280ms var(--ease-out); }
+.execution-toggle[aria-expanded="true"] .execution-chevron { transform:rotate(180deg); }
 .pipeline-hud { display:none; padding:0 16px 8px; }
 .pipeline-hud.visible { display:block; }
 .pipeline-label, .pipeline-hud > .btn { display:none; }
@@ -332,7 +333,7 @@ body.console-expanded .app-container { padding-bottom:calc(var(--console-h, 180p
  .pipeline-node { font-size:9px; white-space:nowrap; } .pipeline-edge { min-width:5px; }
  .modal { flex-direction:column; } .modal-sidebar { width:100%; } .modal-body { overflow:visible; }
 }
-@media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+
 
 /* ═══ Movimiento ═══════════════════════════════════════════════════════════
    Cada animación refleja trabajo real del servidor: entrada de secciones,
@@ -379,12 +380,6 @@ body.console-expanded .app-container { padding-bottom:calc(var(--console-h, 180p
 }
 
 /* Mientras corre una operación: el dock respira y el resto cede protagonismo. */
-body.op-running .btn-primary { position:relative; color:transparent; pointer-events:none; }
-body.op-running .btn-primary::after {
-  content:''; position:absolute; top:50%; left:50%; width:15px; height:15px; margin:-8px 0 0 -8px;
-  border:2px solid var(--on-brand); border-right-color:transparent; border-radius:50%;
-  animation:spin 720ms linear infinite;
-}
 body.op-running .execution-dock { border-top-color:var(--brand); }
 
 /* Valores que cambian tras una corrida. El JS ya agregaba 'flash' y la
@@ -394,9 +389,7 @@ body.op-running .execution-dock { border-top-color:var(--brand); }
 /* Confirmación breve al encender un filtro. */
 .toggle-item.active .toggle-switch { animation:ad-tick 240ms var(--ease-out) both; }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration:1ms !important; animation-iteration-count:1 !important; transition-duration:1ms !important; }
-}
+
 
 /* Agarre para redimensionar la consola, como la terminal de un editor.
    Arrastre con el mouse y flechas con el teclado; el alto se recuerda. */
@@ -450,8 +443,9 @@ body.op-running .particle { animation-duration:var(--p-fast, 5s); opacity:1; }
 
 /* Cambio de tema: el icono gira y se funde en vez de saltar. */
 .theme-toggle { transition:background 160ms, border-color 160ms, transform 160ms; }
-.theme-toggle span { display:inline-block; transition:transform 420ms var(--ease-out), opacity 220ms; }
-.theme-toggle.swapping span { transform:rotate(180deg) scale(.6); opacity:0; }
+.theme-toggle span { display:inline-block; }
+.theme-toggle.swapping span { animation:theme-icon 380ms var(--ease-out); }
+@keyframes theme-icon { from { transform:rotate(-70deg) scale(.7); opacity:.4; } to { transform:none; opacity:1; } }
 /* El cambio de paleta se funde en lugar de cortar de golpe. */
 body, .workspace-nav, .card, .fase2-grupo, .stats-grid, .execution-dock, .console-container, .input-field, .select-field, .btn, .toggle-item {
   transition:background-color 320ms ease, color 320ms ease, border-color 320ms ease;
@@ -485,7 +479,7 @@ body.op-running .nav-foot-state { color:var(--warn); }
   background:transparent; border:0; border-radius:6px; cursor:pointer;
   transition:background 180ms var(--ease-flow), color 180ms, transform 220ms var(--ease-soft);
 }
-.execution-close:hover { background:var(--field); color:var(--text-hi); transform:rotate(90deg); }
+.execution-close:hover { background:var(--field); color:var(--text-hi); transform:translateY(2px); }
 
 /* ═══ Hilos ambar: trabajo en curso leido de un vistazo ═══════════════════ */
 @keyframes ad-sweep { 0% { transform:translateX(-100%); } 100% { transform:translateX(100%); } }
@@ -507,7 +501,7 @@ body.op-running .stats-grid::after { animation-delay:1s; }
 /* Hilo del dock: sustituye la barra dura por un degrade ambar. */
 .execution-dock.running::before {
   background:linear-gradient(90deg, transparent, var(--warn), var(--brand), transparent) !important;
-  width:40% !important; height:2px !important; animation:ad-sweep 2.2s var(--ease-flow) infinite !important;
+  width:40% !important; height:2px !important; animation:ad-sweep 2.2s var(--ease-flow) infinite;
 }
 body.op-running .execution-dock { border-top-color:var(--warn); }
 
@@ -521,15 +515,6 @@ body.op-running .execution-dock { border-top-color:var(--warn); }
 .btn:hover:not(:disabled) { transform:translateY(-1px); }
 .workspace-nav nav a { transition:background 220ms var(--ease-flow), color 220ms, padding-left 220ms var(--ease-soft); }
 .workspace-nav nav a:hover { padding-left:15px; }
-
-/* ═══ Cambio de tema: reveal circular desde el boton ══════════════════════ */
-::view-transition-old(root) { animation:none; }
-::view-transition-new(root) { animation:ad-reveal 620ms var(--ease-flow); }
-@keyframes ad-reveal { from { clip-path:circle(0% at var(--rx, 50%) var(--ry, 50%)); } to { clip-path:circle(150% at var(--rx, 50%) var(--ry, 50%)); } }
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-new(root), ::view-transition-old(root) { animation:none; }
-}
 
 /* Hilo permanente en la franja de KPIs: da vida en reposo sin competir con
    los hilos de corrida, que son mas rapidos y recorren todas las tarjetas. */
@@ -552,3 +537,42 @@ body.op-running .workspace-heading::after { width:120px; transition:width 700ms 
   transition:opacity 500ms var(--ease-flow);
 }
 body.op-running .workspace-nav::after { opacity:.75; animation:ad-thread 2.2s var(--ease-flow) infinite; }
+
+/* Theme changes share a single timing across surfaces and their text. */
+html.theme-changing *, html.theme-changing *::before, html.theme-changing *::after {
+  transition-property:background-color, color, border-color, box-shadow, fill, stroke !important;
+  transition-duration:380ms !important;
+  transition-timing-function:ease-in-out !important;
+}
+.activity-summary { max-width:720px; }
+.activity-summary h2 { font:600 20px var(--display); margin-bottom:12px; }
+.activity-summary p { color:var(--text-mid); margin-bottom:20px; }
+.activity-summary small { display:block; color:var(--text-mid); margin-top:16px; }
+.note-actions { position:sticky; top:0; z-index:5; padding:12px 0; background:var(--bg); }
+.toggle-count { font-size:11px; }
+@media (max-width:700px) {
+  .workspace-nav .nav-foot { display:none; }
+  .stats-grid { margin:12px 0 18px; }
+  .stat-card { padding:8px 10px; }
+  .stat-value { font-size:20px; }
+  .stat-label { margin-bottom:3px; }
+  .stat-sub { min-height:0; font-size:10px; }
+  .workspace-heading { margin-bottom:14px; }
+  .workspace-heading h1 { font-size:30px; }
+  .workspace-heading p { margin-top:6px; }
+  .workspace-heading .eyebrow { display:none; }
+  .editorial-guidance { margin-bottom:12px; }
+  .note-actions { gap:8px; margin-bottom:12px; }
+  .save-status { flex-basis:100%; }
+  .note-actions .btn { flex:1; }
+  .execution-close { width:36px; height:36px; }
+  .execution-toggle { position:relative; padding-right:20px; }
+  .execution-chevron { position:absolute; right:0; top:2px; }
+  .stat-card:nth-child(n+3) .stat-value { font-size:14px; letter-spacing:0; }
+  .stat-row { min-height:22px; }
+  .stat-sub:empty { display:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+  .particles-canvas { display:none; }
+}
