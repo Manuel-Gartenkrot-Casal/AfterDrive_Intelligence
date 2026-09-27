@@ -924,11 +924,22 @@
       -webkit-backdrop-filter: blur(6px);
     }
     .modal-overlay.open { display: flex; }
+    body.modal-abierto { overflow: hidden; }
+    .modal-meta { font-size: 0.78rem; color: var(--text-lo); margin-top: 2px; }
+    .evaluando { font-size: 0.8rem; color: var(--text-lo); display: flex; align-items: center; gap: var(--s2); }
+    .evaluando::before {
+      content: ''; width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid var(--hairline); border-top-color: var(--brand);
+      animation: spin 0.8s linear infinite;
+    }
     .modal {
       width: min(1180px, 100%);
-      max-height: calc(100dvh - 48px);
+      /* Altura definida: sin ella la fila de la grilla crece con el contenido,
+         el texto se sale del modal y los botones quedan fuera de pantalla. */
+      height: min(960px, calc(100dvh - 48px));
       display: grid;
       grid-template-columns: minmax(0, 1fr) 300px;
+      grid-template-rows: minmax(0, 1fr);
       gap: var(--s5);
       padding: var(--s5);
       border-radius: var(--r-lg);
@@ -1102,8 +1113,8 @@
       min-width: 0;
     }
     .kpi strong {
-      font-family: var(--mono); font-size: 1.35rem; font-weight: 500; color: var(--text-data);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-family: var(--mono); font-size: clamp(1rem, 1.35vw, 1.3rem); font-weight: 500; color: var(--text-data);
+      line-height: 1.2; overflow-wrap: anywhere;
     }
     .kpi span { font-size: 0.78rem; color: var(--text-lo); }
     .ultima-nota {
@@ -1153,9 +1164,9 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       CARRUSEL (vista cliente): la sección activa al frente y un adelanto de la
-       anterior y la siguiente a los costados. Pestañas arriba para ver todo lo
-       que hay y saltar directo.
+       CARRUSEL (vista cliente): coverflow infinito. La sección activa al
+       frente; la anterior y la siguiente asoman grandes detrás, escaladas y
+       fundiéndose con el fondo hacia afuera.
        ═══════════════════════════════════════════════════════════════════════ */
     [data-modo="cliente"] .carrusel { order: 1; }
     .carrusel { margin-bottom: var(--s7); }
@@ -1179,55 +1190,71 @@
     .carrusel-tab[aria-selected="true"] { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs); }
 
     .carrusel-viewport {
+      --dur: 700ms;
+      --curva: cubic-bezier(0.22, 0.8, 0.18, 1);
       position: relative;
       overflow: hidden;
-      /* aire para que no se corten las sombras neumórficas */
-      padding: 24px 0 36px;
-      margin: -24px 0 -36px;
+      /* margen interno para que no se corten las sombras neumórficas */
+      margin: -24px calc(-1 * var(--s6)) -40px;
       touch-action: pan-y;
-      transition: height 380ms var(--ease-out);
+      transition: height var(--dur) var(--curva);
+      /* el escenario entero se disuelve en los bordes */
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+              mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
     }
-    .carrusel-track {
-      display: flex; align-items: flex-start;
-      gap: var(--carrusel-gap, 32px);
-      transition: transform 520ms var(--ease-out);
-      will-change: transform;
-    }
+    .carrusel-track { position: relative; height: 100%; }
     .slide {
-      flex: 0 0 var(--slide-w, 80%);
-      position: relative;
-      transition: transform 520ms var(--ease-out), opacity 520ms var(--ease-out);
+      position: absolute; top: 24px; left: 50%;
+      width: var(--slide-w, 64%);
       transform-origin: center top;
+      /* Opaca: la activa tapa limpio a las que pasan por detrás (sin textos mezclados) */
+      background: var(--bg);
+      border-radius: var(--r-lg);
+      transition:
+        transform var(--dur) var(--curva),
+        opacity var(--dur) var(--curva),
+        filter var(--dur) var(--curva);
+      will-change: transform, opacity;
     }
+    .carrusel.arrastrando .slide { transition: none; }
     .slide > section, .slide > div { margin-bottom: 0 !important; }
-    .slide:not(.activa) { transform: scale(0.9); opacity: 0.5; }
+    .slide.oculta { visibility: hidden; }
+    .slide:not(.activa) { filter: saturate(0.7); }
+
+    /* Desvanecido de los adelantos hacia el borde exterior */
+    .slide::after {
+      content: ''; position: absolute; z-index: 3;
+      inset: -30px -30px -40px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--dur) var(--curva);
+    }
+    .slide.lado-izq::after { background: linear-gradient(90deg, var(--bg) 6%, color-mix(in srgb, var(--bg) 72%, transparent) 45%, color-mix(in srgb, var(--bg) 38%, transparent) 100%); opacity: 1; }
+    .slide.lado-der::after { background: linear-gradient(270deg, var(--bg) 6%, color-mix(in srgb, var(--bg) 72%, transparent) 45%, color-mix(in srgb, var(--bg) 38%, transparent) 100%); opacity: 1; }
+
     .slide-velo {
-      position: absolute; inset: 0; z-index: 2;
+      position: absolute; inset: 0; z-index: 4;
       display: none;
       border: 0; background: transparent; cursor: pointer;
-      border-radius: var(--r-lg);
     }
     .slide:not(.activa) .slide-velo { display: block; }
-    .slide:not(.activa):hover { opacity: 0.7; }
 
     .carrusel-flecha {
-      position: absolute; top: 140px; z-index: 3;
-      width: 48px; height: 48px;
+      position: absolute; top: 150px; z-index: 10;
+      width: 52px; height: 52px;
       border: 0; border-radius: 50%;
       background: var(--bg);
       box-shadow: var(--raised-sm);
       color: var(--text-mid);
-      font-size: 1.6rem; line-height: 1;
+      font-size: 1.7rem; line-height: 1;
       cursor: pointer;
       display: grid; place-items: center;
-      transition: box-shadow var(--t-fast), color var(--t-fast), opacity var(--t-fast);
+      transition: box-shadow var(--t-fast), color var(--t-fast), transform var(--t-fast) var(--ease-out);
     }
-    .carrusel-flecha:hover { color: var(--brand); }
-    .carrusel-flecha:active { box-shadow: var(--inset-sm); }
-    .carrusel-flecha:disabled { opacity: 0; pointer-events: none; }
-    /* centradas en la franja del adelanto, sin pisar la tarjeta activa */
-    .carrusel-flecha.prev { left: calc((100% - var(--slide-w-px, 80%)) / 4 - 24px); }
-    .carrusel-flecha.next { right: calc((100% - var(--slide-w-px, 80%)) / 4 - 24px); }
+    .carrusel-flecha:hover { color: var(--brand); transform: scale(1.06); }
+    .carrusel-flecha:active { box-shadow: var(--inset-sm); transform: scale(0.96); }
+    .carrusel-flecha.prev { left: calc(var(--s6) + 1.5%); }
+    .carrusel-flecha.next { right: calc(var(--s6) + 1.5%); }
 
     /* Accesos directos de la bienvenida */
     .hero-kpis .kpi {
@@ -1242,9 +1269,14 @@
     @media (max-width: 640px) {
       .carrusel-tab { padding: 8px 12px; font-size: 0.8rem; }
       .carrusel-flecha { display: none; }
+      .carrusel-viewport {
+        margin-left: calc(-1 * var(--s4)); margin-right: calc(-1 * var(--s4));
+        -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
+                mask-image: linear-gradient(90deg, transparent 0, #000 4%, #000 96%, transparent 100%);
+      }
     }
     @media (prefers-reduced-motion: reduce) {
-      .carrusel-track, .slide, .carrusel-viewport { transition: none; }
+      .carrusel-viewport { --dur: 1ms; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -1257,7 +1289,8 @@
       .fuentes-cols { gap: var(--s5); }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); }
       .fase2-grupos, .agenda-grid { grid-template-columns: minmax(0, 1fr); }
-      .modal { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+      .modal { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; height: auto; max-height: calc(100dvh - 24px); overflow-y: auto; }
+      .modal-body { overflow: visible; flex: none; }
       .modal-sidebar { order: 2; }
       .header { flex-direction: column; align-items: flex-start; }
       .header-right { justify-content: flex-start; }
@@ -1657,11 +1690,14 @@
 
   <!-- Modal -->
   <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
       <div class="modal-main">
         <div class="modal-header">
-          <h2 class="modal-title">Resultado de Generacion</h2>
-          <button class="modal-close" onclick="cerrar()">&times;</button>
+          <div>
+            <h2 class="modal-title" id="modal-titulo">Última nota</h2>
+            <p class="modal-meta" id="modal-meta"></p>
+          </div>
+          <button class="modal-close" onclick="cerrar()" aria-label="Cerrar">&times;</button>
         </div>
         <div class="modal-body" id="art-body"></div>
         <div class="modal-footer">
@@ -2391,10 +2427,12 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       CARRUSEL (vista cliente)
+       CARRUSEL (vista cliente): coverflow infinito
        Las secciones se mueven adentro de las diapositivas al entrar en modo
        cliente y vuelven a su lugar (marcado con un ancla) al salir: mismos
        nodos, así conservan IDs, estado y handlers.
+       Cada diapositiva se ubica según su distancia circular a la activa:
+         0 = al frente, ±1 = adelanto a cada lado, ±2 = escondida detrás.
        ═══════════════════════════════════════════════════════════════════════ */
     var CARRUSEL = [
       { id: 'inicio',       nombre: 'Inicio',       sel: '.hero-cliente' },
@@ -2402,7 +2440,7 @@
       { id: 'programacion', nombre: 'Programación', sel: '.agenda' },
       { id: 'fuentes',      nombre: 'Fuentes',      sel: '.fuentes-seccion' }
     ];
-    var _carrusel = { i: 0, listo: false, slides: [] };
+    var _carrusel = { i: 0, listo: false, dir: 1, arrastre: 0 };
 
     function initCarrusel() {
       var nav = $('carrusel-nav'), track = $('carrusel-track');
@@ -2445,29 +2483,53 @@
         var d = { ArrowRight: 1, ArrowLeft: -1 }[ev.key];
         if (!d) return;
         ev.preventDefault();
-        irASeccion(_carrusel.i + d);
+        mover(d);
         CARRUSEL[_carrusel.i].tab.focus();
       });
-      $('carrusel-prev').onclick = function() { irASeccion(_carrusel.i - 1); };
-      $('carrusel-next').onclick = function() { irASeccion(_carrusel.i + 1); };
+      $('carrusel-prev').onclick = function() { mover(-1); };
+      $('carrusel-next').onclick = function() { mover(1); };
 
-      // Swipe con el dedo (el mouse usa flechas, pestañas o los adelantos).
-      var inicio = null;
-      var vp = $('carrusel-viewport');
+      // Arrastre con el dedo: el carrusel sigue al dedo y al soltar decide.
+      var vp = $('carrusel-viewport'), car = $('carrusel');
+      var ini = null;
       vp.addEventListener('pointerdown', function(ev) {
-        if (ev.pointerType !== 'touch') return;
-        if (ev.target.closest('input, select, textarea, .reloj, .toggle-item')) return;
-        inicio = { x: ev.clientX, y: ev.clientY };
+        if (ev.pointerType === 'mouse') return;
+        if (ev.target.closest('input, select, textarea, .reloj, .toggle-item, .puntapie-toggle, .ampm')) return;
+        ini = { x: ev.clientX, y: ev.clientY, id: ev.pointerId, horizontal: null };
       });
-      vp.addEventListener('pointerup', function(ev) {
-        if (!inicio) return;
-        var dx = ev.clientX - inicio.x, dy = ev.clientY - inicio.y;
-        inicio = null;
-        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) irASeccion(_carrusel.i + (dx < 0 ? 1 : -1));
+      vp.addEventListener('pointermove', function(ev) {
+        if (!ini || ev.pointerId !== ini.id) return;
+        var dx = ev.clientX - ini.x, dy = ev.clientY - ini.y;
+        if (ini.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+          ini.horizontal = Math.abs(dx) > Math.abs(dy);
+          if (ini.horizontal) { car.classList.add('arrastrando'); try { vp.setPointerCapture(ev.pointerId); } catch(e) {} }
+        }
+        if (ini.horizontal) { _carrusel.arrastre = dx; ubicar(); }
       });
-      vp.addEventListener('pointercancel', function() { inicio = null; });
+      function soltar(ev) {
+        if (!ini) return;
+        var dx = _carrusel.arrastre, fueHorizontal = ini.horizontal;
+        ini = null;
+        car.classList.remove('arrastrando');
+        _carrusel.arrastre = 0;
+        if (fueHorizontal && Math.abs(dx) > vp.clientWidth * 0.12) mover(dx < 0 ? 1 : -1);
+        else ubicar();
+      }
+      vp.addEventListener('pointerup', soltar);
+      vp.addEventListener('pointercancel', soltar);
 
-      window.addEventListener('resize', function() { if (_carrusel.listo) posicionarCarrusel(); });
+      // Trackpad: deslizar horizontal cambia de sección (un paso por gesto).
+      var bloqueoRueda = 0;
+      vp.addEventListener('wheel', function(ev) {
+        if (Math.abs(ev.deltaX) < Math.abs(ev.deltaY) || Math.abs(ev.deltaX) < 25) return;
+        ev.preventDefault();
+        var ahora = Date.now();
+        if (ahora - bloqueoRueda < 650) return;
+        bloqueoRueda = ahora;
+        mover(ev.deltaX > 0 ? 1 : -1);
+      }, { passive: false });
+
+      window.addEventListener('resize', function() { if (_carrusel.listo) ubicar(); });
       if ('ResizeObserver' in window) {
         var ro = new ResizeObserver(function() { if (_carrusel.listo) ajustarAltura(); });
         CARRUSEL.forEach(function(c) { ro.observe(c.slide); });
@@ -2490,28 +2552,63 @@
       if (activo) irASeccion(_carrusel.i, true);
     }
 
-    function posicionarCarrusel() {
-      var vp = $('carrusel-viewport'), track = $('carrusel-track');
+    // Distancia circular de la diapositiva i a la activa, en [-n/2, n/2).
+    function offsetCircular(i) {
+      var n = CARRUSEL.length;
+      var d = ((i - _carrusel.i) % n + n) % n;
+      if (d > n / 2) d -= n;
+      // La que queda exactamente enfrente entra por el lado hacia donde se va.
+      if (d === n / 2 || d === -n / 2) d = _carrusel.dir >= 0 ? n / 2 : -n / 2;
+      return d;
+    }
+
+    function ubicar() {
+      var vp = $('carrusel-viewport');
       var ancho = vp.clientWidth;
       var movil = ancho < 700;
-      var w = Math.round(ancho * (movil ? 0.88 : 0.8));
-      var gap = movil ? 16 : 32;
-      track.style.setProperty('--slide-w', w + 'px');
-      track.style.setProperty('--carrusel-gap', gap + 'px');
-      vp.style.setProperty('--slide-w-px', w + 'px');
-      var x = ancho / 2 - (_carrusel.i * (w + gap) + w / 2);
-      track.style.transform = 'translateX(' + x + 'px)';
+      var w = Math.round(ancho * (movil ? 0.8 : 0.62));
+      var paso = w * (movil ? 0.86 : 0.74);      // cuánto asoman los vecinos
+      var escala = movil ? 0.86 : 0.84;
+      var arrastre = _carrusel.arrastre / paso;   // fracción de paso arrastrada
+      $('carrusel-track').style.setProperty('--slide-w', w + 'px');
+
+      CARRUSEL.forEach(function(c, i) {
+        var off = offsetCircular(i) + arrastre;
+        var abs = Math.abs(off);
+        var sc = 1 - Math.min(abs, 2) * (1 - escala);
+        var x = off * paso;
+        // Opacidad solo para las que entran o salen de escena; el atenuado de
+        // los vecinos lo hace el velo degradado (::after).
+        var op = abs <= 1 ? 1 : Math.max(0, 1 - (abs - 1) * 1.15);
+        var el = c.slide;
+        el.style.transform = 'translateX(calc(-50% + ' + x.toFixed(1) + 'px)) scale(' + sc.toFixed(3) + ')';
+        el.style.opacity = op.toFixed(3);
+        el.style.zIndex = String(10 - Math.round(abs * 3));
+        el.classList.toggle('lado-izq', off < -0.25);
+        el.classList.toggle('lado-der', off > 0.25);
+        el.classList.toggle('oculta', abs >= 1.98);
+      });
       ajustarAltura();
     }
 
     function ajustarAltura() {
       var slide = CARRUSEL[_carrusel.i].slide;
-      $('carrusel-viewport').style.height = (slide.offsetHeight + 60) + 'px';
+      $('carrusel-viewport').style.height = (slide.offsetHeight + 64) + 'px';
     }
 
-    function irASeccion(destino, sinScroll) {
+    function mover(delta) {
+      irASeccion(_carrusel.i + delta, false, delta);
+    }
+
+    function irASeccion(destino, sinScroll, dir) {
+      var n = CARRUSEL.length;
       if (typeof destino === 'string') destino = CARRUSEL.findIndex(function(c) { return c.id === destino; });
-      destino = Math.max(0, Math.min(CARRUSEL.length - 1, destino));
+      destino = ((destino % n) + n) % n;          // infinito: del primero al último y viceversa
+      if (dir === undefined) {
+        var d = ((destino - _carrusel.i) % n + n) % n;
+        dir = d > n / 2 ? -1 : 1;
+      }
+      _carrusel.dir = dir;
       _carrusel.i = destino;
       try { localStorage.setItem('ad-seccion', CARRUSEL[destino].id); } catch(e) {}
       CARRUSEL.forEach(function(c, i) {
@@ -2522,10 +2619,8 @@
         c.tab.setAttribute('aria-selected', activa);
         c.tab.tabIndex = activa ? 0 : -1;
       });
-      $('carrusel-prev').disabled = destino === 0;
-      $('carrusel-next').disabled = destino === CARRUSEL.length - 1;
       if (!_carrusel.listo) return;
-      posicionarCarrusel();
+      ubicar();
       if (!sinScroll) {
         var top = $('carrusel').getBoundingClientRect().top;
         if (top < 0) window.scrollBy({ top: top - 16, behavior: 'smooth' });
@@ -2811,7 +2906,18 @@
        VIEW LAST ARTICLE
        ═══════════════════════════════════════════════════════════════════════ */
 
-    function cerrar() { $('modal-art').classList.remove('open'); }
+    function abrirModal() {
+      $('modal-art').classList.add('open');
+      document.body.classList.add('modal-abierto');
+      $('art-body').scrollTop = 0;
+    }
+    function cerrar() {
+      $('modal-art').classList.remove('open');
+      document.body.classList.remove('modal-abierto');
+    }
+    document.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Escape' && $('modal-art').classList.contains('open')) cerrar();
+    });
 
     function copiar() {
       navigator.clipboard.writeText($('art-body').textContent);
@@ -3166,7 +3272,11 @@
         var body = $('art-body');
         var check = $('check-list');
         var comm = $('eval-comms');
-        modal.classList.add('open');
+        $('modal-titulo').textContent = 'Última nota';
+        $('modal-meta').textContent = d.nota.generado_en ? 'Generada el ' + new Date(d.nota.generado_en).toLocaleString('es-AR', {
+          day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+        }) : '';
+        abrirModal();
         body.innerHTML = marked.parse(d.nota.contenido);
         check.innerHTML = '';
         comm.textContent = '';
@@ -3179,12 +3289,27 @@
           check.appendChild(info);
         }
 
-        var evR = await fetch('/api/evaluate-article', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ articulo: d.nota.contenido })
-        });
-        var evD = await evR.json();
+        var evaluando = document.createElement('div');
+        evaluando.className = 'evaluando';
+        evaluando.textContent = 'Evaluando la nota...';
+        check.appendChild(evaluando);
+        var evD = { success: false };
+        try {
+          var evR = await fetch('/api/evaluate-article', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ articulo: d.nota.contenido })
+          });
+          evD = await evR.json();
+        } catch(e) {}
+        evaluando.remove();
+        if (!evD.success) {
+          var nd = document.createElement('div');
+          nd.className = 'evaluando-no';
+          nd.style.cssText = 'font-size:0.8rem;color:var(--text-lo)';
+          nd.textContent = 'La evaluación no está disponible ahora.';
+          check.appendChild(nd);
+        }
         if (evD.success) {
           Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
             var k = entry[0], v = entry[1];
