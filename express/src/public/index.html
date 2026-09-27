@@ -1223,9 +1223,10 @@
       margin: 0 !important;
       padding: var(--s6);
       border-radius: var(--r-lg);
-      background: var(--bg);
       box-shadow: var(--raised);
     }
+    /* Opacos: la activa tapa limpio a las vecinas que tiene detrás */
+    .slide > :not(.slide-velo) { background: var(--bg); margin: 0 !important; }
     .slide .section-head { margin-bottom: var(--s5); }
     .slide .hero-cliente { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--s5); }
     .slide .hero-intro { padding: 0; }
@@ -1236,7 +1237,8 @@
     .slide .fuentes-seccion .fuentes-grupo { padding: 0; }
 
     /* Desvanecido: de suave en el borde interno del vecino a opaco en el borde
-       de la pantalla (--fade-fin lo calcula el JS según el margen disponible) */
+       de la pantalla (--fade-ini / --fade-fin los calcula el JS: desde el borde
+       de la tarjeta activa hasta el borde de la pantalla) */
     .slide::after {
       content: ''; position: absolute; z-index: 3;
       inset: -28px -24px -40px;
@@ -1246,11 +1248,11 @@
     }
     .slide.lado-der::after {
       opacity: 1;
-      background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 22%, transparent) 0%, var(--bg) var(--fade-fin, 30%));
+      background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 18%, transparent) var(--fade-ini, 0%), var(--bg) var(--fade-fin, 60%));
     }
     .slide.lado-izq::after {
       opacity: 1;
-      background: linear-gradient(270deg, color-mix(in srgb, var(--bg) 22%, transparent) 0%, var(--bg) var(--fade-fin, 30%));
+      background: linear-gradient(270deg, color-mix(in srgb, var(--bg) 18%, transparent) var(--fade-ini, 0%), var(--bg) var(--fade-fin, 60%));
     }
 
     .slide-velo {
@@ -2596,18 +2598,21 @@
       var vp = $('carrusel-viewport');
       var ancho = vp.clientWidth;               // ancho completo de la pantalla
       var movil = ancho < 700;
-      var w = movil ? Math.round(ancho * 0.84) : Math.round(Math.min(1080, Math.max(560, ancho * 0.64)));
-      var escala = movil ? 0.9 : 0.82;
-      var hueco = movil ? 14 : 44;
-      var paso = w / 2 + hueco + (w * escala) / 2;  // centro a centro, sin solaparse
+      var w = movil ? Math.round(ancho * 0.8) : Math.round(Math.min(1040, Math.max(560, ancho * 0.6)));
+      var escala = movil ? 0.88 : 0.84;
+      var paso = w * (movil ? 0.84 : 0.72);       // centro a centro: las vecinas quedan detrás de la activa
       var arrastre = _carrusel.arrastre / paso;
       $('carrusel-track').style.setProperty('--slide-w', w + 'px');
 
-      // Parte visible del vecino = margen lateral libre; el fade la recorre entera.
-      var visible = Math.max(0, ancho / 2 - w / 2 - hueco);
-      var fadeFin = Math.min(100, Math.max(20, visible / (w * escala) * 100));
-      vp.style.setProperty('--flecha-izq', (ancho / 2 - w / 2 - hueco / 2 - 40) + 'px');
-      vp.style.setProperty('--flecha-der', (ancho / 2 + w / 2 + hueco / 2 + 40) + 'px');
+      // Fade en coordenadas del vecino: empieza donde lo tapa la activa y
+      // termina en el borde de la pantalla.
+      var anchoVecino = w * escala;
+      var tapado = Math.max(0, w / 2 - (paso - anchoVecino / 2));
+      var hastaBorde = ancho / 2 - (paso - anchoVecino / 2);
+      var fadeIni = Math.min(90, tapado / anchoVecino * 100);
+      var fadeFin = Math.min(100, Math.max(fadeIni + 10, hastaBorde / anchoVecino * 100));
+      vp.style.setProperty('--flecha-izq', (ancho / 2 - w / 2 - 44) + 'px');
+      vp.style.setProperty('--flecha-der', (ancho / 2 + w / 2 + 44) + 'px');
 
       CARRUSEL.forEach(function(c, i) {
         var off = offsetCircular(i) + arrastre;
@@ -2619,6 +2624,7 @@
         el.style.transform = 'translateX(calc(-50% + ' + x.toFixed(1) + 'px)) scale(' + sc.toFixed(3) + ')';
         el.style.opacity = op.toFixed(3);
         el.style.zIndex = String(10 - Math.round(abs * 3));
+        el.style.setProperty('--fade-ini', fadeIni.toFixed(1) + '%');
         el.style.setProperty('--fade-fin', fadeFin.toFixed(1) + '%');
         el.classList.toggle('lado-izq', off < -0.2);
         el.classList.toggle('lado-der', off > 0.2);
