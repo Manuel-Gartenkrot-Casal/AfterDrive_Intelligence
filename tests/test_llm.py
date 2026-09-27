@@ -96,15 +96,17 @@ def test_completar_devuelve_el_texto(transporte, openrouter):
     ]
 
 
-def test_include_reasoning_solo_en_openrouter(transporte, openrouter, monkeypatch):
+def test_reasoning_solo_en_openrouter(transporte, openrouter, monkeypatch):
     t = transporte([chat("a"), chat("b")])
     llm.completar("s", "u")
-    assert t.posts[0]["json"]["include_reasoning"] is False
+    # No alcanza con excluir el razonamiento de la respuesta: si se genera igual
+    # consume max_tokens y la nota llega truncada. Hay que desactivarlo.
+    assert t.posts[0]["json"]["reasoning"] == {"enabled": False, "exclude": True}
 
     monkeypatch.setenv("AI_PROVIDER", "nvidia")
     monkeypatch.setenv("NVIDIA_API_KEY", "nv")
     llm.completar("s", "u")
-    assert "include_reasoning" not in t.posts[1]["json"]
+    assert "reasoning" not in t.posts[1]["json"]
 
 
 def test_proveedor_se_lee_en_cada_llamada(transporte, openrouter, monkeypatch):

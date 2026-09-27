@@ -89,8 +89,10 @@ def _perfil(nombre: str) -> Perfil:
             modelo=env("OPENROUTER_MODEL", "mistralai/mistral-small-3.1-24b-instruct:free"),
             modelo_fallback=env("OPENROUTER_FALLBACK_MODEL", "mistralai/mistral-small-3.1-24b-instruct:free"),
             variable_modelo="OPENROUTER_MODEL",
-            # include_reasoning solo existe en OpenRouter; NVIDIA lo rechaza con 400.
-            extra_payload={"include_reasoning": False},
+            # Excluir el razonamiento no desactiva su generación: puede consumir
+            # todo max_tokens. Para redacción pedimos salida directa y nunca
+            # reenviamos los campos reasoning al saneador.
+            extra_payload={"reasoning": {"enabled": False, "exclude": True}},
             # OpenRouter no tiene /embeddings: _perfil_emb() nunca lo elige.
         )
     return Perfil(
@@ -306,8 +308,13 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> str:
             except json.JSONDecodeError:
                 continue
             if "error" in chunk:
-                print(f"[ERROR del modelo] {chunk.get('message', chunk['error'])}", flush=True)
-                continue
+                raise ErrorLLM("El proveedor interrumpió la generación. Reintentá o elegí otro modelo.")
+            for choice in chunk.get("choices") or []:
+                if choice.get("finish_reason") == "length":
+                    raise ErrorLLM(
+                        "El modelo agotó el límite de salida antes de terminar la nota. "
+                        "No se guardó contenido parcial. Probá un tema más acotado u otro modelo."
+                    )
             partes.append(_contenido_de_chunk(chunk))
             now = time.time()
             if now - last >= 60:

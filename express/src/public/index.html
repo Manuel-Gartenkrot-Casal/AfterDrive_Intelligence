@@ -7,1415 +7,373 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>
     (function () {
       var t = null;
       try { t = localStorage.getItem("ad-theme"); } catch (e) {}
-      if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      if (!t) t = "dark";
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <style>
-    /* ═══════════════════════════════════════════════════════════════════════
-       NEUMORPHISM (soft UI)
-       Todo está hecho del mismo material que el fondo: los elementos se
-       distinguen solo por luz (arriba-izquierda) y sombra (abajo-derecha).
-         raised  = se puede tocar (cards, botones, chips)
-         inset   = contiene o recibe (inputs, consola, pozos de grupos, estado activo)
-       Accesibilidad: el neumorfismo tiene bajo contraste de bordes por
-       naturaleza, así que el texto va con contraste AA fuerte, los estados
-       activos también cambian de color (no solo de sombra) y el foco tiene
-       un anillo visible del color de acento.
-       Radios: contenedores 22px, controles 14px, toggles/chips pill.
-       ═══════════════════════════════════════════════════════════════════════ */
-    :root,
-    [data-theme="light"] {
-      --bg: #E3E8EF;
-      --bg-deep: #D9DFE8;
-      --sh-dark: rgba(150, 164, 186, 0.62);
-      --sh-light: rgba(255, 255, 255, 0.92);
-
-      --brand: #C23E60;
-      --brand-hover: #AE3353;
-      --brand-deep: #9A2B48;
-      --on-brand: #FFFFFF;
-      --brand-soft: rgba(194, 62, 96, 0.12);
-
-      --ok: #17875B;
-      --err: #B83232;
-      --warn: #94600A;
-      --info: #3558B8;
-
-      --text-hi: #232B3A;
-      --text-mid: #465266;
-      --text-lo: #566276;
-      --text-data: #2E3A4F;
-      --hairline: rgba(86, 98, 118, 0.18);
-
-      color-scheme: light;
-    }
-
-    [data-theme="dark"] {
-      --bg: #262B35;
-      --bg-deep: #20242D;
-      --sh-dark: rgba(11, 13, 18, 0.7);
-      --sh-light: rgba(62, 70, 86, 0.55);
-
-      --brand: #F07A94;
-      --brand-hover: #F595AA;
-      --brand-deep: #E0607D;
-      --on-brand: #1B1E26;
-      --brand-soft: rgba(240, 122, 148, 0.14);
-
-      --ok: #52D6A0;
-      --err: #FF8585;
-      --warn: #F2BE5C;
-      --info: #97AAF7;
-
-      --text-hi: #E8EBF1;
-      --text-mid: #BCC3CF;
-      --text-lo: #9DA6B5;
-      --text-data: #D5DBE5;
-      --hairline: rgba(157, 166, 181, 0.16);
-
-      color-scheme: dark;
-    }
-
-    :root {
-      /* Sombras neumórficas */
-      --raised: 7px 7px 16px var(--sh-dark), -7px -7px 16px var(--sh-light);
-      --raised-sm: 4px 4px 9px var(--sh-dark), -4px -4px 9px var(--sh-light);
-      --raised-xs: 2px 2px 5px var(--sh-dark), -2px -2px 5px var(--sh-light);
-      --inset: inset 5px 5px 11px var(--sh-dark), inset -5px -5px 11px var(--sh-light);
-      --inset-sm: inset 3px 3px 6px var(--sh-dark), inset -3px -3px 6px var(--sh-light);
-      --flat: 0 0 0 transparent, 0 0 0 transparent;
-
-      /* Alias de tokens que usa el markup/JS */
-      --surface: var(--bg);
-      --surface-lo: var(--bg);
-      --surface-void: var(--bg);
-      --surface-panel: var(--bg);
-      --surface-raised: var(--bg);
-      --surface-input: var(--bg);
-
-      --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
-      --r-sm:14px; --r-md:14px; --r-lg:22px; --r-xl:22px; --r-pill:999px;
-
-      --t-fast: 160ms;
-      --t-med: 280ms;
-      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-
-      --z-content:1; --z-toast:900; --z-modal:1000;
-
-      --font: 'Outfit', system-ui, sans-serif;
-      --mono: 'JetBrains Mono', ui-monospace, monospace;
-    }
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html { background: var(--bg); }
-
-    body {
-      background: var(--bg);
-      color: var(--text-hi);
-      font-family: var(--font);
-      font-size: 0.9375rem;
-      line-height: 1.55;
-      min-height: 100dvh;
-      -webkit-font-smoothing: antialiased;
-      transition: background var(--t-med) var(--ease-out), color var(--t-med) var(--ease-out);
-    }
-
-    :focus { outline: none; }
-    :focus-visible {
-      outline: 2px solid var(--brand);
-      outline-offset: 3px;
-    }
-
-    ::selection { background: var(--brand-soft); color: var(--text-hi); }
-
-    .app-container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: var(--s6) var(--s6) var(--s8);
-      position: relative;
-      z-index: var(--z-content);
-    }
-
-    /* El fondo animado no encaja con el material único del neumorfismo. */
-    .particles-canvas, .particle { display: none; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       HEADER
-       ═══════════════════════════════════════════════════════════════════════ */
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: var(--s5);
-      margin-bottom: var(--s7);
-      padding: var(--s4) var(--s5);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: var(--raised);
-      position: relative;
-    }
-
-    /* Mientras corre un proceso, una línea de acento recorre el borde inferior. */
-    .header::after {
-      content: '';
-      position: absolute;
-      left: 24px; right: 24px; bottom: 6px;
-      height: 3px;
-      border-radius: var(--r-pill);
-      background: linear-gradient(90deg, transparent, var(--brand), transparent);
-      background-size: 200% 100%;
-      opacity: 0;
-      transition: opacity var(--t-med) var(--ease-out);
-    }
-    .header.active::after { opacity: 1; animation: scanline 1.8s linear infinite; }
-    @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-
-    .header-brand { display: flex; align-items: center; gap: var(--s4); min-width: 0; }
-
-    .header-logo {
-      width: 52px; height: 52px;
-      flex-shrink: 0;
-      border-radius: 50%;
-      display: grid; place-items: center;
-      background: var(--bg);
-      box-shadow: var(--raised-sm);
-      color: var(--brand);
-      font-family: var(--font);
-      font-weight: 700;
-      font-size: 1.05rem;
-      letter-spacing: -0.02em;
-      position: relative;
-    }
-    .header-logo::before {
-      content: '';
-      position: absolute; inset: 7px;
-      border-radius: 50%;
-      box-shadow: var(--inset-sm);
-    }
-    .header-logo.pulse { animation: logoPulse 0.6s var(--ease-out); }
-    @keyframes logoPulse { 50% { transform: scale(0.94); box-shadow: var(--raised-xs); } }
-
-    .header-title {
-      font-size: 1.35rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-      color: var(--text-hi);
-    }
-    .header-title span { color: var(--brand); font-weight: 500; }
-    .header-subtitle { font-size: 0.8125rem; color: var(--text-lo); margin-top: 2px; }
-
-    .header-right { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; justify-content: flex-end; }
-
-    /* Selector de proveedor: pozo con botones que "suben" al elegirse */
-    .provider-toggle {
-      display: flex; align-items: center; gap: 4px;
-      padding: 5px;
-      border-radius: var(--r-pill);
-      background: var(--bg);
-      box-shadow: var(--inset-sm);
-    }
-    .prov-label {
-      font-family: var(--mono);
-      font-size: 0.625rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-lo);
-      padding: 0 8px 0 10px;
-    }
-    .prov-btn {
-      border: 0;
-      background: transparent;
-      color: var(--text-mid);
-      font-family: var(--font);
-      font-size: 0.78rem;
-      font-weight: 500;
-      padding: 6px 14px;
-      border-radius: var(--r-pill);
-      cursor: pointer;
-      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
-    }
-    .prov-btn:hover { color: var(--text-hi); }
-    .prov-btn.active {
-      background: var(--bg);
-      color: var(--brand);
-      font-weight: 600;
-      box-shadow: var(--raised-xs);
-    }
-
-    .status-pill {
-      display: flex; align-items: center; gap: var(--s2);
-      padding: 8px 16px;
-      border-radius: var(--r-pill);
-      background: var(--bg);
-      box-shadow: var(--inset-sm);
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--text-mid);
-      white-space: nowrap;
-    }
-    .status-dot {
-      width: 9px; height: 9px;
-      border-radius: 50%;
-      background: var(--ok);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
-      position: relative;
-    }
-    .status-dot::after {
-      content: '';
-      position: absolute; inset: -4px;
-      border-radius: 50%;
-      border: 2px solid var(--ok);
-      opacity: 0;
-      animation: statusRing 2.4s var(--ease-out) infinite;
-    }
-    .status-dot.off { background: var(--err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 22%, transparent); }
-    .status-dot.off::after { display: none; }
-    @keyframes statusRing { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
-
-    .theme-toggle {
-      width: 42px; height: 42px;
-      border: 0;
-      border-radius: 50%;
-      background: var(--bg);
-      box-shadow: var(--raised-sm);
-      color: var(--text-mid);
-      font-size: 1.05rem;
-      cursor: pointer;
-      display: grid; place-items: center;
-      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
-    }
-    .theme-toggle:hover { color: var(--brand); }
-    .theme-toggle:active { box-shadow: var(--inset-sm); }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       STATS
-       ═══════════════════════════════════════════════════════════════════════ */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: var(--s6);
-      margin-bottom: var(--s7);
-    }
-    .stat-card {
-      padding: var(--s5);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: var(--raised);
-      display: flex; flex-direction: column; gap: var(--s2);
-      min-width: 0;
-      transition: box-shadow var(--t-med) var(--ease-out), transform var(--t-med) var(--ease-out);
-    }
-    .stat-card:hover { transform: translateY(-2px); }
-    .stat-label { font-size: 0.8rem; font-weight: 500; color: var(--text-lo); }
-    .stat-row {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-      padding: var(--s3) var(--s4);
-      border-radius: var(--r-md);
-      box-shadow: var(--inset-sm);
-      min-height: 64px;
-    }
-    .stat-value {
-      font-family: var(--mono);
-      font-size: 1.75rem;
-      font-weight: 500;
-      letter-spacing: -0.03em;
-      color: var(--text-data);
-      min-width: 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      transition: color var(--t-med);
-    }
-    .stat-value.flash, .stat-value.updated { animation: valuePop 0.5s var(--ease-out); color: var(--brand); }
-    @keyframes valuePop { 40% { transform: scale(1.06); } }
-    .stat-sparkline { flex-shrink: 0; opacity: 0.9; }
-    .stat-sub { font-size: 0.75rem; color: var(--text-lo); min-height: 1.1em; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       PROGRAMACIÓN AUTOMÁTICA (relojes)
-       ═══════════════════════════════════════════════════════════════════════ */
-    .sr-only {
-      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-    }
-    .section-head { margin-bottom: var(--s5); }
-    .section-title { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; }
-    .section-sub { font-size: 0.85rem; color: var(--text-lo); margin-top: 4px; max-width: 65ch; }
-
-    .agenda { margin-bottom: var(--s7); }
-    .agenda-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
-    .agenda-card {
-      display: flex; flex-direction: column; gap: var(--s5);
-      padding: var(--s5) var(--s6) var(--s6);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: var(--raised);
-      min-width: 0;
-      transition: opacity var(--t-med);
-    }
-    .agenda-card.pausada .reloj,
-    .agenda-card.pausada .hora-row,
-    .agenda-card.pausada .agenda-fields { opacity: 0.45; }
-    .agenda-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }
-    .agenda-card-title { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
-    .agenda-card-sub { font-size: 0.8rem; color: var(--text-lo); margin-top: 2px; }
-    .agenda-card-head .puntapie-toggle { flex-shrink: 0; }
-
-    /* Reloj: disco en relieve con cara hundida; agujas arrastrables */
-    .reloj {
-      width: min(260px, 72vw);
-      aspect-ratio: 1;
-      margin: 0 auto;
-      padding: 14px;
-      border-radius: 50%;
-      background: var(--bg);
-      box-shadow: var(--raised);
-      transition: opacity var(--t-med);
-    }
-    .reloj-cara {
-      width: 100%; height: 100%;
-      border-radius: 50%;
-      box-shadow: var(--inset);
-      display: grid; place-items: center;
-    }
-    .reloj svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: pointer; user-select: none; }
-    .reloj svg:focus-visible { outline: none; }
-    .reloj-cara:has(svg:focus-visible) { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
-    .reloj .tick { stroke: var(--text-lo); stroke-width: 1; opacity: 0.55; }
-    .reloj .tick-hora { stroke: var(--text-mid); stroke-width: 2.2; opacity: 1; }
-    .reloj .num { fill: var(--text-mid); font-family: var(--font); font-size: 11px; font-weight: 500; }
-    .reloj .num-cardinal { fill: var(--text-hi); font-weight: 600; font-size: 13px; }
-    .reloj .momento { fill: var(--text-lo); font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; }
-    .reloj .aguja { transition: transform 420ms var(--ease-out); transform-origin: 100px 100px; transform-box: view-box; }
-    .reloj.arrastrando .aguja { transition: none; }
-    .reloj .aguja-hora line { stroke: var(--text-hi); stroke-width: 6; stroke-linecap: round; }
-    .reloj .aguja-min line { stroke: var(--brand); stroke-width: 3.5; stroke-linecap: round; }
-    .reloj .perilla { fill: var(--bg); stroke-width: 2.5; cursor: grab; filter: drop-shadow(1px 1px 1.5px var(--sh-dark)); }
-    .reloj .aguja-hora .perilla { stroke: var(--text-hi); }
-    .reloj .aguja-min .perilla { stroke: var(--brand); }
-    .reloj.arrastrando .perilla { cursor: grabbing; }
-    .reloj .centro { fill: var(--brand); stroke: var(--bg); stroke-width: 3; }
-
-    .hora-row { display: flex; align-items: center; justify-content: center; gap: var(--s4); flex-wrap: wrap; }
-    .hora-input {
-      width: 9.5ch;
-      min-height: 56px;
-      padding: 8px 14px;
-      border: 0;
-      border-radius: var(--r-md);
-      background: var(--bg);
-      box-shadow: var(--inset-sm);
-      color: var(--text-hi);
-      font-family: var(--mono);
-      font-size: 1.6rem;
-      font-weight: 500;
-      text-align: center;
-      letter-spacing: 0.02em;
-    }
-    .hora-input:focus { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
-    .hora-input::-webkit-calendar-picker-indicator { display: none; }
-    .ampm { display: flex; gap: 4px; padding: 5px; border-radius: var(--r-pill); box-shadow: var(--inset-sm); }
-    .ampm button {
-      border: 0; background: transparent; cursor: pointer;
-      min-width: 48px; padding: 8px 12px;
-      border-radius: var(--r-pill);
-      font-family: var(--mono); font-size: 0.8rem; font-weight: 500;
-      color: var(--text-lo);
-      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
-    }
-    .ampm button.on { background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs); }
-
-    .agenda-fields { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s3) var(--s5); }
-    .agenda-field { display: flex; align-items: center; gap: var(--s2); font-size: 0.85rem; color: var(--text-mid); }
-    .agenda-field .input-field { width: 72px; min-height: 40px; padding: 6px 10px; text-align: center; }
-    .agenda-field-wide .select-field { min-height: 40px; padding-top: 6px; padding-bottom: 6px; }
-
-    .agenda-foot {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap;
-      margin-top: auto;
-      padding: var(--s3) var(--s4);
-      border-radius: var(--r-md);
-      box-shadow: var(--inset-sm);
-    }
-    .agenda-next { display: flex; flex-direction: column; min-width: 0; }
-    .agenda-next span { font-size: 0.72rem; color: var(--text-lo); }
-    .agenda-next strong { font-family: var(--mono); font-size: 0.95rem; font-weight: 500; color: var(--text-data); }
-    .agenda-estado { font-style: normal; font-size: 0.72rem; color: var(--ok); min-height: 1em; }
-    .agenda-estado.err { color: var(--err); }
-    .agenda-hint { font-size: 0.75rem; color: var(--text-lo); max-width: 30ch; text-align: right; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       CARDS
-       ═══════════════════════════════════════════════════════════════════════ */
-    .card {
-      padding: var(--s5) var(--s5) var(--s5);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: var(--raised);
-      min-width: 0;
-      display: flex; flex-direction: column;
-      animation: rise 0.5s var(--ease-out) both;
-    }
-    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-
-    .card-full { grid-column: 1 / -1; }
-    .card-header {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-      margin-bottom: var(--s2);
-    }
-    .card-title { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; color: var(--text-hi); }
-    .card-badge {
-      flex-shrink: 0;
-      padding: 4px 12px;
-      border-radius: var(--r-pill);
-      box-shadow: var(--inset-sm);
-      font-family: var(--mono);
-      font-size: 0.68rem;
-      font-weight: 500;
-      color: var(--text-mid);
-      white-space: nowrap;
-    }
-    .card-description { font-size: 0.85rem; color: var(--text-lo); margin-bottom: var(--s4); max-width: 65ch; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       FORM CONTROLS
-       ═══════════════════════════════════════════════════════════════════════ */
-    .input-row { display: flex; gap: var(--s3); align-items: stretch; flex-wrap: wrap; }
-    .input-row .input-field { flex: 1 1 180px; }
-
-    .input-field, .select-field {
-      min-height: 44px;
-      padding: 10px 16px;
-      border: 0;
-      border-radius: var(--r-md);
-      background: var(--bg);
-      box-shadow: var(--inset-sm);
-      color: var(--text-hi);
-      font-family: var(--font);
-      font-size: 0.9rem;
-      transition: box-shadow var(--t-fast) var(--ease-out);
-    }
-    .input-field::placeholder { color: var(--text-lo); opacity: 1; }
-    .input-field:focus, .select-field:focus {
-      box-shadow: var(--inset), 0 0 0 2px var(--brand);
-    }
-    .input-field[type="number"] { font-family: var(--mono); }
-    .select-field {
-      appearance: none;
-      cursor: pointer;
-      padding-right: 40px;
-      background-image:
-        linear-gradient(45deg, transparent 50%, var(--text-mid) 50%),
-        linear-gradient(135deg, var(--text-mid) 50%, transparent 50%);
-      background-position: calc(100% - 20px) 52%, calc(100% - 15px) 52%;
-      background-size: 5px 5px, 5px 5px;
-      background-repeat: no-repeat;
-    }
-    .select-field option { background: var(--bg); color: var(--text-hi); }
-
-    .control-label {
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--text-mid);
-      margin-bottom: var(--s2);
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       BUTTONS
-       ═══════════════════════════════════════════════════════════════════════ */
-    .btn {
-      position: relative;
-      overflow: hidden;
-      min-height: 44px;
-      padding: 10px 20px;
-      border: 0;
-      border-radius: var(--r-md);
-      background: var(--bg);
-      box-shadow: var(--raised-sm);
-      color: var(--text-hi);
-      font-family: var(--font);
-      font-size: 0.875rem;
-      font-weight: 600;
-      white-space: nowrap;
-      cursor: pointer;
-      display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
-      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast), transform var(--t-fast) var(--ease-out);
-    }
-    .btn:hover { color: var(--brand); box-shadow: var(--raised); }
-    .btn:active { box-shadow: var(--inset-sm); transform: scale(0.985); }
-    .btn:disabled {
-      cursor: not-allowed;
-      color: var(--text-lo);
-      box-shadow: var(--inset-sm);
-      opacity: 0.75;
-    }
-
-    .btn-primary {
-      background: var(--brand);
-      color: var(--on-brand);
-      box-shadow: var(--raised-sm), inset 1px 1px 2px rgba(255,255,255,0.25), inset -2px -2px 4px rgba(0,0,0,0.12);
-    }
-    .btn-primary:hover { background: var(--brand-hover); color: var(--on-brand); box-shadow: var(--raised), inset 1px 1px 2px rgba(255,255,255,0.25), inset -2px -2px 4px rgba(0,0,0,0.12); }
-    .btn-primary:active { background: var(--brand-deep); box-shadow: inset 3px 3px 7px rgba(0,0,0,0.25), inset -2px -2px 5px rgba(255,255,255,0.12); }
-    .btn-primary:disabled { background: var(--bg); color: var(--text-lo); }
-
-    .btn-large { min-height: 52px; padding: 12px 28px; font-size: 0.95rem; }
-
-    .btn-ripple {
-      position: absolute;
-      border-radius: 50%;
-      background: currentColor;
-      opacity: 0.12;
-      transform: scale(0);
-      animation: rippleExpand 0.6s var(--ease-out);
-      pointer-events: none;
-    }
-    @keyframes rippleExpand { to { transform: scale(2.4); opacity: 0; } }
-
-    .btn.loading { color: transparent !important; pointer-events: none; }
-    .btn.loading::after {
-      content: '';
-      position: absolute;
-      width: 18px; height: 18px;
-      border-radius: 50%;
-      border: 2px solid var(--text-lo);
-      border-top-color: var(--brand);
-      animation: spin 0.8s linear infinite;
-    }
-    .btn-primary.loading::after { border-color: rgba(255,255,255,0.35); border-top-color: var(--on-brand); }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .icon-btn {
-      flex-shrink: 0;
-      width: 30px; height: 30px;
-      margin-left: var(--s2);
-      border: 0;
-      border-radius: 50%;
-      background: var(--bg);
-      box-shadow: var(--raised-xs);
-      color: var(--text-lo);
-      font-size: 0.75rem;
-      cursor: pointer;
-      transition: color var(--t-fast), box-shadow var(--t-fast);
-    }
-    .icon-btn:hover { color: var(--err); }
-    .icon-btn:active { box-shadow: var(--inset-sm); }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       FEEDBACK
-       ═══════════════════════════════════════════════════════════════════════ */
-    .feedback { font-size: 0.82rem; line-height: 1.5; }
-    .feedback:empty { display: none; }
-    .feedback.ok, .feedback.err, .feedback.info {
-      margin-top: var(--s3);
-      padding: 10px 14px 10px 16px;
-      border-radius: var(--r-md);
-      box-shadow: var(--inset-sm);
-      border-left: 4px solid currentColor;
-    }
-    .feedback.ok { color: var(--ok); }
-    .feedback.err { color: var(--err); }
-    .feedback.info { color: var(--info); }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       AUTOMATIZACIÓN / SUGERENCIAS / GENERADOR
-       ═══════════════════════════════════════════════════════════════════════ */
-
-    .suggestions-list { display: flex; flex-direction: column; gap: var(--s3); }
-    .suggestion-item {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-      padding: var(--s3) var(--s4);
-      border-radius: var(--r-md);
-      box-shadow: var(--raised-xs);
-      animation: rise 0.4s var(--ease-out) both;
-    }
-    .suggestion-info { min-width: 0; flex: 1; }
-    .suggestion-url {
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--text-hi);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .suggestion-title {
-      font-size: 0.75rem;
-      color: var(--text-lo);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .suggestion-actions { display: flex; align-items: center; gap: var(--s2); flex-shrink: 0; }
-    .suggestion-actions .icon-btn { margin-left: 0; }
-    .btn-sm { min-height: 34px; padding: 6px 14px; font-size: 0.78rem; }
-
-    /* Bloque Fuentes (Fase 2) */
-    .fuentes-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
-    .fuentes-head .fase2-grupo-title { margin-bottom: 0; }
-    .fuentes-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
-    .fuentes-col { min-width: 0; display: flex; flex-direction: column; }
-    .fuentes-lista {
-      padding: var(--s2) var(--s4);
-      border-radius: var(--r-md);
-      box-shadow: var(--raised-xs);
-      max-height: 240px;
-      overflow-y: auto;
-    }
-    .fuentes-sug-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); flex-wrap: wrap; }
-    #sug-list { max-height: 360px; overflow-y: auto; padding: 6px; margin: -6px; }
-    .fuentes-ayuda { font-size: 0.75rem; color: var(--text-lo); margin-top: var(--s2); max-width: 65ch; }
-    .fuentes-ayuda strong { color: var(--text-mid); }
-    .fuentes-vacio { font-size: 0.8rem; color: var(--text-lo); padding: var(--s3) 0; }
-    .fuentes-vacio strong { color: var(--text-mid); }
-
-    #trusted-urls-list > div {
-      padding: 10px 4px !important;
-      border-bottom: 1px solid var(--hairline) !important;
-    }
-    #trusted-urls-list > div:last-child { border-bottom: 0 !important; }
-
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       PIPELINE HUD
-       ═══════════════════════════════════════════════════════════════════════ */
-    /* Dock fijo abajo: se ve desde cualquier sección (Scrapear se toca desde Fase 2). */
-    .pipeline-hud {
-      display: none;
-      position: fixed;
-      left: 50%; bottom: var(--s5);
-      transform: translateX(-50%);
-      width: min(880px, calc(100vw - 32px));
-      z-index: calc(var(--z-toast) - 1);
-      padding: var(--s4) var(--s5);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: 12px 12px 28px var(--sh-dark), -8px -8px 22px var(--sh-light);
-    }
-    .pipeline-hud.visible { display: block; animation: dockIn 0.35s var(--ease-out); }
-    @keyframes dockIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
-    body.hud-open .app-container { padding-bottom: 220px; }
-    body.hud-open .toast-container { bottom: 240px; }
-    .pipeline-hud.hud-ok .pipeline-ticker { color: var(--ok); }
-    .pipeline-hud.hud-warn .pipeline-ticker { color: var(--warn); }
-    .pipeline-hud.hud-err .pipeline-ticker { color: var(--err); }
-    .pipeline-label { font-size: 0.85rem; font-weight: 600; color: var(--text-mid); margin-bottom: var(--s4); }
-    .pipeline-flow { display: flex; align-items: center; gap: var(--s2); }
-    .pipeline-node {
-      display: flex; flex-direction: column; align-items: center; gap: var(--s2);
-      font-size: 0.72rem; font-weight: 500;
-      color: var(--text-lo);
-      flex-shrink: 0;
-      transition: color var(--t-med);
-    }
-    .pipeline-node .node-dot {
-      width: 34px; height: 34px;
-      border-radius: 50%;
-      box-shadow: var(--raised-xs);
-      position: relative;
-      transition: box-shadow var(--t-med) var(--ease-out);
-    }
-    .pipeline-node .node-dot::after {
-      content: '';
-      position: absolute; inset: 11px;
-      border-radius: 50%;
-      background: var(--hairline);
-      transition: background var(--t-med), transform var(--t-med) var(--ease-out);
-    }
-    .pipeline-node.active { color: var(--brand); }
-    .pipeline-node.active .node-dot { box-shadow: var(--inset-sm); }
-    .pipeline-node.active .node-dot::after { background: var(--brand); animation: nodeBeat 1.1s ease-in-out infinite; }
-    .pipeline-node.done { color: var(--ok); }
-    .pipeline-node.done .node-dot { box-shadow: var(--inset-sm); }
-    .pipeline-node.done .node-dot::after { background: var(--ok); }
-    @keyframes nodeBeat { 50% { transform: scale(1.35); } }
-
-    .pipeline-edge {
-      flex: 1;
-      height: 6px;
-      margin-bottom: 24px;
-      border-radius: var(--r-pill);
-      box-shadow: var(--inset-sm);
-      position: relative;
-      overflow: hidden;
-    }
-    .pipeline-edge.active::after {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(90deg, transparent, var(--brand), transparent);
-      animation: edgeFlow 1.2s linear infinite;
-    }
-    .pipeline-edge.done { background: var(--ok); box-shadow: none; opacity: 0.8; }
-    @keyframes edgeFlow { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-
-    .pipeline-ticker {
-      margin-top: var(--s3);
-      font-weight: 500;
-      padding: 10px 16px;
-      border-radius: var(--r-md);
-      box-shadow: var(--inset-sm);
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      color: var(--text-mid);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       FASE 2
-       ═══════════════════════════════════════════════════════════════════════ */
-    .fase2-section {
-      padding: var(--s6);
-      margin-bottom: var(--s7);
-      border-radius: var(--r-lg);
-      box-shadow: var(--raised);
-    }
-    .fase2-header {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
-      flex-wrap: wrap;
-      margin-bottom: var(--s6);
-    }
-    .fase2-title { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; }
-    .fase2-header > div:last-child { flex-wrap: wrap; }
-
-    .fase2-grupos {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--s5);
-      margin-bottom: var(--s6);
-    }
-    .fase2-grupo {
-      padding: var(--s5);
-      border-radius: var(--r-lg);
-      box-shadow: var(--inset);
-      min-width: 0;
-    }
-    .fase2-grupo-title { font-size: 0.85rem; font-weight: 600; color: var(--text-mid); margin-bottom: var(--s4); }
-
-    .toggles-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-      gap: var(--s4);
-    }
-    .toggle-item {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-      padding: 12px 14px;
-      border-radius: var(--r-md);
-      background: var(--bg);
-      box-shadow: var(--raised-sm);
-      cursor: pointer;
-      user-select: none;
-      transition: box-shadow var(--t-med) var(--ease-out);
-    }
-    .toggle-item:hover { box-shadow: var(--raised); }
-    .toggle-item.active { box-shadow: var(--inset-sm); }
-    .toggle-label { font-size: 0.84rem; font-weight: 500; color: var(--text-mid); min-width: 0; }
-    .toggle-item.active .toggle-label { color: var(--brand); font-weight: 600; }
-    .toggle-count {
-      font-family: var(--mono);
-      font-size: 0.68rem;
-      color: var(--text-lo);
-      min-width: 26px;
-      text-align: center;
-      padding: 2px 6px;
-      border-radius: var(--r-pill);
-      box-shadow: var(--inset-sm);
-    }
-
-    /* Switch: riel hundido + perilla en relieve */
-    .toggle-switch {
-      width: 40px; height: 22px;
-      flex-shrink: 0;
-      border-radius: var(--r-pill);
-      box-shadow: var(--inset-sm);
-      position: relative;
-      transition: background var(--t-med) var(--ease-out);
-    }
-    .toggle-switch::after {
-      content: '';
-      position: absolute;
-      top: 3px; left: 3px;
-      width: 16px; height: 16px;
-      border-radius: 50%;
-      background: var(--bg);
-      box-shadow: 2px 2px 4px var(--sh-dark), -1px -1px 3px var(--sh-light);
-      transition: transform var(--t-med) var(--ease-out);
-    }
-    .toggle-item.active .toggle-switch,
-    .puntapie-toggle.active .toggle-switch { background: var(--brand); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.2); }
-    .toggle-item.active .toggle-switch::after,
-    .puntapie-toggle.active .toggle-switch::after { transform: translateX(18px); background: #F6F7FA; }
-
-    .cliente-item { margin-bottom: var(--s3); }
-    .cliente-nombre { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
-    .cliente-item.active .cliente-nombre { color: var(--brand); }
-    .cliente-sector { font-size: 0.72rem; color: var(--text-lo); }
-
-    .puntapie-row { margin-bottom: var(--s3); }
-    .puntapie-toggle {
-      display: inline-flex; align-items: center; gap: var(--s3);
-      padding: 8px 16px 8px 10px;
-      border-radius: var(--r-pill);
-      box-shadow: var(--raised-xs);
-      cursor: pointer;
-      user-select: none;
-      font-size: 0.82rem;
-      font-weight: 500;
-      color: var(--text-mid);
-      transition: box-shadow var(--t-med) var(--ease-out), color var(--t-fast);
-    }
-    .puntapie-toggle:hover { color: var(--text-hi); }
-    .puntapie-toggle.active { box-shadow: var(--inset-sm); }
-    .puntapie-toggle.active span { color: var(--brand); font-weight: 600; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       CONSOLA
-       ═══════════════════════════════════════════════════════════════════════ */
-    .console-section {
-      padding: var(--s5);
-      border-radius: var(--r-lg);
-      box-shadow: var(--raised);
-    }
-    .console-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s4); }
-    .console-title { font-size: 1rem; font-weight: 600; }
-    .console-container {
-      height: 340px;
-      overflow-y: auto;
-      padding: var(--s4) var(--s5);
-      border-radius: var(--r-md);
-      background: var(--bg-deep);
-      box-shadow: var(--inset);
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      line-height: 1.7;
-      scrollbar-width: thin;
-      scrollbar-color: var(--text-lo) transparent;
-    }
-    .log-entry {
-      padding: 1px 0;
-      color: var(--text-mid);
-      white-space: pre-wrap;
-      word-break: break-word;
-      animation: logIn 0.25s var(--ease-out);
-    }
-    @keyframes logIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
-    .log-info { color: var(--text-mid); }
-    .log-success { color: var(--ok); }
-    .log-error { color: var(--err); }
-    .log-warn { color: var(--warn); }
-    .log-timestamp { color: var(--text-lo); margin-right: 4px; }
-    .console-prompt { color: var(--brand); font-weight: 500; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       MODAL
-       ═══════════════════════════════════════════════════════════════════════ */
-    .modal-overlay {
-      position: fixed; inset: 0;
-      z-index: var(--z-modal);
-      display: none;
-      align-items: center; justify-content: center;
-      padding: var(--s5);
-      background: color-mix(in srgb, var(--bg) 70%, transparent);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      width: min(1180px, 100%);
-      max-height: calc(100dvh - 48px);
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 300px;
-      gap: var(--s5);
-      padding: var(--s5);
-      border-radius: var(--r-lg);
-      background: var(--bg);
-      box-shadow: 14px 14px 32px var(--sh-dark), -14px -14px 32px var(--sh-light);
-      animation: modalIn 0.35s var(--ease-out);
-    }
-    @keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-    .modal-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s4); }
-    .modal-title { font-size: 1.2rem; font-weight: 600; }
-    .modal-close {
-      width: 40px; height: 40px;
-      border: 0;
-      border-radius: 50%;
-      background: var(--bg);
-      box-shadow: var(--raised-xs);
-      color: var(--text-mid);
-      font-size: 1.3rem;
-      line-height: 1;
-      cursor: pointer;
-    }
-    .modal-close:hover { color: var(--err); }
-    .modal-close:active { box-shadow: var(--inset-sm); }
-    .modal-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: var(--s5) var(--s6);
-      border-radius: var(--r-md);
-      box-shadow: var(--inset);
-      color: var(--text-mid);
-      line-height: 1.75;
-    }
-    .modal-body h1 { font-size: 1.5rem; line-height: 1.25; color: var(--text-hi); margin-bottom: var(--s4); letter-spacing: -0.02em; }
-    .modal-body h2 { font-size: 1.15rem; color: var(--text-hi); margin: var(--s5) 0 var(--s2); }
-    .modal-body h3 { font-size: 1rem; color: var(--text-hi); margin: var(--s4) 0 var(--s2); }
-    .modal-body p { margin-bottom: var(--s3); max-width: 72ch; }
-    .modal-body ul, .modal-body ol { margin: 0 0 var(--s3) var(--s5); }
-    .modal-body strong { color: var(--text-hi); }
-    .modal-body a { color: var(--brand); }
-    .modal-footer { display: flex; justify-content: flex-end; gap: var(--s3); margin-top: var(--s4); }
-
-    .modal-sidebar {
-      padding: var(--s5);
-      border-radius: var(--r-md);
-      box-shadow: var(--inset);
-      overflow-y: auto;
-      min-height: 0;
-    }
-    .sidebar-title { font-size: 0.95rem; font-weight: 600; margin-bottom: var(--s4); }
-    .checklist { display: flex; flex-direction: column; gap: var(--s3); }
-    .check-item {
-      display: flex; align-items: center; gap: var(--s3);
-      padding: 10px 12px;
-      border-radius: var(--r-md);
-      box-shadow: var(--raised-xs);
-      font-size: 0.8rem;
-      color: var(--text-mid);
-      text-transform: capitalize;
-      animation: rise 0.35s var(--ease-out) both;
-    }
-    .check-item:nth-child(2) { animation-delay: 40ms; }
-    .check-item:nth-child(3) { animation-delay: 80ms; }
-    .check-item:nth-child(4) { animation-delay: 120ms; }
-    .check-item:nth-child(5) { animation-delay: 160ms; }
-    .check-item:nth-child(6) { animation-delay: 200ms; }
-    .check-item:nth-child(7) { animation-delay: 240ms; }
-    .check-item:nth-child(8) { animation-delay: 280ms; }
-    .check-item:nth-child(9) { animation-delay: 320ms; }
-    .check-dot {
-      width: 12px; height: 12px;
-      flex-shrink: 0;
-      border-radius: 50%;
-      box-shadow: var(--inset-sm);
-    }
-    .check-item.ok { color: var(--text-hi); }
-    .check-item.ok .check-dot { background: var(--ok); box-shadow: none; }
-    .check-item.fail .check-dot { background: var(--err); box-shadow: none; }
-    .eval-comments { margin-top: var(--s4); font-size: 0.8rem; color: var(--text-lo); line-height: 1.6; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       TOASTS
-       ═══════════════════════════════════════════════════════════════════════ */
-    .toast-container {
-      position: fixed;
-      right: var(--s5); bottom: var(--s5);
-      z-index: var(--z-toast);
-      display: flex; flex-direction: column; gap: var(--s3);
-      max-width: min(380px, calc(100vw - 32px));
-    }
-    .toast {
-      display: flex; align-items: flex-start; gap: var(--s3);
-      padding: 12px 16px;
-      border-radius: var(--r-md);
-      background: var(--bg);
-      box-shadow: var(--raised);
-      border-left: 4px solid var(--info);
-      font-size: 0.84rem;
-      color: var(--text-hi);
-      animation: toastIn 0.35s var(--ease-out);
-    }
-    .toast.toast-exit { animation: toastOut 0.25s ease-in forwards; }
-    .toast-icon { font-weight: 700; }
-    .toast.toast-success { border-left-color: var(--ok); } .toast.toast-success .toast-icon { color: var(--ok); }
-    .toast.toast-error { border-left-color: var(--err); } .toast.toast-error .toast-icon { color: var(--err); }
-    .toast.toast-info { border-left-color: var(--info); } .toast.toast-info .toast-icon { color: var(--info); }
-    .toast.toast-warn { border-left-color: var(--warn); } .toast.toast-warn .toast-icon { color: var(--warn); }
-    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    @keyframes toastOut { to { opacity: 0; transform: translateX(20px); } }
-
-    .count-up { font-variant-numeric: tabular-nums; }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       RESPONSIVE
-       ═══════════════════════════════════════════════════════════════════════ */
-    @media (max-width: 1280px) {
-      .pipeline-node span { font-size: 0.65rem; }
-    }
-    @media (max-width: 1024px) {
-      .fuentes-cols { gap: var(--s5); }
-      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); }
-      .fase2-grupos, .agenda-grid { grid-template-columns: minmax(0, 1fr); }
-      .modal { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
-      .modal-sidebar { order: 2; }
-      .header { flex-direction: column; align-items: flex-start; }
-      .header-right { justify-content: flex-start; }
-    }
-    @media (max-width: 640px) {
-      .app-container { padding: var(--s4) var(--s4) var(--s7); }
-      .header { padding: var(--s4); margin-bottom: var(--s6); }
-      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
-      .stat-card { padding: var(--s4); }
-      .stat-row { padding: var(--s2) var(--s3); min-height: 52px; }
-      .stat-value { font-size: 1.2rem; }
-      .stat-sparkline { display: none; }
-      .fase2-section { padding: var(--s4); }
-      .fase2-grupo { padding: var(--s4); }
-      .fuentes-cols { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
-      .agenda-card { padding: var(--s4); }
-      .agenda-hint { text-align: left; }
-      .pipeline-hud { bottom: var(--s3); padding: var(--s3) var(--s4); }
-      .pipeline-node .node-dot { width: 26px; height: 26px; }
-      .pipeline-node .node-dot::after { inset: 8px; }
-      .pipeline-flow { overflow-x: auto; padding: 6px 4px 8px; }
-      .pipeline-edge { min-width: 18px; }
-      .provider-toggle { flex-wrap: wrap; border-radius: var(--r-md); }
-      .modal-overlay { padding: var(--s3); }
-      .modal { padding: var(--s4); }
-      .modal-body { padding: var(--s4); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
-  </style>
+<link rel="stylesheet" href="/static/workspace.css">
 </head>
 <body>
-  <div class="particles-canvas"></div>
-  <div class="app-container">
-    <!-- Header -->
-    <header class="header" id="appHeader">
-      <div class="header-brand">
-        <div class="header-logo" id="logoEl">AD</div>
-        <div>
-          <h1 class="header-title">AfterDrive <span>Intelligence</span></h1>
-          <p class="header-subtitle">Centro de control del pipeline de autopartes</p>
-        </div>
-      </div>
-      <div class="header-right">
-        <div class="provider-toggle" id="providerToggle">
-          <span class="prov-label">Proveedor</span>
-          <button class="prov-btn" id="prov-local" onclick="switchProvider('local')">Local</button>
-          <button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')">NVIDIA</button>
-          <button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')">OpenRouter</button>
-        </div>
-        <div class="status-pill">
-          <div class="status-dot off" id="statusPulse"></div>
-          <span id="statusText">Conectando...</span>
-        </div>
-        <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema" id="themeBtn">&#9790;</button>
-      </div>
-    </header>
+<a class="skip-link" href="#workspace-main">Saltar al contenido</a>
+<aside aria-label="Navegación principal" class="workspace-nav">
+<a class="workspace-brand" href="#redaccion"><span class="brand-monogram">AD<span>↗</span></span><strong>AfterDrive<small>INTELLIGENCE</small></strong></a>
+<div class="nav-caption">ESPACIO EDITORIAL</div>
+<nav>
+<a aria-current="page" data-workspace="redaccion" href="#redaccion"><span aria-hidden="true">▤</span> Redacción</a>
+<a data-workspace="fuentes" href="#fuentes"><span aria-hidden="true">▥</span> Fuentes</a>
+<a data-workspace="automatizacion" href="#automatizacion"><span aria-hidden="true">◷</span> Automatización</a>
+<a data-workspace="actividad" href="#actividad"><span aria-hidden="true">≡</span> Actividad <span class="activity-count" id="activity-count">0</span></a>
+</nav>
+</aside>
+<div class="app-container">
+<header class="header" id="appHeader">
+<div class="header-brand">
+<div class="header-logo" hidden="" id="logoEl">AD</div>
+<div>
 
-    <!-- Stats -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">URLs Confiables</div>
-        <div class="stat-row">
-          <div class="stat-value count-up" id="statUrls">&mdash;</div>
-          <svg class="stat-sparkline" width="48" height="28" viewBox="0 0 48 28"><path id="spark-urls" d="M0,24 L8,20 L16,22 L24,14 L32,16 L40,8 L48,4" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-        </div>
-        <div class="stat-sub" id="statUrlsSub"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Articulos en DB</div>
-        <div class="stat-row">
-          <div class="stat-value count-up" id="statArticles">&mdash;</div>
-          <svg class="stat-sparkline" width="48" height="28" viewBox="0 0 48 28"><path id="spark-articles" d="M0,20 L8,18 L16,22 L24,12 L32,10 L40,6 L48,2" fill="none" stroke="var(--ok)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-        </div>
-        <div class="stat-sub" id="statArticlesSub"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Ultima Ejecucion</div>
-        <div class="stat-row">
-          <div class="stat-value" id="statLastRun" style="font-size:1.1rem">&mdash;</div>
-        </div>
-        <div class="stat-sub" id="statNextRun"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Proxima Ejecucion</div>
-        <div class="stat-row">
-          <div class="stat-value" id="statNextRunVal" style="font-size:1.1rem">&mdash;</div>
-        </div>
-        <div class="stat-sub" id="statInterval"></div>
-      </div>
-    </div>
-
-    <!-- Pipeline HUD (hidden by default) -->
-    <div class="pipeline-hud" id="pipelineHud">
-      <div class="pipeline-label">Pipeline de Procesamiento</div>
-      <div class="pipeline-flow">
-        <div class="pipeline-node" id="pn-init"><div class="node-dot"></div><span>Init</span></div>
-        <div class="pipeline-edge" id="pe-1"></div>
-        <div class="pipeline-node" id="pn-scrape"><div class="node-dot"></div><span>Scrape</span></div>
-        <div class="pipeline-edge" id="pe-2"></div>
-        <div class="pipeline-node" id="pn-parse"><div class="node-dot"></div><span>Parse</span></div>
-        <div class="pipeline-edge" id="pe-3"></div>
-        <div class="pipeline-node" id="pn-classify"><div class="node-dot"></div><span>Clasificar</span></div>
-        <div class="pipeline-edge" id="pe-4"></div>
-        <div class="pipeline-node" id="pn-embed"><div class="node-dot"></div><span>Vectorizar</span></div>
-        <div class="pipeline-edge" id="pe-5"></div>
-        <div class="pipeline-node" id="pn-store"><div class="node-dot"></div><span>Guardar</span></div>
-      </div>
-      <div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
-    </div>
-
-    <!-- Programación automática -->
-    <section class="agenda" aria-labelledby="agenda-title">
-      <div class="section-head">
-        <h2 class="section-title" id="agenda-title">Programación automática</h2>
-        <p class="section-sub">Arrastrá las agujas o escribí la hora. Los cambios se guardan solos. Hora de Argentina.</p>
-      </div>
-      <div class="agenda-grid">
-        <article class="agenda-card" id="agenda-scraping">
-          <header class="agenda-card-head">
-            <div>
-              <h3 class="agenda-card-title">Scraping</h3>
-              <p class="agenda-card-sub">Lee tus fuentes y guarda los artículos nuevos</p>
-            </div>
-            <div class="puntapie-toggle active" id="sw-scraping" role="switch" tabindex="0" aria-checked="true" aria-label="Scraping automático">
-              <div class="toggle-switch"></div><span>Activo</span>
-            </div>
-          </header>
-          <div class="reloj" id="reloj-scraping"></div>
-          <div class="hora-row">
-            <label class="sr-only" for="hora-scraping">Hora de scraping</label>
-            <input type="time" id="hora-scraping" class="hora-input" step="300" required />
-            <div class="ampm" id="ampm-scraping" role="group" aria-label="Mañana o tarde">
-              <button type="button" data-p="am">AM</button>
-              <button type="button" data-p="pm">PM</button>
-            </div>
-          </div>
-          <div class="agenda-fields">
-            <label class="agenda-field">
-              <span>Cada</span>
-              <input type="number" id="dias-scraping" class="input-field" min="1" max="30" value="1" />
-              <span>día(s)</span>
-            </label>
-            <label class="agenda-field">
-              <span>Hasta</span>
-              <input type="number" id="max-scraping" class="input-field" min="1" max="50" value="10" />
-              <span>artículos por fuente</span>
-            </label>
-          </div>
-          <footer class="agenda-foot">
-            <div class="agenda-next">
-              <span>Próxima corrida</span>
-              <strong id="next-scraping">-</strong>
-              <em class="agenda-estado" id="estado-scraping" aria-live="polite"></em>
-            </div>
-            <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()">Scrapear ahora</button>
-          </footer>
-        </article>
-        <article class="agenda-card" id="agenda-generacion">
-          <header class="agenda-card-head">
-            <div>
-              <h3 class="agenda-card-title">Generación de nota</h3>
-              <p class="agenda-card-sub">Escribe una nota nueva con lo último que se scrapeó</p>
-            </div>
-            <div class="puntapie-toggle active" id="sw-generacion" role="switch" tabindex="0" aria-checked="true" aria-label="Generación de nota automático">
-              <div class="toggle-switch"></div><span>Activo</span>
-            </div>
-          </header>
-          <div class="reloj" id="reloj-generacion"></div>
-          <div class="hora-row">
-            <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
-            <input type="time" id="hora-generacion" class="hora-input" step="300" required />
-            <div class="ampm" id="ampm-generacion" role="group" aria-label="Mañana o tarde">
-              <button type="button" data-p="am">AM</button>
-              <button type="button" data-p="pm">PM</button>
-            </div>
-          </div>
-          <div class="agenda-fields">
-            <label class="agenda-field">
-              <span>Cada</span>
-              <input type="number" id="dias-generacion" class="input-field" min="1" max="30" value="1" />
-              <span>día(s)</span>
-            </label>
-            <label class="agenda-field agenda-field-wide">
-              <span>Tono</span>
-              <select id="persona-generacion" class="select-field">
-                <option value="comercial">Comercial</option>
-                <option value="analitico">Analítico-técnico</option>
-                <option value="periodistico">Periodístico</option>
-                <option value="divulgativo">Divulgativo</option>
-                <option value="ejecutivo">Ejecutivo</option>
-              </select>
-            </label>
-          </div>
-          <footer class="agenda-foot">
-            <div class="agenda-next">
-              <span>Próxima nota</span>
-              <strong id="next-generacion">-</strong>
-              <em class="agenda-estado" id="estado-generacion" aria-live="polite"></em>
-            </div>
-            <p class="agenda-hint">Usa las categorías, regiones y clientes que dejes activos en el generador de abajo.</p>
-          </footer>
-        </article>
-      </div>
-    </section>
-
-    <!-- Generador de notas -->
-    <div class="fase2-section">
-      <div class="fase2-header">
-        <div>
-          <h2 class="fase2-title">Generador de notas</h2>
-          <p style="font-size:0.8125rem;color:var(--text-lo);margin-top:4px">Seleccioná categorías, configurá clientes y generá notas estilo AfterDrive</p>
-        </div>
-        <div style="display:flex;gap:var(--s3);align-items:center">
-          <button class="btn" id="btn-f2-scrape" onclick="fase2Scrape()">Sincronizar Ejemplos</button>
-          <span class="card-badge" style="align-self:center" id="f2-ejemplos-badge">0 ejemplos</span>
-        </div>
-      </div>
-
-      <div class="fase2-grupos">
-        <!-- Fuentes -->
-        <div class="fase2-grupo fuentes-grupo" style="grid-column:1/-1">
-          <div class="fuentes-head">
-            <div class="fase2-grupo-title">Fuentes que se scrapean</div>
-            <span class="card-badge" id="trusted-urls-count">0 fuentes</span>
-          </div>
-          <div class="fuentes-cols">
-            <div class="fuentes-col">
-              <div class="control-label">Tus fuentes</div>
-              <div id="trusted-urls-list" class="fuentes-lista"></div>
-              <label class="control-label" for="url-in" style="margin-top:var(--s4)">Agregar una fuente a mano</label>
-              <div class="input-row">
-                <input type="url" id="url-in" class="input-field" placeholder="https://sitio-de-noticias.com/" />
-                <button class="btn btn-primary" onclick="addUrlDirect()" id="btn-addurl-direct">Agregar</button>
-                <button class="btn" onclick="addUrl()" id="btn-addurl">Probar y agregar</button>
-              </div>
-              <p class="fuentes-ayuda"><strong>Agregar</strong> la suma directo. <strong>Probar y agregar</strong> la scrapea primero y solo la suma si encuentra artículos del sector.</p>
-              <div id="url-status" class="feedback"></div>
-            </div>
-            <div class="fuentes-col">
-              <div class="fuentes-sug-head">
-                <div class="control-label" style="margin:0">Fuentes recomendadas</div>
-                <button class="btn" onclick="discover()" id="btn-disc">Buscar recomendaciones</button>
-              </div>
-              <div class="suggestions-list" id="sug-list"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Categorías -->
-        <div class="fase2-grupo" style="grid-column:1/-1">
-          <div class="fase2-grupo-title">Categorías (seleccioná una o más)</div>
-          <div class="toggles-grid" id="f2-categorias-grid">
-            <div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
-          </div>
-        </div>
-
-        <!-- Regiones -->
-        <div class="fase2-grupo" style="grid-column:1/-1">
-          <div class="fase2-grupo-title">Regiones (opcional: dejalas apagadas para no filtrar por región)</div>
-          <div class="toggles-grid" id="f2-regiones-grid">
-            <div style="color:var(--text-lo);font-size:0.8rem">Cargando regiones...</div>
-          </div>
-        </div>
-
-        <!-- Clientes -->
-        <div class="fase2-grupo">
-          <div class="fase2-grupo-title">Clientes a mencionar</div>
-          <div id="f2-clientes-list" style="margin-bottom:var(--s3)">
-            <div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>
-          </div>
-          <div class="input-row">
-            <input type="text" id="f2-cli-nombre" class="input-field" placeholder="Nombre del cliente" />
-            <button class="btn" onclick="fase2AgregarCliente()">Agregar</button>
-          </div>
-          <input type="text" id="f2-cli-desc" class="input-field" placeholder="Descripción breve" style="margin-top:var(--s2);width:100%" />
-          <div id="f2-cli-status" class="feedback"></div>
-        </div>
-
-        <!-- Opciones de generación -->
-        <div class="fase2-grupo">
-          <div class="fase2-grupo-title">Opciones de nota</div>
-
-          <!-- Personalidad -->
-          <div style="margin-bottom:var(--s4)">
-            <div class="control-label">Personalidad / Tono</div>
-            <select id="f2-persona" class="select-field" style="width:100%">
-              <option value="comercial">Comercial</option>
-              <option value="analitico">Analítico-Técnico</option>
-              <option value="periodistico">Periodístico</option>
-              <option value="divulgativo">Divulgativo</option>
-              <option value="ejecutivo">Ejecutivo</option>
-            </select>
-          </div>
-
-          <!-- Tema libre -->
-          <div style="margin-bottom:var(--s4)">
-            <div class="control-label">Tema específico (opcional)</div>
-            <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
-          </div>
-
-          <!-- Puntapié a link -->
-          <div style="margin-bottom:var(--s3)">
-            <div class="control-label" style="margin-bottom:var(--s2)">Modo puntapié a link</div>
-            <div class="puntapie-row">
-              <div class="puntapie-toggle" id="f2-puntapie-toggle" onclick="togglePuntapie()">
-                <div class="toggle-switch" id="f2-puntapie-switch"></div>
-                <span id="f2-puntapie-label">Desactivado</span>
-              </div>
-            </div>
-            <div id="f2-puntapie-url-wrap" style="display:none">
-              <input type="url" id="f2-puntapie-url" class="input-field" style="width:100%" placeholder="https://..." />
-              <div style="font-size:0.75rem;color:var(--text-lo);margin-top:4px">La nota apuntará a redirigir al lector a esta URL</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Acción -->
-      <div style="display:flex;gap:var(--s3);justify-content:flex-end;margin-bottom:var(--s4)">
-        <button class="btn" onclick="fase2VerUltima()">Última Nota</button>
-        <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()">Generar Nota</button>
-      </div>
-      <div id="f2-status" class="feedback"></div>
-    </div>
-
-    <!-- Console -->
-    <div class="console-section">
-      <div class="console-header">
-        <span class="console-title">Consola de Procesos</span>
-        <button class="btn" style="padding:5px 12px;font-size:0.75rem" onclick="limpiarLogs()">Limpiar</button>
-      </div>
-      <div id="logs" class="console-container">
-        <div class="log-entry log-info"><span class="console-prompt">afterdrive &#9656;</span> Sistema listo. Esperando instrucciones...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal -->
-  <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
-    <div class="modal">
-      <div class="modal-main">
-        <div class="modal-header">
-          <h2 class="modal-title">Resultado de Generacion</h2>
-          <button class="modal-close" onclick="cerrar()">&times;</button>
-        </div>
-        <div class="modal-body" id="art-body"></div>
-        <div class="modal-footer">
-          <button class="btn" onclick="copiar()">Copiar Texto</button>
-          <button class="btn" onclick="cerrar()">Cerrar</button>
-        </div>
-      </div>
-      <div class="modal-sidebar">
-        <h3 class="sidebar-title">Checklist de Calidad</h3>
-        <div class="checklist" id="check-list"></div>
-        <div id="eval-comms" class="eval-comments"></div>
-      </div>
-    </div>
-  </div>
-
-  <script>
+<p class="header-subtitle">Inteligencia editorial · Automotriz y postventa</p>
+</div>
+</div>
+<div class="header-right">
+<div class="provider-toggle" id="providerToggle">
+<span class="prov-label">Proveedor</span>
+<button class="prov-btn" id="prov-local" onclick="switchProvider('local')">Local</button>
+<button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')">NVIDIA</button>
+<button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')">OpenRouter</button>
+</div>
+<div class="status-pill">
+<div class="status-dot off" id="statusPulse"></div>
+<span id="statusText">Conectando…</span>
+</div>
+<button aria-label="Cambiar tema" class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">☾</button>
+</div>
+</header><div class="stats-grid">
+<div class="stat-card">
+<div class="stat-label">Fuentes activas</div>
+<div class="stat-row">
+<div class="stat-value count-up" id="statUrls">—</div>
+</div>
+<div class="stat-sub" id="statUrlsSub"></div>
+</div>
+<div class="stat-card">
+<div class="stat-label">Artículos disponibles</div>
+<div class="stat-row">
+<div class="stat-value count-up" id="statArticles">—</div>
+</div>
+<div class="stat-sub" id="statArticlesSub"></div>
+</div>
+<div class="stat-card">
+<div class="stat-label">Última recopilación</div>
+<div class="stat-row">
+<div class="stat-value" id="statLastRun" style="font-size:1.1rem">—</div>
+</div>
+<div class="stat-sub" id="statNextRun"></div>
+</div>
+<div class="stat-card">
+<div class="stat-label">Próxima recopilación</div>
+<div class="stat-row">
+<div class="stat-value" id="statNextRunVal" style="font-size:1.1rem">—</div>
+</div>
+<div class="stat-sub" id="statInterval"></div>
+</div>
+</div>
+<main id="workspace-main" tabindex="-1">
+<div class="workspace-heading"><div><div class="eyebrow">MESA DE TRABAJO</div><h1 id="workspace-title">Redacción</h1><p id="workspace-description">Convertí noticias del sector en contenido con una voz propia.</p></div></div>
+<section aria-label="Redacción" class="workspace-view" id="view-redaccion">
+<div aria-label="Tipo de contenido" class="writing-tabs" role="tablist">
+<button aria-controls="writing-nota" aria-selected="true" id="tab-nota" onclick="selectWriting('nota')" role="tab">Nota AfterDrive <span>Por categorías y región</span></button>
+<button aria-controls="writing-articulo" aria-selected="false" id="tab-articulo" onclick="selectWriting('articulo')" role="tab" tabindex="-1">Artículo por tema <span>Una búsqueda específica</span></button>
+</div>
+<div class="editorial-guidance"><strong>Definí el enfoque.</strong> Elegí las fuentes temáticas y la voz. Al terminar, revisá el texto y su evaluación antes de usarlo.</div>
+<div aria-labelledby="tab-nota" id="writing-nota" role="tabpanel"><div class="fase2-section"><div class="note-actions"><span class="save-status" id="editorial-save-status" role="status">Las selecciones se guardan al cambiarlas</span>
+<button class="btn" onclick="fase2VerUltima()">Última Nota</button>
+<button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()">Generar nota</button>
+</div>
+<div class="fase2-grupos"><div class="fase2-grupo brief-options">
+<div class="fase2-grupo-title">Enfoque y voz</div>
+<!-- Personalidad -->
+<div style="margin-bottom:var(--s4)">
+<div class="control-label">Voz editorial</div>
+<select class="select-field" id="f2-persona" style="width:100%">
+<option value="comercial">Comercial</option>
+<option value="analitico">Analítico-Técnico</option>
+<option value="periodistico">Periodístico</option>
+<option value="divulgativo">Divulgativo</option>
+<option value="ejecutivo">Ejecutivo</option>
+</select>
+</div>
+<!-- Tema libre -->
+<div style="margin-bottom:var(--s4)">
+<div class="control-label">Tema específico (opcional)</div>
+<input class="input-field" id="f2-tema" placeholder="Ej: disponibilidad de repuestos en Argentina…" style="width:100%" type="text"/>
+</div>
+<!-- Puntapié a link -->
+<div style="margin-bottom:var(--s3)">
+<div class="control-label" style="margin-bottom:var(--s2)">Orientar la nota hacia un enlace</div>
+<div class="puntapie-row">
+<div class="puntapie-toggle" id="f2-puntapie-toggle" onclick="togglePuntapie()">
+<div class="toggle-switch" id="f2-puntapie-switch"></div>
+<span id="f2-puntapie-label">Desactivado</span>
+</div>
+</div>
+<div id="f2-puntapie-url-wrap" style="display:none">
+<input class="input-field" id="f2-puntapie-url" placeholder="https://..." style="width:100%" type="url"/>
+<div style="font-size:0.75rem;color:var(--text-lo);margin-top:4px">La nota apuntará a redirigir al lector a esta URL</div>
+</div>
+</div>
+</div>
+<!-- Fuentes -->
+<!-- Categorías -->
+<div class="fase2-grupo brief-categories">
+<div class="fase2-grupo-title">Cobertura temática · elegí al menos una</div><p class="group-help">Los números indican ejemplos de referencia por categoría.</p>
+<div class="toggles-grid" id="f2-categorias-grid">
+<div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
+</div>
+</div>
+<!-- Regiones -->
+<div class="fase2-grupo brief-regions">
+<div class="fase2-grupo-title">Alcance geográfico · opcional</div><p class="group-help">Sin regiones seleccionadas, la nota no se limita por ubicación.</p>
+<div class="toggles-grid" id="f2-regiones-grid">
+<div style="color:var(--text-lo);font-size:0.8rem">Cargando regiones...</div>
+</div>
+</div>
+<!-- Clientes -->
+<details class="fase2-grupo brief-clients">
+<summary class="fase2-grupo-title">Menciones de clientes · opcional</summary>
+<div id="f2-clientes-list" style="margin-bottom:var(--s3)">
+<div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>
+</div>
+<div class="input-row">
+<input class="input-field" id="f2-cli-nombre" placeholder="Nombre del cliente" type="text"/>
+<button class="btn" onclick="fase2AgregarCliente()">Agregar</button>
+</div>
+<input class="input-field" id="f2-cli-desc" placeholder="Descripción breve" style="margin-top:var(--s2);width:100%" type="text"/>
+<div class="feedback" id="f2-cli-status"></div>
+</details>
+<!-- Opciones de generación -->
+</div>
+<!-- Acción -->
+<div class="feedback" id="f2-status"></div>
+</div></div>
+<div aria-labelledby="tab-articulo" hidden="" id="writing-articulo" role="tabpanel"><div class="card card-full" style="overflow:visible">
+<div class="card-header">
+<h3 class="card-title">Artículo por tema</h3>
+<span class="card-badge">Redacción</span>
+</div>
+<p class="card-description">Definí un tema y una voz para redactar con el material disponible.</p>
+<div class="generation-controls">
+<div class="control-group" style="flex:2">
+<div class="control-label">Tema</div>
+<div class="input-row">
+<input class="input-field" id="gen-tema" placeholder="Ej: frenos, filtros de aceite, mercado aftermarket..." type="text"/>
+<button class="btn" onclick="checkVolumeGen()">Volumen</button>
+</div>
+<div class="feedback" id="gen-vol-res"></div>
+<div class="topic-chips">
+<button class="topic-chip" onclick="applyTopic('frenos')">Frenos</button>
+<button class="topic-chip" onclick="applyTopic('filtros')">Filtros</button>
+<button class="topic-chip" onclick="applyTopic('aftermarket')">Aftermarket</button>
+<button class="topic-chip" onclick="applyTopic('embrague')">Embrague</button>
+<button class="topic-chip" onclick="applyTopic('suspension')">Suspensión</button>
+<button class="topic-chip" onclick="applyTopic('motor')">Motor</button>
+</div>
+</div>
+<div class="control-group" style="flex:1;min-width:200px">
+<div class="control-label">Voz editorial</div>
+<select class="select-field" id="gen-persona" style="width:100%">
+<option value="analitico">Analítico-Técnico</option>
+<option value="periodistico">Periodístico</option>
+<option value="comercial">Comercial</option>
+<option value="divulgativo">Divulgativo</option>
+<option value="ejecutivo">Ejecutivo</option>
+</select>
+</div>
+<div class="control-group" style="flex:0 0 auto;min-width:0">
+<div aria-hidden="true" class="control-label"> </div>
+<div style="display:flex;gap:var(--s3)">
+<button class="btn btn-primary btn-large" id="btn-gen" onclick="generarStream()">Generar</button>
+<button class="btn" onclick="verUltimo()">Último artículo</button>
+</div>
+</div>
+</div>
+</div><div class="card">
+<div class="card-header">
+<h3 class="card-title">Consultar material disponible</h3>
+<span class="card-badge">Inteligencia</span>
+</div>
+<p class="card-description">Comprobá cuántos artículos hay sobre una palabra clave.</p>
+<div class="input-row">
+<input class="input-field" id="vol-kw" placeholder="Ej: frenos, filtros, embrague..." type="text"/>
+<button class="btn" onclick="checkVolume()">Consultar</button>
+</div>
+<div class="feedback" id="vol-res"></div>
+</div></div>
+</section>
+<section aria-label="Fuentes" class="workspace-view" hidden="" id="view-fuentes"><div class="section-actions" style="display:flex;gap:var(--s3);align-items:center">
+<button class="btn btn-primary" id="btn-f2-scrapear" onclick="runNowStream()">Recopilar noticias</button>
+<button class="btn" id="btn-f2-scrape" onclick="fase2Scrape()">Sincronizar ejemplos</button>
+<span class="card-badge" id="f2-ejemplos-badge" style="align-self:center">0 ejemplos</span>
+</div><div class="fase2-grupo fuentes-grupo" style="grid-column:1/-1">
+<div class="fuentes-head">
+<div class="fase2-grupo-title">Biblioteca de fuentes</div>
+<span class="card-badge" id="trusted-urls-count">0 fuentes</span>
+</div>
+<div class="fuentes-cols">
+<div class="fuentes-col">
+<div class="control-label">Tus fuentes</div>
+<div class="fuentes-lista" id="trusted-urls-list"></div>
+<label class="control-label" for="url-in" style="margin-top:var(--s4)">Agregar una fuente a mano</label>
+<div class="input-row">
+<input class="input-field" id="url-in" placeholder="https://sitio-de-noticias.com/" type="url"/>
+<button class="btn btn-primary" id="btn-addurl-direct" onclick="addUrlDirect()">Agregar</button>
+<button class="btn" id="btn-addurl" onclick="addUrl()">Probar y agregar</button>
+</div>
+<p class="fuentes-ayuda"><strong>Agregar</strong> la suma directo. <strong>Probar y agregar</strong> la scrapea primero y solo la suma si encuentra artículos del sector.</p>
+<div class="feedback" id="url-status"></div>
+</div>
+<div class="fuentes-col">
+<div class="fuentes-sug-head">
+<div class="control-label" style="margin:0">Fuentes recomendadas</div>
+<button class="btn" id="btn-disc" onclick="discover()">Buscar recomendaciones</button>
+</div>
+<div class="suggestions-list" id="sug-list"></div>
+</div>
+</div>
+</div><p class="section-note">Recopilar noticias ejecuta la extracción, clasificación y guardado. Sincronizar ejemplos actualiza las referencias de estilo para redactar.</p></section>
+<section aria-label="Automatización" class="workspace-view" hidden="" id="view-automatizacion"><div class="automation-layout"><div class="card">
+<div class="card-header">
+<h3 class="card-title">Recopilación programada</h3>
+<span class="sr-only" id="autoActiveBadge">0 activas</span>
+</div>
+<p class="card-description">Elegí cuándo recopilar noticias de tus fuentes.</p>
+<div class="auto-config">
+<div class="auto-field">
+<span class="auto-label">Recopilación automática</span>
+<div class="puntapie-toggle" id="auto-enabled-toggle" onclick="toggleAutoEnabled()" style="margin-top:0">
+<div class="toggle-switch" id="auto-enabled-switch"></div>
+<span id="auto-enabled-label">Activado</span>
+</div>
+</div>
+<div class="auto-field"><label class="auto-label" for="auto-hora">Hora de ejecución</label><input class="input-field" id="auto-hora" required="" type="time" value="05:30"/><small class="schedule-zone" id="auto-zona">Hora de Argentina</small></div><div class="auto-field">
+<span class="auto-label">Frecuencia</span>
+<div style="display:flex;gap:8px;align-items:center">
+<input class="input-field" id="auto-days" min="1" style="width:80px" type="number" value="1"/>
+<span class="auto-value">días</span>
+</div>
+</div>
+<div class="auto-field">
+<span class="auto-label">Artículos por fuente</span>
+<div style="display:flex;gap:8px;align-items:center">
+<input class="input-field" id="auto-max-art" max="50" min="1" style="width:80px" type="number" value="10"/>
+<span class="auto-value">max</span>
+</div>
+</div>
+<div class="auto-field">
+<span class="auto-label">Próxima ejecución</span>
+<span class="auto-value" id="next-run">—</span>
+</div>
+<div class="auto-field">
+<span class="auto-label">Última ejecución</span>
+<span class="auto-value" id="last-run">—</span>
+</div>
+</div>
+<div class="auto-actions">
+<button class="btn" id="btn-savecfg" onclick="saveConfig()">Guardar programación</button>
+<button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()">Recopilar ahora</button>
+</div>
+</div><div class="card">
+<div class="card-header">
+<h3 class="card-title">Redacción programada</h3>
+</div>
+<p class="card-description">Generá notas con las categorías, regiones y clientes seleccionados en Redacción.</p>
+<div class="auto-config">
+<div class="auto-field">
+<span class="auto-label">Generación automática</span>
+<div class="puntapie-toggle" id="gen-enabled-toggle" onclick="toggleGenEnabled()" style="margin-top:0">
+<div class="toggle-switch" id="gen-enabled-switch"></div>
+<span id="gen-enabled-label">Activado</span>
+</div>
+</div>
+<div class="auto-field"><label class="auto-label" for="gen-hora">Hora de ejecución</label><input class="input-field" id="gen-hora" required="" type="time" value="11:00"/><small class="schedule-zone" id="gen-zona">Hora de Argentina</small></div><div class="auto-field">
+<span class="auto-label">Cada</span>
+<div style="display:flex;gap:8px;align-items:center">
+<input class="input-field" id="gen-days" min="1" style="width:80px" type="number" value="3"/>
+<span class="auto-value">días</span>
+</div>
+</div>
+<div class="auto-field">
+<span class="auto-label">Voz editorial</span>
+<select class="select-field" id="gen-auto-persona" style="width:100%">
+<option value="comercial">Comercial</option>
+<option value="analitico">Analítico-Técnico</option>
+<option value="periodistico">Periodístico</option>
+<option value="divulgativo">Divulgativo</option>
+<option value="ejecutivo">Ejecutivo</option>
+</select>
+</div>
+<div class="auto-field">
+<span class="auto-label">Próxima generación</span>
+<span class="auto-value" id="gen-next-run">—</span>
+</div>
+</div>
+<div class="auto-actions">
+<button class="btn" id="btn-savegencfg" onclick="saveGenConfig()">Guardar programación</button>
+</div>
+</div></div><p class="section-note">Los cambios se aplican al guardar. El servidor permite una sola corrida a la vez.</p></section>
+<section aria-label="Actividad" class="workspace-view" hidden="" id="view-actividad"><p class="section-note">La consola inferior reúne la actividad de esta sesión y se abre al iniciar una operación.</p><button class="btn" onclick="setConsoleOpen(true)">Abrir consola</button></section>
+</main><footer class="workspace-footer">AfterDrive Intelligence </footer>
+</div><div aria-labelledby="result-title" aria-modal="true" class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()" role="dialog">
+<div class="modal">
+<div class="modal-main">
+<div class="modal-header">
+<h2 class="modal-title" id="result-title">Revisión del contenido</h2>
+<button aria-label="Cerrar resultado" class="modal-close" onclick="cerrar()">×</button>
+</div>
+<div class="modal-body" id="art-body"></div>
+<div class="modal-footer">
+<button class="btn" onclick="copiar()">Copiar Texto</button>
+<button class="btn" onclick="cerrar()">Cerrar</button>
+</div>
+</div>
+<div class="modal-sidebar">
+<h3 class="sidebar-title">Checklist de Calidad</h3>
+<div class="checklist" id="check-list"></div>
+<div class="eval-comments" id="eval-comms"></div>
+</div>
+</div>
+</div>
+<aside aria-label="Actividad en vivo" class="execution-dock" id="execution-dock">
+<div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span></button><span class="execution-elapsed" id="execution-elapsed"></span><button class="btn btn-sm" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)">Minimizar</button></div>
+<div hidden="" id="execution-content"><div aria-live="polite" class="pipeline-hud" id="pipelineHud" role="status">
+<div class="pipeline-label">Pipeline de Procesamiento</div>
+<div class="pipeline-flow">
+<div class="pipeline-node" id="pn-init"><div class="node-dot"></div><span>Inicio</span></div>
+<div class="pipeline-edge" id="pe-1"></div>
+<div class="pipeline-node" id="pn-scrape"><div class="node-dot"></div><span>Extraer</span></div>
+<div class="pipeline-edge" id="pe-2"></div>
+<div class="pipeline-node" id="pn-parse"><div class="node-dot"></div><span>Leer</span></div>
+<div class="pipeline-edge" id="pe-3"></div>
+<div class="pipeline-node" id="pn-classify"><div class="node-dot"></div><span>Clasificar</span></div>
+<div class="pipeline-edge" id="pe-4"></div>
+<div class="pipeline-node" id="pn-embed"><div class="node-dot"></div><span>Vectorizar</span></div>
+<div class="pipeline-edge" id="pe-5"></div>
+<div class="pipeline-node" id="pn-store"><div class="node-dot"></div><span>Guardar</span></div>
+</div>
+<div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
+<button class="btn btn-sm" onclick="openWorkspace('actividad')">Ver actividad</button></div><div class="console-section">
+<div class="console-header">
+<span class="console-title">Salida de la operación</span>
+<button class="btn" onclick="limpiarLogs()" style="padding:5px 12px;font-size:0.75rem">Limpiar</button>
+</div>
+<div aria-label="Registro de ejecución" class="console-container" id="logs" role="log">
+<div class="log-entry log-info"><span class="console-prompt">afterdrive ▸</span> Sistema listo. Esperando instrucciones...</div>
+</div>
+</div></div></aside>  <script>
     /* ═══════════════════════════════════════════════════════════════════════
        UTILITIES
        ═══════════════════════════════════════════════════════════════════════ */
@@ -1436,23 +394,6 @@
     /* ═══════════════════════════════════════════════════════════════════════
        PARTICLES BACKGROUND
        ═══════════════════════════════════════════════════════════════════════ */
-    function initParticles() {
-      var canvas = document.querySelector('.particles-canvas');
-      if (!canvas) return;
-      var count = window.innerWidth < 768 ? 10 : 20;
-      for (var i = 0; i < count; i++) {
-        var p = document.createElement('div');
-        p.className = 'particle';
-        p.style.left = (Math.random() * 100) + '%';
-        p.style.animationDuration = (8 + Math.random() * 12) + 's';
-        p.style.animationDelay = (Math.random() * 10) + 's';
-        p.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
-        var size = 1 + Math.random() * 2;
-        p.style.width = size + 'px';
-        p.style.height = size + 'px';
-        canvas.appendChild(p);
-      }
-    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        BUTTON RIPPLE EFFECT
@@ -1489,6 +430,14 @@
       var toast = document.createElement('div');
       toast.className = 'toast toast-' + type;
       toast.innerHTML = '<span class="toast-icon">' + (icons[type] || icons.info) + '</span><span>' + escHtml(msg) + '</span>';
+      toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+      var dismiss = document.createElement('button');
+      dismiss.className = 'toast-dismiss';
+      dismiss.setAttribute('aria-label', 'Cerrar aviso');
+      dismiss.textContent = '×';
+      dismiss.onclick = function() { toast.remove(); };
+      toast.appendChild(dismiss);
+      while (_toastContainer.children.length >= 2) _toastContainer.firstElementChild.remove();
       _toastContainer.appendChild(toast);
       setTimeout(function() {
         toast.classList.add('toast-exit');
@@ -1536,24 +485,18 @@
     /* ═══════════════════════════════════════════════════════════════════════
        COUNT-UP ANIMATION
        ═══════════════════════════════════════════════════════════════════════ */
-    function countUp(el, target, duration) {
-      duration = duration || 800;
-      var start = parseInt(el.textContent.replace(/\D/g, '')) || 0;
-      if (start === target) return;
-      var startTime = null;
-      function step(ts) {
-        if (!startTime) startTime = ts;
-        var p = Math.min((ts - startTime) / duration, 1);
-        var ease = 1 - Math.pow(1 - p, 3);
-        el.textContent = Math.round(start + (target - start) * ease).toLocaleString();
-        if (p < 1) requestAnimationFrame(step);
-      }
-      requestAnimationFrame(step);
+    function countUp(el, target) {
+      if (!el || !Number.isFinite(Number(target))) return;
+      el.textContent = Number(target).toLocaleString();
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
        TOPIC CHIPS
        ═══════════════════════════════════════════════════════════════════════ */
+    function applyTopic(topic) {
+      $('gen-tema').value = topic;
+      $('gen-tema').focus();
+    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        PIPELINE HUD
@@ -1561,6 +504,7 @@
     /* Lee un stream de texto y llama onLine por cada línea COMPLETA.
        Sin buffer, una línea que llega partida en dos chunks se mostraba rota. */
     async function leerLineas(res, onLine) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
       var resto = '';
@@ -1570,10 +514,10 @@
         resto += decoder.decode(chunk.value, { stream: true });
         var partes = resto.split('\n');
         resto = partes.pop();
-        partes.forEach(function(l) { if (l) onLine(l); });
+        partes.forEach(function(l) { if (l) { observeOperationLine(l); onLine(l); } });
       }
       resto += decoder.decode();
-      if (resto) onLine(resto);
+      if (resto) { observeOperationLine(resto); onLine(resto); }
     }
 
     var PIPELINE_STAGES = ['pn-init','pn-scrape','pn-parse','pn-classify','pn-embed','pn-store'];
@@ -1678,6 +622,7 @@
        STATS
        ═══════════════════════════════════════════════════════════════════════ */
     var _firstStatsLoad = true;
+    var _autoConfigLoaded = false, _genConfigLoaded = false;
 
     async function updateStats() {
       try {
@@ -1688,11 +633,14 @@
           $('statUrls').classList.add('flash');
           setTimeout(function() { $('statUrls').classList.remove('flash'); }, 600);
           $('statUrlsSub').textContent = d.total + ' registradas';
+          $('autoActiveBadge').textContent = d.activas + ' activas';
           if (d.ultima_ejecucion) {
             var dt = new Date(d.ultima_ejecucion);
             $('statLastRun').textContent = dt.toLocaleDateString('es-AR');
+            $('last-run').textContent = dt.toLocaleString('es-AR');
           } else {
             $('statLastRun').textContent = 'Nunca';
+            $('last-run').textContent = 'Nunca';
           }
         }
       } catch(e) {}
@@ -1712,8 +660,42 @@
         var r3 = await fetch('/api/scraping-config');
         var d3 = await r3.json();
         if (d3.success) {
-          $('statNextRunVal').textContent = d3.next_execution ? new Date(d3.next_execution).toLocaleDateString('es-AR') : 'Pausado';
-          $('statInterval').textContent = 'A las ' + d3.hora + ', cada ' + d3.interval_days + ' día(s)';
+          if (!_autoConfigLoaded) {
+            $('auto-hora').value = d3.hora || '05:30';
+            $('auto-zona').textContent = d3.zona || 'America/Argentina/Buenos_Aires';
+            $('auto-days').value = d3.interval_days;
+            if (d3.max_articulos) $('auto-max-art').value = d3.max_articulos;
+            updateAutoEnabledUI(d3.enabled !== false);
+            _autoConfigLoaded = true;
+          }
+          if (d3.next_execution) {
+            var nx = new Date(d3.next_execution);
+            $('next-run').textContent = nx.toLocaleString('es-AR');
+            $('statNextRunVal').textContent = nx.toLocaleDateString('es-AR');
+            $('statInterval').textContent = 'Cada ' + d3.interval_days + ' día(s)';
+          } else {
+            $('statNextRunVal').textContent = d3.enabled === false ? 'Pausada' : 'Sin programar';
+            $('next-run').textContent = $('statNextRunVal').textContent;
+            $('statInterval').textContent = '';
+          }
+        }
+      } catch(e) {}
+
+      try {
+        var r3b = await fetch('/api/generacion-config');
+        var d3b = await r3b.json();
+        if (d3b.success) {
+          if (!_genConfigLoaded) {
+            $('gen-hora').value = d3b.hora || '11:00';
+            $('gen-zona').textContent = d3b.zona || 'America/Argentina/Buenos_Aires';
+            $('gen-days').value = d3b.interval_days;
+            if (d3b.persona) $('gen-auto-persona').value = d3b.persona;
+            updateGenEnabledUI(d3b.enabled !== false);
+            _genConfigLoaded = true;
+          }
+          if (d3b.next_execution) {
+            $('gen-next-run').textContent = new Date(d3b.next_execution).toLocaleString('es-AR');
+          } else { $('gen-next-run').textContent = d3b.enabled === false ? 'Pausada' : 'Sin programar'; }
         }
       } catch(e) {}
 
@@ -1724,7 +706,7 @@
         // Se aceptan las dos formas de respuesta: {status:'ok'} cuando Flask
         // responde directo (un solo contenedor) y {scrapers:{status:'ok'}}
         // cuando Express hace de proxy. Exigir solo la anidada dejaba el badge
-        // en "Sin Conexion" para siempre en el despliegue de un contenedor.
+        // en "Sin conexión" para siempre en el despliegue de un contenedor.
         var ok = d4.status === 'ok' || (d4.scrapers && d4.scrapers.status === 'ok');
         if (ok) {
           $('statusPulse').className = 'status-dot';
@@ -1732,7 +714,7 @@
         } else { throw new Error('respuesta inesperada'); }
       } catch(e) {
         $('statusPulse').className = 'status-dot off';
-        $('statusText').textContent = 'Sin Conexion';
+        $('statusText').textContent = 'Sin conexión';
       }
 
       _firstStatsLoad = false;
@@ -1741,6 +723,25 @@
     /* ═══════════════════════════════════════════════════════════════════════
        CHECK VOLUME
        ═══════════════════════════════════════════════════════════════════════ */
+    async function checkVolume() {
+      var kw = $('vol-kw').value;
+      if (!kw) return;
+      var el = $('vol-res');
+      el.className = 'feedback info';
+      el.textContent = 'Consultando...';
+      try {
+        var r = await fetch('/api/check-volume?keyword=' + encodeURIComponent(kw));
+        var d = await r.json();
+        if (d.success) {
+          el.className = 'feedback ok';
+          el.textContent = d.count + ' articulos disponibles para "' + kw + '"';
+
+        } else {
+          el.className = 'feedback err';
+          el.textContent = 'Error al consultar';
+        }
+      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
+    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        ADD URL
@@ -1842,269 +843,69 @@
     /* ═══════════════════════════════════════════════════════════════════════
        SAVE CONFIG
        ═══════════════════════════════════════════════════════════════════════ */
+    var _autoEnabled = true;
+    var _genEnabled = true;
 
-
-
-
-
-
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       RELOJ ANALÓGICO INTERACTIVO
-       Arrastrar la aguja corta mueve la hora; la larga, los minutos (de a 5).
-       Con teclado: flechas = ±5 min, Shift + flechas = ±1 h.
-       ═══════════════════════════════════════════════════════════════════════ */
-    function crearReloj(host, onInput, onCommit) {
-      var NS = 'http://www.w3.org/2000/svg';
-      var C = 100;
-      function el(tag, attrs, parent) {
-        var n = document.createElementNS(NS, tag);
-        for (var k in attrs) n.setAttribute(k, attrs[k]);
-        if (parent) parent.appendChild(n);
-        return n;
-      }
-      function polar(r, deg) {
-        var rad = (deg - 90) * Math.PI / 180;
-        return [C + r * Math.cos(rad), C + r * Math.sin(rad)];
-      }
-
-      var cara = document.createElement('div');
-      cara.className = 'reloj-cara';
-      var svg = el('svg', { viewBox: '0 0 200 200', role: 'slider', tabindex: '0',
-                            'aria-valuemin': '0', 'aria-valuemax': '1439' });
-      for (var i = 0; i < 60; i++) {
-        var hora = i % 5 === 0;
-        var a = polar(88, i * 6), b = polar(hora ? 78 : 83, i * 6);
-        el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: hora ? 'tick tick-hora' : 'tick' }, svg);
-      }
-      for (var h = 1; h <= 12; h++) {
-        var pnum = polar(66, h * 30);
-        var t = el('text', { x: pnum[0], y: pnum[1] + 4, 'text-anchor': 'middle',
-                             class: h % 3 === 0 ? 'num num-cardinal' : 'num' }, svg);
-        t.textContent = h;
-      }
-      var momento = el('text', { x: C, y: 136, 'text-anchor': 'middle', class: 'momento' }, svg);
-      var gH = el('g', { class: 'aguja aguja-hora' }, svg);
-      el('line', { x1: C, y1: C, x2: C, y2: 56 }, gH);
-      el('circle', { cx: C, cy: 56, r: 7, class: 'perilla', 'data-aguja': 'h' }, gH);
-      var gM = el('g', { class: 'aguja aguja-min' }, svg);
-      el('line', { x1: C, y1: C, x2: C, y2: 30 }, gM);
-      el('circle', { cx: C, cy: 30, r: 6, class: 'perilla', 'data-aguja': 'm' }, gM);
-      el('circle', { cx: C, cy: C, r: 6, class: 'centro' }, svg);
-      cara.appendChild(svg);
-      host.appendChild(cara);
-
-      var estado = { h: 0, m: 0 };
-      function pad(n) { return (n < 10 ? '0' : '') + n; }
-      function texto() { return pad(estado.h) + ':' + pad(estado.m); }
-      function nombreMomento(h) {
-        return h < 6 ? 'madrugada' : h < 12 ? 'mañana' : h < 20 ? 'tarde' : 'noche';
-      }
-      function pintar() {
-        gH.style.transform = 'rotate(' + ((estado.h % 12) * 30 + estado.m * 0.5) + 'deg)';
-        gM.style.transform = 'rotate(' + (estado.m * 6) + 'deg)';
-        momento.textContent = nombreMomento(estado.h);
-        svg.setAttribute('aria-valuenow', estado.h * 60 + estado.m);
-        svg.setAttribute('aria-valuetext', texto() + ' (' + nombreMomento(estado.h) + ')');
-      }
-      function fijar(h, m, emitir) {
-        var total = ((h * 60 + m) % 1440 + 1440) % 1440;
-        estado.h = Math.floor(total / 60);
-        estado.m = total % 60;
-        pintar();
-        if (emitir) onInput(texto());
-      }
-
-      function angulo(ev) {
-        var r = svg.getBoundingClientRect();
-        var x = (ev.clientX - r.left) / r.width * 200 - C;
-        var y = (ev.clientY - r.top) / r.height * 200 - C;
-        return { deg: (Math.atan2(y, x) * 180 / Math.PI + 90 + 360) % 360, dist: Math.sqrt(x * x + y * y) };
-      }
-      var aguja = null;
-      function mover(ev) {
-        var a = angulo(ev);
-        if (aguja === 'm') {
-          var m = Math.round(a.deg / 30) * 5 % 60;
-          var h = estado.h;
-          if (estado.m >= 45 && m <= 15) h++;          // pasó las 12 hacia adelante
-          else if (estado.m <= 15 && m >= 45) h--;     // y hacia atrás
-          fijar(h, m, true);
-        } else {
-          var h12 = Math.round(a.deg / 30) % 12;
-          fijar(h12 + (estado.h >= 12 ? 12 : 0), estado.m, true);
-        }
-      }
-      svg.addEventListener('pointerdown', function(ev) {
-        var marcada = ev.target.getAttribute && ev.target.getAttribute('data-aguja');
-        aguja = marcada || (angulo(ev).dist < 52 ? 'h' : 'm');
-        host.classList.add('arrastrando');
-        svg.setPointerCapture(ev.pointerId);
-        mover(ev);
-        ev.preventDefault();
-      });
-      svg.addEventListener('pointermove', function(ev) { if (aguja) mover(ev); });
-      function soltar() {
-        if (!aguja) return;
-        aguja = null;
-        host.classList.remove('arrastrando');
-        onCommit(texto());
-      }
-      svg.addEventListener('pointerup', soltar);
-      svg.addEventListener('pointercancel', soltar);
-      svg.addEventListener('keydown', function(ev) {
-        var paso = ev.shiftKey ? 60 : 5;
-        var delta = { ArrowUp: paso, ArrowRight: paso, ArrowDown: -paso, ArrowLeft: -paso }[ev.key];
-        if (!delta) return;
-        ev.preventDefault();
-        fijar(estado.h, estado.m + delta, true);
-        onCommit(texto());
-      });
-
-      return {
-        set: function(hhmm) {
-          var partes = (hhmm || '00:00').split(':');
-          fijar(+partes[0], +partes[1], false);
-        },
-        get: texto
-      };
+    function updateAutoEnabledUI(enabled) {
+      _autoEnabled = enabled;
+      var toggle = $('auto-enabled-toggle');
+      toggle.classList.toggle('active', enabled);
+      $('auto-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
     }
 
-    /* ═══════════════════════════════════════════════════════════════════════
-       PROGRAMACIÓN AUTOMÁTICA
-       Cada tarjeta = reloj + input de hora + AM/PM + campos. Todo se guarda
-       solo (con un pequeño retardo para no mandar un POST por cada paso).
-       ═══════════════════════════════════════════════════════════════════════ */
-    var AGENDA = {
-      scraping: {
-        endpoint: '/api/scraping-config',
-        extra: function() { return { max_articulos: parseInt($('max-scraping').value, 10) || 10 }; },
-        cargarExtra: function(d) { if (d.max_articulos) $('max-scraping').value = d.max_articulos; },
-        extraIds: ['max-scraping']
-      },
-      generacion: {
-        endpoint: '/api/generacion-config',
-        extra: function() { return { persona: $('persona-generacion').value }; },
-        cargarExtra: function(d) { if (d.persona) $('persona-generacion').value = d.persona; },
-        extraIds: ['persona-generacion']
-      }
-    };
-    var _zona = 'America/Argentina/Buenos_Aires';
-
-    function formatearProxima(iso) {
-      if (!iso) return 'Pausado';
-      return new Date(iso).toLocaleString('es-AR', {
-        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: _zona
-      });
+    function toggleAutoEnabled() {
+      updateAutoEnabledUI(!_autoEnabled);
+      markScheduleDirty('auto');
     }
 
-    function pintarAmPm(tipo, hhmm) {
-      var pm = parseInt(hhmm.split(':')[0], 10) >= 12;
-      $('ampm-' + tipo).querySelectorAll('button').forEach(function(b) {
-        var on = (b.dataset.p === 'pm') === pm;
-        b.classList.toggle('on', on);
-        b.setAttribute('aria-pressed', on);
-      });
+    function updateGenEnabledUI(enabled) {
+      _genEnabled = enabled;
+      var toggle = $('gen-enabled-toggle');
+      toggle.classList.toggle('active', enabled);
+      $('gen-enabled-label').textContent = enabled ? 'Activado' : 'Desactivado';
     }
 
-    function pintarActivo(tipo, activo) {
-      var sw = $('sw-' + tipo);
-      sw.classList.toggle('active', activo);
-      sw.setAttribute('aria-checked', activo);
-      sw.querySelector('span').textContent = activo ? 'Activo' : 'Pausado';
-      $('agenda-' + tipo).classList.toggle('pausada', !activo);
+    function toggleGenEnabled() {
+      updateGenEnabledUI(!_genEnabled);
+      markScheduleDirty('gen');
     }
 
-    function estadoAgenda(tipo, texto, error) {
-      var el = $('estado-' + tipo);
-      el.textContent = texto;
-      el.classList.toggle('err', !!error);
-    }
-
-    function guardarAgenda(tipo) {
-      var cfg = AGENDA[tipo];
-      clearTimeout(cfg.timer);
-      estadoAgenda(tipo, 'Guardando...');
-      cfg.timer = setTimeout(async function() {
-        var body = Object.assign({
-          hora: $('hora-' + tipo).value,
-          interval_days: Math.max(1, parseInt($('dias-' + tipo).value, 10) || 1),
-          enabled: $('sw-' + tipo).classList.contains('active')
-        }, cfg.extra());
-        try {
-          var r = await fetch(cfg.endpoint, {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-          });
-          var d = await r.json();
-          if (!d.success) throw new Error(d.error || 'No se pudo guardar');
-          await cargarAgenda(tipo);
-          estadoAgenda(tipo, 'Guardado');
-          setTimeout(function() { estadoAgenda(tipo, ''); }, 2500);
-          updateStats();
-        } catch(e) {
-          estadoAgenda(tipo, e.message, true);
-          log('No se pudo guardar la programación de ' + tipo + ': ' + e.message, 'error');
-        }
-      }, 450);
-    }
-
-    async function cargarAgenda(tipo) {
+    async function saveConfig() {
+      var days = parseInt($('auto-days').value);
+      var maxArt = parseInt($('auto-max-art').value);
+      if (!$('auto-hora').reportValidity() || !$('auto-days').reportValidity() || !$('auto-max-art').reportValidity()) return;
       try {
-        var r = await fetch(AGENDA[tipo].endpoint);
-        var d = await r.json();
-        if (!d.success) return;
-        if (d.zona) _zona = d.zona;
-        var hora = d.hora || (tipo === 'scraping' ? '05:30' : '11:00');
-        if (document.activeElement !== $('hora-' + tipo)) $('hora-' + tipo).value = hora;
-        AGENDA[tipo].reloj.set(hora);
-        pintarAmPm(tipo, hora);
-        $('dias-' + tipo).value = d.interval_days || 1;
-        AGENDA[tipo].cargarExtra(d);
-        pintarActivo(tipo, d.enabled !== false);
-        $('next-' + tipo).textContent = d.enabled === false ? 'Pausado' : formatearProxima(d.next_execution);
-      } catch(e) {}
+        var response = await fetch('/api/scraping-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hora: $('auto-hora').value, interval_days: days, max_articulos: maxArt, enabled: _autoEnabled})
+        });
+        var saved = await response.json();
+        if (!response.ok || !saved.success) throw new Error(saved.error || 'No se pudo guardar');
+        clearScheduleDirty('auto');
+        log('Configuracion guardada: ' + days + ' dia(s), ' + maxArt + ' articulos/fuente' + (_autoEnabled ? '' : ' (pausado)'), 'success');
+        showToast('Configuracion guardada', 'success');
+        updateStats();
+      } catch(e) { showToast('No se guardó la programación. Reintentá.', 'error'); log(e.message, 'error'); }
     }
 
-    function initAgenda() {
-      Object.keys(AGENDA).forEach(function(tipo) {
-        var input = $('hora-' + tipo);
-        AGENDA[tipo].reloj = crearReloj($('reloj-' + tipo),
-          function(hhmm) { input.value = hhmm; pintarAmPm(tipo, hhmm); },
-          function() { guardarAgenda(tipo); });
-        $('reloj-' + tipo).querySelector('svg').setAttribute('aria-label', 'Hora de ' + tipo);
-
-        input.addEventListener('input', function() {
-          if (!input.value) return;
-          AGENDA[tipo].reloj.set(input.value);
-          pintarAmPm(tipo, input.value);
+    async function saveGenConfig() {
+      var days = parseInt($('gen-days').value);
+      var persona = $('gen-auto-persona').value;
+      if (!$('gen-hora').reportValidity() || !$('gen-days').reportValidity()) return;
+      try {
+        var response = await fetch('/api/generacion-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hora: $('gen-hora').value, interval_days: days, persona: persona, enabled: _genEnabled})
         });
-        input.addEventListener('change', function() { if (input.value) guardarAgenda(tipo); });
-
-        $('ampm-' + tipo).addEventListener('click', function(ev) {
-          var b = ev.target.closest('button');
-          if (!b || !input.value) return;
-          var partes = input.value.split(':');
-          var h = parseInt(partes[0], 10);
-          if (b.dataset.p === 'pm' && h < 12) h += 12;
-          if (b.dataset.p === 'am' && h >= 12) h -= 12;
-          input.value = (h < 10 ? '0' : '') + h + ':' + partes[1];
-          AGENDA[tipo].reloj.set(input.value);
-          pintarAmPm(tipo, input.value);
-          guardarAgenda(tipo);
-        });
-
-        var sw = $('sw-' + tipo);
-        function alternar() { pintarActivo(tipo, !sw.classList.contains('active')); guardarAgenda(tipo); }
-        sw.addEventListener('click', alternar);
-        sw.addEventListener('keydown', function(ev) {
-          if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); alternar(); }
-        });
-
-        ['dias-' + tipo].concat(AGENDA[tipo].extraIds).forEach(function(id) {
-          $(id).addEventListener('change', function() { guardarAgenda(tipo); });
-        });
-        cargarAgenda(tipo);
-      });
+        var saved = await response.json();
+        if (!response.ok || !saved.success) throw new Error(saved.error || 'No se pudo guardar');
+        clearScheduleDirty('gen');
+        log('Generación automática: cada ' + days + ' dia(s), persona ' + persona + (_genEnabled ? '' : ' (pausada)'), 'success');
+        showToast('Generacion configurada', 'success');
+        updateStats();
+      } catch(e) { showToast('No se guardó la programación. Reintentá.', 'error'); log(e.message, 'error'); }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2155,7 +956,6 @@
         botones.forEach(function(b, i) { b.disabled = false; b.textContent = textos[i]; });
         updateStats();
         loadTrustedUrls();
-        cargarAgenda('scraping');
       }
     }
 
@@ -2168,7 +968,7 @@
         var d = await r.json();
         if (d.success) {
           updateProviderUI(d.provider);
-          log('Proveedor activo: ' + d.provider + ' (' + d.model + ')', 'info');
+          log('Proveedor activo: ' + d.provider + (d.model ? ' (' + d.model + ')' : ''), 'info');
         }
       } catch(e) { console.error('Error checking providers:', e); }
     }
@@ -2198,7 +998,7 @@
         var d = await r.json();
         if (d.success) {
           updateProviderUI(provider);
-          log('Proveedor cambiado a: ' + provider + ' (' + d.model + ')', 'success');
+          log('Proveedor cambiado a: ' + provider + (d.model ? ' (' + d.model + ')' : ''), 'success');
         } else {
           log('Error: ' + d.error, 'error');
         }
@@ -2297,25 +1097,154 @@
     /* ═══════════════════════════════════════════════════════════════════════
        CHECK VOLUME (GEN)
        ═══════════════════════════════════════════════════════════════════════ */
+    async function checkVolumeGen() {
+      var kw = $('gen-tema').value;
+      if (!kw) return;
+      var el = $('gen-vol-res');
+      el.className = 'feedback info';
+      el.textContent = 'Consultando...';
+      try {
+        var r = await fetch('/api/check-volume?keyword=' + encodeURIComponent(kw));
+        var d = await r.json();
+        if (d.success) {
+          el.className = 'feedback ok';
+          el.textContent = d.count + ' articulos disponibles para "' + kw + '"';
+        } else {
+          el.className = 'feedback err';
+          el.textContent = 'Error al consultar';
+        }
+      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
+    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        GENERATE (STREAMING)
        ═══════════════════════════════════════════════════════════════════════ */
-    function playClick() {
-      try {
-        var ctx = new (window.AudioContext || window.webkitAudioContext)();
-        var osc = ctx.createOscillator();
-        var gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 800; gain.gain.value = 0.1;
-        osc.start(); osc.stop(ctx.currentTime + 0.06);
-      } catch(e) {}
-    }
 
+    async function generarStream() {
+      var btn = $('btn-gen');
+      btn.disabled = true;
+      var tema = $('gen-tema').value.trim();
+      var persona = $('gen-persona').value;
+      log('--- INICIANDO GENERACION DE ARTICULO (' + persona + ')' + (tema ? ' -- Tema: ' + tema : '') + ' ---', 'warn');
+      showPipeline();
+      $('pipelineTicker').textContent = 'Buscando en memoria semantica...';
+      var exito = false;
+      try {
+        var res = await fetch('/api/stream/generar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tema: tema, persona: persona })
+        });
+        var fullOutput = '';
+        await leerLineas(res, function(l) {
+            fullOutput += l + '\n';
+            advancePipeline(l);
+            if (l.indexOf('[ERROR]') >= 0) {
+              log(l, 'error');
+            } else if (l.match(/^  \[\d+s\]/)) {
+              log(l.trim(), 'info');
+            } else if (l.match(/^  Generaci.n/)) {
+              log(l.trim(), 'success');
+            } else if (l.trim() === '[OK]') {
+              if (!exito) log('Articulo generado correctamente', 'success');
+            }
+        });
+        exito = fullOutput.indexOf('[OK]') >= 0;
+
+        if (exito) {
+          finishPipeline('ok', 'Artículo generado. Revisá el resultado.');
+          hidePipelineHeader();
+
+          showToast('Articulo generado exitosamente', 'success');
+          var modal = $('modal-art');
+          var body = $('art-body');
+          var check = $('check-list');
+          var comm = $('eval-comms');
+          modal.classList.add('open');
+          body.innerHTML = 'Cargando articulo...';
+          check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Evaluando...</div>';
+          comm.textContent = '';
+
+          try {
+            var r = await fetch('/ultimo-articulo');
+            var d = await r.json();
+            if (!d.success) { body.innerHTML = '<p style="color:var(--text-mid)">Articulo generado pero no encontrado.</p>'; return; }
+            body.innerHTML = marked.parse(d.articulo.contenido);
+            var evR = await fetch('/api/evaluate-article', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ articulo: d.articulo.contenido })
+            });
+            var evD = await evR.json();
+            if (evD.success) {
+              check.innerHTML = '';
+              Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
+                var k = entry[0], v = entry[1];
+                var item = document.createElement('div');
+                item.className = 'check-item ' + (v ? 'ok' : 'fail');
+                item.innerHTML = '<div class="check-dot"></div> ' + k.replace(/_/g, ' ');
+                check.appendChild(item);
+              });
+              if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
+            } else {
+              check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Evaluacion no disponible</div>';
+            }
+          } catch(e) {
+            body.innerHTML = '<p style="color:var(--text-mid)">Error al cargar el articulo.</p>';
+            check.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;">Error en evaluacion</div>';
+          }
+        } else {
+          finishPipeline('err', 'No se pudo generar el artículo. Revisá Actividad.');
+          hidePipelineHeader();
+          log('--- NO SE PUDO GENERAR ARTICULO NUEVO ---', 'warn');
+          log('Revise la consola: puede que el contenido ya exista o no haya suficientes fuentes.', 'warn');
+          log('No se pudo generar articulo nuevo.', 'warn');
+          showToast('No se pudo generar articulo nuevo', 'warn');
+        }
+      } catch(e) {
+        log('Error en generacion: ' + e.message, 'error');
+        finishPipeline('err', 'No se pudo generar el artículo. Revisá Actividad.');
+        hidePipelineHeader();
+        log('Error en generacion: ' + e.message, 'error');
+      }
+      finally { btn.disabled = false; updateStats(); }
+    }
 
     /* ═══════════════════════════════════════════════════════════════════════
        VIEW LAST ARTICLE
        ═══════════════════════════════════════════════════════════════════════ */
+    async function verUltimo() {
+      var modal = $('modal-art');
+      var body = $('art-body');
+      var check = $('check-list');
+      var comm = $('eval-comms');
+      modal.classList.add('open');
+      body.innerHTML = 'Cargando...';
+      check.innerHTML = '';
+      comm.textContent = '';
+      try {
+        var r = await fetch('/ultimo-articulo');
+        var d = await r.json();
+        if (!d.success) { body.innerHTML = '<p style="color:var(--text-mid)">Todavia no hay articulos generados.</p>'; return; }
+        body.innerHTML = marked.parse(d.articulo.contenido);
+        var evR = await fetch('/api/evaluate-article', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({articulo: d.articulo.contenido})
+        });
+        var evD = await evR.json();
+        if (evD.success) {
+          Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
+            var k = entry[0], v = entry[1];
+            var item = document.createElement('div');
+            item.className = 'check-item ' + (v ? 'ok' : 'fail');
+            item.innerHTML = '<div class="check-dot"></div> ' + k.replace(/_/g, ' ');
+            check.appendChild(item);
+          });
+          if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
+        }
+      } catch(e) { body.innerHTML = '<p style="color:var(--text-mid)">Error al cargar el articulo.</p>'; }
+    }
 
     function cerrar() { $('modal-art').classList.remove('open'); }
 
@@ -2336,7 +1265,6 @@
     var _f2ClientesActivos = new Set();
     var _f2PuntapieActivo = false;
 
-
     async function fase2Init() {
       await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
       await fase2CargarConfig();
@@ -2347,6 +1275,8 @@
         var r = await fetch('/api/fase2/config');
         var d = await r.json();
         if (!d.success) return;
+        _f2CategoriasActivas = new Set(d.categorias || []);
+        _f2RegionesActivas = new Set(d.regiones || []);
         (d.categorias || []).forEach(function(c) {
           var el = document.querySelector('#f2-categorias-grid .toggle-item[data-slug="' + c + '"]');
           if (el) { _f2CategoriasActivas.add(c); el.classList.add('active'); }
@@ -2376,7 +1306,14 @@
       } catch(e) {}
     }
 
-    async function fase2GuardarConfig() {
+    var _editorialSaveQueue = Promise.resolve();
+    function fase2GuardarConfig() {
+      $('editorial-save-status').textContent = 'Guardando selecciones…';
+      _editorialSaveQueue = _editorialSaveQueue.then(_guardarSeleccionEditorial);
+      return _editorialSaveQueue;
+    }
+
+    async function _guardarSeleccionEditorial() {
       try {
         var body = {
           categorias: Array.from(_f2CategoriasActivas),
@@ -2385,38 +1322,45 @@
           puntapie_activo: _f2PuntapieActivo,
           puntapie_url: $('f2-puntapie-url').value.trim()
         };
-        await fetch('/api/fase2/config', {
+        var response = await fetch('/api/fase2/config', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
         });
-      } catch(e) {}
+        var saved = await response.json();
+        if (!response.ok || !saved.success) throw new Error('No se pudo guardar');
+        $('editorial-save-status').textContent = 'Selecciones guardadas';
+      } catch(e) {
+        $('editorial-save-status').textContent = 'No se guardaron las selecciones.';
+        showToast('No se guardaron los filtros. Volvé a seleccionar para reintentar.', 'error');
+      }
     }
 
     async function fase2CargarCategorias() {
       try {
         var r = await fetch('/api/fase2/categorias');
         var d = await r.json();
-        if (!d.success) return;
+        if (!r.ok || !d.success) throw new Error('No disponible');
         _f2Categorias = d.categorias;
         var totalEjemplos = _f2Categorias.reduce(function(a, c) { return a + (c.ejemplos || 0); }, 0);
         $('f2-ejemplos-badge').textContent = totalEjemplos + ' ejemplos';
         var grid = $('f2-categorias-grid');
         grid.innerHTML = '';
+        if (!d.categorias.length) grid.textContent = 'No hay categorías disponibles.';
         _f2Categorias.forEach(function(cat) {
           var item = document.createElement('div');
-          item.className = 'toggle-item';
+          item.className = 'toggle-item' + (_f2CategoriasActivas.has(cat.slug) ? ' active' : '');
           item.dataset.slug = cat.slug;
           item.innerHTML =
             '<span class="toggle-label">' + escHtml(cat.nombre) + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px">' +
-              '<span class="toggle-count">' + (cat.ejemplos || 0) + '</span>' +
+              '<span class="toggle-count" aria-hidden="true" title="Ejemplos de referencia">' + (cat.ejemplos || 0) + ' ej.</span>' +
               '<div class="toggle-switch"></div>' +
             '</div>';
           item.onclick = function() { fase2ToggleCategoria(cat.slug, item); };
           grid.appendChild(item);
         });
-      } catch(e) { console.error('Error cargando categorías:', e); }
+      } catch(e) { showCollectionError('f2-categorias-grid', 'categorías', fase2CargarCategorias); }
     }
 
     function fase2ToggleCategoria(slug, el) {
@@ -2434,24 +1378,25 @@
       try {
         var r = await fetch('/api/fase2/regiones');
         var d = await r.json();
-        if (!d.success) return;
+        if (!r.ok || !d.success) throw new Error('No disponible');
         _f2Regiones = d.regiones;
         var grid = $('f2-regiones-grid');
         grid.innerHTML = '';
+        if (!d.regiones.length) grid.textContent = 'No hay regiones disponibles.';
         _f2Regiones.forEach(function(reg) {
           var item = document.createElement('div');
-          item.className = 'toggle-item';
+          item.className = 'toggle-item' + (_f2RegionesActivas.has(reg.slug) ? ' active' : '');
           item.dataset.slug = reg.slug;
           item.innerHTML =
             '<span class="toggle-label">' + escHtml(reg.nombre) + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px">' +
-              '<span class="toggle-count">' + (reg.ejemplos || 0) + '</span>' +
+              '<span class="toggle-count" aria-hidden="true" title="Ejemplos de referencia">' + (reg.ejemplos || 0) + ' ej.</span>' +
               '<div class="toggle-switch"></div>' +
             '</div>';
           item.onclick = function() { fase2ToggleRegion(reg.slug, item); };
           grid.appendChild(item);
         });
-      } catch(e) { console.error('Error cargando regiones:', e); }
+      } catch(e) { showCollectionError('f2-regiones-grid', 'regiones', fase2CargarRegiones); }
     }
 
     function fase2ToggleRegion(slug, el) {
@@ -2569,10 +1514,13 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
         });
+        var failed = false;
         await leerLineas(res, function(l) {
+          if (/\[OCUPADO\]|\[ERROR\]|\[FAIL\]/.test(l)) failed = true;
           var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
           log(l, type);
         });
+        if (failed) { showToast('La sincronización no se completó. Revisá la consola.', 'warn'); return; }
         log('Sincronización de ejemplos completada.', 'success');
         showToast('Ejemplos sincronizados', 'success');
         await fase2CargarCategorias();
@@ -2637,11 +1585,11 @@
           st.className = 'feedback ok';
           st.textContent = 'Nota generada correctamente.';
           showToast('Nota generada', 'success');
-          playClick();
+
           await fase2MostrarUltima();
         } else {
           st.className = 'feedback err';
-          st.textContent = 'No se pudo generar la nota. Revisá la consola.';
+          st.textContent = (fullOutput.split('\n').find(function(line) { return line.indexOf('[ERROR]') >= 0 || line.indexOf('[OCUPADO]') >= 0; }) || 'No se pudo generar la nota. Revisá la consola.').replace(/^data:\s*/, '');
         }
       } catch(e) {
         log('Error: ' + e.message, 'error');
@@ -2704,25 +1652,17 @@
        BOOT SEQUENCE
        ═══════════════════════════════════════════════════════════════════════ */
     window.onload = function() {
-      $('statusText').textContent = 'Conectando...';
-      initParticles();
-
-      setTimeout(function() { log('Inicializando agentes...', 'info'); }, 200);
-      setTimeout(function() { log('Handshake con backend...', 'info'); }, 600);
+      $('statusText').textContent = 'Conectando…';
 
       updateStats();
       checkProviders();
-      initAgenda();
       fase2Init();
       loadTrustedUrls();
       loadSugerencias();
 
-      setTimeout(function() {
-        log('Sistema operativo. Command Center activo.', 'success');
-      }, 1200);
-
       setInterval(updateStats, 15000);
     };
   </script>
+  <script src="/static/workspace.js"></script>
 </body>
 </html>
