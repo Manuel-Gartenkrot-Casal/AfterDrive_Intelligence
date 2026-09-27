@@ -3,7 +3,8 @@
  --font: 'Inter', system-ui, -apple-system, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
  --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:12px; --r-pill:999px;
- --t-fast:160ms; --t-med:240ms; --ease-out:cubic-bezier(.22,1,.36,1);
+ --t-fast:160ms; --t-med:240ms; --t-slow:520ms; --ease-out:cubic-bezier(.22,1,.36,1);
+ --ease-soft:cubic-bezier(.34,1.18,.64,1); --ease-flow:cubic-bezier(.4,0,.2,1);
  --z-content:1; --z-toast:900; --z-modal:1000;
 }
 *, *::before, *::after { box-sizing: border-box; }
@@ -127,7 +128,9 @@ html { scroll-behavior: auto; }
 body { font-size: 14px; }
 button, input, select { font: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
-:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+:focus-visible { outline: 1px solid var(--brand); outline-offset: 2px; border-radius: 5px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent); }
+.input-field:focus-visible, .select-field:focus-visible { outline-offset: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 13%, transparent); }
 .skip-link { position: fixed; top: -80px; left: 16px; z-index: 2000; padding: 12px; background: var(--paper); color: var(--brand); }
 .skip-link:focus { top: 12px; }
 .workspace-nav { position: fixed; inset: 0 auto 0 0; width: 222px; background: #241338; color: #d4c6f0; padding: 32px 18px; display: flex; flex-direction: column; z-index: 20; }
@@ -456,3 +459,96 @@ body, .workspace-nav, .card, .fase2-grupo, .stats-grid, .execution-dock, .consol
 
 @media (prefers-reduced-motion: reduce) { .particles-canvas { display:none; } }
 @media (max-width:700px) { .particles-canvas { display:none; } }
+
+/* ═══ Pie del riel: estado del sistema ════════════════════════════════════ */
+.nav-foot { margin-top:auto; padding:16px 12px 4px; border-top:1px solid #3a2352; display:grid; gap:9px; }
+.nav-foot-caption { font:600 9px var(--font); letter-spacing:1.6px; text-transform:uppercase; color:#8f7aa8; }
+.nav-foot-row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:11px; color:#a795bd; }
+.nav-foot-row b { font:500 11px var(--mono); color:#e6dcf2; text-align:right; overflow-wrap:anywhere; }
+.nav-foot-state { font:10px var(--mono); color:#8f7aa8; }
+
+/* Ecualizador: plano en reposo, vivo mientras corre una operacion. */
+.nav-pulse { display:flex; align-items:flex-end; gap:3px; height:22px; }
+.nav-pulse i { flex:1; height:3px; border-radius:2px; background:#4a3163; transition:height 420ms var(--ease-soft), background 420ms; }
+body.op-running .nav-pulse i { background:var(--warn); animation:ad-eq 1100ms var(--ease-flow) infinite; }
+body.op-running .nav-pulse i:nth-child(2) { animation-delay:140ms; }
+body.op-running .nav-pulse i:nth-child(3) { animation-delay:280ms; }
+body.op-running .nav-pulse i:nth-child(4) { animation-delay:420ms; }
+body.op-running .nav-pulse i:nth-child(5) { animation-delay:560ms; }
+@keyframes ad-eq { 0%,100% { height:3px; } 50% { height:20px; } }
+body.op-running .nav-foot-state { color:var(--warn); }
+
+/* ═══ Cruz de la consola ══════════════════════════════════════════════════ */
+.execution-close {
+  width:28px; height:28px; flex-shrink:0; display:grid; place-items:center;
+  font:300 20px/1 var(--font); color:var(--text-mid);
+  background:transparent; border:0; border-radius:6px; cursor:pointer;
+  transition:background 180ms var(--ease-flow), color 180ms, transform 220ms var(--ease-soft);
+}
+.execution-close:hover { background:var(--field); color:var(--text-hi); transform:rotate(90deg); }
+
+/* ═══ Hilos ambar: trabajo en curso leido de un vistazo ═══════════════════ */
+@keyframes ad-sweep { 0% { transform:translateX(-100%); } 100% { transform:translateX(100%); } }
+@keyframes ad-thread { 0%,100% { opacity:.25; } 50% { opacity:.9; } }
+
+/* Hilo superior de cada tarjeta, solo mientras hay corrida. */
+.card, .fase2-grupo, .stats-grid { position:relative; overflow:hidden; }
+.card::after, .fase2-grupo::after, .stats-grid::after {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px; opacity:0;
+  background:linear-gradient(90deg, transparent, var(--warn), transparent);
+  transform:translateX(-100%); pointer-events:none;
+}
+body.op-running .card::after, body.op-running .fase2-grupo::after, body.op-running .stats-grid::after {
+  opacity:.85; animation:ad-sweep 2.8s var(--ease-flow) infinite;
+}
+body.op-running .fase2-grupo::after { animation-delay:.5s; }
+body.op-running .stats-grid::after { animation-delay:1s; }
+
+/* Hilo del dock: sustituye la barra dura por un degrade ambar. */
+.execution-dock.running::before {
+  background:linear-gradient(90deg, transparent, var(--warn), var(--brand), transparent) !important;
+  width:40% !important; height:2px !important; animation:ad-sweep 2.2s var(--ease-flow) infinite !important;
+}
+body.op-running .execution-dock { border-top-color:var(--warn); }
+
+/* ═══ Ablande general ═════════════════════════════════════════════════════ */
+.workspace-view:not([hidden]) > * { animation:ad-block-in 460ms var(--ease-soft) both; }
+.log-entry { animation:ad-line-in 320ms var(--ease-soft) both; }
+.toggle-item { transition:background 240ms var(--ease-flow), border-color 240ms var(--ease-flow), transform 240ms var(--ease-soft); }
+.toggle-item:hover { transform:translateY(-1px); }
+.card, .fase2-grupo { transition:border-color 280ms var(--ease-flow), transform 280ms var(--ease-soft), box-shadow 280ms var(--ease-flow); }
+.btn, .prov-btn, .topic-chip { transition:background 200ms var(--ease-flow), border-color 200ms var(--ease-flow), color 200ms, transform 220ms var(--ease-soft); }
+.btn:hover:not(:disabled) { transform:translateY(-1px); }
+.workspace-nav nav a { transition:background 220ms var(--ease-flow), color 220ms, padding-left 220ms var(--ease-soft); }
+.workspace-nav nav a:hover { padding-left:15px; }
+
+/* ═══ Cambio de tema: reveal circular desde el boton ══════════════════════ */
+::view-transition-old(root) { animation:none; }
+::view-transition-new(root) { animation:ad-reveal 620ms var(--ease-flow); }
+@keyframes ad-reveal { from { clip-path:circle(0% at var(--rx, 50%) var(--ry, 50%)); } to { clip-path:circle(150% at var(--rx, 50%) var(--ry, 50%)); } }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root), ::view-transition-old(root) { animation:none; }
+}
+
+/* Hilo permanente en la franja de KPIs: da vida en reposo sin competir con
+   los hilos de corrida, que son mas rapidos y recorren todas las tarjetas. */
+.stats-grid::after { opacity:.5; animation:ad-sweep 7s var(--ease-flow) infinite; }
+body.op-running .stats-grid::after { opacity:.9; animation-duration:2.6s; }
+
+/* Acento ambar bajo el titulo de seccion, latiendo suave. */
+.workspace-heading { position:relative; }
+.workspace-heading::after {
+  content:''; position:absolute; left:0; bottom:-10px; width:52px; height:2px; border-radius:2px;
+  background:linear-gradient(90deg, var(--warn), transparent);
+  animation:ad-thread 3.4s var(--ease-flow) infinite;
+}
+body.op-running .workspace-heading::after { width:120px; transition:width 700ms var(--ease-soft); }
+
+/* El riel tambien respira durante una corrida. */
+.workspace-nav::after {
+  content:''; position:absolute; top:0; right:0; bottom:0; width:2px; opacity:0;
+  background:linear-gradient(180deg, transparent, var(--warn), transparent);
+  transition:opacity 500ms var(--ease-flow);
+}
+body.op-running .workspace-nav::after { opacity:.75; animation:ad-thread 2.2s var(--ease-flow) infinite; }

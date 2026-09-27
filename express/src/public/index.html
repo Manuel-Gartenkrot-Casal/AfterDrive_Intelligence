@@ -30,6 +30,13 @@
 <a data-workspace="automatizacion" href="#automatizacion"><span aria-hidden="true">◷</span> Automatización</a>
 <a data-workspace="actividad" href="#actividad"><span aria-hidden="true">≡</span> Actividad <span class="activity-count" id="activity-count">0</span></a>
 </nav>
+<div class="nav-foot">
+<div class="nav-foot-caption">Sistema</div>
+<div class="nav-foot-row"><span>Proveedor</span><b id="navProvider">—</b></div>
+<div class="nav-foot-row"><span>Próxima corrida</span><b id="navNextRun">—</b></div>
+<div aria-hidden="true" class="nav-pulse" id="navPulse"><i></i><i></i><i></i><i></i><i></i></div>
+<div class="nav-foot-state" id="navState">En reposo</div>
+</div>
 </aside>
 <div class="app-container">
 <header class="header" id="appHeader">
@@ -350,7 +357,7 @@
 </div>
 <aside aria-label="Actividad en vivo" class="execution-dock" id="execution-dock">
 <div aria-label="Redimensionar la consola" aria-orientation="horizontal" class="execution-resizer" id="execution-resizer" role="separator" tabindex="0" title="Arrastrá para cambiar el alto"></div>
-<div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span></button><span class="execution-elapsed" id="execution-elapsed"></span><button class="btn btn-sm" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)">Minimizar</button></div>
+<div class="execution-bar"><button aria-controls="execution-content" aria-expanded="false" class="execution-toggle" id="execution-toggle" onclick="setConsoleOpen(!document.getElementById('execution-dock').classList.contains('expanded'))"><span aria-hidden="true" class="execution-indicator"></span><strong id="execution-title">Consola de actividad</strong><span id="execution-state" role="status">Lista para trabajar</span></button><span class="execution-elapsed" id="execution-elapsed"></span><button aria-label="Cerrar la consola" class="execution-close" hidden="" id="execution-collapse" onclick="setConsoleOpen(false)" title="Cerrar la consola">&#215;</button></div>
 <div hidden="" id="execution-content"><div aria-live="polite" class="pipeline-hud" id="pipelineHud" role="status">
 <div class="pipeline-label">Pipeline de Procesamiento</div>
 <div class="pipeline-flow">

@@ -284,7 +284,9 @@ function initParticles() {
   const canvas = document.getElementById('particles');
   if (!canvas || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   canvas.textContent = '';
-  const tonos = ['--warn', '--brand', '--ok', '--info'];
+  // Ambar dominante: es el tono que pidio el equipo para el fondo. Los otros
+  // tres aparecen de a poco para que la capa no se lea monocroma.
+  const tonos = ['--warn', '--warn', '--warn', '--brand', '--ok', '--info'];
   const total = innerWidth < 1100 ? 16 : 28;
   for (let i = 0; i < total; i++) {
     const p = document.createElement('div');
@@ -293,7 +295,7 @@ function initParticles() {
     p.style.left = (Math.random() * 94).toFixed(2) + '%';
     p.style.width = p.style.height = size.toFixed(1) + 'px';
     // El amarillo pesa el doble: es el tono que da la sensacion de actividad.
-    p.style.background = `var(${tonos[Math.random() < 0.4 ? 0 : 1 + Math.floor(Math.random() * 3)]})`;
+    p.style.background = `var(${tonos[Math.floor(Math.random() * tonos.length)]})`;
     p.style.animationDuration = (16 + Math.random() * 20).toFixed(1) + 's';
     p.style.animationDelay = '-' + (Math.random() * 30).toFixed(1) + 's';
     p.style.setProperty('--p-drift', (Math.random() * 120 - 60).toFixed(0) + 'px');
@@ -326,14 +328,53 @@ document.addEventListener('pointerdown', event => {
 });
 
 // ── Cambio de tema ─────────────────────────────────────────────────────────
-// toggleTheme() vive en index.html; lo envolvemos para animar el icono sin
-// duplicar la logica de persistencia.
+// toggleTheme() vive en index.html; lo envolvemos para animar sin duplicar la
+// logica de persistencia. Con View Transitions la paleta entra en un circulo
+// que nace en el boton; sin soporte, cae a la transicion de color del CSS.
 const themeButton = document.getElementById('themeBtn');
 if (themeButton && typeof window.toggleTheme === 'function') {
   const cambiarTema = window.toggleTheme;
   window.toggleTheme = function (...args) {
     themeButton.classList.add('swapping');
-    setTimeout(() => themeButton.classList.remove('swapping'), 220);
-    return cambiarTema.apply(this, args);
+    setTimeout(() => themeButton.classList.remove('swapping'), 240);
+
+    const caja = themeButton.getBoundingClientRect();
+    const raiz = document.documentElement;
+    raiz.style.setProperty('--rx', `${caja.left + caja.width / 2}px`);
+    raiz.style.setProperty('--ry', `${caja.top + caja.height / 2}px`);
+
+    const reducido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!document.startViewTransition || reducido) return cambiarTema.apply(this, args);
+    document.startViewTransition(() => cambiarTema.apply(this, args));
   };
+}
+
+// ── Estado del sistema en el pie del riel ──────────────────────────────────
+// Se alimenta de nodos que ya estan en la pagina: no agrega peticiones.
+const navProvider = document.getElementById('navProvider');
+const navNextRun = document.getElementById('navNextRun');
+const navState = document.getElementById('navState');
+
+function syncNavFoot() {
+  const activo = document.querySelector('.prov-btn.active');
+  if (activo) navProvider.textContent = activo.textContent.trim();
+  const proxima = document.getElementById('statNextRunVal');
+  if (proxima) navNextRun.textContent = proxima.textContent.trim() || '—';
+  navState.textContent = document.body.classList.contains('op-running')
+    ? 'Procesando' : 'En reposo';
+}
+
+syncNavFoot();
+// Observadores acotados a las tres fuentes reales. Mirar todo el body haria
+// que cada linea de log dispare el sync, y como este escribe dentro del body
+// se realimentaria a si mismo.
+const observador = new MutationObserver(syncNavFoot);
+observador.observe(document.body, {attributes: true, attributeFilter: ['class']});
+const barraProveedor = document.querySelector('.provider-toggle');
+if (barraProveedor) {
+  observador.observe(barraProveedor, {subtree: true, attributes: true, attributeFilter: ['class']});
+}
+const proximaCorrida = document.getElementById('statNextRunVal');
+if (proximaCorrida) {
+  observador.observe(proximaCorrida, {childList: true, characterData: true, subtree: true});
 }
