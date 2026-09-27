@@ -1,3 +1,4 @@
+import datetime
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -63,11 +64,20 @@ def _esta_bloqueado(html: str | None) -> bool:
     return any(s in html for s in _BLOQUEOS_CF)
 
 
+# Dominios cuyo origen no respondió en esta corrida (timeout / conexión
+# rechazada). Sus artículos van directo a Wayback en vez de esperar el mismo
+# timeout por cada link.
+_ORIGEN_CAIDO: set[str] = set()
+
+
 def _http_get(url: str, timeout: int = 10) -> str | None:
     try:
         r = requests.get(url, timeout=timeout, headers=_HEADERS)
         r.raise_for_status()
         return r.text
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+        _ORIGEN_CAIDO.add(urlparse(url).netloc)
+        return None
     except Exception:
         return None
 
@@ -86,23 +96,29 @@ def _browser_get(url: str) -> str | None:
     return None
 
 
+def _sin_esquema(url: str) -> str:
+    return url.split("://", 1)[-1].removeprefix("www.").rstrip("/")
+
+
 def _wayback_get(url: str) -> str | None:
-    anos = ["2026", "2025"]
-    slug = urlparse(url).path.rstrip("/").split("/")[-1]
+    """Última copia de la URL en Wayback Machine, con el HTML original.
 
-    def _try(ano):
-        html = _http_get(f"https://web.archive.org/web/{ano}/{url}", timeout=12)
-        if html and slug and slug in html:
-            return html
+    El modo `id_` devuelve la página tal como se archivó (links sin reescribir
+    a /web/...), así que el listado sirve para encontrar artículos igual que
+    el sitio real. Se pide la copia más cercana a hoy y se verifica que
+    Wayback no haya redirigido a otra página.
+    """
+    ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d%H%M%S")
+    try:
+        r = requests.get(f"https://web.archive.org/web/{ts}id_/{url}", timeout=15, headers=_HEADERS)
+    except Exception:
         return None
-
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = [ex.submit(_try, a) for a in anos]
-        for fut in as_completed(futures):
-            result = fut.result()
-            if result:
-                return result
-    return None
+    if not r.ok:
+        return None
+    archivada = r.url.split("id_/", 1)[-1]
+    if _sin_esquema(archivada) != _sin_esquema(url):
+        return None
+    return None if _esta_bloqueado(r.text) else r.text
 
 
 def _fetch(url: str) -> str | None:
@@ -112,7 +128,12 @@ def _fetch(url: str) -> str | None:
     ALTO:  Chromium → requests → Wayback
     MEDIO: requests → (si bloqueado) Chromium → Wayback
     BAJO:  requests → Wayback (sin Chromium nunca)
+
+    Si el origen del dominio ya no respondió en esta corrida, va directo a Wayback.
     """
+    if urlparse(url).netloc in _ORIGEN_CAIDO:
+        return _wayback_get(url)
+
     if _PERFIL == PERFIL_ALTO:
         html = _browser_get(url)
         if not _esta_bloqueado(html):
@@ -136,7 +157,10 @@ def _fetch(url: str) -> str | None:
         if not _esta_bloqueado(html):
             return html
 
-    print(f"  [WAYBACK] {url[:60]}", flush=True)
+    if urlparse(url).netloc in _ORIGEN_CAIDO:
+        print(f"  [ORIGEN SIN RESPUESTA] {urlparse(url).netloc}: se usa la copia de Wayback Machine", flush=True)
+    else:
+        print(f"  [WAYBACK] {url[:60]}", flush=True)
     return _wayback_get(url)
 
 

@@ -64,6 +64,27 @@ _KEYWORDS_NICHO = [
 _MAX_RESULTS_POR_KEYWORD = 10
 _MAX_SUGERENCIAS_TOTAL = 30
 
+# Sitios que aparecen en las búsquedas pero no son fuentes de noticias del sector.
+_DOMINIOS_EXCLUIDOS = (
+    "youtube.com", "facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com",
+    "linkedin.com", "wikipedia.org", "mercadolibre.com", "amazon.", "google.", "pinterest.",
+    "reddit.com", "duckduckgo.com",
+)
+
+
+def dominio(url: str) -> str:
+    return urlparse(url).netloc.lower().removeprefix("www.")
+
+
+def raiz(url: str) -> str:
+    """Una Fuente se sugiere por su sitio, no por la nota puntual que apareció en la búsqueda."""
+    p = urlparse(url)
+    return f"{p.scheme or 'https'}://{p.netloc}/"
+
+
+def _excluido(dom: str) -> bool:
+    return any(x in dom for x in _DOMINIOS_EXCLUIDOS)
+
 
 def _keywords_en_texto(texto: str) -> list[str]:
     texto_l = texto.lower()
@@ -85,6 +106,8 @@ def discover():
     ]
 
     suggested_urls = []
+    ya_registrados = {dominio(d["url"]) for d in db["trusted_urls"].find({}, {"url": 1})}
+    ya_registrados |= {dominio(d["url"]) for d in db["suggested_urls"].find({}, {"url": 1})}
     vistas = set()
 
     for kw in keywords_busqueda:
@@ -122,23 +145,18 @@ def discover():
             if not href or not href.startswith("http"):
                 continue
 
-            if href in vistas:
+            dom = dominio(href)
+            if not dom or dom in vistas or _excluido(dom):
                 continue
-            vistas.add(href)
+            vistas.add(dom)
 
             snippet_el = r.select_one(".result__snippet")
             titulo = a.get_text(strip=True)
             snippet = snippet_el.get_text(strip=True) if snippet_el else ""
             texto_completo = f"{titulo} {snippet}"
 
-            # Ver si ya esta en la base
-            ya_existe = (
-                db["trusted_urls"].find_one({"url": href})
-                or db["suggested_urls"].find_one({"url": href})
-                or db["articulos"].find_one({"url": href})
-            )
-            if ya_existe:
-                print(f"  [SKIP] ya registrada: {href[:80]}")
+            if dom in ya_registrados:
+                print(f"  [SKIP] ya registrada: {dom}")
                 continue
 
             # Filtrar por keywords del nicho
@@ -146,10 +164,12 @@ def discover():
             if not matches:
                 continue
 
-            print(f"  [OK] {titulo[:70]}")
+            print(f"  [OK] {dom}: {titulo[:60]}")
             suggested_urls.append(
                 {
-                    "url": href,
+                    "url": raiz(href),
+                    "dominio": dom,
+                    "ejemplo_url": href,
                     "titulo": titulo,
                     "snippet": snippet,
                     "keyword_match": matches,

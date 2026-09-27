@@ -396,8 +396,8 @@
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
     .card-full { grid-column: 1 / -1; }
-    /* 5 cards en 2 columnas: la última suelta ocupa el ancho en vez de dejar un hueco */
-    .main-grid > .card:nth-child(5):not(.card-full) { grid-column: 1 / -1; }
+    /* Card que queda sola en su fila (impar y anteúltima, antes de la full): ocupa el ancho */
+    .main-grid > .card:not(.card-full):nth-child(odd):nth-last-child(2) { grid-column: 1 / -1; }
     .card-header {
       display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
       margin-bottom: var(--s2);
@@ -582,13 +582,41 @@
       box-shadow: var(--raised-xs);
       animation: rise 0.4s var(--ease-out) both;
     }
+    .suggestion-info { min-width: 0; flex: 1; }
     .suggestion-url {
       font-family: var(--mono);
-      font-size: 0.75rem;
-      color: var(--text-mid);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-hi);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      min-width: 0;
     }
+    .suggestion-title {
+      font-size: 0.75rem;
+      color: var(--text-lo);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .suggestion-actions { display: flex; align-items: center; gap: var(--s2); flex-shrink: 0; }
+    .suggestion-actions .icon-btn { margin-left: 0; }
+    .btn-sm { min-height: 34px; padding: 6px 14px; font-size: 0.78rem; }
+
+    /* Bloque Fuentes (Fase 2) */
+    .fuentes-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
+    .fuentes-head .fase2-grupo-title { margin-bottom: 0; }
+    .fuentes-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
+    .fuentes-col { min-width: 0; display: flex; flex-direction: column; }
+    .fuentes-lista {
+      padding: var(--s2) var(--s4);
+      border-radius: var(--r-md);
+      box-shadow: var(--raised-xs);
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .fuentes-sug-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); flex-wrap: wrap; }
+    #sug-list { max-height: 360px; overflow-y: auto; padding: 6px; margin: -6px; }
+    .fuentes-ayuda { font-size: 0.75rem; color: var(--text-lo); margin-top: var(--s2); max-width: 65ch; }
+    .fuentes-ayuda strong { color: var(--text-mid); }
+    .fuentes-vacio { font-size: 0.8rem; color: var(--text-lo); padding: var(--s3) 0; }
+    .fuentes-vacio strong { color: var(--text-mid); }
 
     #trusted-urls-list > div {
       padding: 10px 4px !important;
@@ -621,14 +649,26 @@
     /* ═══════════════════════════════════════════════════════════════════════
        PIPELINE HUD
        ═══════════════════════════════════════════════════════════════════════ */
+    /* Dock fijo abajo: se ve desde cualquier sección (Scrapear se toca desde Fase 2). */
     .pipeline-hud {
       display: none;
-      padding: var(--s5);
-      margin-bottom: var(--s7);
+      position: fixed;
+      left: 50%; bottom: var(--s5);
+      transform: translateX(-50%);
+      width: min(880px, calc(100vw - 32px));
+      z-index: calc(var(--z-toast) - 1);
+      padding: var(--s4) var(--s5);
       border-radius: var(--r-lg);
-      box-shadow: var(--raised);
+      background: var(--bg);
+      box-shadow: 12px 12px 28px var(--sh-dark), -8px -8px 22px var(--sh-light);
     }
-    .pipeline-hud.visible { display: block; animation: rise 0.4s var(--ease-out); }
+    .pipeline-hud.visible { display: block; animation: dockIn 0.35s var(--ease-out); }
+    @keyframes dockIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    body.hud-open .app-container { padding-bottom: 220px; }
+    body.hud-open .toast-container { bottom: 240px; }
+    .pipeline-hud.hud-ok .pipeline-ticker { color: var(--ok); }
+    .pipeline-hud.hud-warn .pipeline-ticker { color: var(--warn); }
+    .pipeline-hud.hud-err .pipeline-ticker { color: var(--err); }
     .pipeline-label { font-size: 0.85rem; font-weight: 600; color: var(--text-mid); margin-bottom: var(--s4); }
     .pipeline-flow { display: flex; align-items: center; gap: var(--s2); }
     .pipeline-node {
@@ -679,7 +719,8 @@
     @keyframes edgeFlow { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
     .pipeline-ticker {
-      margin-top: var(--s4);
+      margin-top: var(--s3);
+      font-weight: 500;
       padding: 10px 16px;
       border-radius: var(--r-md);
       box-shadow: var(--inset-sm);
@@ -972,6 +1013,7 @@
       .pipeline-node span { font-size: 0.65rem; }
     }
     @media (max-width: 1024px) {
+      .fuentes-cols { gap: var(--s5); }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); }
       .main-grid, .fase2-grupos { grid-template-columns: minmax(0, 1fr); }
       .modal { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
@@ -990,6 +1032,10 @@
       .fase2-section { padding: var(--s4); }
       .fase2-grupo { padding: var(--s4); }
       .auto-config { grid-template-columns: minmax(0, 1fr); }
+      .fuentes-cols { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+      .pipeline-hud { bottom: var(--s3); padding: var(--s3) var(--s4); }
+      .pipeline-node .node-dot { width: 26px; height: 26px; }
+      .pipeline-node .node-dot::after { inset: 8px; }
       .generation-controls { flex-direction: column; align-items: stretch; }
       .generation-controls .control-group { flex: 1 1 auto !important; width: 100%; }
       .pipeline-flow { overflow-x: auto; padding: 6px 4px 8px; }
@@ -1113,25 +1159,6 @@
         <div id="vol-res" class="feedback"></div>
       </div>
 
-      <!-- Add URL -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Agregar URL Confiable</h3>
-          <span class="card-badge" id="trusted-urls-count">0 fuentes</span>
-        </div>
-        <p class="card-description">Agregá fuentes confiables para mejorar la calidad del scraping</p>
-        <div class="input-row">
-          <input type="text" id="url-in" class="input-field" placeholder="https://..." />
-          <button class="btn btn-primary" onclick="addUrlDirect()" id="btn-addurl-direct">Guardar</button>
-          <button class="btn" onclick="addUrl()" id="btn-addurl">+ Validar</button>
-        </div>
-        <p style="font-size:0.75rem;color:var(--text-lo);margin:4px 0 var(--s3)">
-          <strong>Guardar</strong>: agrega directo sin validar. <strong>+ Validar</strong>: scrapea y clasifica primero.
-        </p>
-        <div id="trusted-urls-list" style="margin-top:var(--s3)"></div>
-        <div id="url-status" class="feedback"></div>
-      </div>
-
       <!-- Automation -->
       <div class="card">
         <div class="card-header">
@@ -1218,17 +1245,6 @@
         </div>
       </div>
 
-      <!-- Discovery -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Descubrimiento de Fuentes</h3>
-          <span class="card-badge">Exploracion</span>
-        </div>
-        <p class="card-description">Buscá nuevas fuentes automatizadamente con IA</p>
-        <button class="btn" onclick="discover()" id="btn-disc" style="width:100%;margin-bottom:var(--s3)">Buscar Nuevas Fuentes</button>
-        <div class="suggestions-list" id="sug-list"></div>
-      </div>
-
       <!-- Article Generator -->
       <div class="card card-full" style="overflow:visible">
         <div class="card-header">
@@ -1292,6 +1308,35 @@
       </div>
 
       <div class="fase2-grupos">
+        <!-- Fuentes -->
+        <div class="fase2-grupo fuentes-grupo" style="grid-column:1/-1">
+          <div class="fuentes-head">
+            <div class="fase2-grupo-title">Fuentes que se scrapean</div>
+            <span class="card-badge" id="trusted-urls-count">0 fuentes</span>
+          </div>
+          <div class="fuentes-cols">
+            <div class="fuentes-col">
+              <div class="control-label">Tus fuentes</div>
+              <div id="trusted-urls-list" class="fuentes-lista"></div>
+              <label class="control-label" for="url-in" style="margin-top:var(--s4)">Agregar una fuente a mano</label>
+              <div class="input-row">
+                <input type="url" id="url-in" class="input-field" placeholder="https://sitio-de-noticias.com/" />
+                <button class="btn btn-primary" onclick="addUrlDirect()" id="btn-addurl-direct">Agregar</button>
+                <button class="btn" onclick="addUrl()" id="btn-addurl">Probar y agregar</button>
+              </div>
+              <p class="fuentes-ayuda"><strong>Agregar</strong> la suma directo. <strong>Probar y agregar</strong> la scrapea primero y solo la suma si encuentra artículos del sector.</p>
+              <div id="url-status" class="feedback"></div>
+            </div>
+            <div class="fuentes-col">
+              <div class="fuentes-sug-head">
+                <div class="control-label" style="margin:0">Fuentes recomendadas</div>
+                <button class="btn" onclick="discover()" id="btn-disc">Buscar recomendaciones</button>
+              </div>
+              <div class="suggestions-list" id="sug-list"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Categorías -->
         <div class="fase2-grupo" style="grid-column:1/-1">
           <div class="fase2-grupo-title">Categorías (seleccioná una o más)</div>
@@ -1550,6 +1595,24 @@
     /* ═══════════════════════════════════════════════════════════════════════
        PIPELINE HUD
        ═══════════════════════════════════════════════════════════════════════ */
+    /* Lee un stream de texto y llama onLine por cada línea COMPLETA.
+       Sin buffer, una línea que llega partida en dos chunks se mostraba rota. */
+    async function leerLineas(res, onLine) {
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var resto = '';
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        resto += decoder.decode(chunk.value, { stream: true });
+        var partes = resto.split('\n');
+        resto = partes.pop();
+        partes.forEach(function(l) { if (l) onLine(l); });
+      }
+      resto += decoder.decode();
+      if (resto) onLine(resto);
+    }
+
     var PIPELINE_STAGES = ['pn-init','pn-scrape','pn-parse','pn-classify','pn-embed','pn-store'];
     var PIPELINE_EDGES = ['pe-1','pe-2','pe-3','pe-4','pe-5'];
     var currentStage = -1;
@@ -1565,37 +1628,69 @@
       $('pipelineTicker').textContent = 'Inicializando...';
     }
 
+    // Etapa -> marcadores que la emiten los scripts del backend (no substrings sueltos:
+    // antes 'ok' matcheaba en "MongoDB" y el HUD saltaba a Guardar al arrancar).
+    var PIPELINE_MARCAS = [
+      [0, /iniciando|inicializ|\[run_automation\]|few-shot|con embedding disponibles/i, 'Preparando la corrida...'],
+      [1, /scrapeando:|>>> url|explorand|intento \d+|modo tema/i, 'Leyendo las fuentes...'],
+      [2, /enlaces encontrados|total art[ií]culos extra[ií]dos|t[oó]pico armado|generando (nota|art[ií]culo)/i, 'Extrayendo contenido...'],
+      [3, /clasificando \[|generaci[oó]n completa/i, 'Clasificando con IA...'],
+      [4, /generando embeddings|vectoriz/i, 'Vectorizando...'],
+      [5, /nuevos art[ií]culos aprobados|nota guardada|art[ií]culo guardado/i, 'Guardando en la base...']
+    ];
+
     function advancePipeline(text) {
-      var t = (text || '').toLowerCase();
-      var tick = $('pipelineTicker');
-      var newStage = currentStage;
-
-      if (t.includes('iniciand') || t.includes('scheduler') || t.includes('ejecutand')) newStage = Math.max(newStage, 0);
-      if (t.includes('scrapeand') || t.includes('>>> url') || t.includes('explorand')) { newStage = Math.max(newStage, 1); tick.textContent = 'Extrayendo de fuentes...'; }
-      if (t.includes('articulo:') || t.includes('extraido')) { newStage = Math.max(newStage, 2); tick.textContent = 'Parseando contenido...'; }
-      if (t.includes('clasificand') || t.includes('evaluar') || t.includes('aprobado')) { newStage = Math.max(newStage, 3); tick.textContent = 'Clasificando con IA...'; }
-      if (t.includes('embedding') || t.includes('vector')) { newStage = Math.max(newStage, 4); tick.textContent = 'Vectorizando significado...'; }
-      if (t.includes('guardad') || t.includes('mongodb') || t.includes('ok')) { newStage = Math.max(newStage, 5); tick.textContent = 'Guardando en base de datos...'; }
-
-      if (newStage > currentStage) {
-        for (var i = currentStage + 1; i <= newStage; i++) {
-          if (i < PIPELINE_STAGES.length) $(PIPELINE_STAGES[i]).classList.add(i < newStage ? 'done' : 'active');
-          if (i > 0 && i - 1 < PIPELINE_EDGES.length) $(PIPELINE_EDGES[i-1]).classList.add(i < newStage ? 'done' : 'active');
+      var newStage = currentStage, ticker = null;
+      PIPELINE_MARCAS.forEach(function(m) {
+        if (m[1].test(text) && m[0] >= newStage) { newStage = m[0]; ticker = m[2]; }
+      });
+      if (ticker) $('pipelineTicker').textContent = ticker;
+      if (newStage <= currentStage) return;
+      for (var i = Math.max(currentStage, 0); i <= newStage; i++) {
+        var nodo = $(PIPELINE_STAGES[i]);
+        nodo.classList.remove('active');
+        nodo.classList.add(i < newStage ? 'done' : 'active');
+        if (i > 0) {
+          var edge = $(PIPELINE_EDGES[i - 1]);
+          edge.classList.remove('active');
+          edge.classList.add(i < newStage ? 'done' : 'active');
         }
-        currentStage = newStage;
       }
+      currentStage = newStage;
     }
 
-    function finishPipeline(ok) {
-      PIPELINE_STAGES.forEach(function(id) { $(id).classList.remove('active'); $(id).classList.add('done'); });
-      PIPELINE_EDGES.forEach(function(id) { $(id).classList.remove('active'); $(id).classList.add('done'); });
-      $('pipelineTicker').textContent = ok ? 'Pipeline completado exitosamente.' : 'Pipeline finalizado con errores.';
-      setTimeout(function() { $('pipelineHud').classList.remove('visible'); }, 3000);
+    // estado: 'ok' | 'warn' | 'err'. Solo 'ok' completa todas las etapas.
+    function finishPipeline(estado, mensaje) {
+      if (estado === true) estado = 'ok';
+      if (estado === false) estado = 'err';
+      PIPELINE_STAGES.forEach(function(id, i) {
+        var n = $(id);
+        n.classList.remove('active');
+        if (estado === 'ok' || i < currentStage) n.classList.add('done');
+      });
+      PIPELINE_EDGES.forEach(function(id, i) {
+        var e = $(id);
+        e.classList.remove('active');
+        if (estado === 'ok' || i < currentStage - 1) e.classList.add('done');
+      });
+      var hud = $('pipelineHud');
+      hud.classList.remove('hud-ok', 'hud-warn', 'hud-err');
+      hud.classList.add('hud-' + estado);
+      $('pipelineTicker').textContent = mensaje ||
+        (estado === 'ok' ? 'Pipeline completado.' : estado === 'warn' ? 'Terminó sin resultados nuevos.' : 'Terminó con errores.');
+      clearTimeout(window._hudTimer);
+      window._hudTimer = setTimeout(function() {
+        hud.classList.remove('visible');
+        document.body.classList.remove('hud-open');
+      }, estado === 'ok' ? 4000 : 9000);
     }
 
     function showPipeline() {
       resetPipeline();
+      clearTimeout(window._hudTimer);
+      $('pipelineHud').classList.remove('hud-ok', 'hud-warn', 'hud-err');
       $('pipelineHud').classList.add('visible');
+      document.body.classList.add('hud-open');
       $('appHeader').classList.add('active');
       $('logoEl').classList.add('pulse');
     }
@@ -1738,7 +1833,7 @@
         if (!list) return;
         badge.textContent = (d.urls ? d.urls.length : 0) + ' fuentes';
         if (!d.urls || d.urls.length === 0) {
-          list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin URLs confiables. Agregá una arriba.</div>';
+          list.innerHTML = '<div class="fuentes-vacio">Todavía no hay fuentes. Agregá una a mano o sumá una recomendada.</div>';
           return;
         }
         list.innerHTML = d.urls.map(function(u) {
@@ -1887,39 +1982,51 @@
        RUN NOW (STREAMING)
        ═══════════════════════════════════════════════════════════════════════ */
     async function runNowStream() {
-      var btn = $('btn-runnow');
-      btn.disabled = true;
-      btn.textContent = 'Ejecutando...';
+      var botones = [$('btn-runnow'), $('btn-f2-scrapear')].filter(Boolean);
+      var textos = botones.map(function(b) { return b.textContent; });
+      botones.forEach(function(b) { b.disabled = true; b.textContent = 'Scrapeando...'; });
       log('--- INICIANDO SCRAPING MANUAL ---', 'warn');
       showPipeline();
+      var extraidos = 0, aprobados = 0, errores = 0, ocupado = false;
       try {
         var res = await fetch('/api/stream/run-automation', { method: 'POST' });
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
-        while (true) {
-          var chunk = await reader.read();
-          if (chunk.done) break;
-          var text = decoder.decode(chunk.value);
-          text.split('\n').forEach(function(l) {
-            if (!l) return;
-            var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : l.indexOf('[WARN]') >= 0 ? 'warn' : 'info';
-            log(l, type);
-            advancePipeline(l);
-          });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        await leerLineas(res, function(l) {
+          var m;
+          if ((m = l.match(/Total art[ií]culos extra[ií]dos:\s*(\d+)/i))) extraidos += +m[1];
+          if ((m = l.match(/(\d+) nuevos art[ií]culos aprobados/i))) aprobados += +m[1];
+          if (l.indexOf('[OCUPADO]') >= 0) ocupado = true;
+          if (l.indexOf('[ERROR]') >= 0) errores++;
+          var type = l.indexOf('[OK]') >= 0 ? 'success'
+                   : (l.indexOf('[ERROR]') >= 0 || l.indexOf('[FAIL]') >= 0) ? 'error'
+                   : (l.indexOf('[WARN]') >= 0 || l.indexOf('[OCUPADO]') >= 0 || l.indexOf('SIN RESPUESTA') >= 0) ? 'warn' : 'info';
+          log(l, type);
+          advancePipeline(l);
+        });
+
+        var estado, msg;
+        if (ocupado) {
+          estado = 'warn'; msg = 'Hay otra corrida en curso. Reintentá cuando termine.';
+        } else if (aprobados > 0) {
+          estado = 'ok'; msg = aprobados + (aprobados === 1 ? ' artículo nuevo guardado.' : ' artículos nuevos guardados.');
+        } else if (extraidos > 0) {
+          estado = 'warn'; msg = 'Se leyeron ' + extraidos + ' artículos pero ninguno nuevo pasó la clasificación.';
+        } else {
+          estado = errores ? 'err' : 'warn';
+          msg = 'No se pudieron obtener artículos de las fuentes. Revisá la consola.';
         }
-        log('--- SCRAPING FINALIZADO ---', 'success');
-        finishPipeline(true);
-        log('Scraping completado exitosamente.', 'success');
-        showToast('Scraping completado', 'success');
-        hidePipelineHeader();
-        updateStats();
+        finishPipeline(estado, msg);
+        log('--- SCRAPING FINALIZADO: ' + msg + ' ---', estado === 'ok' ? 'success' : estado === 'warn' ? 'warn' : 'error');
+        showToast(msg, estado === 'ok' ? 'success' : estado === 'warn' ? 'warn' : 'error');
       } catch(e) {
+        finishPipeline('err', 'Se cortó la conexión con el servidor.');
         log('Error en scraping: ' + e.message, 'error');
-        finishPipeline(false);
-        log('Error en scraping: ' + e.message, 'error');
+      } finally {
         hidePipelineHeader();
+        botones.forEach(function(b, i) { b.disabled = false; b.textContent = textos[i]; });
+        updateStats();
+        loadTrustedUrls();
       }
-      finally { btn.disabled = false; btn.textContent = 'Ejecutar Ahora'; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -1971,40 +2078,90 @@
     /* ═══════════════════════════════════════════════════════════════════════
        DISCOVER
        ═══════════════════════════════════════════════════════════════════════ */
+    function renderSugerencias(urls) {
+      var list = $('sug-list');
+      list.innerHTML = '';
+      if (!urls.length) {
+        list.innerHTML = '<div class="fuentes-vacio">No hay recomendaciones pendientes. Tocá <strong>Buscar recomendaciones</strong> para encontrar sitios nuevos del sector.</div>';
+        return;
+      }
+      urls.forEach(function(u) {
+        var item = document.createElement('div');
+        item.className = 'suggestion-item';
+        var titulo = u.titulo ? '<div class="suggestion-title">' + escHtml(u.titulo) + '</div>' : '';
+        item.innerHTML =
+          '<div class="suggestion-info"><div class="suggestion-url">' + escHtml(u.dominio || u.url) + '</div>' + titulo + '</div>' +
+          '<div class="suggestion-actions">' +
+            '<button class="btn btn-sm btn-primary" onclick="addSug(\'' + encodeURIComponent(u.url) + '\', this)">Agregar</button>' +
+            '<button class="icon-btn" title="Descartar" aria-label="Descartar recomendación" onclick="descartarSug(\'' + encodeURIComponent(u.url) + '\', this)">✕</button>' +
+          '</div>';
+        list.appendChild(item);
+      });
+    }
+
+    async function loadSugerencias() {
+      try {
+        var r = await fetch('/api/suggested-urls');
+        var d = await r.json();
+        renderSugerencias(d.success ? d.urls : []);
+      } catch(e) { renderSugerencias([]); }
+    }
+
     async function discover() {
       var btn = $('btn-disc');
-      var list = $('sug-list');
       btn.disabled = true;
       btn.textContent = 'Buscando...';
-      list.innerHTML = '';
-      log('Iniciando descubrimiento de fuentes...', 'warn');
+      $('sug-list').innerHTML = '<div class="fuentes-vacio">Buscando sitios del sector...</div>';
+      log('Buscando fuentes recomendadas...', 'warn');
       try {
         var r = await fetch('/api/discover-sources', { method: 'POST' });
         var d = await r.json();
-        log(d.success ? 'Descubrimiento completado' : 'Error: ' + d.error, d.success ? 'success' : 'error');
+        if (!d.success) log('Error en la búsqueda: ' + (d.error || 'sin detalle'), 'error');
         var r2 = await fetch('/api/suggested-urls');
         var d2 = await r2.json();
-        if (d2.success && d2.urls.length) {
-          d2.urls.forEach(function(u) {
-            var item = document.createElement('div');
-            item.className = 'suggestion-item';
-            item.innerHTML = '<span class="suggestion-url">' + escHtml(u.url) + '</span> <button class="btn" style="padding:5px 12px;font-size:0.75rem" onclick="addSug(\'' + u.url.replace(/'/g, "\\'") + '\')">Anadir</button>';
-            list.appendChild(item);
-          });
-          log(d2.urls.length + ' sugerencias encontradas', 'success');
-          showToast(d2.urls.length + ' fuentes encontradas', 'success');
-        } else {
-          list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem;text-align:center;padding:16px">No se encontraron sugerencias.</div>';
-          log('No se encontraron nuevas fuentes', 'info');
-        }
-      } catch(e) { log('Error en descubrimiento', 'error'); }
-      finally { btn.disabled = false; btn.textContent = 'Buscar Nuevas Fuentes'; }
+        var urls = d2.success ? d2.urls : [];
+        renderSugerencias(urls);
+        log(urls.length ? urls.length + ' fuentes recomendadas' : 'No se encontraron fuentes nuevas', urls.length ? 'success' : 'info');
+        if (urls.length) showToast(urls.length + ' fuentes recomendadas', 'success');
+      } catch(e) {
+        log('Error buscando fuentes', 'error');
+        renderSugerencias([]);
+      }
+      finally { btn.disabled = false; btn.textContent = 'Buscar recomendaciones'; }
     }
 
-    async function addSug(url) {
-      $('url-in').value = url;
-      $('url-in').focus();
-      log('URL cargada desde sugerencias: ' + url, 'info');
+    async function addSug(encodedUrl, btn) {
+      var url = decodeURIComponent(encodedUrl);
+      btn.disabled = true;
+      try {
+        var r = await fetch('/api/trusted-urls', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        var d = await r.json();
+        if (!d.success) throw new Error(d.error || 'Fallo');
+        log('Fuente agregada: ' + url, 'success');
+        showToast('Fuente agregada', 'success');
+        loadTrustedUrls();
+        loadSugerencias();
+        updateStats();
+      } catch(e) {
+        btn.disabled = false;
+        log('No se pudo agregar la fuente: ' + e.message, 'error');
+      }
+    }
+
+    async function descartarSug(encodedUrl, btn) {
+      btn.disabled = true;
+      try {
+        await fetch('/api/suggested-urls', {
+          method: 'DELETE',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: decodeURIComponent(encodedUrl)})
+        });
+        loadSugerencias();
+      } catch(e) { btn.disabled = false; }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2058,16 +2215,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tema: tema, persona: persona })
         });
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
         var fullOutput = '';
-        while (true) {
-          var chunk = await reader.read();
-          if (chunk.done) break;
-          var text = decoder.decode(chunk.value);
-          fullOutput += text;
-          text.split('\n').forEach(function(l) {
-            if (!l) return;
+        await leerLineas(res, function(l) {
+            fullOutput += l + '\n';
             advancePipeline(l);
             if (l.indexOf('[ERROR]') >= 0) {
               log(l, 'error');
@@ -2078,8 +2228,7 @@
             } else if (l.trim() === '[OK]') {
               if (!exito) log('Articulo generado correctamente', 'success');
             }
-          });
-        }
+        });
         exito = fullOutput.indexOf('[OK]') >= 0;
 
         if (exito) {
@@ -2436,17 +2585,10 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
         });
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
-        while (true) {
-          var chunk = await reader.read();
-          if (chunk.done) break;
-          decoder.decode(chunk.value).split('\n').forEach(function(l) {
-            if (!l) return;
-            var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
-            log(l, type);
-          });
-        }
+        await leerLineas(res, function(l) {
+          var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
+          log(l, type);
+        });
         log('Sincronización de ejemplos completada.', 'success');
         showToast('Ejemplos sincronizados', 'success');
         await fase2CargarCategorias();
@@ -2499,20 +2641,12 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(body)
         });
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
         var fullOutput = '';
-        while (true) {
-          var chunk = await reader.read();
-          if (chunk.done) break;
-          var text = decoder.decode(chunk.value);
-          fullOutput += text;
-          text.split('\n').forEach(function(l) {
-            if (!l) return;
-            var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
-            log(l.trim(), type);
-          });
-        }
+        await leerLineas(res, function(l) {
+          fullOutput += l + '\n';
+          var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
+          log(l.trim(), type);
+        });
         exito = fullOutput.indexOf('[OK]') >= 0;
 
         if (exito) {
@@ -2596,6 +2730,7 @@
       checkProviders();
       fase2Init();
       loadTrustedUrls();
+      loadSugerencias();
 
       setTimeout(function() {
         log('Sistema operativo. Command Center activo.', 'success');

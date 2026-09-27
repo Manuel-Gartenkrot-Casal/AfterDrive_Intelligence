@@ -385,13 +385,40 @@ def set_provider():
 
 @app.route("/api/suggested-urls", methods=["GET"])
 def suggested_urls():
+    """Fuentes recomendadas: una por sitio, sin las que ya son confiables."""
+    from discover_sources import dominio
+
     try:
-        docs = list(db["suggested_urls"].find().sort("fecha_sugerida", -1).limit(20))
-        for d in docs:
-            d["_id"] = str(d["_id"])
-        return jsonify({"success": True, "urls": docs})
+        confiables = {dominio(d["url"]) for d in db["trusted_urls"].find({}, {"url": 1})}
+        vistas, urls = set(), []
+        for d in db["suggested_urls"].find({}, {"_id": 0}).sort("fecha_sugerida", -1):
+            dom = d.get("dominio") or dominio(d.get("url", ""))
+            if not dom or dom in confiables or dom in vistas:
+                continue
+            vistas.add(dom)
+            urls.append({**d, "dominio": dom})
+            if len(urls) >= 20:
+                break
+        return jsonify({"success": True, "urls": urls})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/suggested-urls", methods=["DELETE"])
+def descartar_suggested_url():
+    """Descarta una recomendación (todas las de ese sitio)."""
+    from discover_sources import dominio
+
+    body = request.get_json(silent=True) or {}
+    dom = dominio(body.get("url", ""))
+    if not dom:
+        return jsonify({"success": False, "error": "Se requiere la URL."}), 400
+    pattern = re.escape(dom)
+    db["suggested_urls"].delete_many({"$or": [
+        {"dominio": dom},
+        {"url": {"$regex": rf"^https?://(www\.)?{pattern}(/|$)"}},
+    ]})
+    return jsonify({"success": True})
 
 
 @app.route("/api/discover-sources", methods=["POST"])
