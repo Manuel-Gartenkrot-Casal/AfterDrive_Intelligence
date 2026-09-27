@@ -1173,7 +1173,9 @@
        los márgenes laterales (sin solaparse con la activa) y se desvanecen
        hasta el borde de la pantalla. Las 4 secciones son el mismo panel.
        ═══════════════════════════════════════════════════════════════════════ */
-    html { overflow-x: clip; }
+    /* La barra de scroll vertical reserva siempre su lugar: sin esto, en las
+       secciones bajas (sin scroll) toda la página se corría a la derecha. */
+    html { overflow-x: clip; scrollbar-gutter: stable; }
     [data-modo="cliente"] .carrusel { order: 1; }
     .carrusel { margin-bottom: var(--s7); }
     .carrusel-nav {
@@ -1199,8 +1201,10 @@
       --dur: 760ms;
       --curva: cubic-bezier(0.2, 0.75, 0.15, 1);
       position: relative;
-      width: 100vw;
-      margin-left: calc(50% - 50vw);
+      /* ancho de la pantalla sin la barra de scroll (--barra la mide el JS),
+         así la tarjeta activa queda centrada con el resto de la página */
+      width: calc(100vw - var(--barra, 0px));
+      margin-left: calc(50% - (100vw - var(--barra, 0px)) / 2);
       overflow: hidden;
       touch-action: pan-y;
       transition: height var(--dur) var(--curva);
@@ -2596,6 +2600,7 @@
 
     function ubicar() {
       var vp = $('carrusel-viewport');
+      document.documentElement.style.setProperty('--barra', (window.innerWidth - document.documentElement.clientWidth) + 'px');
       var ancho = vp.clientWidth;               // ancho completo de la pantalla
       var movil = ancho < 700;
       var w = movil ? Math.round(ancho * 0.8) : Math.round(Math.min(1040, Math.max(560, ancho * 0.6)));
@@ -2624,6 +2629,7 @@
         el.style.transform = 'translateX(calc(-50% + ' + x.toFixed(1) + 'px)) scale(' + sc.toFixed(3) + ')';
         el.style.opacity = op.toFixed(3);
         el.style.zIndex = String(10 - Math.round(abs * 3));
+        c.escala = sc;
         el.style.setProperty('--fade-ini', fadeIni.toFixed(1) + '%');
         el.style.setProperty('--fade-fin', fadeFin.toFixed(1) + '%');
         el.classList.toggle('lado-izq', off < -0.2);
@@ -2633,9 +2639,15 @@
       ajustarAltura();
     }
 
+    // Alto = la más alta de las tarjetas visibles (activa y vecinas, con su
+    // escala), así las de atrás no quedan cortadas a lo largo.
     function ajustarAltura() {
-      var slide = CARRUSEL[_carrusel.i].slide;
-      $('carrusel-viewport').style.height = (slide.offsetHeight + 72) + 'px';
+      var alto = 0;
+      CARRUSEL.forEach(function(c) {
+        if (c.slide.classList.contains('oculta')) return;
+        alto = Math.max(alto, c.slide.offsetHeight * (c.escala || 1));
+      });
+      $('carrusel-viewport').style.height = Math.ceil(alto + 72) + 'px';
     }
 
     function animarEntrada(c) {
