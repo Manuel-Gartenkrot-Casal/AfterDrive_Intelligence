@@ -21,3 +21,13 @@ backups/
 
 # Segundo cerebro (Obsidian) — info interna del equipo, no subir al repo
 segundo-cerebro/
+
+# Dashboard compilado: lo genera el Dockerfile (o se copia a mano desde
+# express/src/public al correr en local). Versionarlo duplicaria el index.html
+# y las dos copias se desincronizarian.
+static/
+
+# Logs y scripts locales de dev/pruebas — no versionar
+server.log
+test-*.ps1
+opencode-server.ps1

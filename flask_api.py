@@ -5,6 +5,17 @@ import sys
 import threading
 import time
 
+# Aplicar el proveedor persistido antes de importar módulos que lo leen
+# (lm_studio captura AI_PROVIDER en tiempo de import). Si Mongo no está
+# disponible no se toca nada y se usa lo que diga el entorno.
+try:
+    import config_store
+    _p = config_store.get_provider_config()
+    if _p and not os.getenv("AI_PROVIDER_OVERRIDE"):
+        os.environ["AI_PROVIDER"] = _p
+except Exception:
+    pass
+
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
@@ -185,6 +196,21 @@ def db_check():
         }), 500
 
 
+@app.route("/api/articulos-stats", methods=["GET"])
+def articulos_stats():
+    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'.
+
+    Cuenta documentos en vez de reutilizar /api/check-volume, que resuelve
+    con una búsqueda $text. Esa búsqueda exige un índice de texto que solo
+    se crea al generar un artículo, así que en una base donde todavía no se
+    generó ninguno devolvía 500 y la tarjeta quedaba vacía.
+    """
+    try:
+        return jsonify({"success": True, "total": col_articulos.count_documents({})})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/check-volume", methods=["GET"])
 def check_volume():
     keyword = request.args.get("keyword", "")
@@ -263,11 +289,17 @@ def stream_generar():
 @app.route("/api/scraping-config", methods=["GET"])
 def get_scraping_config():
     next_run = scheduler.get_next_execution()
-    job = scheduler.scheduler.get_job("trusted_scraping")
-    interval = job.trigger.interval.days if job else 1
+    interval = scheduler.get_interval_days()
     max_art = scheduler.get_max_articulos()
+    enabled = scheduler.is_scraping_enabled()
 
-    return jsonify({"success": True, "interval_days": interval, "max_articulos": max_art, "next_execution": next_run})
+    return jsonify({
+        "success": True,
+        "interval_days": interval,
+        "max_articulos": max_art,
+        "next_execution": next_run,
+        "enabled": enabled,
+    })
 
 
 @app.route("/api/scraping-config", methods=["POST"])
@@ -275,6 +307,7 @@ def set_scraping_config():
     body = request.get_json(silent=True) or {}
     days = body.get("interval_days")
     max_art = body.get("max_articulos")
+    enabled = body.get("enabled")
 
     if days is not None:
         if not isinstance(days, int) or days < 1:
@@ -286,14 +319,72 @@ def set_scraping_config():
             return jsonify({"success": False, "error": "Se requiere 'max_articulos' como un entero >= 1."}), 400
         scheduler.set_max_articulos(max_art)
 
+    if enabled is not None:
+        scheduler.set_scraping_enabled(bool(enabled))
+
     msg_parts = []
     if days is not None:
         msg_parts.append(f"intervalo a {days} día(s)")
     if max_art is not None:
         msg_parts.append(f"max artículos a {max_art}")
+    if enabled is not None:
+        msg_parts.append("scraping " + ("habilitado" if enabled else "deshabilitado"))
     message = "Configuración actualizada: " + ", ".join(msg_parts) if msg_parts else "Sin cambios"
 
     return jsonify({"success": True, "message": message})
+
+
+@app.route("/api/generacion-config", methods=["GET"])
+def get_generacion_config():
+    import config_store
+    cfg = config_store.get_generacion_config()
+    cfg = {**cfg, "success": True, "next_execution": scheduler.get_next_generacion_execution()}
+    return jsonify(cfg)
+
+
+@app.route("/api/generacion-config", methods=["POST"])
+def set_generacion_config():
+    import config_store
+    body = request.get_json(silent=True) or {}
+    persona = body.get("persona")
+    tema = body.get("tema")
+    puntapie_url = body.get("puntapie_url")
+    days = body.get("interval_days")
+    enabled = body.get("enabled")
+
+    if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
+        return jsonify({"success": False, "error": "Persona inválida."}), 400
+    if days is not None and (not isinstance(days, int) or days < 1):
+        return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
+
+    if days is not None:
+        scheduler.update_generacion_interval(days)
+    if enabled is not None:
+        scheduler.set_generacion_enabled(bool(enabled))
+    if persona is not None or tema is not None or puntapie_url is not None:
+        config_store.set_generacion_config(persona=persona, tema=tema, puntapie_url=puntapie_url)
+
+    return jsonify({"success": True, "message": "Configuración de generación actualizada."})
+
+
+@app.route("/api/fase2/config", methods=["GET"])
+def get_fase2_config():
+    import config_store
+    return jsonify({"success": True, **config_store.get_fase2_config()})
+
+
+@app.route("/api/fase2/config", methods=["POST"])
+def set_fase2_config():
+    import config_store
+    body = request.get_json(silent=True) or {}
+    cfg = config_store.set_fase2_config(
+        categorias=body.get("categorias"),
+        regiones=body.get("regiones"),
+        clientes=body.get("clientes"),
+        puntapie_activo=body.get("puntapie_activo"),
+        puntapie_url=body.get("puntapie_url"),
+    )
+    return jsonify({"success": True, **cfg})
 
 
 @app.route("/api/run-automation", methods=["POST"])
@@ -311,6 +402,16 @@ def _run_automation_thread(max_art: int):
     from scheduler import set_max_articulos
     set_max_articulos(max_art)
     scheduler.run_trusted_scraping()
+
+
+@app.route("/api/run-generacion", methods=["POST"])
+def run_generacion():
+    """Dispara la generación automática de una nota (Fase 2) en background."""
+    try:
+        threading.Thread(target=scheduler.run_auto_generacion).start()
+        return jsonify({"success": True, "message": "Generación automática iniciada."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/stream/run-automation", methods=["POST"])
@@ -388,6 +489,9 @@ def set_provider():
     from lm_studio import set_provider as _set_provider
 
     result = _set_provider(provider)
+    if result.get("success"):
+        import config_store
+        config_store.set_provider_config(provider)
     status = 200 if result["success"] else 400
     return jsonify(result), status
 
@@ -634,8 +738,53 @@ def fase2_ultima_nota():
     return jsonify({"success": True, "nota": doc})
 
 
+def _keep_alive():
+    """Mantiene despierta la instancia de Render (free tier).
+
+    Render apaga el contenedor tras ~15 min SIN tráfico EXTERNO a la URL
+    pública. Un ping a localhost nunca sale del contenedor y no cuenta como
+    actividad, así que hay que pegarle a la URL pública que Render inyecta en
+    $RENDER_EXTERNAL_URL (ej: https://afterdrive-intelligence.onrender.com).
+
+    Esto reduce el spin-down pero no lo elimina al 100%: para garantía total,
+    un monitor externo (UptimeRobot, cron-job.org) debe pegar a /health cada
+    5-10 min. Sin instancia despierta, el scheduler de APScheduler no ejecuta
+    el scraping diario a la hora programada.
+    """
+    import urllib.request
+
+    def _base_url() -> str | None:
+        ext = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+        if ext:
+            return ext
+        # Fallback local de desarrollo: apuntar a la URL pública configurada.
+        public = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+        if public:
+            return public
+        return None
+
+    intervalo_s = 300  # 5 min: bajo el umbral de ~15 min de inactividad de Render
+    while True:
+        time.sleep(intervalo_s)
+        base = _base_url()
+        if not base:
+            print("[keep-alive] Sin RENDER_EXTERNAL_URL/PUBLIC_BASE_URL, skip.", flush=True)
+            continue
+        url = f"{base}/health"
+        try:
+            urllib.request.urlopen(url, timeout=10)
+        except Exception as e:
+            print(f"[keep-alive] Ping a {url} falló: {e}", flush=True)
+
+
+def _start_keep_alive():
+    t = threading.Thread(target=_keep_alive, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
     scheduler.start_scheduler()
+    _start_keep_alive()
 
     PORT = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=PORT, threaded=True)
@@ -648,3 +797,4 @@ else:
             or os.getenv("_SCHEDULER_STARTED") != "1":
         os.environ["_SCHEDULER_STARTED"] = "1"
         scheduler.start_scheduler()
+        _start_keep_alive()

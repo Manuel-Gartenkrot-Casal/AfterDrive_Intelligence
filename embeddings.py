@@ -1,7 +1,7 @@
 """
 embeddings.py — Vectores de significado para los artículos.
 
-Cada artículo lleva un campo 'embedding' (lista de 768 floats) calculado UNA sola
+Cada artículo lleva un campo 'embedding' (lista de 2048 floats) calculado UNA sola
 vez a partir de su título + cuerpo. Sirve para agrupar artículos por tópico y para
 detectar duplicados, comparando vectores con similitud coseno (pura matemática, sin
 volver a llamar al modelo).

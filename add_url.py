@@ -7,7 +7,7 @@ if not os.getenv("MONGO_URI"):
     sys.exit(1)
 
 from db import clasificar_y_guardar, col_articulos, col_trusted_urls
-from lm_studio import clasificar_articulo
+from jev_clasificador import clasificar_articulo
 from scheduler import get_max_articulos
 from scraper import start
 

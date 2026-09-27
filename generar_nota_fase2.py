@@ -144,8 +144,14 @@ def _build_system_prompt(
         nombres = [CATEGORIAS.get(s, s) for s in categorias]
         instrucciones_extra.append(
             f"CATEGORÍAS OBJETIVO: {', '.join(nombres)}. "
-            "La nota debe enmarcarse en estas categorías. "
-            "El contenido debe ser relevante para estos temas específicos."
+            "Distribuí estas categorías de forma natural a lo largo de las secciones del artículo: "
+            "cada sección debe sustentarse en material propio de una o más de estas categorías "
+            "(datos/estadísticas para el gancho o el análisis, el producto/solución para la propuesta, "
+            "marketplaces para los casos o el cierre). "
+            "Mencioná plataformas reales por nombre si aportan a la categoría correspondiente "
+            "(ej: Alephee para e-commerce B2B, Mercado Libre para el marketplace, TecDoc para el catálogo). "
+            "Respetá SIEMPRE la estructura obligatoria de secciones ## definida en tu modo de redacción. "
+            "El contenido debe enmarcarse en estas categorías, pero la estructura de tu modo manda."
         )
 
     if clientes:
@@ -353,6 +359,26 @@ def _limpiar_y_extraer(texto: str) -> str:
     texto = re.sub(r"</?ARTICULO>", "", texto)
     texto = re.sub(r"(?i)(?:^|\n)\s*Meta Description:\s*", "\n", texto)
 
+    # ── Defensa anti-razonamiento ──
+    # Algunos modelos (ej: nemotron-3.5-lightning) emiten su cadena de
+    # pensamiento como si fuera el artículo: "I need to...", "Let me structure...",
+    # "## 1. Gancho con dato real - 1 paragraph...". Si hay marcas de planning,
+    # NO es un artículo publicable: descartar y reintentar/fallar.
+    patrones_razonamiento = re.compile(
+        r"\b(I need to|I'll |I would|Let me|Now let|Let's (think|see)|"
+        r"I can reference|I should use|Let me think|we need to|Let me draft|"
+        r"First, the title|Possible angle|I'm going to|Let me write the|"
+        r"I will make sure|Actually, re-reading|Let me check|Word count|"
+        r"I'll aim|I need to be careful|Let me re-read)\b",
+        re.IGNORECASE,
+    )
+    conteo = len(patrones_razonamiento.findall(texto))
+    # Si el texto es en su mayoría planning en inglés (≠ idioma objetivo),
+    # el "título" con ## no alcanza para validarlo.
+    if conteo >= 3 and not _es_articulo_publicable(texto):
+        print(f"  [WARN] El modelo devolvió razonamiento ({conteo} marcadores de planning). Se descarta.")
+        return ""
+
     lineas = texto.split("\n")
     for i, line in enumerate(lineas):
         if line.strip().startswith("# ") or line.strip().startswith("## "):
@@ -360,6 +386,33 @@ def _limpiar_y_extraer(texto: str) -> str:
             if len(posible) > 200:
                 return posible
     return texto if len(texto) > 200 else ""
+
+
+def _es_articulo_publicable(texto: str) -> bool:
+    """Heurística mínima: distingue un artículo final de un borrador/plan.
+
+    Un artículo publicable tiene secciones ## coherentes (no copia literal de la
+    tarea), frases completas en el idioma objetivo y marcadores de cierre
+    (CTA, meta description). El planning del modelo es casi todo en inglés y
+    repite los títulos de la estructura pedida sin desarrollo real.
+    """
+    t = texto.lower()
+    secciones = re.findall(r"^#{1,2}\s+(.+)$", t, re.MULTILINE)
+    # Copia de la estructura de la tarea = sospechoso
+    estructura_copiada = ["gancho con dato real", "la solucion concreta",
+                          "casos de exito", "cta + meta description",
+                          "panorama macro", "desafio estrategico",
+                          "1 paragraph", "paragraphs"]
+    coincidencias = sum(1 for s in secciones if any(p in s for p in estructura_copiada))
+    # Frases de planning en inglés predominantes
+    planning_ingles = len(re.findall(
+        r"\b(the examples|the instructions|the context|a solution|an article|"
+        r"the article|the title|the reader|the user says|let me)\b", t))
+    en_ingles = len(re.findall(r"\b(I|you|the|and|from|with)\b", t))
+    en_espanol = len(re.findall(r"\b(la|el|los|las|una|para|con|del|de los)\b", t))
+    # El planning tiene muchas más palabras inglesas que hispanas
+    predomina_ingles = en_ingles > en_espanol * 3
+    return not (predomina_ingles and (coincidencias >= 2 or planning_ingles >= 3))
 
 
 def get_ultima_nota() -> dict | None:
