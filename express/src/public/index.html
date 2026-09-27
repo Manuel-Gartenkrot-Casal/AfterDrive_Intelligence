@@ -14,6 +14,9 @@
       try { t = localStorage.getItem("ad-theme"); } catch (e) {}
       if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", t);
+      var modo = null;
+      try { modo = localStorage.getItem("ad-modo"); } catch (e) {}
+      document.documentElement.setAttribute("data-modo", modo === "dev" ? "dev" : "cliente");
     })();
   </script>
   <style>
@@ -1039,6 +1042,117 @@
     .count-up { font-variant-numeric: tabular-nums; }
 
     /* ═══════════════════════════════════════════════════════════════════════
+       MODOS DE VISTA: cliente (simple) / desarrollador (completo)
+       El modo es html[data-modo]. La vista desarrollador es el orden del DOM;
+       la vista cliente oculta lo técnico y reordena con `order`.
+       ═══════════════════════════════════════════════════════════════════════ */
+    .app-container { display: flex; flex-direction: column; }
+    .app-container > * { min-width: 0; }
+    [data-modo="cliente"] .solo-dev,
+    [data-modo="dev"] .solo-cliente { display: none !important; }
+
+    [data-modo="cliente"] .header { order: 0; }
+    [data-modo="cliente"] .hero-cliente { order: 1; }
+    [data-modo="cliente"] .fase2-section { order: 2; }
+    [data-modo="cliente"] .agenda { order: 3; }
+    [data-modo="cliente"] .fuentes-seccion { order: 4; }
+
+    [data-modo="cliente"] .f2-categorias { order: 1; }
+    [data-modo="cliente"] .f2-opciones { order: 2; grid-column: 1 / -1; }
+    [data-modo="cliente"] .f2-regiones { order: 3; }
+    [data-modo="cliente"] .f2-clientes { order: 4; grid-column: 1 / -1; }
+    [data-modo="cliente"] .fase2-section:not(.mas-abiertas) .f2-avanzado { display: none; }
+    [data-modo="cliente"] .toggle-count { display: none; }
+
+    .modo-switch {
+      display: flex; gap: 4px; padding: 5px;
+      border-radius: var(--r-pill);
+      box-shadow: var(--inset-sm);
+    }
+    .modo-switch button {
+      border: 0; background: transparent; cursor: pointer;
+      padding: 7px 14px;
+      border-radius: var(--r-pill);
+      font-family: var(--font); font-size: 0.8rem; font-weight: 500;
+      color: var(--text-mid);
+      transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast);
+    }
+    .modo-switch button:hover { color: var(--text-hi); }
+    .modo-switch button[aria-checked="true"] {
+      background: var(--bg); color: var(--brand); font-weight: 600; box-shadow: var(--raised-xs);
+    }
+
+    /* Bienvenida */
+    .hero-cliente {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: var(--s6);
+      margin-bottom: var(--s7);
+      align-items: stretch;
+    }
+    .hero-intro { display: flex; flex-direction: column; justify-content: center; gap: var(--s3); padding: var(--s4) 0; }
+    .hero-title { font-size: clamp(1.7rem, 2.6vw, 2.3rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+    .hero-sub { font-size: 0.95rem; color: var(--text-mid); max-width: 52ch; }
+    .hero-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); margin-top: var(--s4); }
+    .kpi {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: var(--s4);
+      border-radius: var(--r-md);
+      box-shadow: var(--inset-sm);
+      min-width: 0;
+    }
+    .kpi strong {
+      font-family: var(--mono); font-size: 1.35rem; font-weight: 500; color: var(--text-data);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kpi span { font-size: 0.78rem; color: var(--text-lo); }
+    .ultima-nota {
+      display: flex; flex-direction: column; gap: var(--s2);
+      padding: var(--s5) var(--s6);
+      border-radius: var(--r-lg);
+      box-shadow: var(--raised);
+      min-width: 0;
+    }
+    .ultima-label { font-size: 0.75rem; font-weight: 600; color: var(--brand); }
+    .ultima-titulo { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+    .ultima-extracto {
+      font-size: 0.86rem; color: var(--text-mid);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .ultima-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: auto; padding-top: var(--s3); }
+    .ultima-fecha { font-family: var(--mono); font-size: 0.75rem; color: var(--text-lo); }
+
+    /* Generador: acciones y "Más opciones" */
+    .f2-acciones { display: flex; gap: var(--s3); justify-content: flex-end; align-items: center; flex-wrap: wrap; margin-bottom: var(--s4); }
+    .f2-acciones .mas-opciones { margin-right: auto; }
+    .fase2-section.mas-abiertas .mas-opciones { color: var(--brand); box-shadow: var(--inset-sm); }
+    #f2-status.info { font-weight: 500; }
+
+    /* Fuentes como sección propia (vista cliente) */
+    .fuentes-seccion {
+      padding: var(--s6);
+      margin-bottom: var(--s7);
+      border-radius: var(--r-lg);
+      box-shadow: var(--raised);
+    }
+    .fuentes-seccion .fuentes-grupo { box-shadow: none; padding: 0; }
+    .fuentes-seccion .fuentes-head { display: none; }
+
+    @media (max-width: 1024px) {
+      .hero-cliente { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .hero-kpis { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+      .kpi { flex-direction: row; align-items: baseline; gap: var(--s3); }
+      .kpi strong { font-size: 1.1rem; }
+      .ultima-nota, .fuentes-seccion { padding: var(--s4); }
+      .modo-switch button { padding: 7px 10px; }
+      .header-right { gap: var(--s3); }
+      .status-pill { padding: 12px; }
+      .status-pill #statusText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
        RESPONSIVE
        ═══════════════════════════════════════════════════════════════════════ */
     @media (max-width: 1280px) {
@@ -1095,11 +1209,15 @@
         <div class="header-logo" id="logoEl">AD</div>
         <div>
           <h1 class="header-title">AfterDrive <span>Intelligence</span></h1>
-          <p class="header-subtitle">Centro de control del pipeline de autopartes</p>
+          <p class="header-subtitle" data-cliente="Noticias y notas del sector autopartes">Centro de control del pipeline de autopartes</p>
         </div>
       </div>
       <div class="header-right">
-        <div class="provider-toggle" id="providerToggle">
+        <div class="modo-switch" role="radiogroup" aria-label="Vista">
+          <button type="button" role="radio" data-modo="cliente" onclick="setModo('cliente')">Cliente</button>
+          <button type="button" role="radio" data-modo="dev" onclick="setModo('dev')">Desarrollador</button>
+        </div>
+        <div class="provider-toggle solo-dev" id="providerToggle">
           <span class="prov-label">Proveedor</span>
           <button class="prov-btn" id="prov-local" onclick="switchProvider('local')">Local</button>
           <button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')">NVIDIA</button>
@@ -1114,7 +1232,7 @@
     </header>
 
     <!-- Stats -->
-    <div class="stats-grid">
+    <div class="stats-grid solo-dev">
       <div class="stat-card">
         <div class="stat-label">URLs Confiables</div>
         <div class="stat-row">
@@ -1149,22 +1267,44 @@
 
     <!-- Pipeline HUD (hidden by default) -->
     <div class="pipeline-hud" id="pipelineHud">
-      <div class="pipeline-label">Pipeline de Procesamiento</div>
+      <div class="pipeline-label" data-cliente="Buscando noticias">Pipeline de Procesamiento</div>
       <div class="pipeline-flow">
-        <div class="pipeline-node" id="pn-init"><div class="node-dot"></div><span>Init</span></div>
+        <div class="pipeline-node" id="pn-init"><div class="node-dot"></div><span data-cliente="Inicio">Init</span></div>
         <div class="pipeline-edge" id="pe-1"></div>
-        <div class="pipeline-node" id="pn-scrape"><div class="node-dot"></div><span>Scrape</span></div>
+        <div class="pipeline-node" id="pn-scrape"><div class="node-dot"></div><span data-cliente="Fuentes">Scrape</span></div>
         <div class="pipeline-edge" id="pe-2"></div>
-        <div class="pipeline-node" id="pn-parse"><div class="node-dot"></div><span>Parse</span></div>
+        <div class="pipeline-node" id="pn-parse"><div class="node-dot"></div><span data-cliente="Lectura">Parse</span></div>
         <div class="pipeline-edge" id="pe-3"></div>
-        <div class="pipeline-node" id="pn-classify"><div class="node-dot"></div><span>Clasificar</span></div>
+        <div class="pipeline-node" id="pn-classify"><div class="node-dot"></div><span data-cliente="Filtro">Clasificar</span></div>
         <div class="pipeline-edge" id="pe-4"></div>
-        <div class="pipeline-node" id="pn-embed"><div class="node-dot"></div><span>Vectorizar</span></div>
+        <div class="pipeline-node" id="pn-embed"><div class="node-dot"></div><span data-cliente="Índice">Vectorizar</span></div>
         <div class="pipeline-edge" id="pe-5"></div>
-        <div class="pipeline-node" id="pn-store"><div class="node-dot"></div><span>Guardar</span></div>
+        <div class="pipeline-node" id="pn-store"><div class="node-dot"></div><span data-cliente="Guardado">Guardar</span></div>
       </div>
       <div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
     </div>
+
+    <!-- Bienvenida (vista cliente) -->
+    <section class="hero-cliente solo-cliente" aria-labelledby="hero-title">
+      <div class="hero-intro">
+        <h2 class="hero-title" id="hero-title">Tu contenido de AfterDrive</h2>
+        <p class="hero-sub">El sistema busca noticias del sector y escribe notas por vos. Desde acá ves cómo va y creás una nota cuando quieras.</p>
+        <div class="hero-kpis">
+          <div class="kpi"><strong id="c-articulos">-</strong><span>noticias listas para usar</span></div>
+          <div class="kpi"><strong id="c-fuentes">-</strong><span>fuentes activas</span></div>
+          <div class="kpi"><strong id="c-proxima">-</strong><span>próxima nota automática</span></div>
+        </div>
+      </div>
+      <article class="ultima-nota" aria-labelledby="c-ultima-titulo">
+        <span class="ultima-label">Última nota</span>
+        <h3 class="ultima-titulo" id="c-ultima-titulo">Todavía no hay notas</h3>
+        <p class="ultima-extracto" id="c-ultima-extracto">Cuando se genere la primera, la vas a ver acá.</p>
+        <div class="ultima-foot">
+          <span class="ultima-fecha" id="c-ultima-fecha"></span>
+          <button class="btn btn-primary btn-sm" id="c-ultima-btn" onclick="fase2VerUltima()" disabled>Leer nota</button>
+        </div>
+      </article>
+    </section>
 
     <!-- Programación automática -->
     <section class="agenda" aria-labelledby="agenda-title">
@@ -1176,8 +1316,8 @@
         <article class="agenda-card" id="agenda-scraping">
           <header class="agenda-card-head">
             <div>
-              <h3 class="agenda-card-title">Scraping</h3>
-              <p class="agenda-card-sub">Lee tus fuentes y guarda los artículos nuevos</p>
+              <h3 class="agenda-card-title" data-cliente="Buscar noticias">Scraping</h3>
+              <p class="agenda-card-sub" data-cliente="Revisa tus fuentes y guarda las noticias nuevas">Lee tus fuentes y guarda los artículos nuevos</p>
             </div>
             <div class="puntapie-toggle active" id="sw-scraping" role="switch" tabindex="0" aria-checked="true" aria-label="Scraping automático">
               <div class="toggle-switch"></div><span>Activo</span>
@@ -1198,7 +1338,7 @@
               <input type="number" id="dias-scraping" class="input-field" min="1" max="30" value="1" />
               <span>día(s)</span>
             </label>
-            <label class="agenda-field">
+            <label class="agenda-field solo-dev">
               <span>Hasta</span>
               <input type="number" id="max-scraping" class="input-field" min="1" max="50" value="10" />
               <span>artículos por fuente</span>
@@ -1210,13 +1350,13 @@
               <strong id="next-scraping">-</strong>
               <em class="agenda-estado" id="estado-scraping" aria-live="polite"></em>
             </div>
-            <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()">Scrapear ahora</button>
+            <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()" data-cliente="Buscar ahora">Scrapear ahora</button>
           </footer>
         </article>
         <article class="agenda-card" id="agenda-generacion">
           <header class="agenda-card-head">
             <div>
-              <h3 class="agenda-card-title">Generación de nota</h3>
+              <h3 class="agenda-card-title" data-cliente="Escribir nota">Generación de nota</h3>
               <p class="agenda-card-sub">Escribe una nota nueva con lo último que se scrapeó</p>
             </div>
             <div class="puntapie-toggle active" id="sw-generacion" role="switch" tabindex="0" aria-checked="true" aria-label="Generación de nota automático">
@@ -1265,20 +1405,21 @@
     <div class="fase2-section">
       <div class="fase2-header">
         <div>
-          <h2 class="fase2-title">Generador de notas</h2>
-          <p style="font-size:0.8125rem;color:var(--text-lo);margin-top:4px">Seleccioná categorías, configurá clientes y generá notas estilo AfterDrive</p>
+          <h2 class="fase2-title" data-cliente="Crear una nota">Generador de notas</h2>
+          <p class="section-sub" data-cliente="Elegí de qué querés que hable y generala en un par de minutos.">Seleccioná categorías, configurá clientes y generá notas estilo AfterDrive</p>
         </div>
-        <div style="display:flex;gap:var(--s3);align-items:center">
+        <div class="solo-dev" style="display:flex;gap:var(--s3);align-items:center">
           <button class="btn" id="btn-f2-scrape" onclick="fase2Scrape()">Sincronizar Ejemplos</button>
           <span class="card-badge" style="align-self:center" id="f2-ejemplos-badge">0 ejemplos</span>
         </div>
       </div>
 
       <div class="fase2-grupos">
-        <!-- Fuentes -->
-        <div class="fase2-grupo fuentes-grupo" style="grid-column:1/-1">
+        <!-- Fuentes (en vista cliente se mueve a su propia sección) -->
+        <div id="slot-fuentes-dev" style="display:contents">
+        <div class="fase2-grupo fuentes-grupo" id="fuentes-grupo" style="grid-column:1/-1">
           <div class="fuentes-head">
-            <div class="fase2-grupo-title">Fuentes que se scrapean</div>
+            <div class="fase2-grupo-title" data-cliente="Tus fuentes y recomendaciones">Fuentes que se scrapean</div>
             <span class="card-badge" id="trusted-urls-count">0 fuentes</span>
           </div>
           <div class="fuentes-cols">
@@ -1304,16 +1445,18 @@
           </div>
         </div>
 
+        </div>
+
         <!-- Categorías -->
-        <div class="fase2-grupo" style="grid-column:1/-1">
-          <div class="fase2-grupo-title">Categorías (seleccioná una o más)</div>
+        <div class="fase2-grupo f2-categorias" style="grid-column:1/-1">
+          <div class="fase2-grupo-title" data-cliente="¿Sobre qué temas? Elegí uno o más">Categorías (seleccioná una o más)</div>
           <div class="toggles-grid" id="f2-categorias-grid">
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
           </div>
         </div>
 
         <!-- Regiones -->
-        <div class="fase2-grupo" style="grid-column:1/-1">
+        <div class="fase2-grupo f2-avanzado f2-regiones" style="grid-column:1/-1">
           <div class="fase2-grupo-title">Regiones (opcional: dejalas apagadas para no filtrar por región)</div>
           <div class="toggles-grid" id="f2-regiones-grid">
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando regiones...</div>
@@ -1321,7 +1464,7 @@
         </div>
 
         <!-- Clientes -->
-        <div class="fase2-grupo">
+        <div class="fase2-grupo f2-avanzado f2-clientes">
           <div class="fase2-grupo-title">Clientes a mencionar</div>
           <div id="f2-clientes-list" style="margin-bottom:var(--s3)">
             <div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>
@@ -1335,12 +1478,12 @@
         </div>
 
         <!-- Opciones de generación -->
-        <div class="fase2-grupo">
-          <div class="fase2-grupo-title">Opciones de nota</div>
+        <div class="fase2-grupo f2-opciones">
+          <div class="fase2-grupo-title" data-cliente="Estilo de la nota">Opciones de nota</div>
 
           <!-- Personalidad -->
           <div style="margin-bottom:var(--s4)">
-            <div class="control-label">Personalidad / Tono</div>
+            <div class="control-label" data-cliente="Tono">Personalidad / Tono</div>
             <select id="f2-persona" class="select-field" style="width:100%">
               <option value="comercial">Comercial</option>
               <option value="analitico">Analítico-Técnico</option>
@@ -1352,13 +1495,13 @@
 
           <!-- Tema libre -->
           <div style="margin-bottom:var(--s4)">
-            <div class="control-label">Tema específico (opcional)</div>
+            <div class="control-label" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</div>
             <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
           </div>
 
           <!-- Puntapié a link -->
-          <div style="margin-bottom:var(--s3)">
-            <div class="control-label" style="margin-bottom:var(--s2)">Modo puntapié a link</div>
+          <div class="f2-avanzado" style="margin-bottom:var(--s3)">
+            <div class="control-label" style="margin-bottom:var(--s2)" data-cliente="Llevar al lector a un link">Modo puntapié a link</div>
             <div class="puntapie-row">
               <div class="puntapie-toggle" id="f2-puntapie-toggle" onclick="togglePuntapie()">
                 <div class="toggle-switch" id="f2-puntapie-switch"></div>
@@ -1374,15 +1517,25 @@
       </div>
 
       <!-- Acción -->
-      <div style="display:flex;gap:var(--s3);justify-content:flex-end;margin-bottom:var(--s4)">
-        <button class="btn" onclick="fase2VerUltima()">Última Nota</button>
-        <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()">Generar Nota</button>
+      <div class="f2-acciones">
+        <button type="button" class="btn mas-opciones solo-cliente" id="btn-mas-opciones" aria-expanded="false" onclick="toggleMasOpciones()">Más opciones</button>
+        <button class="btn solo-dev" onclick="fase2VerUltima()">Última Nota</button>
+        <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
       </div>
       <div id="f2-status" class="feedback"></div>
     </div>
 
+    <!-- Fuentes de noticias (vista cliente) -->
+    <section class="fuentes-seccion solo-cliente" aria-labelledby="fuentes-title">
+      <div class="section-head">
+        <h2 class="section-title" id="fuentes-title">Fuentes de noticias</h2>
+        <p class="section-sub">Los sitios que el sistema revisa para encontrar noticias. Sumá los que quieras o elegí de las recomendadas.</p>
+      </div>
+      <div id="slot-fuentes-cliente"></div>
+    </section>
+
     <!-- Console -->
-    <div class="console-section">
+    <div class="console-section solo-dev">
       <div class="console-header">
         <span class="console-title">Consola de Procesos</span>
         <button class="btn" style="padding:5px 12px;font-size:0.75rem" onclick="limpiarLogs()">Limpiar</button>
@@ -1688,6 +1841,7 @@
           $('statUrls').classList.add('flash');
           setTimeout(function() { $('statUrls').classList.remove('flash'); }, 600);
           $('statUrlsSub').textContent = d.total + ' registradas';
+          $('c-fuentes').textContent = d.activas.toLocaleString('es-AR');
           if (d.ultima_ejecucion) {
             var dt = new Date(d.ultima_ejecucion);
             $('statLastRun').textContent = dt.toLocaleDateString('es-AR');
@@ -1701,6 +1855,7 @@
         var r2 = await fetch('/api/articulos-stats');
         var d2 = await r2.json();
         if (d2.success) {
+          $('c-articulos').textContent = d2.total.toLocaleString('es-AR');
           if (_firstStatsLoad) { countUp($('statArticles'), d2.total, 1100); }
           else { $('statArticles').textContent = d2.total.toLocaleString(); }
           $('statArticles').classList.add('flash');
@@ -1752,7 +1907,8 @@
         var list = $('trusted-urls-list');
         var badge = $('trusted-urls-count');
         if (!list) return;
-        badge.textContent = (d.urls ? d.urls.length : 0) + ' fuentes';
+        var n = d.urls ? d.urls.length : 0;
+        badge.textContent = n + (n === 1 ? ' fuente' : ' fuentes');
         if (!d.urls || d.urls.length === 0) {
           list.innerHTML = '<div class="fuentes-vacio">Todavía no hay fuentes. Agregá una a mano o sumá una recomendada.</div>';
           return;
@@ -1904,6 +2060,12 @@
         gH.style.transform = 'rotate(' + ((estado.h % 12) * 30 + estado.m * 0.5) + 'deg)';
         gM.style.transform = 'rotate(' + (estado.m * 6) + 'deg)';
         momento.textContent = nombreMomento(estado.h);
+        // Va arriba o abajo del centro, donde no la tape ninguna aguja.
+        var angH = ((estado.h % 12) * 30 + estado.m * 0.5) % 360, angM = estado.m * 6;
+        function cerca(ang, centro) { var d = Math.abs(ang - centro) % 360; return Math.min(d, 360 - d) < 55; }
+        var abajoOcupado = cerca(angH, 180) || cerca(angM, 180);
+        var arribaOcupado = cerca(angH, 0) || cerca(angM, 0);
+        momento.setAttribute('y', abajoOcupado && !arribaOcupado ? 72 : 136);
         svg.setAttribute('aria-valuenow', estado.h * 60 + estado.m);
         svg.setAttribute('aria-valuetext', texto() + ' (' + nombreMomento(estado.h) + ')');
       }
@@ -1998,6 +2160,17 @@
       });
     }
 
+    function proximaCorta(iso) {
+      if (!iso) return '-';
+      var f = new Date(iso);
+      var dia = function(x) { return x.toLocaleDateString('en-CA', { timeZone: _zona }); };
+      var hoy = new Date(), manana = new Date(Date.now() + 864e5);
+      var hora = f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _zona });
+      if (dia(f) === dia(hoy)) return 'Hoy ' + hora;
+      if (dia(f) === dia(manana)) return 'Mañana ' + hora;
+      return f.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', timeZone: _zona }) + ' ' + hora;
+    }
+
     function pintarAmPm(tipo, hhmm) {
       var pm = parseInt(hhmm.split(':')[0], 10) >= 12;
       $('ampm-' + tipo).querySelectorAll('button').forEach(function(b) {
@@ -2062,6 +2235,7 @@
         AGENDA[tipo].cargarExtra(d);
         pintarActivo(tipo, d.enabled !== false);
         $('next-' + tipo).textContent = d.enabled === false ? 'Pausado' : formatearProxima(d.next_execution);
+        if (tipo === 'generacion') $('c-proxima').textContent = d.enabled === false ? 'Pausada' : proximaCorta(d.next_execution);
       } catch(e) {}
     }
 
@@ -2105,6 +2279,74 @@
         });
         cargarAgenda(tipo);
       });
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       MODOS DE VISTA
+       ═══════════════════════════════════════════════════════════════════════ */
+    function setModo(modo) {
+      modo = modo === 'dev' ? 'dev' : 'cliente';
+      document.documentElement.setAttribute('data-modo', modo);
+      try { localStorage.setItem('ad-modo', modo); } catch(e) {}
+
+      document.querySelectorAll('.modo-switch button').forEach(function(b) {
+        b.setAttribute('aria-checked', b.dataset.modo === modo);
+      });
+      // Textos: data-cliente guarda la versión cliente; la original se recuerda en data-dev.
+      document.querySelectorAll('[data-cliente]').forEach(function(el) {
+        if (el.dataset.dev === undefined) el.dataset.dev = el.textContent;
+        if (!el.classList.contains('loading')) el.textContent = modo === 'cliente' ? el.dataset.cliente : el.dataset.dev;
+      });
+      // Fuentes: un solo bloque (mismos IDs y handlers) que cambia de lugar.
+      var fuentes = $('fuentes-grupo');
+      var destino = $(modo === 'cliente' ? 'slot-fuentes-cliente' : 'slot-fuentes-dev');
+      if (fuentes && destino && fuentes.parentNode !== destino) destino.appendChild(fuentes);
+    }
+
+    function toggleMasOpciones() {
+      var sec = document.querySelector('.fase2-section');
+      var abierto = sec.classList.toggle('mas-abiertas');
+      $('btn-mas-opciones').setAttribute('aria-expanded', abierto);
+      $('btn-mas-opciones').textContent = abierto ? 'Menos opciones' : 'Más opciones';
+    }
+
+    /* Tarjeta "Última nota" de la bienvenida */
+    async function cargarUltimaNota() {
+      try {
+        var r = await fetch('/api/fase2/ultima-nota');
+        var d = await r.json();
+        if (!d.success || !d.nota || !d.nota.contenido) return;
+        var md = d.nota.contenido;
+        var titulo = (md.match(/^#{1,2}\s+(.+)$/m) || [])[1] || 'Nota sin título';
+        var cuerpo = md.replace(/^#.*$/gm, '').replace(/[*_>`\[\]]/g, '').replace(/\(https?:[^)]+\)/g, '').replace(/\s+/g, ' ').trim();
+        $('c-ultima-titulo').textContent = titulo.replace(/[*_]/g, '');
+        $('c-ultima-extracto').textContent = cuerpo.slice(0, 220) + (cuerpo.length > 220 ? '...' : '');
+        if (d.nota.generado_en) {
+          $('c-ultima-fecha').textContent = new Date(d.nota.generado_en).toLocaleString('es-AR', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+          });
+        }
+        $('c-ultima-btn').disabled = false;
+      } catch(e) {}
+    }
+
+    /* Progreso de la generación en lenguaje simple (los dos modos) */
+    var PASOS_GENERACION = [
+      [/few-shot|ejemplo\(s\) cargado/i, 'Buscando notas de referencia...'],
+      [/generando nota/i, 'Escribiendo la nota...'],
+      [/^\s*\[(\d+)s\]/, function(m) {
+        var seg = +m[1], min = Math.floor(seg / 60), resto = seg % 60;
+        return 'Escribiendo la nota... (' + (min ? min + ' min' + (resto ? ' ' + resto + ' s' : '') : seg + ' s') + ')';
+      }],
+      [/generaci[oó]n completa/i, 'Revisando el texto...'],
+      [/nota guardada/i, 'Guardando la nota...']
+    ];
+    function pasoGeneracion(linea) {
+      for (var i = 0; i < PASOS_GENERACION.length; i++) {
+        var m = linea.match(PASOS_GENERACION[i][0]);
+        if (m) return typeof PASOS_GENERACION[i][1] === 'function' ? PASOS_GENERACION[i][1](m) : PASOS_GENERACION[i][1];
+      }
+      return null;
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2630,10 +2872,13 @@
           fullOutput += l + '\n';
           var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
           log(l.trim(), type);
+          var paso = pasoGeneracion(l);
+          if (paso) st.textContent = paso;
         });
         exito = fullOutput.indexOf('[OK]') >= 0;
 
         if (exito) {
+          cargarUltimaNota();
           st.className = 'feedback ok';
           st.textContent = 'Nota generada correctamente.';
           showToast('Nota generada', 'success');
@@ -2641,7 +2886,8 @@
           await fase2MostrarUltima();
         } else {
           st.className = 'feedback err';
-          st.textContent = 'No se pudo generar la nota. Revisá la consola.';
+          var motivo = (fullOutput.match(/\[ERROR\]\s*(.+)/) || [])[1];
+          st.textContent = 'No se pudo generar la nota.' + (motivo ? ' ' + motivo.trim() : ' Revisá la consola en la vista Desarrollador.');
         }
       } catch(e) {
         log('Error: ' + e.message, 'error');
@@ -2712,8 +2958,10 @@
 
       updateStats();
       checkProviders();
+      setModo(document.documentElement.getAttribute('data-modo'));
       initAgenda();
       fase2Init();
+      cargarUltimaNota();
       loadTrustedUrls();
       loadSugerencias();
 
