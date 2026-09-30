@@ -75,10 +75,10 @@ def scraping(max_articulos: int | None = None) -> dict:
 
 
 def _scrapear_fuentes(max_articulos: int | None) -> dict:
-    import config_store
-    from db import col_trusted_urls
-    from ingesta import ingerir
-    from scraper import start
+    from afterdrive import config_store
+    from afterdrive.db import col_trusted_urls
+    from afterdrive.ingesta.ingesta import ingerir
+    from afterdrive.ingesta.scraper import start
 
     if max_articulos is None:
         max_articulos = config_store.get_scraping_config()["max_articulos"]
@@ -124,8 +124,7 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
 
 def parametros_guardados() -> dict | None:
     """Parámetros de una Nota Fase 2 según la config del dashboard, o None si no hay categorías."""
-    import config_store
-
+    from afterdrive import config_store
     fase2 = config_store.get_fase2_config()
     gen = config_store.get_generacion_config()
     if not fase2.get("categorias"):
@@ -150,7 +149,7 @@ def generacion(params: dict | None = None) -> dict:
             print(f"[{datetime.datetime.now()}] {_ocupado('generacion')}", flush=True)
             return {"success": False, "error": _ocupado("generacion")}
         try:
-            from generar_nota_fase2 import generar_nota
+            from afterdrive.generacion.generar_nota_fase2 import generar_nota
 
             params = params or parametros_guardados()
             if params is None:
@@ -175,7 +174,9 @@ def en_segundo_plano(fn, *args) -> None:
 
 
 def _cmd(nombre: str, argv: list[str] | None) -> list[str]:
-    return [sys.executable, "-u", nombre] + (argv or [])
+    """`nombre` es un módulo (afterdrive.x.y, se corre con -m) o la ruta a un .py."""
+    destino = [nombre] if nombre.endswith(".py") else ["-m", nombre]
+    return [sys.executable, "-u", *destino, *(argv or [])]
 
 
 def _env() -> dict:

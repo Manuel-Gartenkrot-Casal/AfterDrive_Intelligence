@@ -8,8 +8,8 @@ import requests
 import trafilatura
 from bs4 import BeautifulSoup
 
-from resource_detector import get_max_workers, get_perfil, usar_browser
-from resource_detector import PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO
+from afterdrive.ingesta.resource_detector import get_max_workers, get_perfil, usar_browser
+from afterdrive.ingesta.resource_detector import PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO
 
 _PERFIL = get_perfil()
 _MAX_WORKERS = get_max_workers()

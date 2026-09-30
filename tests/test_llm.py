@@ -4,9 +4,7 @@ import json
 
 import pytest
 
-import llm
-
-
+from afterdrive.ia import llm
 class Resp:
     def __init__(self, status=200, body=None, lineas=None):
         self.status_code = status

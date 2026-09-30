@@ -31,3 +31,6 @@ static/
 server.log
 test-*.ps1
 opencode-server.ps1
+
+# Salida de scripts manuales
+scripts/manual/*.png

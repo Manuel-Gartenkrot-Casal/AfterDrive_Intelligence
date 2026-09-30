@@ -32,28 +32,7 @@ RUN python -m patchright install --with-deps chromium && \
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
 
 # Copiar código fuente
-COPY db.py .
-COPY lm_studio.py .
-COPY llm.py .
-COPY saneo.py .
-COPY ingesta.py .
-COPY corridas.py .
-COPY redaccion.py .
-COPY contexto_noticias.py .
-COPY embeddings.py .
-COPY flask_api.py .
-COPY config_store.py .
-COPY generar_articulo.py .
-COPY scraper.py .
-COPY scraper_afterdrive.py .
-COPY regiones.py .
-COPY generar_nota_fase2.py .
-COPY jev_clasificador.py .
-COPY scheduler.py .
-COPY add_url.py .
-COPY discover_sources.py .
-COPY run_automation.py .
-COPY resource_detector.py .
+COPY afterdrive/ ./afterdrive/
 
 # Dashboard estático generado en la etapa 1
 COPY --from=dash /dash/dist/public/ ./static/
@@ -64,4 +43,4 @@ USER appuser
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 4 --timeout 1800 flask_api:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 4 --timeout 1800 afterdrive.flask_api:app"]

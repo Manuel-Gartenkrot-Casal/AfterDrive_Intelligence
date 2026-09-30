@@ -19,10 +19,10 @@ import argparse
 import datetime
 import re
 
-import llm
-from db import col_afterdrive, crear_indices_texto, db
-from embeddings import coseno
-from lm_studio import generar_articulo as lm_generar
+from afterdrive.ia import llm
+from afterdrive.db import col_afterdrive, crear_indices_texto, db
+from afterdrive.ingesta.embeddings import coseno
+from afterdrive.ia.lm_studio import generar_articulo as lm_generar
 
 _PAYWALL_PATTERNS = [
     r"El contenido al que quiere acceder es exclusivo para suscriptores",

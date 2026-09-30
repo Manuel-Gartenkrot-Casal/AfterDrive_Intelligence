@@ -18,9 +18,8 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-import config_store
-import corridas
-
+from afterdrive import config_store
+from afterdrive import corridas
 ZONA = os.getenv("SCHEDULER_TZ", "America/Argentina/Buenos_Aires")
 
 # Con el keep-alive externo la instancia queda despierta 24/7, así que

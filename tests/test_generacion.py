@@ -4,10 +4,10 @@ import datetime
 
 import pytest
 
-import contexto_noticias
-import generar_nota_fase2 as g
-import llm
-from contexto_noticias import Noticia
+from afterdrive.generacion import contexto_noticias
+from afterdrive.generacion import generar_nota_fase2 as g
+from afterdrive.ia import llm
+from afterdrive.generacion.contexto_noticias import Noticia
 
 NOTA = """# El catálogo digital llega al mostrador
 
@@ -63,7 +63,7 @@ def entorno(monkeypatch):
     monkeypatch.setattr(llm, "completar", completar)
     monkeypatch.setattr(llm, "embeber", lambda textos, tipo="passage": [[0.1, 0.2]])
     monkeypatch.setattr(llm, "ajustes_redaccion", lambda: llm.Redaccion(temperatura=0.55, max_ejemplos=3, chars_ejemplo=400, directiva="DIRECTIVA-X"))
-    import lm_studio
+    from afterdrive.ia import lm_studio
     monkeypatch.setattr(lm_studio, "evaluar_lineamientos", lambda texto: {"lineamientos": {"tono_b2b": True}, "comentarios": "ok"})
     return llamadas, col, usadas
 

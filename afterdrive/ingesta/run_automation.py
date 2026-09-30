@@ -16,7 +16,7 @@ _host = mongo_uri.split("://", 1)[-1].split("@", 1)[-1].split("/", 1)[0].split("
 print(f"[run_automation] MONGO_URI detectado (host): {_host or '***'}", flush=True)
 
 try:
-    import corridas
+    from afterdrive import corridas
 except Exception as e:
     print(f"[run_automation] ERROR al importar módulos (posible fallo de DB): {e}", flush=True)
     sys.exit(1)

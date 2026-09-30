@@ -13,16 +13,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./db.py:/app/db.py
-      - ./flask_api.py:/app/flask_api.py
-      - ./lm_studio.py:/app/lm_studio.py
-      - ./embeddings.py:/app/embeddings.py
-      - ./generar_articulo.py:/app/generar_articulo.py
-      - ./scraper.py:/app/scraper.py
-      - ./scheduler.py:/app/scheduler.py
-      - ./add_url.py:/app/add_url.py
-      - ./discover_sources.py:/app/discover_sources.py
-      - ./run_automation.py:/app/run_automation.py
+      - ./afterdrive:/app/afterdrive
     networks:
       - app
     healthcheck:

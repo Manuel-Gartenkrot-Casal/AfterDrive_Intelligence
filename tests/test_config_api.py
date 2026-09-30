@@ -2,9 +2,7 @@
 
 import pytest
 
-import config_store
-
-
+from afterdrive import config_store
 @pytest.fixture
 def client(monkeypatch):
     store = {}
@@ -15,12 +13,11 @@ def client(monkeypatch):
     monkeypatch.setattr(config_store, "_get_section", get_section)
     monkeypatch.setattr(config_store, "_set_section", lambda key, value: store.__setitem__(key, value))
     monkeypatch.setenv("AI_PROVIDER_OVERRIDE", "1")
-    import scheduler
-
+    from afterdrive import scheduler
     # Importar flask_api arranca el scheduler (modo gunicorn): en tests no.
     monkeypatch.setattr(scheduler, "iniciar", lambda: None)
     monkeypatch.setattr(scheduler, "aplicar", lambda: None)
-    import flask_api
+    from afterdrive import flask_api
     return flask_api.app.test_client(), store
 
 

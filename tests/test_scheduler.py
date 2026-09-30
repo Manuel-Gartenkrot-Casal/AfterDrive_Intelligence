@@ -2,10 +2,8 @@
 
 import pytest
 
-import config_store
-import scheduler
-
-
+from afterdrive import config_store
+from afterdrive import scheduler
 @pytest.fixture
 def config(monkeypatch):
     cfg = {

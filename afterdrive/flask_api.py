@@ -6,11 +6,11 @@ import time
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
-import config_store
-import corridas
-import llm
-import scheduler
-from db import col_articulos, db
+from afterdrive import config_store
+from afterdrive import corridas
+from afterdrive.ia import llm
+from afterdrive import scheduler
+from afterdrive.db import col_articulos, db
 
 # Aplicar el proveedor elegido en el dashboard. llm lee AI_PROVIDER en cada
 # llamada y los subprocesos heredan os.environ, así que alcanza con setearlo.
@@ -26,7 +26,7 @@ CORS(app)
 
 # Dashboard estático (build del frontend Express). Si no está presente
 # (dev local sin build), se responde el JSON de estado de la API.
-_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 
 
 # ── Endpoint Raíz ──────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ def api_health():
 @app.route("/api/db-check", methods=["GET"])
 def db_check():
     """Diagnóstico de conexión a MongoDB y estado de URLs confiables."""
-    from db import MONGO_URI, col_trusted_urls
+    from afterdrive.db import MONGO_URI, col_trusted_urls
 
     uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
     try:
@@ -186,7 +186,7 @@ def _parse_request_args(body: dict) -> list[str]:
 def generar():
     body = request.get_json(silent=True) or {}
     args_list = _parse_request_args(body)
-    result = corridas.script("generar_articulo.py", args_list)
+    result = corridas.script("afterdrive.generacion.generar_articulo", args_list)
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -199,7 +199,7 @@ def generar():
 def stream_generar():
     body = request.get_json(silent=True) or {}
     args_list = _parse_request_args(body)
-    return _sse(corridas.stream("generar_articulo.py", args_list))
+    return _sse(corridas.stream("afterdrive.generacion.generar_articulo", args_list))
 
 
 # ── Endpoints para URLs Custom (Nuevas) ──────────────────────────────────────────
@@ -334,7 +334,7 @@ def run_generacion():
 @app.route("/api/stream/run-automation", methods=["POST"])
 def stream_run_automation():
     """Streaming SSE con el output en vivo del scraping de URLs confiables."""
-    return _sse(corridas.stream("run_automation.py"))
+    return _sse(corridas.stream("afterdrive.ingesta.run_automation"))
 
 
 @app.route("/api/trusted-urls-stats", methods=["GET"])
@@ -369,7 +369,7 @@ def evaluate_article():
         articulo = m.group(1).replace("\\n", "\n").replace('\\"', '"').strip()
     articulo = articulo.lstrip("`").lstrip("markdown").strip()
 
-    from lm_studio import evaluar_lineamientos
+    from afterdrive.ia.lm_studio import evaluar_lineamientos
 
     resultado = evaluar_lineamientos(articulo)
 
@@ -405,7 +405,7 @@ def set_provider():
 @app.route("/api/suggested-urls", methods=["GET"])
 def suggested_urls():
     """Fuentes recomendadas: una por sitio, sin las que ya son confiables."""
-    from discover_sources import dominio
+    from afterdrive.ingesta.discover_sources import dominio
 
     try:
         confiables = {dominio(d["url"]) for d in db["trusted_urls"].find({}, {"url": 1})}
@@ -426,7 +426,7 @@ def suggested_urls():
 @app.route("/api/suggested-urls", methods=["DELETE"])
 def descartar_suggested_url():
     """Descarta una recomendación (todas las de ese sitio)."""
-    from discover_sources import dominio
+    from afterdrive.ingesta.discover_sources import dominio
 
     body = request.get_json(silent=True) or {}
     dom = dominio(body.get("url", ""))
@@ -442,7 +442,7 @@ def descartar_suggested_url():
 
 @app.route("/api/discover-sources", methods=["POST"])
 def discover_sources():
-    result = corridas.script("discover_sources.py")
+    result = corridas.script("afterdrive.ingesta.discover_sources")
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -450,7 +450,7 @@ def discover_sources():
 @app.route("/api/trusted-urls", methods=["GET"])
 def list_trusted_urls():
     """Lista todas las URLs confiables registradas."""
-    from db import col_trusted_urls
+    from afterdrive.db import col_trusted_urls
     try:
         docs = list(col_trusted_urls.find({}, {"_id": 0}).sort("fecha_agregado", -1))
         return jsonify({"success": True, "urls": docs, "total": len(docs)})
@@ -463,7 +463,7 @@ def add_trusted_url_direct():
     """Agrega una URL directamente a trusted_urls sin pasar por el clasificador."""
     import datetime
 
-    from db import col_trusted_urls
+    from afterdrive.db import col_trusted_urls
     body = request.get_json(silent=True) or {}
     url = body.get("url", "").strip()
     nombre = body.get("nombre", "").strip()
@@ -489,7 +489,7 @@ def add_trusted_url_direct():
 @app.route("/api/trusted-urls/<path:url>", methods=["DELETE"])
 def delete_trusted_url(url):
     """Elimina o desactiva una URL confiable."""
-    from db import col_trusted_urls
+    from afterdrive.db import col_trusted_urls
     try:
         result = col_trusted_urls.delete_one({"url": url})
         if result.deleted_count == 0:
@@ -507,7 +507,7 @@ def add_url():
         return jsonify({"success": False, "error": "Se requiere la URL."}), 400
 
     # Ejecutamos el nuevo script add_url.py
-    result = corridas.script("add_url.py", [url])
+    result = corridas.script("afterdrive.ingesta.add_url", [url])
     status = 200 if result["success"] else 500
     return jsonify(result), status
 
@@ -519,7 +519,7 @@ def stream_add_url():
     if not url:
         return jsonify({"success": False, "error": "Se requiere la URL."}), 400
 
-    return _sse(corridas.stream("add_url.py", [url]))
+    return _sse(corridas.stream("afterdrive.ingesta.add_url", [url]))
 
 
 # ── Fase 2: Endpoints ─────────────────────────────────────────────────────────
@@ -527,7 +527,7 @@ def stream_add_url():
 
 @app.route("/api/fase2/categorias", methods=["GET"])
 def fase2_categorias():
-    from scraper_afterdrive import CATEGORIAS, get_categorias_disponibles
+    from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_categorias_disponibles
     todas = [{"slug": slug, "nombre": nombre} for slug, nombre in CATEGORIAS.items()]
     disponibles = {r["_id"]: r["total"] for r in get_categorias_disponibles()}
     for cat in todas:
@@ -537,8 +537,8 @@ def fase2_categorias():
 
 @app.route("/api/fase2/regiones", methods=["GET"])
 def fase2_regiones():
-    from regiones import REGIONES
-    from scraper_afterdrive import get_regiones_disponibles
+    from afterdrive.generacion.regiones import REGIONES
+    from afterdrive.generacion.scraper_afterdrive import get_regiones_disponibles
     disponibles = {r["_id"]: r["total"] for r in get_regiones_disponibles()}
     todas = [{"slug": slug, "nombre": nombre, "ejemplos": disponibles.get(slug, 0)} for slug, nombre in REGIONES.items()]
     return jsonify({"success": True, "regiones": todas})
@@ -549,7 +549,7 @@ def fase2_scrape():
     body = request.get_json(silent=True) or {}
     tags = body.get("tags") or None
     max_por_tag = int(body.get("max", 5))
-    result = corridas.script("scraper_afterdrive.py",
+    result = corridas.script("afterdrive.generacion.scraper_afterdrive",
                         (["--tags"] + tags if tags else []) + ["--max", str(max_por_tag)])
     return jsonify(result), 200 if result["success"] else 500
 
@@ -560,19 +560,19 @@ def fase2_stream_scrape():
     tags = body.get("tags") or []
     max_por_tag = str(body.get("max", 5))
     extra = (["--tags"] + tags if tags else []) + ["--max", max_por_tag]
-    return _sse(corridas.stream("scraper_afterdrive.py", extra))
+    return _sse(corridas.stream("afterdrive.generacion.scraper_afterdrive", extra))
 
 
 @app.route("/api/fase2/clientes", methods=["GET"])
 def fase2_get_clientes():
-    from db import col_clientes
+    from afterdrive.db import col_clientes
     docs = list(col_clientes.find({}, {"_id": 0, "embedding": 0}))
     return jsonify({"success": True, "clientes": docs})
 
 
 @app.route("/api/fase2/clientes", methods=["POST"])
 def fase2_crear_cliente():
-    from db import col_clientes
+    from afterdrive.db import col_clientes
     body = request.get_json(silent=True) or {}
     nombre = body.get("nombre", "").strip()
     if not nombre:
@@ -591,7 +591,7 @@ def fase2_crear_cliente():
 
 @app.route("/api/fase2/clientes/<slug>", methods=["DELETE"])
 def fase2_eliminar_cliente(slug: str):
-    from db import col_clientes
+    from afterdrive.db import col_clientes
     col_clientes.delete_one({"slug": slug})
     return jsonify({"success": True})
 
@@ -645,12 +645,12 @@ def fase2_stream_generar():
     if tema:
         extra += ["--tema", tema]
 
-    return _sse(corridas.stream("generar_nota_fase2.py", extra))
+    return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
 
 
 @app.route("/api/fase2/ultima-nota", methods=["GET"])
 def fase2_ultima_nota():
-    from generar_nota_fase2 import get_ultima_nota
+    from afterdrive.generacion.generar_nota_fase2 import get_ultima_nota
     doc = get_ultima_nota()
     if not doc:
         return jsonify({"success": False, "error": "No hay notas generadas aún."}), 404

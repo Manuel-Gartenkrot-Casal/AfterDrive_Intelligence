@@ -9,7 +9,7 @@ Formato: un documento por sección, clave `key`, valor en `value`.
 
 import datetime
 
-from db import db
+from afterdrive.db import db
 
 _col = db["config"]
 

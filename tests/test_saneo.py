@@ -2,7 +2,7 @@
 
 import json
 
-from saneo import sanear
+from afterdrive.ia.saneo import sanear
 
 CUERPO = (
     "El parque automotor argentino supera los **15 millones** de vehículos y la demanda de "

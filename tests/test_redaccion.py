@@ -4,9 +4,7 @@ import re
 
 import pytest
 
-import redaccion
-
-
+from afterdrive.ia import redaccion
 @pytest.mark.parametrize("persona", list(redaccion.PERSONAS))
 def test_cada_persona_tiene_estructura_reglas_y_cierre(persona):
     p = redaccion.system_prompt(persona)

@@ -15,11 +15,11 @@ import datetime
 
 from pymongo import UpdateOne
 
-import jev_clasificador
-import llm
-import lm_studio
-from db import col_articulos, col_descartados
-from embeddings import texto_para_embedding
+from afterdrive.ingesta import jev_clasificador
+from afterdrive.ia import llm
+from afterdrive.ia import lm_studio
+from afterdrive.db import col_articulos, col_descartados
+from afterdrive.ingesta.embeddings import texto_para_embedding
 
 
 def clasificar(titulo: str, cuerpo: str) -> dict:

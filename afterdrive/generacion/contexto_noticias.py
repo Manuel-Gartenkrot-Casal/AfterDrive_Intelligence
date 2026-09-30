@@ -102,8 +102,8 @@ def _desde_doc(d: dict) -> Noticia:
 
 def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     """Las `limite` noticias más útiles para una nota sobre `consulta`."""
-    import llm
-    from db import col_articulos
+    from afterdrive.ia import llm
+    from afterdrive.db import col_articulos
 
     docs = list(
         col_articulos.find(
@@ -123,7 +123,7 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
 
 
 def marcar_usadas(noticias: list[Noticia]) -> None:
-    from db import col_articulos
+    from afterdrive.db import col_articulos
 
     if noticias:
         col_articulos.update_many({"_id": {"$in": [n.id for n in noticias]}}, {"$set": {"usado_para_articulo": True}})

@@ -7,13 +7,13 @@ detectar duplicados, comparando vectores con similitud coseno (pura matemática,
 volver a llamar al modelo).
 
 Uso:
-    python embeddings.py          # backfill: vectoriza los que aún no tienen embedding
+    python -m afterdrive.ingesta.embeddings          # backfill: vectoriza los que aún no tienen embedding
 """
 
 import math
 
-import llm
-from db import col_afterdrive, col_articulos
+from afterdrive.ia import llm
+from afterdrive.db import col_afterdrive, col_articulos
 
 # Colecciones de contenido (excluye 'articulos_descartados').
 COLECCIONES_CONTENIDO = [col_articulos, col_afterdrive]

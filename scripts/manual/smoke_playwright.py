@@ -43,8 +43,8 @@ def test_express_server():
             page.wait_for_load_state("networkidle")
             
             # Take screenshot
-            page.screenshot(path="test_screenshot.png", full_page=True)
-            print("Screenshot saved: test_screenshot.png")
+            page.screenshot(path="scripts/manual/screenshot.png", full_page=True)
+            print("Screenshot saved: scripts/manual/screenshot.png")
             
             # Check page title
             title = page.title()

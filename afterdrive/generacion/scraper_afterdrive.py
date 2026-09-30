@@ -5,9 +5,9 @@ Scrapea las notas reales del blog AfterDrive by Alephee (afterdrive.alephee.com/
 organizadas por tag/categoría y las guarda en MongoDB como ejemplos few-shot.
 
 Uso:
-    python scraper_afterdrive.py               # scrapea todas las categorías
-    python scraper_afterdrive.py --tags autopartes marketplaces
-    python scraper_afterdrive.py --max 3       # máximo por categoría
+    python -m afterdrive.generacion.scraper_afterdrive               # scrapea todas las categorías
+    python -m afterdrive.generacion.scraper_afterdrive --tags autopartes marketplaces
+    python -m afterdrive.generacion.scraper_afterdrive --max 3       # máximo por categoría
 
 Resultado en MongoDB:
     DB: afterdrive  |  Colección: afterdrive_ejemplos
@@ -23,9 +23,9 @@ import trafilatura
 from bs4 import BeautifulSoup
 from pymongo import UpdateOne
 
-from db import db
-from regiones import clasificar_region, REGIONES
-from resource_detector import get_scrape_sleep, usar_browser
+from afterdrive.db import db
+from afterdrive.generacion.regiones import clasificar_region, REGIONES
+from afterdrive.ingesta.resource_detector import get_scrape_sleep, usar_browser
 
 col_ejemplos = db["afterdrive_ejemplos"]
 

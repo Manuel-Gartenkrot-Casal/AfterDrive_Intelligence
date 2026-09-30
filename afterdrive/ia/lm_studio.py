@@ -15,9 +15,9 @@ proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
 import json
 import re
 
-import llm
-import redaccion
-from saneo import sanear
+from afterdrive.ia import llm
+from afterdrive.ia import redaccion
+from afterdrive.ia.saneo import sanear
 
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
 
@@ -298,7 +298,7 @@ def research_contexto(contexto: str) -> str:
         return _RESEARCH_VACIO
 
 
-# ── Test rápido (python lm_studio.py) ─────────────────────────────────────────
+# ── Test rápido (python -m afterdrive.ia.lm_studio) ─────────────────────────────────────────
 
 if __name__ == "__main__":
     print(f"Proveedor: {llm.estado()}")

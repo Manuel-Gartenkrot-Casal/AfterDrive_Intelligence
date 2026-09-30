@@ -1,5 +1,5 @@
 """
-demo_mode.py — Pipeline optimizado para demo en tiempo real (<60 segundos).
+scripts/demo_mode.py (python -m scripts.demo_mode) — Pipeline optimizado para demo en tiempo real (<60 segundos).
 
 Optimizaciones:
   - Scraping: HTTP directo con requests (sin Playwright/headless), max 1 articulo por fuente
@@ -16,7 +16,7 @@ from html.parser import HTMLParser
 import requests
 import trafilatura
 
-from db import col_articulos, col_trusted_urls
+from afterdrive.db import col_articulos, col_trusted_urls
 
 # ── Configuracion demo ──────────────────────────────────────────────────────
 
@@ -130,7 +130,7 @@ def demo_scraping():
 def _guardar_rapido(items: list[dict], coleccion) -> dict:
     """Guardar items sin embeddings ni clasificacion IA (modo demo rapido)."""
     from pymongo import UpdateOne
-    from db import col_trusted_urls
+    from afterdrive.db import col_trusted_urls
 
     urls_existentes = set()
     for col_name in ["afterdrive", "articulos_generados"]:
@@ -192,8 +192,8 @@ def demo_generacion():
     print("  FASE 2: GENERACION DE ARTICULO (modo demo)")
     print("=" * 60)
 
-    import llm
-    from lm_studio import generar_articulo as lm_generar
+    from afterdrive.ia import llm
+    from afterdrive.ia.lm_studio import generar_articulo as lm_generar
 
     if not llm.disponible():
         print("  [ERROR] LM Studio no disponible")
@@ -221,7 +221,7 @@ def demo_generacion():
         if articulo:
             print(f"  [OK] Articulo generado ({elapsed:.1f}s, {len(articulo)} chars)")
 
-            from db import db
+            from afterdrive.db import db
             col_gen = db["articulos_generados"]
             col_gen.insert_one({
                 "contenido": articulo,
@@ -248,7 +248,7 @@ def demo_scheduler():
     print("  FASE 3: SCHEDULER (verificacion)")
     print("=" * 60)
 
-    from scheduler import proximas
+    from afterdrive.scheduler import proximas
     next_run = proximas()["scraping"]
     if next_run:
         print(f"  Scheduler activo. Proxima ejecucion: {next_run}")

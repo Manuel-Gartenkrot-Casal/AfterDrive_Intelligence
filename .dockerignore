@@ -44,7 +44,7 @@ logs/
 coverage/
 .nyc_output
 test_*.py
-demo_mode.py
+scripts/
 
 # Docs / Obsidian
 segundo-cerebro/

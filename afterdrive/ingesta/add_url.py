@@ -6,10 +6,10 @@ if not os.getenv("MONGO_URI"):
     print("[add_url] ERROR: MONGO_URI no está configurado en el entorno.", flush=True)
     sys.exit(1)
 
-import config_store
-from db import col_trusted_urls
-from ingesta import ingerir
-from scraper import start
+from afterdrive import config_store
+from afterdrive.db import col_trusted_urls
+from afterdrive.ingesta.ingesta import ingerir
+from afterdrive.ingesta.scraper import start
 
 
 def add_custom_url(url: str):
@@ -47,7 +47,7 @@ def add_custom_url(url: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python add_url.py <URL>")
+        print("Uso: python -m afterdrive.ingesta.add_url <URL>")
         sys.exit(1)
 
     target_url = sys.argv[1]

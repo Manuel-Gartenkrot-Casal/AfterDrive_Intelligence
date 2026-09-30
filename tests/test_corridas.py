@@ -3,9 +3,7 @@
 
 import pytest
 
-import corridas
-
-
+from afterdrive import corridas
 @pytest.fixture
 def script_lento(tmp_path):
     p = tmp_path / "lento.py"
@@ -61,9 +59,8 @@ def test_cortar_el_stream_mata_el_proceso(script_lento, monkeypatch):
 
 
 def test_generacion_sin_params_usa_la_config_guardada(monkeypatch):
-    import config_store
-    import generar_nota_fase2
-
+    from afterdrive import config_store
+    from afterdrive.generacion import generar_nota_fase2
     monkeypatch.setattr(config_store, "get_fase2_config", lambda: {
         "categorias": ["autopartes"], "regiones": ["brasil"], "clientes": ["acme"],
         "puntapie_activo": True, "puntapie_url": "",
@@ -82,8 +79,7 @@ def test_generacion_sin_params_usa_la_config_guardada(monkeypatch):
 
 
 def test_generacion_sin_categorias_no_genera(monkeypatch):
-    import config_store
-
+    from afterdrive import config_store
     monkeypatch.setattr(config_store, "get_fase2_config", lambda: {"categorias": []})
     monkeypatch.setattr(config_store, "get_generacion_config", lambda: {})
     r = corridas.generacion()
@@ -91,8 +87,7 @@ def test_generacion_sin_categorias_no_genera(monkeypatch):
 
 
 def test_generacion_que_explota_libera_el_lock(monkeypatch):
-    import generar_nota_fase2
-
+    from afterdrive.generacion import generar_nota_fase2
     def boom(**kw):
         raise ValueError("boom")
 

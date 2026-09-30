@@ -3,8 +3,7 @@
 import pytest
 import requests
 
-import scraper
-
+from afterdrive.ingesta import scraper
 HTML = "<html><body>" + ("<p>contenido real del sitio</p>" * 40) + "</body></html>"
 
 

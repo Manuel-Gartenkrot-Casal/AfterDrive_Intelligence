@@ -21,7 +21,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["db", "scraper", "scheduler", "lm_studio", "embeddings", "llm", "saneo", "ingesta", "corridas", "config_store", "jev_clasificador"]
+known-first-party = ["afterdrive"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -40,4 +40,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.vercel]
-entrypoint = "flask_api:app"
+entrypoint = "afterdrive/flask_api.py"
