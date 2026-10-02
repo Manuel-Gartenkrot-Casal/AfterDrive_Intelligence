@@ -18,6 +18,19 @@
       if (!t) t = "dark";
       document.documentElement.setAttribute("data-theme", t);
     })();
+    // Si la página se va a traducir al portugués, se tapa antes de dibujarse:
+    // si no, se ve un instante en español hasta que Google termina.
+    // traductor.js la destapa al terminar (o a los pocos segundos, siempre).
+    (function () {
+      try {
+        if (/(?:^|;\s*)googtrans=\/[a-z-]+\/pt(?:;|$)/.test(decodeURIComponent(document.cookie))) {
+          document.documentElement.classList.add("traduciendo");
+          // Seguro independiente de traductor.js: si ese archivo no llegara a
+          // cargar, la página no puede quedar tapada.
+          setTimeout(function () { document.documentElement.classList.remove("traduciendo"); }, 8000);
+        }
+      } catch (e) {}
+    })();
   </script>
 <link rel="stylesheet" href="/static/workspace.css">
 </head>
@@ -32,7 +45,7 @@
 <a data-workspace="fuentes" href="#fuentes"><span aria-hidden="true">▥</span> Fuentes</a>
 <a data-workspace="automatizacion" href="#automatizacion"><span aria-hidden="true">◷</span> Automatización</a>
 <a data-workspace="historial" href="#historial"><span aria-hidden="true">◫</span> Historial</a>
-<a data-workspace="actividad" href="#actividad"><span aria-hidden="true">≡</span> Actividad <span class="activity-count" id="activity-count">0</span></a>
+<a data-workspace="actividad" href="#actividad"><span aria-hidden="true">≡</span> Actividad <span class="activity-count" id="activity-count" translate="no">0</span></a>
 </nav>
 <div class="nav-foot">
 <div class="nav-foot-caption">Sistema</div>
@@ -74,14 +87,14 @@
 <div class="stat-card">
 <div class="stat-label">Fuentes activas</div>
 <div class="stat-row">
-<div class="stat-value count-up" id="statUrls">—</div>
+<div class="stat-value count-up" id="statUrls" translate="no">—</div>
 </div>
 <div class="stat-sub" id="statUrlsSub"></div>
 </div>
 <div class="stat-card">
 <div class="stat-label">Artículos disponibles</div>
 <div class="stat-row">
-<div class="stat-value count-up" id="statArticles">—</div>
+<div class="stat-value count-up" id="statArticles" translate="no">—</div>
 </div>
 <div class="stat-sub" id="statArticlesSub"></div>
 </div>
@@ -345,17 +358,17 @@
 </div></div><p class="section-note">Los cambios se aplican al guardar. El servidor permite una sola corrida a la vez.</p></section>
 <section aria-label="Historial" class="workspace-view" hidden="" id="view-historial">
 <div class="hist-tabs writing-tabs" id="hist-tabs" role="tablist" aria-label="Secciones del historial">
-<button aria-controls="hist-panel" aria-selected="true" data-seccion="generados_aprobados" id="hist-tab-generados_aprobados" role="tab">Generados aprobados <span><b id="hist-count-generados_aprobados">—</b> notas listas</span></button>
-<button aria-controls="hist-panel" aria-selected="false" data-seccion="generados_descartados" id="hist-tab-generados_descartados" role="tab" tabindex="-1">Generados descartados <span><b id="hist-count-generados_descartados">—</b> con el motivo</span></button>
-<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_aprobados" id="hist-tab-scrapeados_aprobados" role="tab" tabindex="-1">Scrapeados aprobados <span><b id="hist-count-scrapeados_aprobados">—</b> artículos guardados</span></button>
-<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_descartados" id="hist-tab-scrapeados_descartados" role="tab" tabindex="-1">Scrapeados descartados <span><b id="hist-count-scrapeados_descartados">—</b> con el motivo</span></button>
+<button aria-controls="hist-panel" aria-selected="true" data-seccion="generados_aprobados" id="hist-tab-generados_aprobados" role="tab">Generados aprobados <span><b id="hist-count-generados_aprobados" translate="no">—</b> notas listas</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="generados_descartados" id="hist-tab-generados_descartados" role="tab" tabindex="-1">Generados descartados <span><b id="hist-count-generados_descartados" translate="no">—</b> con el motivo</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_aprobados" id="hist-tab-scrapeados_aprobados" role="tab" tabindex="-1">Scrapeados aprobados <span><b id="hist-count-scrapeados_aprobados" translate="no">—</b> artículos guardados</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_descartados" id="hist-tab-scrapeados_descartados" role="tab" tabindex="-1">Scrapeados descartados <span><b id="hist-count-scrapeados_descartados" translate="no">—</b> con el motivo</span></button>
 </div>
 <div aria-labelledby="hist-tab-generados_aprobados" class="fase2-grupo hist-panel" id="hist-panel" role="tabpanel">
 <div class="hist-pub" id="hist-pub-resumen">
 <div class="hist-pub-cifras">
-<span><b id="hist-pub-total">—</b> notas</span>
-<span class="hist-pub-dato is-publicado"><i aria-hidden="true"></i><b id="hist-pub-publicados">—</b> publicadas</span>
-<span class="hist-pub-dato is-borrador"><i aria-hidden="true"></i><b id="hist-pub-borradores">—</b> borradores</span>
+<span><b id="hist-pub-total" translate="no">—</b> notas</span>
+<span class="hist-pub-dato is-publicado"><i aria-hidden="true"></i><b id="hist-pub-publicados" translate="no">—</b> publicadas</span>
+<span class="hist-pub-dato is-borrador"><i aria-hidden="true"></i><b id="hist-pub-borradores" translate="no">—</b> borradores</span>
 </div>
 <div aria-label="Proporción de notas publicadas" aria-valuemax="100" aria-valuemin="0" aria-valuenow="0" class="hist-pub-barra" id="hist-pub-barra" role="meter"></div>
 <p class="hist-pub-nota">Una nota pasa a publicada cuando la marcás así acá: todavía no hay conexión con el blog.</p>

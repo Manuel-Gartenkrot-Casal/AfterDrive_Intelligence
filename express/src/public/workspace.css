@@ -661,11 +661,28 @@ html.theme-changing *, html.theme-changing *::before, html.theme-changing *::aft
 }
 
 /* ── Traductor ──────────────────────────────────────────────────────────────
-   El control reutiliza .provider-toggle. Google Translate inyecta una barra
-   superior, un tooltip al pasar el mouse y empuja el body hacia abajo: nada
-   de eso tiene que verse, el control propio ya indica el idioma activo. */
+   El control reutiliza .provider-toggle.
+
+   Mientras Google traduce, la página queda tapada (html.traduciendo, que pone
+   el script del <head> antes de dibujar): así no se ve un instante en español.
+   El aviso ya está en portugués porque un pseudo-elemento no se traduce.
+
+   Google inyecta su propia UI (barra superior, spinner, tooltip) con clases
+   ofuscadas que cambian entre versiones: se ocultan por estructura (hijos
+   directos del body) y por los nombres conocidos. traductor.js además oculta
+   todo lo que Google agregue al body, por si cambian los nombres. */
 .lang-toggle[aria-busy="true"] { cursor: progress; opacity: .7; }
+html.traduciendo body { visibility: hidden; }
+html.traduciendo::after {
+  content: "Traduzindo…"; position: fixed; inset: 0; z-index: 2147483647;
+  display: grid; place-items: center; visibility: visible;
+  background: var(--bg); color: var(--text-mid); font: 500 13px var(--font); letter-spacing: .3px;
+}
 body { top: 0 !important; }
-body > .skiptranslate, iframe.skiptranslate, .goog-te-banner-frame,
-#goog-gt-tt, .goog-te-balloon-frame, .goog-te-spinner-pos { display: none !important; }
-.goog-text-highlight { background: none !important; box-shadow: none !important; }
+body > .skiptranslate, body > iframe.skiptranslate, .goog-te-banner-frame,
+body > div[class^="VIpgJd-"], body > div[class*=" VIpgJd-"], body > iframe[class*="VIpgJd-"],
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf, .VIpgJd-ZVi9od-aZ2wEe-OiiCO, .VIpgJd-ZVi9od-ORHb-OEVmcd,
+.VIpgJd-yAWNEb-L7lbkb, #goog-gt-tt, .goog-te-balloon-frame, .goog-te-spinner-pos { display: none !important; }
+/* Google resalta el texto traducido al pasar el mouse: se neutraliza el fondo,
+   sin ocultar (esos elementos envuelven el texto traducido). */
+.goog-text-highlight, font[class*="VIpgJd-yAWNEb"] { background: none !important; box-shadow: none !important; }
