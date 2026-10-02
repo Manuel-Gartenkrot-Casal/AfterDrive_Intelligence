@@ -467,6 +467,15 @@ app.get('/api/fase2/ultima-nota', async (_req: Request, res: Response): Promise<
   } catch (err) { res.status(500).json({ success: false, error: extraerError(err) }); }
 });
 
+for (const ruta of ['/api/fase2/notas', '/api/fase2/notas/:id']) {
+  app.get(ruta, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { data } = await axios.get(`${SCRAPERS_URL}${req.path}`, { timeout: 10_000 });
+      res.json(data);
+    } catch (err) { res.status(500).json({ success: false, error: extraerError(err) }); }
+  });
+}
+
 // ── Inicio ──────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {

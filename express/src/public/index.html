@@ -1479,6 +1479,7 @@
         <p class="ultima-extracto" id="c-ultima-extracto">Cuando se genere la primera, la vas a ver acá.</p>
         <div class="ultima-foot">
           <span class="ultima-fecha" id="c-ultima-fecha"></span>
+          <button class="btn btn-sm" onclick="fase2VerHistorial()">Ver anteriores</button>
           <button class="btn btn-primary btn-sm" id="c-ultima-btn" onclick="fase2VerUltima()" disabled>Leer nota</button>
         </div>
       </article>
@@ -3326,9 +3327,26 @@
       await fase2MostrarUltima();
     }
 
-    async function fase2MostrarUltima() {
+    async function fase2VerHistorial() {
       try {
-        var r = await fetch('/api/fase2/ultima-nota');
+        var d = await (await fetch('/api/fase2/notas')).json();
+        if (!d.success || !d.notas.length) { showToast('No hay notas generadas aún', 'warn'); return; }
+        $('modal-titulo').textContent = 'Notas anteriores';
+        $('modal-meta').textContent = d.notas.length + ' notas';
+        abrirModal();
+        $('check-list').innerHTML = '';
+        $('eval-comms').textContent = '';
+        $('art-body').innerHTML = d.notas.map(function(n) {
+          var f = n.generado_en ? new Date(n.generado_en).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+          return '<button type="button" class="btn" style="display:flex;justify-content:space-between;gap:12px;width:100%;margin-bottom:6px;text-align:left" onclick="fase2MostrarUltima(\'' + n.id + '\')">'
+            + '<span>' + escHtml(n.titulo) + '</span><span style="color:var(--text-lo)">' + f + '</span></button>';
+        }).join('');
+      } catch(e) { showToast('Error al cargar notas', 'error'); }
+    }
+
+    async function fase2MostrarUltima(id) {
+      try {
+        var r = await fetch(id ? '/api/fase2/notas/' + id : '/api/fase2/ultima-nota');
         var d = await r.json();
         if (!d.success) {
           showToast('No hay notas generadas aún', 'warn');
@@ -3338,7 +3356,7 @@
         var body = $('art-body');
         var check = $('check-list');
         var comm = $('eval-comms');
-        $('modal-titulo').textContent = 'Última nota';
+        $('modal-titulo').textContent = id ? 'Nota' : 'Última nota';
         $('modal-meta').textContent = d.nota.generado_en ? 'Generada el ' + new Date(d.nota.generado_en).toLocaleString('es-AR', {
           day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
         }) : '';

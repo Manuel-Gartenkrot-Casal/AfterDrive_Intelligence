@@ -659,6 +659,34 @@ def fase2_ultima_nota():
     return jsonify({"success": True, "nota": doc})
 
 
+@app.route("/api/fase2/notas", methods=["GET"])
+def fase2_notas():
+    import re
+    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
+    notas = []
+    for d in col_notas_fase2.find({}, {"contenido": 1, "generado_en": 1}).sort("generado_en", -1).limit(100):
+        m = re.search(r"^#{1,2}\s+(.+)$", d.get("contenido") or "", re.M)
+        notas.append({"id": str(d["_id"]), "titulo": m.group(1).strip("*_ ") if m else "Nota sin título",
+                      "generado_en": d.get("generado_en")})
+    return jsonify({"success": True, "notas": notas})
+
+
+@app.route("/api/fase2/notas/<nota_id>", methods=["GET"])
+def fase2_nota(nota_id: str):
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
+    try:
+        doc = col_notas_fase2.find_one({"_id": ObjectId(nota_id)})
+    except InvalidId:
+        doc = None
+    if not doc:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    doc["_id"] = str(doc["_id"])
+    doc.pop("embedding", None)
+    return jsonify({"success": True, "nota": doc})
+
+
 def _keep_alive():
     """Mantiene despierta la instancia de Render (free tier).
 
