@@ -20,8 +20,9 @@ import datetime
 import re
 
 import llm
-from db import col_afterdrive, crear_indices_texto, db
+from db import ESTADO_BORRADOR, col_afterdrive, crear_indices_texto, db, registrar_nota_descartada
 from embeddings import coseno
+from lm_studio import NotaRechazada
 from lm_studio import generar_articulo as lm_generar
 
 _PAYWALL_PATTERNS = [
@@ -164,6 +165,7 @@ def guardar_articulo(contenido, ids_usados, fuentes, tema, embedding) -> None:
             "docs_usados": [str(i) for i in ids_usados],
             "embedding": embedding,
             "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
+            "estado": ESTADO_BORRADOR,
         }
     )
 
@@ -309,8 +311,16 @@ def main():
 
     print("   generando artículo...")
     print("=" * 60)
+    fuentes_contexto = sorted({f for _, f in seleccionados})
     try:
         articulo = lm_generar(contexto, persona=args.persona, tema=args.tema)
+    except NotaRechazada as e:
+        # Hubo texto pero no una Nota publicable: queda en el historial.
+        print(f"\nError al generar: {e}")
+        registrar_nota_descartada(
+            "fase1", e.crudo, e.motivo, tema=tema, persona=args.persona, fuentes=fuentes_contexto
+        )
+        return
     except Exception as e:
         print(f"\nError al generar: {e}")
         return
@@ -392,7 +402,11 @@ def main():
             problemas.append("titulo con error gramatical")
 
     if problemas:
-        print(f"   [RECHAZADO] Calidad insuficiente: {', '.join(problemas)}")
+        motivo = f"Calidad insuficiente: {', '.join(problemas)}"
+        print(f"   [RECHAZADO] {motivo}")
+        registrar_nota_descartada(
+            "fase1", articulo, motivo, tema=tema, persona=args.persona, fuentes=fuentes_contexto
+        )
         return
 
     # ── 7. Dedup de salida ───────────────────────────────────────────────
@@ -400,7 +414,11 @@ def main():
     if emb_art and generados:
         parecido = max(coseno(emb_art, g) for g in generados)
         if parecido >= UMBRAL_DEDUP:
-            print(f"   [RECHAZADO] Demasiado parecido a uno previo (sim {parecido:.2f}).")
+            motivo = f"Demasiado parecido a un artículo ya generado (similitud {parecido:.2f})"
+            print(f"   [RECHAZADO] {motivo}.")
+            registrar_nota_descartada(
+                "fase1", articulo, motivo, tema=tema, persona=args.persona, fuentes=fuentes_contexto
+            )
             return
 
     # ── 8. Guardar ───────────────────────────────────────────────────────

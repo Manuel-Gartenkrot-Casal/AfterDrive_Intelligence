@@ -54,9 +54,21 @@ def ingerir(items: list[dict]) -> dict:
 
         razon = veredicto.get("razon", "")
         print(f"    -> Rechazado: {razon[:80]}", flush=True)
+        # Además de la URL (que evita reprocesarlo) se guarda qué era y por qué
+        # se rechazó: sin eso el historial solo podía mostrar un link pelado.
+        # El cuerpo se acota a 5000 caracteres, el mismo tope del scraper de
+        # ejemplos, para que los descartes no inflen la base.
         col_descartados.replace_one(
             {"url": item.get("url", "")},
-            {"url": item.get("url", ""), "fecha_descarte": datetime.datetime.now(datetime.UTC).isoformat()},
+            {
+                "url": item.get("url", ""),
+                "titulo": titulo,
+                "cuerpo": (cuerpo or "")[:5000],
+                "fuente": item.get("fuente", ""),
+                "fecha": item.get("fecha", ""),
+                "razon": razon,
+                "fecha_descarte": datetime.datetime.now(datetime.UTC).isoformat(),
+            },
             upsert=True,
         )
         detalles.append({"titulo": titulo, "estado": "rechazado", "razon": razon})

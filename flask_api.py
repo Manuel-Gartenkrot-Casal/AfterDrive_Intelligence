@@ -8,6 +8,7 @@ from flask_cors import CORS
 
 import config_store
 import corridas
+import historial
 import llm
 import scheduler
 from db import col_articulos, db
@@ -132,6 +133,63 @@ def articulos_stats():
         return jsonify({"success": True, "total": col_articulos.count_documents({})})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ── Historial ─────────────────────────────────────────────────────────────────
+# Lectura del historial de Artículos y Notas. La lógica vive en historial.py;
+# acá solo se traducen parámetros HTTP y errores de validación a respuestas.
+
+
+@app.route("/api/historial/resumen", methods=["GET"])
+def historial_resumen():
+    try:
+        return jsonify({"success": True, **historial.resumen()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/historial/<seccion>", methods=["GET"])
+def historial_listar(seccion: str):
+    try:
+        datos = historial.listar(
+            seccion,
+            pagina=request.args.get("pagina", 1, type=int),
+            por_pagina=request.args.get("por_pagina", 20, type=int),
+            q=request.args.get("q", ""),
+            estado=request.args.get("estado", "todos"),
+        )
+        return jsonify({"success": True, **datos})
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/historial/<seccion>/<coleccion>/<item_id>", methods=["GET"])
+def historial_detalle(seccion: str, coleccion: str, item_id: str):
+    try:
+        item = historial.detalle(seccion, coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    if item is None:
+        return jsonify({"success": False, "error": "No se encontró el elemento."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/estado", methods=["POST"])
+def historial_estado():
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    if item is None:
+        return jsonify({"success": False, "error": "No se encontró la nota."}), 404
+    return jsonify({"success": True, "item": item})
 
 
 @app.route("/api/check-volume", methods=["GET"])

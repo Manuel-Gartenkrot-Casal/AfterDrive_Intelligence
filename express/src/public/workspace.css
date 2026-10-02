@@ -576,3 +576,96 @@ html.theme-changing *, html.theme-changing *::before, html.theme-changing *::aft
   *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
   .particles-canvas { display:none; }
 }
+
+/* ── Historial ──────────────────────────────────────────────────────────────
+   Solo tokens existentes: hereda los dos temas sin reglas propias por tema.
+   El estado editorial nunca depende solo del color: el badge lleva el texto
+   ("Publicado"/"Borrador") y el descarte, la palabra "Motivo". */
+.hist-tabs { overflow-x: auto; scrollbar-width: thin; }
+.hist-tabs button { white-space: nowrap; }
+.hist-tabs button b { font: 600 11px var(--mono); color: var(--text-hi); }
+.hist-tabs button[aria-selected="true"] b { color: var(--brand); }
+.hist-panel { display: flex; flex-direction: column; gap: var(--s4); }
+
+.hist-pub { display: grid; gap: var(--s2); padding-bottom: var(--s4); border-bottom: 1px solid var(--hairline); }
+.hist-pub[hidden] { display: none; }
+.hist-pub-cifras { display: flex; flex-wrap: wrap; gap: var(--s5); font-size: 13px; color: var(--text-mid); }
+.hist-pub-cifras b { font: 600 15px var(--mono); color: var(--text-hi); margin-right: 4px; }
+.hist-pub-dato { display: inline-flex; align-items: center; gap: 6px; }
+.hist-pub-dato i { width: 9px; height: 9px; border-radius: 2px; }
+.hist-pub-dato.is-publicado i { background: var(--ok); }
+.hist-pub-dato.is-borrador i { background: var(--warn); }
+.hist-pub-barra { --hist-pub: 0%; height: 6px; border-radius: var(--r-pill); background: var(--warn);
+  background-image: linear-gradient(90deg, var(--ok) var(--hist-pub), transparent var(--hist-pub));
+  transition: background-image var(--t-med) var(--ease-flow); }
+.hist-pub-nota { font-size: 11px; color: var(--text-lo); }
+
+.hist-toolbar { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; }
+.hist-toolbar .input-field { flex: 1 1 260px; }
+.hist-filtro { width: auto; min-width: 150px; }
+.hist-filtro[hidden] { display: none; }
+.hist-aviso { font-size: 12px; color: var(--text-mid); padding: var(--s2) var(--s3); background: var(--field);
+  border-left: 3px solid var(--warn); border-radius: 4px; }
+.hist-aviso[hidden] { display: none; }
+.hist-carga { font: 11px var(--mono); color: var(--text-lo); min-height: 1em; margin: 0; }
+.hist-vacio { color: var(--text-mid); font-size: 13px; padding: var(--s6) var(--s4); text-align: center;
+  border: 1px dashed var(--hairline); border-radius: var(--r-md); }
+
+.hist-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.hist-lista[aria-busy="true"] { opacity: .55; transition: opacity var(--t-fast); }
+.hist-item { display: grid; gap: var(--s2); padding: var(--s4); background: var(--field);
+  border: 1px solid var(--hairline); border-radius: var(--r-md); }
+.hist-item.is-descartado { border-left: 3px solid var(--err); }
+.hist-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+.hist-item-title { font: 600 14px/1.4 var(--font); margin: 0; min-width: 0; }
+.hist-item-link { all: unset; cursor: pointer; color: var(--text-hi); overflow-wrap: anywhere; }
+.hist-item-link:hover { color: var(--brand); text-decoration: underline; }
+.hist-item-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 2px; }
+.hist-item-meta { font: 11px var(--mono); color: var(--text-lo); overflow-wrap: anywhere; }
+.hist-item-resumen { font-size: 12px; color: var(--text-mid); overflow-wrap: anywhere; }
+.hist-item-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
+.hist-item-actions .btn, .hist-det-acciones .btn { text-decoration: none; display: inline-flex; align-items: center; }
+.hist-item-actions .btn-sm { min-height: 32px; padding: 5px 11px; font-size: 11px; }
+
+.hist-estado { flex-shrink: 0; font: 600 10px var(--mono); letter-spacing: .6px; text-transform: uppercase;
+  padding: 3px 8px; border-radius: var(--r-pill); border: 1px solid currentColor; }
+.hist-estado.is-publicado { color: var(--ok); }
+.hist-estado.is-borrador { color: var(--warn); }
+
+.hist-motivo { font-size: 12px; color: var(--text-hi); padding: var(--s2) var(--s3); border-radius: 4px;
+  background: color-mix(in srgb, var(--err) 12%, transparent); border-left: 3px solid var(--err); overflow-wrap: anywhere; }
+.hist-motivo strong { color: var(--err); }
+.hist-motivo.is-desconocido { background: var(--paper); border-left-color: var(--hairline); color: var(--text-mid); }
+.hist-motivo.is-desconocido strong { color: var(--text-mid); }
+
+.hist-paginacion { display: flex; align-items: center; justify-content: center; gap: var(--s4); font-size: 12px; color: var(--text-mid); }
+.hist-paginacion[hidden] { display: none; }
+
+.hist-dialogo[hidden] { display: none; }
+.hist-modal { width: min(880px, 96vw); }
+.hist-det-cabecera { display: grid; gap: var(--s2); min-width: 0; }
+.hist-det-meta { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; font: 11px var(--mono); color: var(--text-lo); }
+.hist-det-meta .hist-motivo { flex-basis: 100%; font-family: var(--font); }
+.hist-det-cuerpo { overflow-wrap: anywhere; }
+.hist-det-cuerpo p { color: var(--text-hi); }
+.hist-det-acciones { display: flex; flex-wrap: wrap; gap: var(--s2); margin-right: auto; }
+.hist-muted { color: var(--text-mid); }
+.hist-modal .modal-footer { flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  .hist-item-head { flex-direction: column; }
+  .hist-toolbar > * { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hist-pub-barra, .hist-lista[aria-busy="true"] { transition: none; }
+}
+
+/* ── Traductor ──────────────────────────────────────────────────────────────
+   El control reutiliza .provider-toggle. Google Translate inyecta una barra
+   superior, un tooltip al pasar el mouse y empuja el body hacia abajo: nada
+   de eso tiene que verse, el control propio ya indica el idioma activo. */
+.lang-toggle[aria-busy="true"] { cursor: progress; opacity: .7; }
+body { top: 0 !important; }
+body > .skiptranslate, iframe.skiptranslate, .goog-te-banner-frame,
+#goog-gt-tt, .goog-te-balloon-frame, .goog-te-spinner-pos { display: none !important; }
+.goog-text-highlight { background: none !important; box-shadow: none !important; }

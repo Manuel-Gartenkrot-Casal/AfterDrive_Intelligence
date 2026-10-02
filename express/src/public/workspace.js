@@ -3,6 +3,7 @@ const workspacePages = {
   redaccion: ['Redacción', 'Convertí noticias del sector en contenido con una voz propia.'],
   fuentes: ['Fuentes', 'Construí la base informativa de tus próximos contenidos.'],
   automatizacion: ['Automatización', 'Definí el ritmo de recopilación y redacción.'],
+  historial: ['Historial', 'Consultá todo lo generado y recopilado, y por qué se descartó lo que no pasó.'],
   actividad: ['Actividad', 'Seguí las ejecuciones y consultá sus resultados técnicos.']
 };
 
@@ -40,6 +41,8 @@ function openWorkspace(name, focus = true) {
   if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
   if (focus) document.getElementById('workspace-main').focus({preventScroll: true});
   if (name === 'actividad') setConsoleOpen(true);
+  // Las vistas que cargan datos al abrirse (como el historial) escuchan esto.
+  document.dispatchEvent(new CustomEvent('workspace:open', {detail: name}));
 }
 
 function selectWriting(kind) {

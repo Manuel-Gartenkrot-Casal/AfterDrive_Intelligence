@@ -1,3 +1,4 @@
+import datetime
 import os
 
 from dotenv import load_dotenv
@@ -55,6 +56,16 @@ col_afterdrive_ejemplos = db["afterdrive_ejemplos"]  # Notas reales scrapeadas d
 col_notas_fase2 = db["notas_fase2"]                  # Notas generadas por Fase 2
 col_clientes = db["clientes"]                        # Clientes para mencionar en notas
 
+# Notas que el modelo llegó a escribir pero se descartaron (saneo, control de
+# calidad o duplicado). Antes solo se imprimían en la consola y se perdían.
+col_notas_descartadas = db["notas_descartadas"]
+
+# Estado editorial de una Nota guardada. No hay integración con el CMS todavía:
+# una Nota pasa a "publicado" cuando alguien la marca así desde el historial.
+# Las notas anteriores a este campo no lo tienen y cuentan como borrador.
+ESTADO_BORRADOR = "borrador"
+ESTADO_PUBLICADO = "publicado"
+
 COLECCIONES_URLS = [col_articulos, col_afterdrive]
 
 COLECCIONES_TEXTO = {
@@ -77,6 +88,26 @@ def crear_indices_texto():
         )
     except Exception:
         pass
+
+
+def registrar_nota_descartada(origen: str, contenido: str, motivo: str, **meta) -> None:
+    """Guarda una Nota descartada para que el historial pueda mostrarla.
+
+    origen: "fase1" (artículo por tema) o "fase2" (nota AfterDrive).
+    Nunca debe cortar la generación: si Mongo falla, se avisa y se sigue.
+    El contenido se acota a 20000 caracteres porque el texto crudo del modelo
+    puede traer razonamiento largo que no aporta al diagnóstico.
+    """
+    try:
+        col_notas_descartadas.insert_one({
+            "origen": origen,
+            "contenido": (contenido or "")[:20000],
+            "motivo": motivo,
+            "descartado_en": datetime.datetime.now(datetime.UTC).isoformat(),
+            **meta,
+        })
+    except Exception as e:
+        print(f"[AVISO] No se pudo registrar la nota descartada: {e}", flush=True)
 
 
 def guardar_items(items, coleccion):

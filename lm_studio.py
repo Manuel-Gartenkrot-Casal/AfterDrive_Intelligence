@@ -452,6 +452,20 @@ def evaluar_lineamientos(articulo: str) -> dict:
         return {"error": str(e), "lineamientos": {}}
 
 
+class NotaRechazada(llm.ErrorLLM):
+    """El modelo respondió, pero el saneo no encontró una Nota publicable.
+
+    Hereda de ErrorLLM para que los llamadores que ya la atrapan sigan igual;
+    además transporta el texto crudo y el motivo para que el historial pueda
+    registrar la Nota descartada.
+    """
+
+    def __init__(self, motivo: str, crudo: str):
+        super().__init__(f"No se obtuvo una nota publicable: {motivo}")
+        self.motivo = motivo
+        self.crudo = crudo
+
+
 def generar_articulo(contexto: str, research: str = "", persona: str = "analitico", tema: str = "") -> str:
     """Genera una nota Fase 1 (Markdown) a partir del contexto.
 
@@ -479,7 +493,7 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
     )
     saneo = sanear(crudo)
     if not saneo.ok:
-        raise llm.ErrorLLM(f"No se obtuvo una nota publicable: {saneo.motivo}")
+        raise NotaRechazada(saneo.motivo, crudo)
 
     try:
         print(saneo.texto)

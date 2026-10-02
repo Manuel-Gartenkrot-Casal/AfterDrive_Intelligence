@@ -4,7 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AfterDrive Intelligence</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Versión fija: desde marked 16 el paquete ya no trae marked.min.js en la
+       raíz, así que la URL sin versión apunta a un archivo inexistente y
+       marked.parse falla en todo el dashboard. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22,17 +25,18 @@
 <div aria-hidden="true" class="particles-canvas" id="particles"></div>
 <a class="skip-link" href="#workspace-main">Saltar al contenido</a>
 <aside aria-label="Navegación principal" class="workspace-nav">
-<a class="workspace-brand" href="#redaccion"><svg aria-hidden="true" class="brand-mark" viewBox="0 0 32 32"><rect height="32" rx="8" width="32"/><path d="M10 22 L16 10 L22 22" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"/></svg><strong>AfterDrive<small>Intelligence</small></strong></a>
+<a class="workspace-brand" href="#redaccion" translate="no"><svg aria-hidden="true" class="brand-mark" viewBox="0 0 32 32"><rect height="32" rx="8" width="32"/><path d="M10 22 L16 10 L22 22" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"/></svg><strong>AfterDrive<small>Intelligence</small></strong></a>
 <div class="nav-caption">ESPACIO EDITORIAL</div>
 <nav>
 <a aria-current="page" data-workspace="redaccion" href="#redaccion"><span aria-hidden="true">▤</span> Redacción</a>
 <a data-workspace="fuentes" href="#fuentes"><span aria-hidden="true">▥</span> Fuentes</a>
 <a data-workspace="automatizacion" href="#automatizacion"><span aria-hidden="true">◷</span> Automatización</a>
+<a data-workspace="historial" href="#historial"><span aria-hidden="true">◫</span> Historial</a>
 <a data-workspace="actividad" href="#actividad"><span aria-hidden="true">≡</span> Actividad <span class="activity-count" id="activity-count">0</span></a>
 </nav>
 <div class="nav-foot">
 <div class="nav-foot-caption">Sistema</div>
-<div class="nav-foot-row"><span>Proveedor</span><b id="navProvider">—</b></div>
+<div class="nav-foot-row"><span>Proveedor</span><b id="navProvider" translate="no">—</b></div>
 <div class="nav-foot-row"><span>Próxima corrida</span><b id="navNextRun">—</b></div>
 <div aria-hidden="true" class="nav-pulse" id="navPulse"><i></i><i></i><i></i><i></i><i></i></div>
 <div class="nav-foot-state" id="navState">En reposo</div>
@@ -50,14 +54,20 @@
 <div class="header-right">
 <div class="provider-toggle" id="providerToggle">
 <span class="prov-label">Proveedor</span>
-<button class="prov-btn" id="prov-local" onclick="switchProvider('local')">Local</button>
-<button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')">NVIDIA</button>
-<button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')">OpenRouter</button>
+<button class="prov-btn" id="prov-local" onclick="switchProvider('local')" translate="no">Local</button>
+<button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')" translate="no">NVIDIA</button>
+<button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')" translate="no">OpenRouter</button>
 </div>
 <div class="status-pill">
 <div class="status-dot off" id="statusPulse"></div>
 <span id="statusText">Conectando…</span>
 </div>
+<div aria-label="Idioma de la página" class="provider-toggle lang-toggle" id="langToggle" role="group" translate="no">
+<span class="prov-label">Idioma</span>
+<button aria-pressed="true" class="prov-btn active" data-idioma="es" title="Ver la página en español" type="button">ES</button>
+<button aria-pressed="false" class="prov-btn" data-idioma="pt" title="Traduzir a página para o português" type="button">PT</button>
+</div>
+<div aria-hidden="true" hidden="" id="google_translate_element" translate="no"></div>
 <button aria-label="Cambiar tema" class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema"><span>☾</span></button>
 </div>
 </header><div class="stats-grid">
@@ -333,6 +343,45 @@
 <button class="btn" id="btn-savegencfg" onclick="saveGenConfig()">Guardar programación</button>
 </div>
 </div></div><p class="section-note">Los cambios se aplican al guardar. El servidor permite una sola corrida a la vez.</p></section>
+<section aria-label="Historial" class="workspace-view" hidden="" id="view-historial">
+<div class="hist-tabs writing-tabs" id="hist-tabs" role="tablist" aria-label="Secciones del historial">
+<button aria-controls="hist-panel" aria-selected="true" data-seccion="generados_aprobados" id="hist-tab-generados_aprobados" role="tab">Generados aprobados <span><b id="hist-count-generados_aprobados">—</b> notas listas</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="generados_descartados" id="hist-tab-generados_descartados" role="tab" tabindex="-1">Generados descartados <span><b id="hist-count-generados_descartados">—</b> con el motivo</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_aprobados" id="hist-tab-scrapeados_aprobados" role="tab" tabindex="-1">Scrapeados aprobados <span><b id="hist-count-scrapeados_aprobados">—</b> artículos guardados</span></button>
+<button aria-controls="hist-panel" aria-selected="false" data-seccion="scrapeados_descartados" id="hist-tab-scrapeados_descartados" role="tab" tabindex="-1">Scrapeados descartados <span><b id="hist-count-scrapeados_descartados">—</b> con el motivo</span></button>
+</div>
+<div aria-labelledby="hist-tab-generados_aprobados" class="fase2-grupo hist-panel" id="hist-panel" role="tabpanel">
+<div class="hist-pub" id="hist-pub-resumen">
+<div class="hist-pub-cifras">
+<span><b id="hist-pub-total">—</b> notas</span>
+<span class="hist-pub-dato is-publicado"><i aria-hidden="true"></i><b id="hist-pub-publicados">—</b> publicadas</span>
+<span class="hist-pub-dato is-borrador"><i aria-hidden="true"></i><b id="hist-pub-borradores">—</b> borradores</span>
+</div>
+<div aria-label="Proporción de notas publicadas" aria-valuemax="100" aria-valuemin="0" aria-valuenow="0" class="hist-pub-barra" id="hist-pub-barra" role="meter"></div>
+<p class="hist-pub-nota">Una nota pasa a publicada cuando la marcás así acá: todavía no hay conexión con el blog.</p>
+</div>
+<div class="hist-toolbar">
+<label class="sr-only" for="hist-buscar">Buscar en el historial</label>
+<input autocomplete="off" class="input-field" id="hist-buscar" placeholder="Buscar por título, tema, texto o motivo…" type="search"/>
+<label class="sr-only" for="hist-filtro-estado">Filtrar por estado</label>
+<select class="select-field hist-filtro" id="hist-filtro-estado">
+<option value="todos">Todas</option>
+<option value="publicado">Publicadas</option>
+<option value="borrador">Borradores</option>
+</select>
+<button class="btn" id="hist-refrescar" type="button">Actualizar</button>
+</div>
+<p class="hist-aviso" hidden="" id="hist-sin-motivo"></p>
+<p aria-live="polite" class="hist-carga" id="hist-estado-carga"></p>
+<ul class="hist-lista" id="hist-lista"></ul>
+<p class="hist-vacio" hidden="" id="hist-vacio"></p>
+<nav aria-label="Paginación del historial" class="hist-paginacion" hidden="" id="hist-paginacion">
+<button class="btn" id="hist-pag-ant" type="button">← Anterior</button>
+<span id="hist-pag-info"></span>
+<button class="btn" id="hist-pag-sig" type="button">Siguiente →</button>
+</nav>
+</div>
+</section>
 <section aria-label="Actividad" class="workspace-view" hidden="" id="view-actividad"><div class="card activity-summary"><h2 id="activity-operation">Todavía no iniciaste una operación</h2><p id="activity-result">Al recopilar noticias o redactar, verás acá el estado de la última operación de esta sesión.</p><button class="btn" onclick="setConsoleOpen(true)">Abrir consola</button><small>El registro inferior muestra los detalles. Esta vista se reinicia al recargar la página.</small></div></section>
 </main><footer class="workspace-footer">AfterDrive Intelligence </footer>
 </div><div aria-labelledby="result-title" aria-modal="true" class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()" role="dialog">
@@ -352,6 +401,24 @@
 <h3 class="sidebar-title">Checklist de Calidad</h3>
 <div class="checklist" id="check-list"></div>
 <div class="eval-comments" id="eval-comms"></div>
+</div>
+</div>
+</div>
+<div aria-labelledby="hist-det-titulo" aria-modal="true" class="modal-overlay hist-dialogo" hidden="" id="modal-hist" role="dialog">
+<div class="modal hist-modal">
+<div class="modal-main">
+<div class="modal-header">
+<div class="hist-det-cabecera">
+<h2 class="modal-title" id="hist-det-titulo"></h2>
+<div class="hist-det-meta" id="hist-det-meta"></div>
+</div>
+<button aria-label="Cerrar" class="modal-close" data-cerrar="" type="button">×</button>
+</div>
+<div class="modal-body hist-det-cuerpo" id="hist-det-cuerpo"></div>
+<div class="modal-footer">
+<div class="hist-det-acciones" id="hist-det-acciones"></div>
+<button class="btn" data-cerrar="" type="button">Cerrar</button>
+</div>
 </div>
 </div>
 </div>
@@ -379,7 +446,7 @@
 <span class="console-title">Salida de la operación</span>
 <button class="btn" onclick="limpiarLogs()" style="padding:5px 12px;font-size:0.75rem">Limpiar</button>
 </div>
-<div aria-label="Registro de ejecución" class="console-container" id="logs" role="log">
+<div aria-label="Registro de ejecución" class="console-container" id="logs" role="log" translate="no">
 <div class="log-entry log-info"><span class="console-prompt">afterdrive ▸</span> Sistema listo. Esperando instrucciones...</div>
 </div>
 </div></div></aside>  <script>
@@ -1661,5 +1728,7 @@
     };
   </script>
   <script src="/static/workspace.js"></script>
+  <script src="/static/historial.js"></script>
+  <script src="/static/traductor.js"></script>
 </body>
 </html>

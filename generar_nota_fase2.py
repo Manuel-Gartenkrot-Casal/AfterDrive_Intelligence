@@ -21,7 +21,7 @@ import os
 import sys
 
 import llm
-from db import db
+from db import ESTADO_BORRADOR, db, registrar_nota_descartada
 from lm_studio import get_system_prompt_redactar
 from regiones import REGION_SLUGS, REGIONES
 from saneo import sanear
@@ -260,6 +260,10 @@ def generar_nota(
     saneo = sanear(crudo)
     if not saneo.ok:
         print(f"  [WARN] {saneo.motivo}. Se descarta.", flush=True)
+        registrar_nota_descartada(
+            "fase2", crudo, saneo.motivo,
+            tema=tema, persona=persona, categorias=categorias, regiones=regiones,
+        )
         return {"success": False, "error": f"No se obtuvo una nota publicable: {saneo.motivo}"}
     articulo = saneo.texto
 
@@ -273,6 +277,7 @@ def generar_nota(
         "tema": tema,
         "ejemplos_usados": [e.get("url") for e in ejemplos],
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
+        "estado": ESTADO_BORRADOR,
     }
 
     emb = llm.embeber([articulo])[0]
