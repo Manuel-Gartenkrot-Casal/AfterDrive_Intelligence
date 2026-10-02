@@ -41,6 +41,7 @@ COPY corridas.py .
 COPY embeddings.py .
 COPY flask_api.py .
 COPY config_store.py .
+COPY historial.py .
 COPY generar_articulo.py .
 COPY scraper.py .
 COPY scraper_afterdrive.py .
