@@ -3339,7 +3339,8 @@
         $('art-body').innerHTML = d.notas.map(function(n) {
           var f = n.generado_en ? new Date(n.generado_en).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
           return '<button type="button" class="btn" style="display:flex;justify-content:space-between;gap:12px;width:100%;margin-bottom:6px;text-align:left" onclick="fase2MostrarUltima(\'' + n.id + '\')">'
-            + '<span>' + escHtml(n.titulo) + '</span><span style="color:var(--text-lo)">' + f + '</span></button>';
+            + '<span title="' + escHtml(n.titulo).replace(/"/g, '&quot;') + '" style="flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 40px),transparent)">' + escHtml(n.titulo) + '</span>'
+            + '<span style="flex:0 0 auto;white-space:nowrap;color:var(--text-lo)">' + f + '</span></button>';
         }).join('');
       } catch(e) { showToast('Error al cargar notas', 'error'); }
     }
