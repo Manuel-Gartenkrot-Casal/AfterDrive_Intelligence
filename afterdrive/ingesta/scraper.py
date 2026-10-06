@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 import trafilatura
 from bs4 import BeautifulSoup
+from urllib3.util import parse_url
 
 from afterdrive.ingesta.resource_detector import get_max_workers, get_perfil, usar_browser
 from afterdrive.ingesta.resource_detector import PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO
@@ -72,6 +73,35 @@ def _esta_bloqueado(html: str | None) -> bool:
 _ORIGEN_CAIDO: set[str] = set()
 
 
+def _direcciones(url) -> list[str] | None:
+    """IPs a las que resuelve el host de una URL http(s).
+
+    None si la URL no es válida; [] si es válida pero el dominio no resuelve.
+    """
+    try:
+        if not isinstance(url, str) or "\\" in url or any(c.isspace() or not c.isprintable() for c in url):
+            return None
+        # El host se saca con el parser de requests (urllib3), no con urlparse:
+        # en "http://127.0.0.1\\@sitio.com/" urlparse ve sitio.com y requests
+        # se conecta a 127.0.0.1. Hay que validar el host que se va a visitar.
+        partes = parse_url(url)
+        if partes.scheme not in ("http", "https") or not partes.host:
+            return None
+        infos = socket.getaddrinfo(partes.host.strip("[]"), None)
+    except socket.gaierror:
+        return []
+    except Exception:
+        return None
+    return [info[4][0] for info in infos]
+
+
+def _todas_publicas(ips: list[str]) -> bool:
+    try:
+        return all(ipaddress.ip_address(ip).is_global for ip in ips)
+    except ValueError:
+        return False
+
+
 def url_publica(url) -> bool:
     """True si la URL es http(s) y su host resuelve solo a direcciones públicas.
 
@@ -82,14 +112,8 @@ def url_publica(url) -> bool:
     # ponytail: se valida al resolver, no al conectar. No cubre redirecciones
     # hacia hosts internos ni DNS rebinding; para eso hay que fijar la IP
     # resuelta en la conexión (adapter de requests) y validar cada salto.
-    try:
-        partes = urlparse(url)
-        if partes.scheme not in ("http", "https") or not partes.hostname:
-            return False
-        infos = socket.getaddrinfo(partes.hostname, None)
-        return bool(infos) and all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
-    except Exception:
-        return False
+    ips = _direcciones(url)
+    return bool(ips) and _todas_publicas(ips)
 
 
 def _http_get(url: str, timeout: int = 10) -> str | None:
@@ -153,9 +177,14 @@ def _fetch(url: str) -> str | None:
 
     Si el origen del dominio ya no respondió en esta corrida, va directo a Wayback.
     """
-    if not url_publica(url):
+    ips = _direcciones(url)
+    if ips is None or not _todas_publicas(ips):
         print(f"  [URL BLOQUEADA] no es http(s) pública: {str(url)[:60]}", flush=True)
         return None
+    if not ips:
+        # El dominio no resuelve: no hay origen que visitar, pero sí puede
+        # haber copia archivada (Wayback no toca el host).
+        _ORIGEN_CAIDO.add(urlparse(url).netloc)
 
     if urlparse(url).netloc in _ORIGEN_CAIDO:
         return _wayback_get(url)

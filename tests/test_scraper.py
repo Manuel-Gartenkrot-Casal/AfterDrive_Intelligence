@@ -37,7 +37,7 @@ def red(monkeypatch):
     monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     # Estos tests no prueban la validación de URLs: sin esto harían DNS real.
-    monkeypatch.setattr(scraper, "url_publica", lambda url: True)
+    monkeypatch.setattr(scraper, "_direcciones", lambda url: ["93.184.216.34"])
     return llamadas
 
 
@@ -106,6 +106,12 @@ def dns(monkeypatch):
     ("https://sitio.com/noticias", True),
     ("http://sitio.com", True),
     ("https://usuario:clave@sitio.com:8443/x?y=1", True),
+    ("HTTP://SITIO.COM/", True),
+    # requests corta el host en la barra invertida y visitaría 127.0.0.1.
+    ("http://127.0.0.1:5000\\@sitio.com/", False),
+    ("http://sitio.com/a b", False),
+    ("http://sitio.com/\n", False),
+    ("http://sitio.com/\x00", False),
     ("file:///etc/passwd", False),
     ("ftp://sitio.com", False),
     ("javascript:alert(1)", False),
@@ -126,8 +132,22 @@ def test_url_publica(dns, url, ok):
     assert scraper.url_publica(url) is ok
 
 
-def test_fetch_no_descarga_urls_internas(monkeypatch):
-    monkeypatch.setattr(scraper, "url_publica", lambda url: False)
+@pytest.mark.parametrize("url", [
+    "http://10.0.0.1/", "http://interno.corp/", "http://mixto.com/", "file:///etc/passwd",
+    "http://127.0.0.1:5000\\@sitio.com/",
+])
+def test_fetch_no_descarga_urls_internas(dns, monkeypatch, url):
     for nombre in ("_http_get", "_browser_get", "_wayback_get"):
         monkeypatch.setattr(scraper, nombre, lambda *a, **k: pytest.fail("no debe descargar"))
-    assert scraper._fetch("http://10.0.0.1/") is None
+    assert scraper._fetch(url) is None
+
+
+def test_dominio_que_no_resuelve_va_a_wayback(dns, monkeypatch):
+    # Un dominio caído no es una URL interna: Wayback no lo visita, así que la
+    # copia archivada se sigue pudiendo usar.
+    monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
+    for nombre in ("_http_get", "_browser_get"):
+        monkeypatch.setattr(scraper, nombre, lambda *a, **k: pytest.fail("el origen no existe"))
+    monkeypatch.setattr(scraper, "_wayback_get", lambda url: "COPIA:" + url)
+    assert scraper._fetch("http://no-resuelve.invalid/nota") == "COPIA:http://no-resuelve.invalid/nota"
+    assert "no-resuelve.invalid" in scraper._ORIGEN_CAIDO

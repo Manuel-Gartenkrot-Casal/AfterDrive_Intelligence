@@ -75,9 +75,11 @@ def _credenciales_ok(usuario, password) -> bool:
     # de respuesta no delate cuál de los dos falló.
     try:
         clave_ok = check_password_hash(os.environ["ADMIN_PASSWORD_HASH"], password if son_texto else "")
+        usuario_ok = son_texto and hmac.compare_digest(usuario.encode(), os.environ["ADMIN_USER"].encode())
     except Exception:
-        clave_ok = False  # hash mal formado en el entorno: nadie entra
-    usuario_ok = son_texto and hmac.compare_digest(usuario.encode(), os.environ["ADMIN_USER"].encode())
+        # Hash mal formado en el entorno o texto que no se puede codificar
+        # (un sustituto suelto): es un intento fallido, nunca un 500.
+        return False
     return usuario_ok and clave_ok
 
 

@@ -48,6 +48,24 @@ def test_body_no_json_es_401(api):
     assert api[0].app.test_client().post("/api/login", data="hola").status_code == 401
 
 
+def test_usuario_con_unicode_invalido_es_401_y_cuenta_como_fallo(api):
+    # Un sustituto suelto no se puede codificar a UTF-8: no debe dar 500 ni
+    # esquivar el contador de intentos.
+    from afterdrive import auth
+    cuerpo = '{"usuario": "\\ud800", "password": "\\ud800"}'
+    r = api[0].app.test_client().post("/api/login", data=cuerpo, content_type="application/json")
+    assert r.status_code == 401
+    assert len(auth._fallos) == 1
+
+
+def test_env_example_no_trae_secretos_utilizables():
+    # Quien copie .env.example sin completarlo tiene que quedar con el login
+    # cerrado (503), no con una clave de firma que está publicada en el repo.
+    from dotenv import dotenv_values
+    ejemplo = dotenv_values(".env.example")
+    assert ejemplo["SECRET_KEY"] == "" and ejemplo["CRON_TOKEN"] == ""
+
+
 def test_bloqueo_al_quinto_fallo_y_vence(api, monkeypatch):
     from afterdrive import auth
     reloj = [1000.0]
