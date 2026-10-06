@@ -1,5 +1,7 @@
 """Tests del login: guardia de sesión, bloqueo por intentos y token de cron."""
 
+from pathlib import Path
+
 import pytest
 
 OK = {"usuario": "admin", "password": "secreta123"}
@@ -124,7 +126,7 @@ def test_raiz_sirve_login_o_dashboard_segun_sesion(api, monkeypatch, tmp_path):
 
 
 def test_la_pantalla_de_login_existe_y_usa_el_endpoint():
-    html = open("express/src/public/login.html", encoding="utf-8").read()
+    html = Path("express/src/public/login.html").read_text(encoding="utf-8")
     assert "/api/login" in html and 'type="password"' in html
 
 
@@ -133,3 +135,18 @@ def test_sin_build_el_dashboard_sale_de_la_fuente(api):
     assert api[0]._STATIC_DIR.replace("\\", "/").endswith(("/static", "express/src/public"))
     c = api[0].app.test_client()
     assert b"<form" in c.get("/").data
+
+
+def test_cabeceras_de_seguridad(api, monkeypatch):
+    c = api[0].app.test_client()
+    h = c.get("/health").headers
+    assert h["X-Content-Type-Options"] == "nosniff" and h["X-Frame-Options"] == "DENY"
+    assert h["Referrer-Policy"] == "same-origin" and "frame-ancestors 'none'" in h["Content-Security-Policy"]
+    assert "Strict-Transport-Security" not in h and "Access-Control-Allow-Origin" not in h
+    monkeypatch.setenv("RENDER", "true")
+    assert c.get("/health").headers["Strict-Transport-Security"] == "max-age=31536000"
+
+
+def test_cabeceras_tambien_en_el_401(api):
+    h = api[0].app.test_client().get("/api/scraping-config").headers
+    assert h["X-Frame-Options"] == "DENY" and "Content-Security-Policy" in h

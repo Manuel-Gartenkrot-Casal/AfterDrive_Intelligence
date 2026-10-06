@@ -4,7 +4,6 @@ import threading
 import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
-from flask_cors import CORS
 
 from afterdrive import auth
 from afterdrive import config_store
@@ -23,8 +22,36 @@ except Exception:
     pass
 
 app = Flask(__name__)
-CORS(app)
 auth.init_app(app)
+
+# 'unsafe-inline' en scripts y estilos: el dashboard es un solo HTML con
+# <script>, <style> y onclick en línea. Sacarlo exige reescribir ese archivo.
+_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src 'self' data: https:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+])
+_CABECERAS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Content-Security-Policy": _CSP,
+}
+
+
+@app.after_request
+def _cabeceras_de_seguridad(resp):
+    for clave, valor in _CABECERAS.items():
+        resp.headers.setdefault(clave, valor)
+    if os.getenv("RENDER"):  # solo en producción, donde siempre hay HTTPS
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return resp
 
 # Dashboard estático. En la imagen Docker vive en static/; en local, sin build,
 # se sirve directo desde la fuente (express/src/public).
@@ -60,6 +87,39 @@ def not_found(_error):
 @app.errorhandler(500)
 def internal_error(_error):
     return jsonify({"success": False, "error": "Error interno del servidor"}), 500
+
+def _error_interno(e: Exception, status: int = 500, **extra):
+    """Loguea el detalle en el servidor y responde un mensaje genérico.
+
+    El texto de la excepción no viaja al cliente: suele traer hosts internos
+    y detalles de Mongo.
+    """
+    print(f"[API ERROR] {request.path}: {e!r}", flush=True)
+    return jsonify({"success": False, "error": "Error interno del servidor", **extra}), status
+
+
+def _lista_texto(valor) -> list[str] | None:
+    """Lista de textos apta para el argv de un subproceso, o None si no lo es.
+
+    Un elemento que empiece con "-" sería leído por argparse como otra opción
+    (p. ej. colar "--puntapie" dentro de las categorías).
+    """
+    if valor is None:
+        return []
+    if not isinstance(valor, list) or not all(isinstance(v, str) and v and not v.startswith("-") for v in valor):
+        return None
+    return valor
+
+
+def _listas(body: dict, *claves: str):
+    """(listas por clave, None), o (None, respuesta 400) si alguna no es válida."""
+    listas = {}
+    for clave in claves:
+        listas[clave] = _lista_texto(body.get(clave))
+        if listas[clave] is None:
+            return None, (jsonify({"success": False, "error": f"Parámetro '{clave}' inválido."}), 400)
+    return listas, None
+
 
 def _sse(lineas):
     return Response(
@@ -103,9 +163,9 @@ def api_health():
 @app.route("/api/db-check", methods=["GET"])
 def db_check():
     """Diagnóstico de conexión a MongoDB y estado de URLs confiables."""
-    from afterdrive.db import MONGO_URI, col_trusted_urls
+    from afterdrive.db import MONGO_URI, col_trusted_urls, uri_segura
 
-    uri_log = MONGO_URI[:40] + "..." if len(MONGO_URI) > 40 else MONGO_URI
+    uri_log = uri_segura(MONGO_URI)
     try:
         total = col_trusted_urls.count_documents({})
         activas = col_trusted_urls.count_documents({"estado": "activo"})
@@ -121,11 +181,7 @@ def db_check():
             "muestra": muestra,
         })
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "mongo_uri_preview": uri_log,
-            "error": str(e),
-        }), 500
+        return _error_interno(e, mongo_uri_preview=uri_log)
 
 
 @app.route("/api/articulos-stats", methods=["GET"])
@@ -140,7 +196,7 @@ def articulos_stats():
     try:
         return jsonify({"success": True, "total": col_articulos.count_documents({})})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/check-volume", methods=["GET"])
@@ -153,7 +209,7 @@ def check_volume():
         count = col_articulos.count_documents({"$text": {"$search": keyword}})
         return jsonify({"success": True, "count": count})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 # ── Endpoints de Generación ───────────────────────────────────────────────────────
@@ -181,13 +237,14 @@ def ultimo_articulo():
 
 def _parse_request_args(body: dict) -> list[str]:
     """Extrae argumentos de tema/persona del request body."""
+    # Siempre "--opcion=valor": así argparse nunca toma el valor como otra opción.
     args_list = []
-    tema = body.get("tema", "").strip()
-    persona = body.get("persona", "").strip()
+    tema = str(body.get("tema") or "").strip()
+    persona = str(body.get("persona") or "").strip()
     if tema:
-        args_list.extend(["--tema", tema])
-    if persona and persona in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
-        args_list.extend(["--persona", persona])
+        args_list.append(f"--tema={tema}")
+    if persona in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
+        args_list.append(f"--persona={persona}")
     return args_list
 
 
@@ -362,7 +419,7 @@ def trusted_urls_stats():
             }
         )
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/evaluate-article", methods=["POST"])
@@ -429,7 +486,7 @@ def suggested_urls():
                 break
         return jsonify({"success": True, "urls": urls})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/suggested-urls", methods=["DELETE"])
@@ -464,7 +521,7 @@ def list_trusted_urls():
         docs = list(col_trusted_urls.find({}, {"_id": 0}).sort("fecha_agregado", -1))
         return jsonify({"success": True, "urls": docs, "total": len(docs)})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/trusted-urls", methods=["POST"])
@@ -492,7 +549,7 @@ def add_trusted_url_direct():
         )
         return jsonify({"success": True, "message": f"URL '{url}' agregada como activa."})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/trusted-urls/<path:url>", methods=["DELETE"])
@@ -505,7 +562,7 @@ def delete_trusted_url(url):
             return jsonify({"success": False, "error": "URL no encontrada."}), 404
         return jsonify({"success": True, "message": "URL eliminada."})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return _error_interno(e)
 
 
 @app.route("/api/add-url", methods=["POST"])
@@ -553,23 +610,33 @@ def fase2_regiones():
     return jsonify({"success": True, "regiones": todas})
 
 
+def _args_scrape(body: dict):
+    """(argv del scraper de ejemplos, None), o (None, respuesta 400)."""
+    listas, error = _listas(body, "tags")
+    if error:
+        return None, error
+    max_por_tag = body.get("max", 5)
+    if not _entero_valido(max_por_tag):
+        return None, (jsonify({"success": False, "error": "Se requiere 'max' como un entero >= 1."}), 400)
+    tags = listas["tags"]
+    return (["--tags", *tags] if tags else []) + [f"--max={max_por_tag}"], None
+
+
 @app.route("/api/fase2/scrape", methods=["POST"])
 def fase2_scrape():
-    body = request.get_json(silent=True) or {}
-    tags = body.get("tags") or None
-    max_por_tag = int(body.get("max", 5))
-    result = corridas.script("afterdrive.generacion.scraper_afterdrive",
-                        (["--tags"] + tags if tags else []) + ["--max", str(max_por_tag)])
+    argv, error = _args_scrape(request.get_json(silent=True) or {})
+    if error:
+        return error
+    result = corridas.script("afterdrive.generacion.scraper_afterdrive", argv)
     return jsonify(result), 200 if result["success"] else 500
 
 
 @app.route("/api/fase2/stream/scrape", methods=["POST"])
 def fase2_stream_scrape():
-    body = request.get_json(silent=True) or {}
-    tags = body.get("tags") or []
-    max_por_tag = str(body.get("max", 5))
-    extra = (["--tags"] + tags if tags else []) + ["--max", max_por_tag]
-    return _sse(corridas.stream("afterdrive.generacion.scraper_afterdrive", extra))
+    argv, error = _args_scrape(request.get_json(silent=True) or {})
+    if error:
+        return error
+    return _sse(corridas.stream("afterdrive.generacion.scraper_afterdrive", argv))
 
 
 @app.route("/api/fase2/clientes", methods=["GET"])
@@ -608,12 +675,13 @@ def fase2_eliminar_cliente(slug: str):
 @app.route("/api/fase2/generar", methods=["POST"])
 def fase2_generar():
     body = request.get_json(silent=True) or {}
-    categorias = body.get("categorias", [])
-    clientes = body.get("clientes", [])
+    listas, error = _listas(body, "categorias", "clientes", "regiones")
+    if error:
+        return error
+    categorias, clientes, regiones = listas["categorias"], listas["clientes"], listas["regiones"]
     puntapie_url = body.get("puntapie_url", None)
     persona = body.get("persona", "comercial")
     tema = body.get("tema", None)
-    regiones = body.get("regiones", [])
 
     if not categorias:
         return jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400
@@ -633,26 +701,24 @@ def fase2_generar():
 @app.route("/api/fase2/stream/generar", methods=["POST"])
 def fase2_stream_generar():
     body = request.get_json(silent=True) or {}
-    categorias = body.get("categorias", [])
-    clientes = body.get("clientes", [])
+    listas, error = _listas(body, "categorias", "clientes", "regiones")
+    if error:
+        return error
     puntapie_url = body.get("puntapie_url", "") or ""
     persona = body.get("persona", "comercial")
     tema = body.get("tema", "") or ""
-    regiones = body.get("regiones", []) or []
 
     extra = []
-    if categorias:
-        extra += ["--categorias"] + categorias
-    if clientes:
-        extra += ["--clientes"] + clientes
-    if regiones:
-        extra += ["--regiones"] + regiones
+    for clave in ("categorias", "clientes", "regiones"):
+        if listas[clave]:
+            extra += [f"--{clave}", *listas[clave]]
+    # Escalares como "--opcion=valor": argparse nunca los toma por otra opción.
     if puntapie_url:
-        extra += ["--puntapie", puntapie_url]
+        extra.append(f"--puntapie={puntapie_url}")
     if persona:
-        extra += ["--persona", persona]
+        extra.append(f"--persona={persona}")
     if tema:
-        extra += ["--tema", tema]
+        extra.append(f"--tema={tema}")
 
     return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
 

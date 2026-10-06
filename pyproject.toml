@@ -31,8 +31,7 @@ indent-style = "space"
 name = "after-drive-intelligence"
 version = "0.1.0"
 dependencies = [
-    "flask",
-    "flask-cors"
+    "flask"
 ]
 
 [tool.pytest.ini_options]
