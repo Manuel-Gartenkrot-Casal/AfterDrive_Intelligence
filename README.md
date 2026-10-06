@@ -9,17 +9,18 @@ Extrae artículos de múltiples fuentes, los guarda en MongoDB Atlas y genera co
 ## Arquitectura
 
 En producción (Render) es **un solo contenedor**: Flask sirve la API en `/api/*` y el dashboard estático en `/`.
-El dashboard se compila en el Dockerfile a partir de `express/src/public`. En local, `docker compose` levanta
-además Express como proxy en :3000.
+El dashboard es HTML sin build (`express/src/public`): el Dockerfile lo copia a `static/` y en local Flask lo
+sirve directo desde la fuente. Todo está detrás de un login de un solo usuario (ver [Acceso](#acceso)).
 
 ```
 Render:   Browser → Flask :$PORT (API + dashboard) → Mongo Atlas / proveedor de IA
-Local:    Browser → Express :3000 → Flask :5000 → Mongo Atlas / proveedor de IA
+Local:    Browser → Flask :5000  (API + dashboard) → Mongo Atlas / proveedor de IA
 ```
 
 | Componente | Tecnología |
 |---|---|
-| Dashboard | HTML/CSS/JS en un solo archivo (`express/src/public/index.html`) |
+| Dashboard | HTML/CSS/JS sin build (`express/src/public/index.html` y `login.html`) |
+| Acceso | Sesión firmada de Flask, un usuario por variables de entorno (`afterdrive/auth.py`) |
 | API | Flask + gunicorn (`--workers 1`, ver `docs/adr/0001-*`) |
 | Scraping | requests + trafilatura, Scrapling/Chromium según RAM, Wayback como respaldo |
 | Clasificación | Jev (TypeSafe) → LLM como fallback |
@@ -32,10 +33,10 @@ Vocabulario del dominio: ver `CONTEXT.md`.
 
 ## Requisitos
 
-| Opción | Python | Node.js | Docker |
-|---|---|---|---|
-| Docker (recomendado) | No | No | Sí |
-| Local | 3.10+ | 20+ | No |
+| Opción | Python | Docker |
+|---|---|---|
+| Docker (recomendado) | No | Sí |
+| Local | 3.10+ | No |
 
 ---
 
@@ -56,7 +57,8 @@ cd afterdrive-intelligence
 cp .env.example .env
 ```
 
-Abrí `.env` y completá al menos `MONGO_URI`. Elegí el proveedor de IA:
+Abrí `.env` y completá al menos `MONGO_URI` y las variables de [Acceso](#acceso) (sin ellas nadie puede entrar).
+Elegí el proveedor de IA:
 
 ```env
 # Para NVIDIA (cloud, funciona sin nada local):
@@ -78,7 +80,7 @@ La primera vez tarda ~5-8 minutos (descarga Chromium + instala dependencias). La
 ### 4. Abrir
 
 ```
-http://localhost:3000
+http://localhost:5000
 ```
 
 ### 5. Detener
@@ -118,32 +120,16 @@ pip install -r requirements.txt
 python -c "from scrapling.cli import install; install([], standalone_mode=False)"
 ```
 
-### 5. Node.js — compilar Express
-
-```bash
-cd express
-npm install
-npm run build
-cd ..
-```
-
-### 6. Levantar Flask (terminal 1)
+### 5. Levantar Flask
 
 ```bash
 python -m afterdrive.flask_api
 ```
 
-### 7. Levantar Express (terminal 2)
-
-```bash
-cd express
-node dist/index.js
-```
-
-### 8. Abrir
+### 6. Abrir
 
 ```
-http://localhost:3000
+http://localhost:5000
 ```
 
 ---
@@ -160,12 +146,47 @@ http://localhost:3000
 | `TYPESAFE_API_KEY` | No | Activa el clasificador Jev; sin ella se usa el LLM |
 | `LMSTUDIO_URL` | Si local | URL de LM Studio (default: `http://localhost:1234/v1`) |
 | `LMSTUDIO_MODEL` | Si local | Modelo a usar (default: `mistral-7b-instruct-v0.3`) |
+| `ADMIN_USER` | Sí | Usuario del dashboard |
+| `ADMIN_PASSWORD_HASH` | Sí | Hash de la contraseña (no la contraseña) |
+| `SECRET_KEY` | Sí | Firma la cookie de sesión |
+| `CRON_TOKEN` | Si hay cron | Autoriza las corridas automáticas por HTTP |
+
+---
+
+## Acceso
+
+El dashboard y toda la API (`/api/*`) piden sesión. Solo quedan abiertos `/health` y la pantalla de login.
+Hay un único usuario, definido por variables de entorno: nada de credenciales en el código.
+
+| Variable | Qué es | Cómo se obtiene |
+|---|---|---|
+| `ADMIN_USER` | Nombre de usuario | Lo elegís vos |
+| `ADMIN_PASSWORD_HASH` | Hash scrypt de la contraseña | Comando de abajo |
+| `SECRET_KEY` | Clave que firma la cookie de sesión | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `CRON_TOKEN` | Token de las corridas automáticas | El mismo comando que `SECRET_KEY` (otro valor) |
+
+Generar el hash (pide la contraseña sin mostrarla):
+
+```bash
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash as g; print(g(getpass('Contraseña: ')))"
+```
+
+- **El hash trae signos `$`.** En un archivo `.env` va siempre entre comillas simples
+  (`ADMIN_PASSWORD_HASH='scrypt:...'`); sin ellas `docker compose` lo interpreta como variables y lo rompe.
+  En el panel de Render se pega tal cual, sin comillas.
+- **Si falta `ADMIN_USER`, `ADMIN_PASSWORD_HASH` o `SECRET_KEY`, nadie entra.** El panel queda cerrado, no abierto.
+- **Cambiar la contraseña:** generar otro hash y reemplazar `ADMIN_PASSWORD_HASH`.
+- **Cerrar todas las sesiones:** cambiar `SECRET_KEY`. Una sesión dura 7 días.
+- **Intentos fallidos:** 5 seguidos desde la misma IP bloquean el login 15 minutos.
+- **Corridas automáticas:** `POST /api/run-automation` y `POST /api/run-generacion` aceptan además el header
+  `Authorization: Bearer <CRON_TOKEN>`. Es lo que usan los cron de `render.yaml` y lo que necesita cualquier
+  monitor externo que las dispare. El scheduler interno no lo necesita.
 
 ---
 
 ## Dashboard
 
-El frontend en `http://localhost:3000` ofrece:
+El frontend en `http://localhost:5000` ofrece:
 
 - **Scraping manual** — ejecutá cada fuente individualmente o todas juntas
 - **Generador de artículos** — elegí tema, personalidad (divulgativo/técnico/negocios) y generá
@@ -340,7 +361,7 @@ afterdrive/                    # paquete Python (el runtime)
 tests/                         # pytest (python -m pytest)
 scripts/                       # demo y pruebas manuales, no forman parte del deploy
 docs/                          # ADRs y guía de HubSpot
-express/                       # dashboard (src/public) y proxy Express para uso local
+express/src/public/            # dashboard (index.html) y pantalla de login (login.html)
 Dockerfile, docker-compose.yml, render.yaml
 CONTEXT.md, AGENTS.md, segundo-cerebro/   # vocabulario y memoria para agentes
 ```

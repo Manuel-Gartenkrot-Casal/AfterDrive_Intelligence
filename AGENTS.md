@@ -87,7 +87,7 @@
 - **Scraping:** Scrapling (Python)
 - **Base de datos:** MongoDB Atlas
 - **IA local:** LM Studio / Ollama
-- **Frontend:** Express/TypeScript + Flask/Python
+- **Frontend:** dashboard HTML servido por Flask/Python (con login)
 - **Origen specs:** Google Drive (ID: `1Mlk84ZWPhkUfwKps0pLI_H6Utf_e73iY4NrRScNUEHE`)
 
 ### Última corrida

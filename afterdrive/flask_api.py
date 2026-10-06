@@ -160,15 +160,10 @@ def health():
 def api_health():
     """Health check que consume el dashboard.
 
-    Devuelve la forma anidada que el frontend espera: cuando Express hacía de
-    proxy respondía {express, scrapers}, y el dashboard chequea
-    `scrapers.status === 'ok'`. Al pasar a un solo contenedor, Flask empezó a
-    responder {"status": "ok"} sin esa clave, así que la comprobación del
-    dashboard lanzaba excepción y el badge quedaba en "Sin Conexion" de forma
-    permanente, sin importar el estado real del proveedor de IA.
-
-    La forma sirve en los dos despliegues: con Express adelante, este objeto
-    queda anidado bajo `scrapers` y la comprobación sigue dando bien.
+    Devuelve la forma anidada que el dashboard espera: chequea
+    `scrapers.status === 'ok'`, herencia de cuando un proxy Express respondía
+    {express, scrapers}. Sin esa clave la comprobación lanza excepción y el
+    badge queda en "Sin Conexion" de forma permanente.
     """
     return jsonify({"status": "ok", "express": "ok", "scrapers": {"status": "ok"}})
 

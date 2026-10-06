@@ -1,128 +1,73 @@
 """
-Test script for AfterDrive Intelligence pipeline.
-Uses Playwright to test the web application.
+Prueba de humo manual contra un Flask ya levantado (python -m afterdrive.flask_api).
+
+Flask sirve la API y el dashboard en el mismo puerto, todo detrás del login.
+Uso: python scripts/manual/smoke_playwright.py [usuario] [contraseña]
+Sin credenciales solo verifica que la API esté cerrada y que aparezca el login.
 """
 import sys
-import time
+
+import requests
 from playwright.sync_api import sync_playwright
 
-def test_flask_api():
-    """Test Flask API directly."""
-    import requests
-    
-    print("=== Testing Flask API (port 5000) ===")
-    
-    # Test health endpoint
-    try:
-        r = requests.get("http://localhost:5000/health", timeout=5)
-        print(f"Health: {r.status_code} - {r.json()}")
-    except Exception as e:
-        print(f"Health FAILED: {e}")
-        return False
-    
-    # Test check-volume endpoint
-    try:
-        r = requests.get("http://localhost:5000/api/check-volume?keyword=autopartes", timeout=10)
-        print(f"Volume: {r.status_code} - {r.json()}")
-    except Exception as e:
-        print(f"Volume FAILED: {e}")
-    
-    return True
+BASE = "http://localhost:5000"
 
-def test_express_server():
-    """Test Express server with Playwright."""
-    print("\n=== Testing Express Server (port 3000) ===")
-    
+
+def test_api_cerrada() -> bool:
+    """/health responde y el resto de la API exige sesión."""
+    print(f"=== API en {BASE} ===")
+    try:
+        r = requests.get(f"{BASE}/health", timeout=5)
+        print(f"Health: {r.status_code} - {r.json()}")
+        r = requests.get(f"{BASE}/api/check-volume?keyword=autopartes", timeout=10)
+        print(f"Sin sesión, /api/check-volume: {r.status_code} (se espera 401)")
+        return r.status_code == 401
+    except Exception as e:
+        print(f"API FAILED: {e}")
+        return False
+
+
+def test_dashboard(usuario: str | None, password: str | None) -> bool:
+    """El login aparece; con credenciales, el dashboard carga sin errores de consola."""
+    print("\n=== Dashboard ===")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        
-        # Navigate to the app
+        errores = []
+        page.on("console", lambda msg: errores.append(msg.text) if msg.type == "error" else None)
         try:
-            page.goto("http://localhost:3000", timeout=10000)
+            page.goto(BASE, timeout=10000)
+            print(f"Pantalla de login visible: {page.locator('#password').is_visible()}")
+            if not (usuario and password):
+                return page.locator("#password").is_visible()
+
+            page.fill("#usuario", usuario)
+            page.fill("#password", password)
+            page.click("#entrar")
+            page.wait_for_selector("#statusText", timeout=10000)
             page.wait_for_load_state("networkidle")
-            
-            # Take screenshot
             page.screenshot(path="scripts/manual/screenshot.png", full_page=True)
             print("Screenshot saved: scripts/manual/screenshot.png")
-            
-            # Check page title
-            title = page.title()
-            print(f"Page title: {title}")
-            
-            # Check if key elements exist
-            stats_grid = page.locator(".stats-grid")
-            print(f"Stats grid visible: {stats_grid.is_visible()}")
-            
-            # Check if API status is showing
-            status_text = page.locator("#statusText")
-            if status_text.is_visible():
-                print(f"API Status: {status_text.text_content()}")
-            
-            # Check console for errors
-            errors = []
-            page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
-            
-            # Wait a bit for any console errors
+            print(f"Page title: {page.title()}")
+            print(f"API Status: {page.locator('#statusText').text_content()}")
             page.wait_for_timeout(2000)
-            
-            if errors:
-                print(f"Console errors: {errors}")
-            else:
-                print("No console errors detected")
-            
-            browser.close()
-            return True
-            
+            print(f"Console errors: {errores}" if errores else "No console errors detected")
+            return not errores
         except Exception as e:
-            print(f"Express test FAILED: {e}")
-            browser.close()
+            print(f"Dashboard test FAILED: {e}")
             return False
+        finally:
+            browser.close()
 
-def test_api_endpoints():
-    """Test API endpoints through Express proxy."""
-    import requests
-    
-    print("\n=== Testing API Endpoints through Express ===")
-    
-    endpoints = [
-        ("GET", "/api/health"),
-        ("GET", "/api/trusted-urls-stats"),
-        ("GET", "/api/scraping-config"),
-        ("GET", "/api/check-volume?keyword=autopartes"),
-    ]
-    
-    for method, path in endpoints:
-        try:
-            if method == "GET":
-                r = requests.get(f"http://localhost:3000{path}", timeout=10)
-            else:
-                r = requests.post(f"http://localhost:3000{path}", timeout=10)
-            print(f"{method} {path}: {r.status_code}")
-        except Exception as e:
-            print(f"{method} {path}: FAILED - {e}")
 
 if __name__ == "__main__":
     print("AfterDrive Intelligence - Pipeline Test")
     print("=" * 50)
-    
-    # Test Flask API
-    flask_ok = test_flask_api()
-    
-    # Test Express server
-    express_ok = test_express_server()
-    
-    # Test API endpoints
-    test_api_endpoints()
-    
+    credenciales = (sys.argv[1:3] + [None, None])[:2]
+    api_ok = test_api_cerrada()
+    dash_ok = test_dashboard(*credenciales)
+
     print("\n" + "=" * 50)
-    print("Test Summary:")
-    print(f"Flask API: {'PASS' if flask_ok else 'FAIL'}")
-    print(f"Express Server: {'PASS' if express_ok else 'FAIL'}")
-    
-    if flask_ok and express_ok:
-        print("\nAll tests passed!")
-        sys.exit(0)
-    else:
-        print("\nSome tests failed!")
-        sys.exit(1)
+    print(f"API cerrada sin sesión: {'PASS' if api_ok else 'FAIL'}")
+    print(f"Dashboard: {'PASS' if dash_ok else 'FAIL'}")
+    sys.exit(0 if api_ok and dash_ok else 1)

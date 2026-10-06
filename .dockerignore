@@ -31,7 +31,7 @@ Thumbs.db
 data/
 backups/
 
-# Node (se construye aparte)
+# Restos del proxy Express (eliminado)
 express/node_modules
 express/dist
 express/.npx-cache
