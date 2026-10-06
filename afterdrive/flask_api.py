@@ -121,6 +121,19 @@ def _listas(body: dict, *claves: str):
     return listas, None
 
 
+def _url_publica_o_400(body: dict):
+    """(url, None), o (None, respuesta 400) si no es una URL http(s) pública."""
+    from afterdrive.ingesta.scraper import url_publica
+
+    url = body.get("url")
+    url = url.strip() if isinstance(url, str) else ""
+    if not url:
+        return None, (jsonify({"success": False, "error": "Se requiere la URL."}), 400)
+    if not url_publica(url):
+        return None, (jsonify({"success": False, "error": "La URL debe ser http(s) y pública."}), 400)
+    return url, None
+
+
 def _sse(lineas):
     return Response(
         stream_with_context(lineas),
@@ -531,10 +544,10 @@ def add_trusted_url_direct():
 
     from afterdrive.db import col_trusted_urls
     body = request.get_json(silent=True) or {}
-    url = body.get("url", "").strip()
-    nombre = body.get("nombre", "").strip()
-    if not url:
-        return jsonify({"success": False, "error": "Se requiere la URL."}), 400
+    url, error = _url_publica_o_400(body)
+    if error:
+        return error
+    nombre = str(body.get("nombre") or "").strip()
     try:
         col_trusted_urls.update_one(
             {"url": url},
@@ -567,10 +580,9 @@ def delete_trusted_url(url):
 
 @app.route("/api/add-url", methods=["POST"])
 def add_url():
-    body = request.get_json(silent=True) or {}
-    url = body.get("url", "")
-    if not url:
-        return jsonify({"success": False, "error": "Se requiere la URL."}), 400
+    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
+    if error:
+        return error
 
     # Ejecutamos el nuevo script add_url.py
     result = corridas.script("afterdrive.ingesta.add_url", [url])
@@ -580,10 +592,9 @@ def add_url():
 
 @app.route("/stream/add-url", methods=["POST"])
 def stream_add_url():
-    body = request.get_json(silent=True) or {}
-    url = body.get("url", "")
-    if not url:
-        return jsonify({"success": False, "error": "Se requiere la URL."}), 400
+    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
+    if error:
+        return error
 
     return _sse(corridas.stream("afterdrive.ingesta.add_url", [url]))
 

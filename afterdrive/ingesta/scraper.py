@@ -1,6 +1,8 @@
 import datetime
+import ipaddress
 import json
 import re
+import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlparse
 
@@ -70,6 +72,26 @@ def _esta_bloqueado(html: str | None) -> bool:
 _ORIGEN_CAIDO: set[str] = set()
 
 
+def url_publica(url) -> bool:
+    """True si la URL es http(s) y su host resuelve solo a direcciones públicas.
+
+    El scraper visita lo que le pasen por la API y los links que encuentra en
+    las páginas: sin este filtro se lo podría apuntar a la red interna del
+    servidor (localhost, IPs privadas, metadata del proveedor cloud).
+    """
+    # ponytail: se valida al resolver, no al conectar. No cubre redirecciones
+    # hacia hosts internos ni DNS rebinding; para eso hay que fijar la IP
+    # resuelta en la conexión (adapter de requests) y validar cada salto.
+    try:
+        partes = urlparse(url)
+        if partes.scheme not in ("http", "https") or not partes.hostname:
+            return False
+        infos = socket.getaddrinfo(partes.hostname, None)
+        return bool(infos) and all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+    except Exception:
+        return False
+
+
 def _http_get(url: str, timeout: int = 10) -> str | None:
     try:
         r = requests.get(url, timeout=timeout, headers=_HEADERS)
@@ -131,6 +153,10 @@ def _fetch(url: str) -> str | None:
 
     Si el origen del dominio ya no respondió en esta corrida, va directo a Wayback.
     """
+    if not url_publica(url):
+        print(f"  [URL BLOQUEADA] no es http(s) pública: {str(url)[:60]}", flush=True)
+        return None
+
     if urlparse(url).netloc in _ORIGEN_CAIDO:
         return _wayback_get(url)
 

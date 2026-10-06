@@ -124,3 +124,36 @@ def test_errores_no_filtran_la_excepcion(client, monkeypatch):
         r = c.get(ruta)
         assert r.status_code == 500 and "host-interno" not in r.get_data(as_text=True), ruta
         assert r.json["error"] == "Error interno del servidor"
+
+
+# ── Alta de fuentes: solo URLs http(s) públicas ───────────────────────────────
+
+
+@pytest.mark.parametrize("ruta", ["/api/trusted-urls", "/api/add-url", "/stream/add-url"])
+@pytest.mark.parametrize("url", ["http://127.0.0.1/", {"$ne": ""}, 7])
+def test_alta_de_url_interna_o_rara_es_400(client, monkeypatch, ruta, url):
+    from afterdrive import db
+    from afterdrive.ingesta import scraper
+    _sin_corridas(monkeypatch)
+    monkeypatch.setattr(scraper, "url_publica", lambda u: False)
+    monkeypatch.setattr(db, "col_trusted_urls", None)  # tocar Mongo acá sería un error
+    assert client[0].post(ruta, json={"url": url}).status_code == 400
+
+
+def test_alta_de_url_publica_sigue_andando(client, monkeypatch):
+    from afterdrive import corridas, db
+    from afterdrive.ingesta import scraper
+    guardadas = []
+
+    class Col:
+        def update_one(self, filtro, *_a, **_k):
+            guardadas.append(filtro["url"])
+
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    monkeypatch.setattr(db, "col_trusted_urls", Col())
+    monkeypatch.setattr(corridas, "script", lambda nombre, argv=None: {"success": True, "output": argv[0], "error": ""})
+    c = client[0]
+    assert c.post("/api/trusted-urls", json={"url": " https://sitio.com/noticias "}).status_code == 200
+    assert guardadas == ["https://sitio.com/noticias"]
+    assert c.post("/api/add-url", json={"url": "https://sitio.com/noticias"}).json["output"] == "https://sitio.com/noticias"
+
