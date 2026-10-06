@@ -1,5 +1,6 @@
 """Tests del login: guardia de sesión, bloqueo por intentos y token de cron."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -150,3 +151,22 @@ def test_cabeceras_de_seguridad(api, monkeypatch):
 def test_cabeceras_tambien_en_el_401(api):
     h = api[0].app.test_client().get("/api/scraping-config").headers
     assert h["X-Frame-Options"] == "DENY" and "Content-Security-Policy" in h
+
+
+def test_dashboard_sanitiza_y_fija_versiones():
+    html = Path("express/src/public/index.html").read_text(encoding="utf-8")
+    assert "DOMPurify.sanitize(marked.parse(" in html
+    assert "innerHTML = marked.parse(" not in html
+    externos = re.findall(r'<script src="https://cdn\.jsdelivr\.net[^>]*>', html)
+    assert len(externos) == 2
+    for tag in externos:
+        assert re.search(r"@\d+\.\d+\.\d+/", tag) and 'integrity="sha384-' in tag and "crossorigin" in tag
+    # Datos del servidor que antes entraban a innerHTML sin escapar.
+    assert "+u.url+" not in html and "' + k.replace(" not in html
+    # encodeURIComponent deja pasar la comilla simple: no alcanza para un onclick='...'.
+    assert "encodeURIComponent(u.url)" not in html and html.count("encArg(u.url)") == 3
+    # escHtml también tiene que servir dentro de atributos (title="...", href="...").
+    assert "&quot;" in html and "&#39;" in html
+    # Un link de fuente solo puede ser http(s), nunca javascript:.
+    assert "escHtml(f.url || '#')" not in html and "urlSegura(f.url)" in html
+
