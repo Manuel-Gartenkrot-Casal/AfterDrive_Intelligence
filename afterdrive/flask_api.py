@@ -26,9 +26,12 @@ app = Flask(__name__)
 CORS(app)
 auth.init_app(app)
 
-# Dashboard estático (build del frontend Express). Si no está presente
-# (dev local sin build), se responde el JSON de estado de la API.
-_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
+# Dashboard estático. En la imagen Docker vive en static/; en local, sin build,
+# se sirve directo desde la fuente (express/src/public).
+_RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_STATIC_DIR = os.path.join(_RAIZ, "static")
+if not os.path.isdir(_STATIC_DIR):
+    _STATIC_DIR = os.path.join(_RAIZ, "express", "src", "public")
 
 
 # ── Endpoint Raíz ──────────────────────────────────────────────────────────────
@@ -36,10 +39,14 @@ _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 @app.route("/")
 def root():
-    index_path = os.path.join(_STATIC_DIR, "index.html")
-    if os.path.isfile(index_path):
-        return send_from_directory(_STATIC_DIR, "index.html")
-    return jsonify({"status": "online", "service": "After Drive Intelligence API"}), 200
+    """Sin sesión entrega solo la pantalla de login: el dashboard ni se descarga."""
+    archivo = "index.html" if auth.hay_sesion() else "login.html"
+    if not os.path.isfile(os.path.join(_STATIC_DIR, archivo)):
+        return jsonify({"status": "online", "service": "After Drive Intelligence API"}), 200
+    resp = send_from_directory(_STATIC_DIR, archivo)
+    # Sin caché: que "atrás" después de salir no muestre el dashboard.
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ── Manejadores Globales de Errores ────────────────────────────────────────────

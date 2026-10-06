@@ -109,3 +109,27 @@ def test_hash_entre_comillas_simples_sobrevive_a_dotenv(tmp_path):
     h = generate_password_hash("x")
     (tmp_path / ".env").write_text(f"ADMIN_PASSWORD_HASH='{h}'\n")
     assert dotenv_values(tmp_path / ".env")["ADMIN_PASSWORD_HASH"] == h
+
+
+def test_raiz_sirve_login_o_dashboard_segun_sesion(api, monkeypatch, tmp_path):
+    (tmp_path / "login.html").write_text("PANTALLA-LOGIN")
+    (tmp_path / "index.html").write_text("PANTALLA-DASHBOARD")
+    monkeypatch.setattr(api[0], "_STATIC_DIR", str(tmp_path))
+    c = api[0].app.test_client()
+    r = c.get("/")
+    assert b"PANTALLA-LOGIN" in r.data and r.headers["Cache-Control"] == "no-store"
+    c.post("/api/login", json=OK)
+    r = c.get("/")
+    assert b"PANTALLA-DASHBOARD" in r.data and r.headers["Cache-Control"] == "no-store"
+
+
+def test_la_pantalla_de_login_existe_y_usa_el_endpoint():
+    html = open("express/src/public/login.html", encoding="utf-8").read()
+    assert "/api/login" in html and 'type="password"' in html
+
+
+def test_sin_build_el_dashboard_sale_de_la_fuente(api):
+    # En local no hay carpeta static/ (la genera el Dockerfile): se sirve la fuente.
+    assert api[0]._STATIC_DIR.replace("\\", "/").endswith(("/static", "express/src/public"))
+    c = api[0].app.test_client()
+    assert b"<form" in c.get("/").data
