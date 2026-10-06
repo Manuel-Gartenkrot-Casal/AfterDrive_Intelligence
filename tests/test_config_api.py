@@ -2,23 +2,15 @@
 
 import pytest
 
-from afterdrive import config_store
+
 @pytest.fixture
-def client(monkeypatch):
-    store = {}
-
-    def get_section(key, defaults):
-        return {**defaults, **store.get(key, {})}
-
-    monkeypatch.setattr(config_store, "_get_section", get_section)
-    monkeypatch.setattr(config_store, "_set_section", lambda key, value: store.__setitem__(key, value))
-    monkeypatch.setenv("AI_PROVIDER_OVERRIDE", "1")
-    from afterdrive import scheduler
-    # Importar flask_api arranca el scheduler (modo gunicorn): en tests no.
-    monkeypatch.setattr(scheduler, "iniciar", lambda: None)
-    monkeypatch.setattr(scheduler, "aplicar", lambda: None)
-    from afterdrive import flask_api
-    return flask_api.app.test_client(), store
+def client(api):
+    """(test_client, store) con la sesión del admin ya iniciada."""
+    flask_api, store = api
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    return c, store
 
 
 def test_guardar_y_leer_hora_de_scraping(client):

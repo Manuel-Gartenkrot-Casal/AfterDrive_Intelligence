@@ -6,6 +6,7 @@ import time
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 from flask_cors import CORS
 
+from afterdrive import auth
 from afterdrive import config_store
 from afterdrive import corridas
 from afterdrive.ia import llm
@@ -23,6 +24,7 @@ except Exception:
 
 app = Flask(__name__)
 CORS(app)
+auth.init_app(app)
 
 # Dashboard estático (build del frontend Express). Si no está presente
 # (dev local sin build), se responde el JSON de estado de la API.
