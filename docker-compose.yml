@@ -14,6 +14,8 @@ services:
       - "5000:5000"
     volumes:
       - ./afterdrive:/app/afterdrive
+      # Dashboard en vivo: editar el HTML no requiere reconstruir la imagen.
+      - ./express/src/public:/app/static
     networks:
       - app
     healthcheck:
@@ -33,34 +35,6 @@ services:
         limits:
           cpus: '2.0'
           memory: 2G
-
-  express:
-    build:
-      context: ./express
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - SCRAPERS_URL=http://scrapers:5000
-    volumes:
-      - ./express/src/public:/app/dist/public
-    depends_on:
-      scrapers:
-        condition: service_healthy
-    networks:
-      - app
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   app:

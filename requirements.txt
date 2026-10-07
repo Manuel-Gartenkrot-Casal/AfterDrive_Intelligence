@@ -8,6 +8,5 @@ trafilatura
 beautifulsoup4
 lxml
 apscheduler
-flask-cors
 psutil
 tzdata

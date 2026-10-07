@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AfterDrive Intelligence</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Versión fija + SRI: si el CDN sirviera otro archivo, el navegador no lo ejecuta. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1392,6 +1394,7 @@
           <span id="statusText">Conectando...</span>
         </div>
         <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema" id="themeBtn">&#9790;</button>
+        <button class="theme-toggle" onclick="salir()" title="Cerrar sesión" aria-label="Cerrar sesión"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
       </div>
     </header>
 
@@ -1755,6 +1758,10 @@
        UTILITIES
        ═══════════════════════════════════════════════════════════════════════ */
     const $ = id => document.getElementById(id);
+    // Sesión vencida o cerrada: cualquier 401 recarga la página, que cae en el login.
+    const _fetch = window.fetch;
+    window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location.reload(); return r; };
+    async function salir() { await fetch('/api/logout', { method: 'POST' }); location.reload(); }
     function now() { return new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 
     function log(msg, type='info') {
@@ -1766,7 +1773,12 @@
       c.scrollTop = c.scrollHeight;
     }
 
-    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    // Escapa también comillas: el resultado se usa dentro de atributos (title="...", href="...").
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+    // Para argumentos de onclick='fn('...')': encodeURIComponent deja pasar la comilla simple.
+    function encArg(s) { return encodeURIComponent(s).replace(/'/g, '%27'); }
+    // Un href armado con datos solo puede ser http(s): nunca javascript: ni data:.
+    function urlSegura(u) { return /^https?:\/\//i.test(u || '') ? escHtml(u) : '#'; }
 
     /* ═══════════════════════════════════════════════════════════════════════
        PARTICLES BACKGROUND
@@ -2097,9 +2109,9 @@
         }
         list.innerHTML = d.urls.map(function(u) {
           return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--hairline)">'
-            + '<div style="min-width:0"><div style="font-size:0.8rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+u.url+'">'+u.url+'</div>'
+            + '<div style="min-width:0"><div style="font-size:0.8rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
             + '<div style="font-size:0.7rem;color:var(--text-lo)">'+(u.estado==='activo'?'✓ activa':'✗ inactiva')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
-            + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente" onclick="deleteTrustedUrl(\''+encodeURIComponent(u.url)+'\')">✕</button>'
+            + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
             + '</div>';
         }).join('');
       } catch(e) {}
@@ -2876,8 +2888,8 @@
         item.innerHTML =
           '<div class="suggestion-info"><div class="suggestion-url">' + escHtml(u.dominio || u.url) + '</div>' + titulo + '</div>' +
           '<div class="suggestion-actions">' +
-            '<button class="btn btn-sm btn-primary" onclick="addSug(\'' + encodeURIComponent(u.url) + '\', this)">Agregar</button>' +
-            '<button class="icon-btn" title="Descartar" aria-label="Descartar recomendación" onclick="descartarSug(\'' + encodeURIComponent(u.url) + '\', this)">✕</button>' +
+            '<button class="btn btn-sm btn-primary" onclick="addSug(\'' + encArg(u.url) + '\', this)">Agregar</button>' +
+            '<button class="icon-btn" title="Descartar" aria-label="Descartar recomendación" onclick="descartarSug(\'' + encArg(u.url) + '\', this)">✕</button>' +
           '</div>';
         list.appendChild(item);
       });
@@ -3362,7 +3374,7 @@
           day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
         }) : '';
         abrirModal();
-        body.innerHTML = marked.parse(d.nota.contenido);
+        body.innerHTML = DOMPurify.sanitize(marked.parse(d.nota.contenido));
         check.innerHTML = '';
         comm.textContent = '';
 
@@ -3378,7 +3390,7 @@
           var fu = document.createElement('div');
           fu.className = 'fuentes-nota';
           fu.innerHTML = '<div class="fuentes-nota-titulo">Noticias usadas</div>' + d.nota.fuentes.map(function(f) {
-            return '<a href="' + escHtml(f.url || '#') + '" target="_blank" rel="noopener">' + escHtml(f.titulo) + '</a>';
+            return '<a href="' + urlSegura(f.url) + '" target="_blank" rel="noopener">' + escHtml(f.titulo) + '</a>';
           }).join('');
           check.appendChild(fu);
         }
@@ -3411,7 +3423,7 @@
             var k = entry[0], v = entry[1];
             var item = document.createElement('div');
             item.className = 'check-item ' + (v ? 'ok' : 'fail');
-            item.innerHTML = '<div class="check-dot"></div> ' + k.replace(/_/g, ' ');
+            item.innerHTML = '<div class="check-dot"></div> ' + escHtml(k.replace(/_/g, ' '));
             check.appendChild(item);
           });
           if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
