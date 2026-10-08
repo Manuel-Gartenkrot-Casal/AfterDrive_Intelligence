@@ -253,3 +253,24 @@ def test_con_openrouter_los_embeddings_van_a_nvidia_si_hay_key(transporte, openr
     t = transporte([Resp(body={"data": [{"index": 0, "embedding": [1.0]}]})])
     llm.embeber(["x"])
     assert t.posts[0]["url"].startswith("https://integrate.api.nvidia.com")
+
+
+def test_set_proveedor_local_se_rechaza_si_lm_studio_no_responde(transporte, monkeypatch):
+    # En Render no hay LM Studio: elegir "local" dejaba la generación programada
+    # fallando todos los días hasta que alguien volvía a otro proveedor.
+    def sin_respuesta(url, *, headers, timeout):
+        raise ConnectionError("connection refused")
+
+    transporte([])
+    monkeypatch.setenv("AI_PROVIDER", "nvidia")
+    monkeypatch.setitem(llm._transporte, "get", sin_respuesta)
+    r = llm.set_proveedor("local")
+    assert not r["success"] and "LM Studio" in r["error"]
+    assert llm.proveedor_activo() == "nvidia"
+
+
+def test_set_proveedor_local_se_acepta_si_lm_studio_responde(transporte, monkeypatch):
+    transporte([], modelos=["mistral-7b"])
+    monkeypatch.setenv("AI_PROVIDER", "nvidia")
+    r = llm.set_proveedor("local")
+    assert r["success"] and llm.proveedor_activo() == "local"

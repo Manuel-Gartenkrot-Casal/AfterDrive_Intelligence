@@ -2867,6 +2867,7 @@
           log('Proveedor cambiado a: ' + provider + ' (' + d.model + ')', 'success');
         } else {
           log('Error: ' + d.error, 'error');
+          showToast(d.error, 'error');
         }
       } catch(e) { log('Error al cambiar proveedor', 'error'); }
     }

@@ -237,6 +237,14 @@ def set_proveedor(nombre: str) -> dict:
         return {"success": False, "error": "No hay API key de NVIDIA configurada."}
     if nombre == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
         return {"success": False, "error": "No hay API key de OpenRouter configurada."}
+    if nombre == "local":
+        # La elección se persiste: aceptar "local" donde no hay LM Studio (p. ej.
+        # en Render) deja fallando la generación programada hasta que alguien lo note.
+        base_url = _perfil("local").base_url
+        try:
+            _transporte["get"](f"{base_url}/models", headers={}, timeout=5)
+        except Exception:
+            return {"success": False, "error": f"LM Studio no responde en {base_url}. Se mantiene el proveedor actual."}
     os.environ["AI_PROVIDER"] = nombre
     _disponible_cache.pop(nombre, None)
     disponible()
