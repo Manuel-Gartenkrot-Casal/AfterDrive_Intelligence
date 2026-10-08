@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Ingresar · AfterDrive Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/login.css">
+  <script src="/static/login.js" defer></script>
+</head>
+<body>
+  <main class="access-shell">
+    <section class="access-story" aria-labelledby="access-title">
+      <a class="access-brand" href="/" aria-label="AfterDrive Intelligence">
+        <svg aria-hidden="true" viewBox="0 0 32 32"><rect width="32" height="32" rx="8"/><path d="M10 22 16 10 22 22"/></svg>
+        <span>AfterDrive<small>Intelligence</small></span>
+      </a>
+      <div class="story-copy">
+        <p class="overline">AUTOMOTRIZ Y POSTVENTA</p>
+        <h1 id="access-title">Información que<br>se convierte<br>en <em>criterio.</em></h1>
+        <p class="story-description">Tu espacio para reunir noticias del sector, darles una voz y revisar cada contenido.</p>
+        <div class="editorial-sequence" aria-label="Flujo editorial">
+          <span>Fuentes</span><i aria-hidden="true"></i><span>Redacción</span><i aria-hidden="true"></i><span>Revisión</span>
+        </div>
+      </div>
+      <p class="story-footer">AfterDrive Intelligence <span>Espacio editorial</span></p>
+    </section>
+    <section class="access-form-panel" aria-labelledby="form-title">
+      <div class="access-form-wrap">
+        <div class="access-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></div>
+        <p class="overline">ACCESO AL EQUIPO</p>
+        <h2 id="form-title">Volvé a tu mesa<br>de trabajo.</h2>
+        <p class="form-description">Ingresá con tus credenciales para continuar.</p>
+        <form id="login-form" novalidate>
+          <label for="usuario">Usuario</label>
+          <input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="Tu usuario" aria-describedby="login-error">
+          <label for="password">Contraseña</label>
+          <div class="password-field">
+            <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Tu contraseña" aria-describedby="caps-warning login-error">
+            <button type="button" id="password-toggle" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <p id="caps-warning" class="caps-warning" hidden>Bloq Mayús está activado.</p>
+          <p id="login-error" role="alert" hidden></p>
+          <button type="submit" id="login-submit"><span>Ingresar al espacio editorial</span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+          <p id="login-status" class="sr-only" role="status"></p>
+        </form>
+        <p class="access-help">¿Necesitás acceso? Contactá al administrador de tu equipo.</p>
+      </div>
+      <div class="access-private"><span aria-hidden="true"></span>Acceso privado · AfterDrive</div>
+    </section>
+  </main>
+</body>
+</html>

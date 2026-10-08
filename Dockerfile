@@ -40,6 +40,7 @@ COPY ingesta.py .
 COPY corridas.py .
 COPY embeddings.py .
 COPY flask_api.py .
+COPY auth.py .
 COPY config_store.py .
 COPY historial.py .
 COPY generar_articulo.py .

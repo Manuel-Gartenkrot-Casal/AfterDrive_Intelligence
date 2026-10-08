@@ -6,6 +6,29 @@ Extrae artículos de múltiples fuentes, los guarda en MongoDB Atlas y genera co
 
 ---
 
+## Acceso al dashboard (Front-Testing)
+
+Flask sirve el login en `http://localhost:5000/`. Configurá `ADMIN_USER`,
+`ADMIN_PASSWORD_HASH` y `SECRET_KEY` en tu `.env` local o en Render. Sin ellas,
+el acceso permanece cerrado y el formulario informa que falta configuración.
+La sesión y los endpoints usan el mismo contrato que `Render_Testing`.
+
+Para generar un hash sin escribir la contraseña en el historial de la terminal:
+
+```bash
+python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass('Contraseña: ')))"
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Guardá el primer resultado como `ADMIN_PASSWORD_HASH` entre comillas simples y
+el segundo como `SECRET_KEY`. No los compartas ni los versiones. `CRON_TOKEN`
+autoriza exclusivamente los endpoints de corridas automáticas mediante
+`Authorization: Bearer <CRON_TOKEN>`; el scheduler interno no lo necesita.
+
+Al cambiar el frontend, copiá `express/src/public/` a `static/` y reiniciá Flask
+si cambiaste configuración o código Python. La sección de arquitectura siguiente
+corresponde al despliegue anterior con proxy Express.
+
 ## Arquitectura
 
 ```

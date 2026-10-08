@@ -7,6 +7,7 @@
   <!-- Versión fija: desde marked 16 el paquete ya no trae marked.min.js en la
        raíz, así que la URL sin versión apunta a un archivo inexistente y
        marked.parse falla en todo el dashboard. -->
+  <script src="/static/session.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,6 +82,7 @@
 <button aria-pressed="false" class="prov-btn" data-idioma="pt" title="Traduzir a página para o português" type="button">PT</button>
 </div>
 <div aria-hidden="true" hidden="" id="google_translate_element" translate="no"></div>
+<button type="button" class="session-exit" id="session-exit" title="Cerrar sesión" aria-label="Cerrar sesión"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4H4v16h5M13 8l4 4-4 4M8 12h13"/></svg><span>Salir</span></button>
 <button aria-label="Cambiar tema" class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema"><span>☾</span></button>
 </div>
 </header><div class="stats-grid">
@@ -116,9 +118,10 @@
 <main id="workspace-main" tabindex="-1">
 <div class="workspace-heading"><div><div class="eyebrow">MESA DE TRABAJO</div><h1 id="workspace-title">Redacción</h1><p id="workspace-description">Convertí noticias del sector en contenido con una voz propia.</p></div></div>
 <section aria-label="Redacción" class="workspace-view" id="view-redaccion">
-<div aria-label="Tipo de contenido" class="writing-tabs" role="tablist">
-<button aria-controls="writing-nota" aria-selected="true" id="tab-nota" onclick="selectWriting('nota')" role="tab">Nota AfterDrive <span>Por categorías y región</span></button>
-<button aria-controls="writing-articulo" aria-selected="false" id="tab-articulo" onclick="selectWriting('articulo')" role="tab" tabindex="-1">Artículo por tema <span>Una búsqueda específica</span></button>
+<div class="writing-mode-label" id="writing-mode-label">Tipo de contenido</div>
+<div aria-labelledby="writing-mode-label" class="writing-tabs" role="tablist">
+<button aria-controls="writing-nota" aria-selected="true" id="tab-nota" onclick="selectWriting('nota')" role="tab"><svg class="mode-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span class="mode-copy"><strong>Nota AfterDrive</strong><span>Por categorías y región</span></span><span class="mode-check" aria-hidden="true">✓</span></button>
+<button aria-controls="writing-articulo" aria-selected="false" id="tab-articulo" onclick="selectWriting('articulo')" role="tab" tabindex="-1"><svg class="mode-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="mode-copy"><strong>Artículo por tema</strong><span>Una búsqueda específica</span></span><span class="mode-check" aria-hidden="true">✓</span></button>
 </div>
 <div class="editorial-guidance"><strong>Definí el enfoque.</strong> Elegí las fuentes temáticas y la voz. Al terminar, revisá el texto y su evaluación antes de usarlo.</div>
 <div aria-labelledby="tab-nota" id="writing-nota" role="tabpanel"><div class="fase2-section"><div class="note-actions"><span class="save-status" id="editorial-save-status" role="status">Las selecciones se guardan al cambiarlas</span>

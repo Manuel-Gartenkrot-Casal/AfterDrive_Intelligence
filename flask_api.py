@@ -4,8 +4,8 @@ import threading
 import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
-from flask_cors import CORS
 
+import auth
 import config_store
 import corridas
 import historial
@@ -23,11 +23,14 @@ except Exception:
     pass
 
 app = Flask(__name__)
-CORS(app)
+auth.init_app(app)
 
-# Dashboard estático (build del frontend Express). Si no está presente
-# (dev local sin build), se responde el JSON de estado de la API.
+# Dashboard estático: el build vive en static/; en local se puede servir
+# desde express/src/public cuando todavía no existe la copia.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if not os.path.isdir(_STATIC_DIR):
+    _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "express", "src", "public")
+app.static_folder = _STATIC_DIR
 
 
 # ── Endpoint Raíz ──────────────────────────────────────────────────────────────
@@ -35,10 +38,19 @@ _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 @app.route("/")
 def root():
-    index_path = os.path.join(_STATIC_DIR, "index.html")
-    if os.path.isfile(index_path):
-        return send_from_directory(_STATIC_DIR, "index.html")
-    return jsonify({"status": "online", "service": "After Drive Intelligence API"}), 200
+    archivo = "index.html" if auth.hay_sesion() else "login.html"
+    return send_from_directory(_STATIC_DIR, archivo)
+
+
+@app.after_request
+def session_headers(response):
+    # Authenticated responses must not be reused after logout, even via Back.
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
 
 
 # ── Manejadores Globales de Errores ────────────────────────────────────────────

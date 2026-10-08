@@ -168,8 +168,14 @@ def client(monkeypatch, base):
     monkeypatch.setattr(scheduler, "aplicar", lambda: None)
     monkeypatch.setattr(db_module, "db", base)
     import flask_api
+    monkeypatch.setenv("ADMIN_USER", "test-admin")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "configured-in-test")
+    monkeypatch.setitem(flask_api.app.config, "SECRET_KEY", "test-only-session-key")
+    c = flask_api.app.test_client()
+    with c.session_transaction() as session:
+        session["usuario"] = "test-admin"
 
-    return flask_api.app.test_client()
+    return c
 
 
 def test_endpoints_de_historial(client):

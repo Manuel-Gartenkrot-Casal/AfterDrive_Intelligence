@@ -21,7 +21,13 @@ def client(monkeypatch):
     monkeypatch.setattr(scheduler, "iniciar", lambda: None)
     monkeypatch.setattr(scheduler, "aplicar", lambda: None)
     import flask_api
-    return flask_api.app.test_client(), store
+    monkeypatch.setenv("ADMIN_USER", "test-admin")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "configured-in-test")
+    monkeypatch.setitem(flask_api.app.config, "SECRET_KEY", "test-only-session-key")
+    c = flask_api.app.test_client()
+    with c.session_transaction() as session:
+        session["usuario"] = "test-admin"
+    return c, store
 
 
 def test_guardar_y_leer_hora_de_scraping(client):

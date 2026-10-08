@@ -40,6 +40,15 @@ services:
       - key: RENDER_EXTERNAL_URL
         sync: false
 
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CRON_TOKEN
+        generateValue: true
+
 # ────────────────────────────────────────────────────────────────────────────────
 # CRON JOBS (SOLO PLAN PAGO — Render no permite cron en free tier)
 #
@@ -60,7 +69,13 @@ services:
     schedule: "30 8 * * *"   # 08:30 UTC = 05:30 ART
     plan: starter            # cron no existe en plan free
     buildCommand: pip install requests
-    startCommand: python -c "import requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-automation', timeout=120)"
+    envVars:
+      - key: CRON_TOKEN
+        fromService:
+          type: web
+          name: afterdrive-intelligence
+          envVarKey: CRON_TOKEN
+    startCommand: python -c "import os, requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-automation', headers=dict(Authorization='Bearer ' + os.environ['CRON_TOKEN']), timeout=120).raise_for_status()"
   - type: cron
     name: afterdrive-generacion-diaria
     runtime: python
@@ -68,4 +83,10 @@ services:
     schedule: "0 14 * * *"   # 14:00 UTC = 11:00 ART
     plan: starter            # cron no existe en plan free
     buildCommand: pip install requests
-    startCommand: python -c "import requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-generacion', timeout=120)"
+    envVars:
+      - key: CRON_TOKEN
+        fromService:
+          type: web
+          name: afterdrive-intelligence
+          envVarKey: CRON_TOKEN
+    startCommand: python -c "import os, requests; requests.post('https://afterdrive-intelligence.onrender.com/api/run-generacion', headers=dict(Authorization='Bearer ' + os.environ['CRON_TOKEN']), timeout=120).raise_for_status()"

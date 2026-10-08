@@ -76,7 +76,7 @@ def main():
             return
         path = url.path
         asset = "index.html" if path == "/" else path.removeprefix("/static/")
-        if asset in {"index.html", "workspace.css", "workspace.js"}:
+        if asset in {"index.html", "workspace.css", "workspace.js", "session.js", "historial.js", "traductor.js"}:
             content_type = {"html": "text/html", "css": "text/css", "js": "text/javascript"}[asset.split(".")[-1]]
             request.fulfill(body=(ROOT / asset).read_text(encoding="utf-8"), content_type=content_type)
             return
