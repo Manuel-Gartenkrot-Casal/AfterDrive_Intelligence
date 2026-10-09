@@ -25,9 +25,10 @@ Este documento explica la arquitectura parte por parte para que alguien nuevo pu
 7. [Configuración](#7-configuración)
 8. [Tareas automáticas (scheduler)](#8-tareas-automáticas-scheduler)
 9. [API (endpoints)](#9-api-endpoints)
-10. [Cómo correrlo](#10-cómo-correrlo)
+10. [Tutorial: clonar y ejecutar el proyecto](#10-tutorial-clonar-y-ejecutar-el-proyecto)
 11. [Puntos de atención y deuda conocida](#11-puntos-de-atención-y-deuda-conocida)
-12. [Otros archivos del repo](#12-otros-archivos-del-repo)
+12. [Limitaciones de infraestructura y mejoras a futuro](#12-limitaciones-de-infraestructura-y-mejoras-a-futuro)
+13. [Otros archivos del repo](#13-otros-archivos-del-repo)
 
 ---
 
@@ -376,38 +377,147 @@ Todo en `flask_api.py`. Los endpoints `stream/*` devuelven el log del proceso en
 
 ---
 
-## 10. Cómo correrlo
+## 10. Tutorial: clonar y ejecutar el proyecto
 
-### Docker (lo más parecido a producción)
+Esta guía va de cero a tener el sistema generando una nota. Hay dos formas de correrlo: **local con Python** (la más cómoda para desarrollar) o **con Docker** (idéntico a producción). Los pasos 1 a 4 son comunes a las dos.
+
+### Paso 1 — Instalar lo necesario
+
+| Herramienta | Para qué | Obligatoria |
+|---|---|---|
+| [Git](https://git-scm.com/downloads) | Clonar el repo | Sí |
+| [Python 3.12](https://www.python.org/downloads/) (mínimo 3.11) | Correr el backend | Sí, si corrés local |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Correr en contenedor | Solo si usás Docker |
+| [Node.js 20](https://nodejs.org/) | Compilar el dashboard o usar Express | No (opcional) |
+| [LM Studio](https://lmstudio.ai/) | IA local sin APIs externas | No (opcional) |
+
+> En Windows, al instalar Python marcá la opción **"Add python.exe to PATH"**.
+
+### Paso 2 — Clonar el repositorio
 
 ```bash
-cp .env.example .env      # completar al menos MONGO_URI y las keys del proveedor de IA
+git clone https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence.git
+cd AfterDrive_Intelligence
+```
+
+La rama `main` es la estable. Producción (Render) despliega desde la rama `Render_Testing`.
+
+### Paso 3 — Crear la base de datos en MongoDB Atlas
+
+Si ya tenés acceso al cluster del proyecto, pedí la cadena de conexión y saltá al paso 4.
+
+1. Crear una cuenta en [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) y un cluster gratuito (**M0**).
+2. **Database Access** → crear un usuario con contraseña.
+3. **Network Access** → agregar tu IP (o `0.0.0.0/0` para permitir cualquier origen; necesario para Render, que no tiene IP fija en el plan free).
+4. **Connect → Drivers** → copiar la cadena `mongodb+srv://usuario:password@cluster.xxxxx.mongodb.net/...`.
+
+No hace falta crear colecciones ni la base: el código usa la base `afterdrive` y las colecciones se crean solas al primer uso.
+
+### Paso 4 — Conseguir las API keys y armar el `.env`
+
+| Servicio | Para qué | Dónde se saca |
+|---|---|---|
+| OpenRouter | LLM de redacción/clasificación (default) | <https://openrouter.ai/keys> |
+| NVIDIA Build | Embeddings (y LLM alternativo) | <https://build.nvidia.com> → "Get API Key" |
+| TypeSafe (Jev) | Clasificador de relevancia (opcional) | Pedirla al equipo |
+
+```bash
+cp .env.example .env        # en Windows (cmd): copy .env.example .env
+```
+
+Abrí `.env` y completá como mínimo:
+
+```env
+MONGO_URI=mongodb+srv://usuario:password@cluster.xxxxx.mongodb.net/?appName=AfterDrive
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-...
+EMBEDDINGS_PROVIDER=nvidia
+NVIDIA_API_KEY=nvapi-...
+```
+
+Sin `TYPESAFE_API_KEY` la clasificación la hace el LLM (funciona igual). El `.env` está en `.gitignore`: **nunca lo subas al repo**.
+
+### Paso 5A — Ejecutar local con Python
+
+```bash
+# 1. Crear y activar un entorno virtual
+python -m venv .venv
+source .venv/bin/activate          # Linux / macOS
+.venv\Scripts\activate             # Windows
+
+# 2. Instalar dependencias
+pip install -r requirements.txt
+
+# 3. (Opcional) Instalar Chromium para el scraping con navegador.
+#    Solo se usa si la máquina tiene más de 600 MB de RAM libre (perfil medio/alto).
+python -m patchright install chromium
+
+# 4. Poner el dashboard donde Flask lo sirve
+mkdir static                       # si ya existe, ignorar el error
+cp express/src/public/index.html static/          # Windows: copy express\src\public\index.html static\
+
+# 5. Levantar el servidor
+python flask_api.py
+```
+
+Abrir <http://localhost:5000>. En la consola tienen que aparecer líneas como:
+
+```
+[DB] Conectando a MongoDB: mongodb+srv://***@cluster.xxxxx.mongodb.net
+[PERFIL] RAM container: ... MB → perfil 'alto'
+[Scheduler] Scraping a las 08:30 UTC cada 1 día(s).
+```
+
+> Si modificás `express/src/public/index.html`, volvé a copiarlo a `static/` (o `static/` queda con la versión vieja).
+
+### Paso 5B — Ejecutar con Docker
+
+```bash
 docker build -t afterdrive .
 docker run --env-file .env -p 5000:5000 afterdrive
-# Abrir http://localhost:5000
 ```
 
-O con dos contenedores (Flask + Express): `docker compose up --build` y abrir `http://localhost:3000` (ver limitaciones de Express en la sección 11).
+Abrir <http://localhost:5000>. El primer build tarda varios minutos (descarga Chromium). Para simular la RAM de Render: `docker run --env-file .env -p 5000:5000 -m 512m afterdrive`.
 
-### Local sin Docker
+Alternativa con dos contenedores (Flask + proxy Express, puerto 3000): `docker compose up --build`. Tiene funciones del dashboard rotas (ver sección 11), así que se recomienda la opción de arriba.
 
-```bash
-pip install -r requirements.txt
-python -m patchright install chromium      # navegador para el scraping con perfil alto/medio
-cp .env.example .env
+### Paso 6 — Primer uso: de base vacía a la primera nota
 
-# Dashboard: Flask lo sirve desde ./static
-mkdir -p static && cp express/src/public/index.html static/
+Con la base vacía, el orden es:
 
-python flask_api.py                         # http://localhost:5000
-```
+1. **Verificar la IA**: en el encabezado del dashboard el indicador tiene que estar conectado y mostrar el proveedor. También se puede probar con `python lm_studio.py`.
+2. **Cargar ejemplos del blog** (sección "Generador de Notas" → scrapear ejemplos): baja notas reales de AfterDrive por categoría. Sin esto, la Fase 2 genera sin referencia de estilo.
+3. **Agregar fuentes de noticias** ("Agregar URL Confiable"): pegar la URL del listado de noticias de un sitio del rubro. Si la IA aprueba algún artículo, queda como fuente activa. "Descubrimiento de Fuentes" sugiere sitios candidatos.
+4. **Generar una nota**: en "Generador de Notas" elegir categorías (y opcionalmente regiones, clientes, persona, tema) y generar. El texto aparece en vivo y queda guardado en `notas_fase2`.
+5. **Dejarlo automático**: guardar las categorías/regiones en la configuración de Fase 2 y verificar en "Automatizacion" / "Generacion Automatica de Notas" que estén activas.
 
-Para usar IA local hay que tener LM Studio corriendo en el puerto 1234 con un modelo de chat y uno de embeddings cargados, y `AI_PROVIDER=local`.
+### Paso 7 — Desplegar en Render
+
+1. En [Render](https://render.com): **New → Web Service** → conectar este repo de GitHub → runtime **Docker** (o **New → Blueprint** para usar `render.yaml`).
+2. Rama: `Render_Testing` (o la que se defina como productiva).
+3. Cargar las variables de entorno del `.env` en **Environment** (las marcadas `sync: false` en `render.yaml` se cargan a mano: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`).
+4. Health check path: `/health`.
+5. Cada push a la rama despliega automáticamente.
+6. Configurar un monitor externo (UptimeRobot / cron-job.org) que haga `GET /health` cada 5–10 minutos para que la instancia no se duerma.
+
+### Problemas frecuentes
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| `ServerSelectionTimeoutError` al arrancar | Mongo no acepta la conexión | Revisar `MONGO_URI` y que tu IP esté en *Network Access* de Atlas |
+| Error HTTP 404/410 al generar | El modelo de IA fue dado de baja | Cambiar `OPENROUTER_MODEL` / `NVIDIA_MODEL` / `NVIDIA_EMB_MODEL` por uno del listado que imprime el error |
+| Error HTTP 429 | Límite de uso del plan gratuito del proveedor | Esperar, o cambiar de proveedor/modelo |
+| Los artículos se guardan sin `embedding` | Falta `NVIDIA_API_KEY` o `EMBEDDINGS_PROVIDER` mal configurado | Configurarlo y correr `python embeddings.py` |
+| "Sin categorías activas guardadas" en el log | La generación automática no tiene configuración | Guardar categorías en la config de Fase 2 del dashboard |
+| La raíz `/` devuelve un JSON en vez del dashboard | Falta `static/index.html` | Paso 5A, punto 4 |
+| El scraping no corrió a la hora programada en Render | La instancia estaba dormida | Monitor externo (paso 7.6) o disparar `POST /api/run-automation` |
 
 ### Scripts por línea de comandos
 
+Todos leen el `.env`, así que se pueden correr sueltos (con el entorno virtual activado):
+
 ```bash
-python run_automation.py 10                                    # scraping de fuentes confiables
+python run_automation.py 10                                    # scraping de fuentes confiables (10 por fuente)
 python add_url.py https://sitio.com/noticias                   # probar y dar de alta una fuente
 python discover_sources.py                                     # buscar fuentes nuevas
 python scraper_afterdrive.py --tags autopartes marketplaces --max 5
@@ -436,7 +546,61 @@ Cosas a tener en cuenta antes de seguir desarrollando:
 
 ---
 
-## 12. Otros archivos del repo
+## 12. Limitaciones de infraestructura y mejoras a futuro
+
+### 12.1 Las trabas actuales
+
+El servicio corre en el **plan free de Render**: **512 MB de RAM**, **0,1 CPU** (una décima de núcleo) y la instancia **se duerme tras ~15 minutos sin tráfico**. Eso condiciona casi todo:
+
+| Traba | Por qué pasa | Efecto |
+|---|---|---|
+| **Sin navegador headless** | Con < 600 MB el sistema elige el perfil `bajo` y nunca usa Chromium | Los sitios con Cloudflare o contenido cargado por JavaScript fallan o caen a la copia de Wayback (más lenta y a veces vieja). Igual la imagen Docker incluye Chromium, que ocupa espacio y alarga cada deploy sin usarse |
+| **Scraping lento** | 0,1 CPU y solo 2 hilos en perfil `bajo`; `trafilatura`/`lxml` parsean HTML con CPU | Cada fuente tarda bastante; con muchas fuentes el scraping diario se estira mucho |
+| **Embeddings comparados en Python puro** | Los vectores (2048 números cada uno) se traen todos de Mongo a memoria y la similitud coseno se calcula con bucles de Python | El generador Fase 1 crece en tiempo y RAM con cada artículo (compara cada candidato contra cada nota ya generada). Con cientos de documentos ya se nota; con miles puede tardar minutos o quedarse sin memoria |
+| **Un proceso nuevo por cada ejecución desde el dashboard** | Los endpoints con streaming lanzan el script como subproceso, que vuelve a importar todo (pymongo, cliente de IA, etc.) | Dos procesos Python en paralelo dentro de 512 MB; arranque lento y riesgo de que Render mate el contenedor por memoria |
+| **Scheduler atado a que la instancia esté despierta** | APScheduler vive dentro del proceso web | Si Render duerme la instancia o la reinicia, la tarea del día no corre. Hoy se depende del keep-alive y de un monitor externo |
+| **Un solo worker** | Necesario para no duplicar el scheduler | Una generación larga ocupa uno de los 4 hilos durante minutos; varias acciones simultáneas desde el dashboard compiten entre sí |
+| **Modelos gratuitos de IA** | OpenRouter/NVIDIA en sus planes gratuitos | Límites diarios y por minuto (errores 429), modelos que se dan de baja sin aviso (404/410) y calidad variable de redacción |
+
+> Importante: **la redacción en sí no usa la CPU de Render**. El LLM corre en los servidores del proveedor; Render solo espera la respuesta. Por eso, para la *calidad* y *velocidad* de las notas pesa más el modelo elegido que el plan de Render. Lo que Render limita es el **scraping, el procesamiento de embeddings y la estabilidad** de las tareas programadas.
+
+### 12.2 Alternativas de infraestructura
+
+Ordenadas de menor a mayor cambio. Los precios son los publicados al momento de escribir esto; conviene verificarlos.
+
+| Alternativa | Qué cambia | Por qué estaría bueno | Contras |
+|---|---|---|---|
+| **MongoDB Atlas Vector Search** | Reemplazar la comparación coseno en Python por `$vectorSearch` sobre un índice vectorial en Atlas (disponible en el tier gratuito M0) | Mueve el cálculo pesado a Atlas: Render ya no carga todos los vectores en RAM y la búsqueda de vecinos pasa de segundos/minutos a milisegundos. Es el cambio con mejor relación costo/beneficio | Requiere crear el índice y reescribir la selección de vecinos en `generar_articulo.py` |
+| **Tareas pesadas en GitHub Actions** | Un workflow programado (`on: schedule`) que corra `run_automation.py` y `generar_nota_fase2.py` directamente | Gratis (ilimitado en repos públicos, 2000 min/mes en privados), cada corrida tiene ~7 GB de RAM y 2+ CPUs, **permite usar Chromium**, no depende de que Render esté despierto y deja logs de cada corrida. Render queda solo para el dashboard | Las credenciales van como *secrets* del repo; el cron de Actions puede demorarse algunos minutos |
+| **Monitor externo como "cron"** | cron-job.org / UptimeRobot hace `POST /api/run-automation` y `/api/run-generacion` a hora fija | Gratis y sin tocar código; reemplaza a los cron jobs de Render (pagos) | Sigue corriendo dentro de los 512 MB |
+| **Render Starter (~USD 7/mes)** | Mismo servicio, plan pago | No se duerme nunca (el scheduler pasa a ser confiable) y habilita los cron jobs de `render.yaml` | Sigue teniendo 512 MB: no resuelve Chromium ni la RAM |
+| **Render Standard (~USD 25/mes)** | 2 GB de RAM, 1 CPU | Perfil `alto` automático: Chromium, 4 hilos, scraping mucho más rápido y robusto | Costo mensual |
+| **Google Cloud Run (servicio + Jobs + Cloud Scheduler)** | El dashboard como servicio que escala a cero y el scraping/generación como *jobs* programados | Se paga por uso (con un tier gratuito amplio); cada job puede tener 2–4 GB y varias CPUs solo mientras corre | Más configuración inicial (cuenta GCP, facturación) |
+| **VM propia (p. ej. Oracle Cloud Always Free, ARM con hasta 24 GB de RAM)** | Correr `docker compose` en una VM | Muchos recursos gratis, permite incluso un modelo local con Ollama/LM Studio (sin depender de APIs ni límites) | Hay que administrar el servidor (actualizaciones, seguridad, backups) |
+
+**Recomendación:** combinar **Atlas Vector Search** + **GitHub Actions para scraping y generación**, y dejar Render (free o Starter) solo para el dashboard. Es casi gratis y elimina las tres trabas principales: RAM, Chromium y scheduler.
+
+### 12.3 Mejoras de eficiencia en el código
+
+| Mejora | Por qué estaría buena |
+|---|---|
+| **Usar las noticias scrapeadas en la Fase 2 (RAG)** | Buscar en `articulos` las noticias más cercanas a las categorías/tema (por embeddings) y pasarlas al prompt. Las notas tendrían datos reales y actuales en lugar de depender de lo que "sabe" el modelo, que es la principal fuente de cifras inventadas |
+| **Usar `numpy` para la similitud coseno** (si no se adopta Vector Search) | Operaciones vectorizadas son decenas de veces más rápidas que los bucles de Python y ocupan menos memoria (un vector de 2048 `float32` = 8 KB contra ~64 KB como lista de Python) |
+| **Ejecutar en hilos en vez de subprocesos** | Reutiliza los módulos ya cargados y la conexión a Mongo; evita duplicar memoria en cada ejecución desde el dashboard |
+| **Ingesta por RSS / sitemaps** | Muchos sitios publican feeds: traen título, fecha y link sin descargar ni parsear la portada, con menos bloqueos y menos CPU. También acelera el alta de fuentes nuevas |
+| **No re-descargar lo ya procesado** | Antes de bajar un artículo, chequear si su URL ya está en `articulos` o `articulos_descartados` (existe `db.obtener_urls_procesados()` sin usar). Ahorra descargas, clasificaciones y embeddings repetidos |
+| **Clasificar en lote** | Mandar varios artículos por llamada al LLM (o filtrar primero por palabras clave) reduce llamadas y el riesgo de 429 |
+| **Guardar el motivo del descarte** | Permitiría medir y ajustar el clasificador (falsos rechazos) |
+| **No aprobar todo en modo degradado** | Si la IA no responde, dejar los artículos "pendientes de clasificar" en vez de aprobarlos |
+| **Deduplicar notas Fase 2** | Ya se guarda el embedding de cada nota; compararlo contra las anteriores evitaría generar notas casi iguales |
+| **Imagen Docker sin Chromium para Render** | Si producción nunca lo usa, quitarlo achica la imagen y acelera los deploys |
+| **Flujo de revisión + HubSpot** | Estados de nota (`borrador` → `aprobada`/`rechazada` → `publicada`) en el dashboard y publicación vía API de HubSpot (ver `HUBSPOT_INTEGRATION_GUIDE.md`) |
+| **Autenticación en el dashboard/API** | Hoy cualquiera con la URL puede disparar procesos y consumir la cuota de IA |
+| **Proveedor de IA pago o modelo local** | Un modelo pago económico (o uno local en una VM con recursos) da calidad más estable y elimina los límites y bajas sorpresivas de los modelos gratuitos. El costo por nota con modelos chicos es de centavos |
+
+---
+
+## 13. Otros archivos del repo
 
 | Archivo / carpeta | Qué es |
 |---|---|
