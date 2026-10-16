@@ -21,7 +21,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["db", "scraper", "scheduler", "lm_studio", "embeddings"]
+known-first-party = ["afterdrive"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -31,9 +31,12 @@ indent-style = "space"
 name = "after-drive-intelligence"
 version = "0.1.0"
 dependencies = [
-    "flask",
-    "flask-cors"
+    "flask"
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.vercel]
-entrypoint = "flask_api:app"
+entrypoint = "afterdrive/flask_api.py"

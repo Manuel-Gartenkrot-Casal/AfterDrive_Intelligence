@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Entrar · AfterDrive Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("ad-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <style>
+    /* Mismos tokens y material neumórfico que el dashboard (index.html). */
+    :root,
+    [data-theme="light"] {
+      --bg: #E3E8EF;
+      --sh-dark: rgba(150, 164, 186, 0.62);
+      --sh-light: rgba(255, 255, 255, 0.92);
+      --brand: #C23E60;
+      --brand-hover: #AE3353;
+      --brand-deep: #9A2B48;
+      --on-brand: #FFFFFF;
+      --err: #B83232;
+      --text-hi: #232B3A;
+      --text-mid: #465266;
+      --text-lo: #566276;
+      color-scheme: light;
+    }
+    [data-theme="dark"] {
+      --bg: #262B35;
+      --sh-dark: rgba(11, 13, 18, 0.7);
+      --sh-light: rgba(62, 70, 86, 0.55);
+      --brand: #F07A94;
+      --brand-hover: #F595AA;
+      --brand-deep: #E0607D;
+      --on-brand: #1B1E26;
+      --err: #FF8585;
+      --text-hi: #E8EBF1;
+      --text-mid: #BCC3CF;
+      --text-lo: #9DA6B5;
+      color-scheme: dark;
+    }
+    :root {
+      --raised: 7px 7px 16px var(--sh-dark), -7px -7px 16px var(--sh-light);
+      --raised-sm: 4px 4px 9px var(--sh-dark), -4px -4px 9px var(--sh-light);
+      --inset: inset 5px 5px 11px var(--sh-dark), inset -5px -5px 11px var(--sh-light);
+      --inset-sm: inset 3px 3px 6px var(--sh-dark), inset -3px -3px 6px var(--sh-light);
+      --font: 'Outfit', system-ui, sans-serif;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { background: var(--bg); }
+
+    body {
+      background: var(--bg);
+      color: var(--text-hi);
+      font-family: var(--font);
+      font-size: 0.9375rem;
+      line-height: 1.55;
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :focus { outline: none; }
+    :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+
+    .card {
+      width: 100%;
+      max-width: 380px;
+      padding: 32px;
+      border-radius: 22px;
+      background: var(--bg);
+      box-shadow: var(--raised);
+    }
+
+    .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }
+    .logo {
+      width: 52px; height: 52px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      box-shadow: var(--raised-sm);
+      color: var(--brand);
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      position: relative;
+    }
+    .logo::before {
+      content: '';
+      position: absolute; inset: 7px;
+      border-radius: 50%;
+      box-shadow: var(--inset-sm);
+    }
+    h1 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+    h1 span { color: var(--brand); font-weight: 500; }
+    .sub { font-size: 0.8125rem; color: var(--text-lo); margin-top: 2px; }
+
+    form { display: grid; gap: 16px; }
+    label { display: grid; gap: 8px; font-size: 0.8125rem; font-weight: 500; color: var(--text-mid); }
+
+    input {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--bg);
+      box-shadow: var(--inset-sm);
+      color: var(--text-hi);
+      font-family: var(--font);
+      font-size: 0.9rem;
+      transition: box-shadow 160ms var(--ease-out);
+    }
+    input:focus { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
+
+    button {
+      min-height: 44px;
+      margin-top: 8px;
+      padding: 10px 20px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--brand);
+      color: var(--on-brand);
+      box-shadow: var(--raised-sm), inset 1px 1px 2px rgba(255,255,255,0.25), inset -2px -2px 4px rgba(0,0,0,0.12);
+      font-family: var(--font);
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: box-shadow 160ms var(--ease-out), background 160ms, transform 160ms var(--ease-out);
+    }
+    button:hover { background: var(--brand-hover); }
+    button:active { background: var(--brand-deep); transform: scale(0.985); }
+    button:disabled {
+      cursor: not-allowed;
+      background: var(--bg);
+      color: var(--text-lo);
+      box-shadow: var(--inset-sm);
+    }
+
+    .error { min-height: 1.4em; font-size: 0.8125rem; font-weight: 500; color: var(--err); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">AD</div>
+      <div>
+        <h1>AfterDrive <span>Intelligence</span></h1>
+        <p class="sub">Ingresá para ver el panel</p>
+      </div>
+    </div>
+
+    <form id="form" novalidate>
+      <label>Usuario
+        <input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+      </label>
+      <label>Contraseña
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="entrar" type="submit">Entrar</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+  </main>
+
+  <script>
+    var form = document.getElementById('form');
+    var btn = document.getElementById('entrar');
+    var error = document.getElementById('error');
+
+    form.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      var usuario = document.getElementById('usuario').value.trim();
+      var password = document.getElementById('password').value;
+      if (!usuario || !password) {
+        error.textContent = 'Completá usuario y contraseña.';
+        return;
+      }
+      error.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+      try {
+        var r = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario: usuario, password: password })
+        });
+        if (r.ok) {
+          location.replace('/');
+          return;
+        }
+        var d = await r.json().catch(function () { return {}; });
+        error.textContent = d.error || 'No se pudo iniciar sesión.';
+      } catch (e) {
+        error.textContent = 'No se pudo conectar con el servidor.';
+      }
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    });
+  </script>
+</body>
+</html>
