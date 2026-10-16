@@ -377,13 +377,30 @@ def get_fase2_config():
 
 @app.route("/api/fase2/config", methods=["POST"])
 def set_fase2_config():
+    """Guarda la config de la Nota automática. Solo cambia las claves que vienen."""
     body = request.get_json(silent=True) or {}
+    presentes = [c for c in ("categorias", "regiones", "clientes") if c in body]
+    listas, error = _listas(body, *presentes)
+    if error:
+        return error
+    activo = body.get("puntapie_activo")
+    if activo is not None and not isinstance(activo, bool):
+        return jsonify({"success": False, "error": "Parámetro 'puntapie_activo' inválido."}), 400
+    puntapie_url = body.get("puntapie_url")
+    if puntapie_url is not None:
+        if not isinstance(puntapie_url, str):
+            return jsonify({"success": False, "error": "Parámetro 'puntapie_url' inválido."}), 400
+        puntapie_url = puntapie_url.strip()
+        if puntapie_url:
+            _, error = _url_publica_o_400({"url": puntapie_url})
+            if error:
+                return error
     cfg = config_store.set_fase2_config(
-        categorias=body.get("categorias"),
-        regiones=body.get("regiones"),
-        clientes=body.get("clientes"),
-        puntapie_activo=body.get("puntapie_activo"),
-        puntapie_url=body.get("puntapie_url"),
+        categorias=listas.get("categorias"),
+        regiones=listas.get("regiones"),
+        clientes=listas.get("clientes"),
+        puntapie_activo=activo,
+        puntapie_url=puntapie_url,
     )
     return jsonify({"success": True, **cfg})
 

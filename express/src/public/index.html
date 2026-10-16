@@ -1310,6 +1310,32 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
+       BARRA DE GUARDADO: aparece cuando la sección tiene cambios sin guardar
+       y queda pegada abajo mientras se scrollea la sección.
+       ═══════════════════════════════════════════════════════════════════════ */
+    .barra-guardar {
+      position: sticky; bottom: var(--s4); z-index: 50;
+      display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+      margin-top: var(--s5);
+      padding: var(--s3) var(--s3) var(--s3) var(--s5);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--brand);
+      border-radius: var(--r-md);
+      background: var(--bg);
+      box-shadow: var(--shadow-float);
+      animation: modalIn 0.2s var(--ease-out);
+    }
+    .barra-guardar[hidden] { display: none; }
+    .barra-texto { font-weight: 600; font-size: 0.9rem; }
+    .barra-estado { margin-right: auto; font-size: 0.8rem; color: var(--text-lo); }
+    .barra-estado.err { color: var(--err); }
+    @media (max-width: 640px) {
+      .barra-guardar { padding: var(--s3); }
+      .barra-estado { flex-basis: 100%; order: 3; }
+      .barra-guardar .btn { flex: 1; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
        CONFIRMAR: un único <dialog> nativo para toda acción destructiva.
        showModal() ya atrapa el foco, cierra con Esc y vuelve inerte el resto.
        ═══════════════════════════════════════════════════════════════════════ */
@@ -1472,7 +1498,7 @@
     <section class="agenda" data-seccion="programacion" aria-labelledby="agenda-title">
       <div class="section-head">
         <h2 class="section-title" id="agenda-title">Programación automática</h2>
-        <p class="section-sub">Arrastrá las agujas o escribí la hora. Los cambios se guardan solos. Hora de Argentina.</p>
+        <p class="section-sub">Arrastrá las agujas o escribí la hora y después guardá los cambios. Hora de Argentina.</p>
       </div>
       <div class="agenda-grid">
         <article class="agenda-card" id="agenda-scraping">
@@ -1557,9 +1583,15 @@
               <strong id="next-generacion">-</strong>
               <em class="agenda-estado" id="estado-generacion" aria-live="polite"></em>
             </div>
-            <p class="agenda-hint">Usa las categorías, regiones y clientes que dejes activos en el generador de abajo.</p>
+            <p class="agenda-hint">Usa las categorías, regiones y clientes guardados en Crear nota.</p>
           </footer>
         </article>
+      </div>
+      <div class="barra-guardar" id="barra-programacion" hidden>
+        <span class="barra-texto">Tenés cambios sin guardar en la programación</span>
+        <span class="barra-estado" role="status" aria-live="polite"></span>
+        <button type="button" class="btn" data-accion="descartar">Descartar</button>
+        <button type="button" class="btn btn-primary" data-accion="guardar">Guardar cambios</button>
       </div>
     </section>
 
@@ -1653,6 +1685,12 @@
         <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
       </div>
       <div id="f2-status" class="feedback"></div>
+      <div class="barra-guardar" id="barra-crear" hidden>
+        <span class="barra-texto">Cambiaste la configuración de la nota automática</span>
+        <span class="barra-estado" role="status" aria-live="polite"></span>
+        <button type="button" class="btn" data-accion="descartar">Descartar</button>
+        <button type="button" class="btn btn-primary" data-accion="guardar">Guardar cambios</button>
+      </div>
     </div>
 
     <!-- Fuentes de noticias -->
@@ -1825,6 +1863,84 @@
         dlg.addEventListener('close', function() { resolve(dlg.returnValue === 'si'); }, { once: true });
         dlg.showModal();
         $('confirmar-no').focus();
+      });
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       FORMULARIOS CON GUARDADO EXPLÍCITO
+       Cada sección editable compara su estado con el último guardado (base).
+       Si difieren aparece su barra con Guardar / Descartar; salir de la
+       sección o de la página con cambios pide confirmación.
+       def = { leer(), aplicar(estado), guardar(estado, base), despues()? }
+       ═══════════════════════════════════════════════════════════════════════ */
+    var FORMULARIOS = {};
+
+    function formulario(id, def) {
+      var barra = $('barra-' + id);
+      var estado = barra.querySelector('.barra-estado');
+      var btnGuardar = barra.querySelector('[data-accion="guardar"]');
+      var base = null;
+      var f = {
+        base: function() { return JSON.parse(base); },
+        sucio: function() { return base !== null && JSON.stringify(def.leer()) !== base; },
+        tomarBase: function() { base = JSON.stringify(def.leer()); f.marcar(); },
+        marcar: function() {
+          var sucio = f.sucio();
+          if (sucio && barra.hidden) { estado.textContent = ''; estado.classList.remove('err'); }
+          barra.hidden = !sucio;
+        },
+        descartar: function() { if (base !== null) def.aplicar(JSON.parse(base)); f.marcar(); },
+        quitarDeBase: function(clave, valor) {
+          var b = JSON.parse(base);
+          b[clave] = b[clave].filter(function(v) { return v !== valor; });
+          base = JSON.stringify(b);
+        },
+        guardar: async function() {
+          var actual = def.leer();
+          btnGuardar.disabled = true;
+          estado.classList.remove('err');
+          estado.textContent = 'Guardando...';
+          try {
+            await def.guardar(actual, JSON.parse(base));
+            base = JSON.stringify(actual);
+            f.marcar();
+            showToast('Cambios guardados', 'success');
+            if (def.despues) def.despues();
+          } catch (e) {
+            estado.classList.add('err');
+            estado.textContent = 'No se pudo guardar: ' + e.message;
+          } finally {
+            btnGuardar.disabled = false;
+          }
+        }
+      };
+      barra.querySelector('[data-accion="descartar"]').onclick = f.descartar;
+      btnGuardar.onclick = f.guardar;
+      FORMULARIOS[id] = f;
+      return f;
+    }
+
+    function hayCambiosSinGuardar() {
+      return Object.keys(FORMULARIOS).some(function(id) { return FORMULARIOS[id].sucio(); });
+    }
+
+    function initFormularios() {
+      antesDeSalirDeSeccion(async function(desde) {
+        var f = FORMULARIOS[desde];
+        if (!f || !f.sucio()) return true;
+        var salir = await confirmar({
+          titulo: 'Tenés cambios sin guardar',
+          mensaje: 'Si salís de esta sección, se pierden los cambios que no guardaste.',
+          accion: 'Descartar cambios',
+          cancelar: 'Seguir editando'
+        });
+        if (salir) f.descartar();
+        return salir;
+      });
+      window.addEventListener('beforeunload', function(ev) {
+        if (!hayCambiosSinGuardar()) return;
+        ev.preventDefault();
+        ev.returnValue = '';
       });
     }
 
@@ -2425,52 +2541,44 @@
       $('agenda-' + tipo).classList.toggle('pausada', !activo);
     }
 
-    function estadoAgenda(tipo, texto, error) {
-      var el = $('estado-' + tipo);
-      el.textContent = texto;
-      el.classList.toggle('err', !!error);
+    function leerAgenda(tipo) {
+      return Object.assign({
+        hora: $('hora-' + tipo).value,
+        interval_days: Math.max(1, parseInt($('dias-' + tipo).value, 10) || 1),
+        enabled: $('sw-' + tipo).classList.contains('active')
+      }, AGENDA[tipo].extra());
     }
 
-    function guardarAgenda(tipo) {
-      var cfg = AGENDA[tipo];
-      clearTimeout(cfg.timer);
-      estadoAgenda(tipo, 'Guardando...');
-      cfg.timer = setTimeout(async function() {
-        var body = Object.assign({
-          hora: $('hora-' + tipo).value,
-          interval_days: Math.max(1, parseInt($('dias-' + tipo).value, 10) || 1),
-          enabled: $('sw-' + tipo).classList.contains('active')
-        }, cfg.extra());
-        try {
-          var r = await fetch(cfg.endpoint, {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-          });
-          var d = await r.json();
-          if (!d.success) throw new Error(d.error || 'No se pudo guardar');
-          await cargarAgenda(tipo);
-          estadoAgenda(tipo, 'Guardado');
-          setTimeout(function() { estadoAgenda(tipo, ''); }, 2500);
-          updateStats();
-        } catch(e) {
-          estadoAgenda(tipo, e.message, true);
-          log('No se pudo guardar la programación de ' + tipo + ': ' + e.message, 'error');
-        }
-      }, 450);
+    function aplicarAgenda(tipo, c) {
+      $('hora-' + tipo).value = c.hora;
+      AGENDA[tipo].reloj.set(c.hora);
+      pintarAmPm(tipo, c.hora);
+      $('dias-' + tipo).value = c.interval_days || 1;
+      AGENDA[tipo].cargarExtra(c);
+      pintarActivo(tipo, c.enabled !== false);
     }
 
-    async function cargarAgenda(tipo) {
+    function marcarProgramacion() { if (FORMULARIOS.programacion) FORMULARIOS.programacion.marcar(); }
+
+    /* forzar: pisar los campos aunque haya cambios sin guardar (carga inicial). */
+    async function cargarAgenda(tipo, forzar) {
       try {
         var r = await fetch(AGENDA[tipo].endpoint);
         var d = await r.json();
         if (!d.success) return;
         if (d.zona) _zona = d.zona;
-        var hora = d.hora || (tipo === 'scraping' ? '05:30' : '11:00');
-        if (document.activeElement !== $('hora-' + tipo)) $('hora-' + tipo).value = hora;
-        AGENDA[tipo].reloj.set(hora);
-        pintarAmPm(tipo, hora);
-        $('dias-' + tipo).value = d.interval_days || 1;
-        AGENDA[tipo].cargarExtra(d);
-        pintarActivo(tipo, d.enabled !== false);
+        var form = FORMULARIOS.programacion;
+        var pisar = forzar || !form || !form.sucio();
+        if (pisar) {
+          aplicarAgenda(tipo, {
+            hora: d.hora || (tipo === 'scraping' ? '05:30' : '11:00'),
+            interval_days: d.interval_days || 1,
+            enabled: d.enabled !== false,
+            max_articulos: d.max_articulos,
+            persona: d.persona
+          });
+          if (!forzar && form) form.tomarBase();
+        }
         $('next-' + tipo).textContent = d.enabled === false ? 'Pausado' : formatearProxima(d.next_execution);
         if (tipo === 'generacion') $('c-proxima').textContent = d.enabled === false ? 'Pausada' : proximaCorta(d.next_execution);
       } catch(e) {}
@@ -2480,16 +2588,16 @@
       Object.keys(AGENDA).forEach(function(tipo) {
         var input = $('hora-' + tipo);
         AGENDA[tipo].reloj = crearReloj($('reloj-' + tipo),
-          function(hhmm) { input.value = hhmm; pintarAmPm(tipo, hhmm); },
-          function() { guardarAgenda(tipo); });
+          function(hhmm) { input.value = hhmm; pintarAmPm(tipo, hhmm); marcarProgramacion(); },
+          marcarProgramacion);
         $('reloj-' + tipo).querySelector('svg').setAttribute('aria-label', 'Hora de ' + tipo);
 
         input.addEventListener('input', function() {
           if (!input.value) return;
           AGENDA[tipo].reloj.set(input.value);
           pintarAmPm(tipo, input.value);
+          marcarProgramacion();
         });
-        input.addEventListener('change', function() { if (input.value) guardarAgenda(tipo); });
 
         $('ampm-' + tipo).addEventListener('click', function(ev) {
           var b = ev.target.closest('button');
@@ -2501,21 +2609,37 @@
           input.value = (h < 10 ? '0' : '') + h + ':' + partes[1];
           AGENDA[tipo].reloj.set(input.value);
           pintarAmPm(tipo, input.value);
-          guardarAgenda(tipo);
+          marcarProgramacion();
         });
 
         var sw = $('sw-' + tipo);
-        function alternar() { pintarActivo(tipo, !sw.classList.contains('active')); guardarAgenda(tipo); }
+        function alternar() { pintarActivo(tipo, !sw.classList.contains('active')); marcarProgramacion(); }
         sw.addEventListener('click', alternar);
         sw.addEventListener('keydown', function(ev) {
           if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); alternar(); }
         });
 
         ['dias-' + tipo].concat(AGENDA[tipo].extraIds).forEach(function(id) {
-          $(id).addEventListener('change', function() { guardarAgenda(tipo); });
+          $(id).addEventListener('input', marcarProgramacion);
+          $(id).addEventListener('change', marcarProgramacion);
         });
-        cargarAgenda(tipo);
       });
+
+      var form = formulario('programacion', {
+        leer: function() { return { scraping: leerAgenda('scraping'), generacion: leerAgenda('generacion') }; },
+        aplicar: function(st) { aplicarAgenda('scraping', st.scraping); aplicarAgenda('generacion', st.generacion); },
+        guardar: async function(st, base) {
+          for (var tipo in AGENDA) {
+            if (JSON.stringify(st[tipo]) === JSON.stringify(base[tipo])) continue;
+            if (!st[tipo].hora) throw new Error('Falta la hora de ' + (tipo === 'scraping' ? 'scraping' : 'generación') + '.');
+            await pedir(AGENDA[tipo].endpoint, {
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(st[tipo])
+            });
+          }
+        },
+        despues: function() { cargarAgenda('scraping'); cargarAgenda('generacion'); updateStats(); }
+      });
+      Promise.all([cargarAgenda('scraping', true), cargarAgenda('generacion', true)]).then(form.tomarBase);
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -2911,8 +3035,62 @@
 
 
     async function fase2Init() {
+      ['f2-tema', 'f2-puntapie-url'].forEach(function(id) { $(id).addEventListener('input', marcarCrear); });
+      var form = formulario('crear', {
+        leer: function() {
+          return {
+            categorias: Array.from(_f2CategoriasActivas).sort(),
+            regiones: Array.from(_f2RegionesActivas).sort(),
+            clientes: Array.from(_f2ClientesActivos).sort(),
+            puntapie_activo: _f2PuntapieActivo,
+            puntapie_url: $('f2-puntapie-url').value.trim(),
+            tema: $('f2-tema').value.trim()
+          };
+        },
+        aplicar: function(st) {
+          _f2CategoriasActivas = new Set(st.categorias);
+          _f2RegionesActivas = new Set(st.regiones);
+          _f2ClientesActivos = new Set(st.clientes);
+          pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
+          pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
+          renderClientes();
+          pintarPuntapie(st.puntapie_activo);
+          $('f2-puntapie-url').value = st.puntapie_url;
+          $('f2-tema').value = st.tema;
+        },
+        guardar: async function(st, base) {
+          await pedir('/api/fase2/config', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              categorias: st.categorias, regiones: st.regiones, clientes: st.clientes,
+              puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url
+            })
+          });
+          if (st.tema !== base.tema) {
+            await pedir('/api/generacion-config', {
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tema: st.tema })
+            });
+          }
+        }
+      });
       await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
       await fase2CargarConfig();
+      form.tomarBase();
+    }
+
+    function marcarCrear() { if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
+
+    function pintarToggles(grid, activos) {
+      document.querySelectorAll(grid + ' .toggle-item').forEach(function(el) {
+        el.classList.toggle('active', activos.has(el.dataset.slug));
+      });
+    }
+
+    function pintarPuntapie(activo) {
+      _f2PuntapieActivo = activo;
+      $('f2-puntapie-toggle').classList.toggle('active', activo);
+      $('f2-puntapie-label').textContent = activo ? 'Activado' : 'Desactivado';
+      $('f2-puntapie-url-wrap').style.display = activo ? 'block' : 'none';
     }
 
     async function fase2CargarConfig() {
@@ -2931,12 +3109,7 @@
         (d.clientes || []).forEach(function(c) {
           _f2ClientesActivos.add(c);
         });
-        if (d.puntapie_activo) {
-          _f2PuntapieActivo = true;
-          $('f2-puntapie-toggle').classList.add('active');
-          $('f2-puntapie-label').textContent = 'Activado';
-          $('f2-puntapie-url-wrap').style.display = 'block';
-        }
+        pintarPuntapie(!!d.puntapie_activo);
         if (d.puntapie_url) $('f2-puntapie-url').value = d.puntapie_url;
         renderClientes();
         var genR = await fetch('/api/generacion-config');
@@ -2946,23 +3119,6 @@
           if (genD.tema) $('f2-tema').value = genD.tema;
           if (genD.puntapie_url && !d.puntapie_url) $('f2-puntapie-url').value = genD.puntapie_url;
         }
-      } catch(e) {}
-    }
-
-    async function fase2GuardarConfig() {
-      try {
-        var body = {
-          categorias: Array.from(_f2CategoriasActivas),
-          regiones: Array.from(_f2RegionesActivas),
-          clientes: Array.from(_f2ClientesActivos),
-          puntapie_activo: _f2PuntapieActivo,
-          puntapie_url: $('f2-puntapie-url').value.trim()
-        };
-        await fetch('/api/fase2/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(body)
-        });
       } catch(e) {}
     }
 
@@ -3000,7 +3156,7 @@
         _f2CategoriasActivas.add(slug);
         el.classList.add('active');
       }
-      fase2GuardarConfig();
+      marcarCrear();
     }
 
     async function fase2CargarRegiones() {
@@ -3035,7 +3191,7 @@
         _f2RegionesActivas.add(slug);
         el.classList.add('active');
       }
-      fase2GuardarConfig();
+      marcarCrear();
     }
 
     async function fase2CargarClientes() {
@@ -3079,7 +3235,7 @@
         _f2ClientesActivos.add(slug);
         el.classList.add('active');
       }
-      fase2GuardarConfig();
+      marcarCrear();
     }
 
     async function fase2AgregarCliente() {
@@ -3121,22 +3277,23 @@
       try {
         await pedir('/api/fase2/clientes/' + encodeURIComponent(slug), { method: 'DELETE' });
         _f2ClientesActivos.delete(slug);
+        // El cliente ya no existe: sale también de la config guardada, sin
+        // arrastrar los demás cambios sin guardar.
+        FORMULARIOS.crear.quitarDeBase('clientes', slug);
+        await pedir('/api/fase2/config', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ clientes: FORMULARIOS.crear.base().clientes })
+        });
         await fase2CargarClientes();
-        fase2GuardarConfig();
+        marcarCrear();
       } catch(e) {
         showToast('No se pudo eliminar el cliente: ' + e.message, 'error');
       }
     }
 
     function togglePuntapie() {
-      _f2PuntapieActivo = !_f2PuntapieActivo;
-      var toggle = $('f2-puntapie-toggle');
-      var label = $('f2-puntapie-label');
-      var wrap = $('f2-puntapie-url-wrap');
-      toggle.classList.toggle('active', _f2PuntapieActivo);
-      label.textContent = _f2PuntapieActivo ? 'Activado' : 'Desactivado';
-      wrap.style.display = _f2PuntapieActivo ? 'block' : 'none';
-      fase2GuardarConfig();
+      pintarPuntapie(!_f2PuntapieActivo);
+      marcarCrear();
     }
 
     async function fase2Scrape() {
@@ -3185,19 +3342,6 @@
         tema: $('f2-tema').value.trim() || null,
         puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
       };
-
-      try {
-        await fetch('/api/generacion-config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({persona: body.persona, tema: body.tema || ''})
-        });
-        await fetch('/api/fase2/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({puntapie_url: $('f2-puntapie-url').value.trim()})
-        });
-      } catch(e) {}
 
       log('--- GENERANDO NOTA FASE 2 [' + categorias.join(', ') + '] ---', 'warn');
       var exito = false;
@@ -3349,6 +3493,7 @@
       updateStats();
       checkProviders();
       setModo(document.documentElement.getAttribute('data-modo'));
+      initFormularios();
       initSecciones();
       initAgenda();
       fase2Init();

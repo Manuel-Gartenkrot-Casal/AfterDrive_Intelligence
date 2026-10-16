@@ -191,3 +191,38 @@ def test_estado_invalido_es_400(fuentes, body):
 def test_pausar_una_fuente_inexistente_es_404(fuentes):
     c, _ = fuentes
     assert c.patch("/api/trusted-urls/https://otro.com", json={"estado": "inactivo"}).status_code == 404
+
+
+# ── Config de la Nota automática (Fase 2) ─────────────────────────────────────
+
+
+def test_config_fase2_cambia_solo_lo_que_viene(client, monkeypatch):
+    from afterdrive.ingesta import scraper
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    c, store = client
+    assert c.post("/api/fase2/config", json={"categorias": ["autopartes"], "clientes": ["acme"]}).status_code == 200
+    assert c.post("/api/fase2/config", json={"puntapie_activo": True, "puntapie_url": " https://alephee.com "}).status_code == 200
+    cfg = store["fase2"]
+    assert cfg["categorias"] == ["autopartes"] and cfg["clientes"] == ["acme"]
+    assert cfg["puntapie_activo"] is True and cfg["puntapie_url"] == "https://alephee.com"
+
+
+@pytest.mark.parametrize("body", [
+    {"categorias": "autopartes"},
+    {"regiones": ["--tema", "x"]},
+    {"clientes": [1]},
+    {"puntapie_activo": "si"},
+    {"puntapie_url": 5},
+    {"puntapie_url": "javascript:alert(1)"},
+    {"puntapie_url": "http://127.0.0.1/admin"},
+])
+def test_config_fase2_invalida_es_400(client, body):
+    c, store = client
+    assert c.post("/api/fase2/config", json=body).status_code == 400
+    assert "fase2" not in store
+
+
+def test_config_fase2_permite_vaciar_el_puntapie(client):
+    c, store = client
+    assert c.post("/api/fase2/config", json={"puntapie_url": ""}).status_code == 200
+    assert store["fase2"]["puntapie_url"] == ""
