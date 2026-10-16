@@ -110,10 +110,13 @@ def test_hash_mal_formado_es_401(api, monkeypatch):
 
 def test_cron_token_solo_en_sus_dos_endpoints(api, monkeypatch):
     fa = api[0]
-    monkeypatch.setattr(fa.corridas, "en_segundo_plano", lambda *a: None)
+    encoladas = []
+    monkeypatch.setattr(fa.cola, "encolar", lambda tipo, params=None, origen="manual", etiqueta=None:
+                        encoladas.append((tipo, origen)) or {"id": "x", "posicion": 1, "duplicada": False})
     c, h = fa.app.test_client(), {"Authorization": "Bearer cron-test"}
-    assert c.post("/api/run-automation", headers=h).status_code == 200
-    assert c.post("/api/run-generacion", headers=h).status_code == 200
+    assert c.post("/api/run-automation", headers=h).status_code == 202
+    assert c.post("/api/run-generacion", headers=h).status_code == 202
+    assert encoladas == [("scraping", "cron"), ("generacion", "cron")]
     assert c.get("/api/scraping-config", headers=h).status_code == 401
     assert c.post("/api/run-automation", headers={"Authorization": "Bearer otro"}).status_code == 401
 

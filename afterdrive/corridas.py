@@ -15,6 +15,10 @@ Interfaz:
 
 Si hay otra Corrida en curso, la nueva no espera: devuelve/emite un aviso de
 ocupado. El lock es por proceso; alcanza porque gunicorn corre con --workers 1.
+
+La Cola (afterdrive/cola.py) es la que hace esperar: su consumidor toma este
+mismo lock esperando su turno y usa los ejecutores sin lock (_scrapear_fuentes,
+_generar, _subproceso). Ver docs/adr/0002-cola-de-corridas.md.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ TIMEOUT_S = 1800  # 30 min
 
 _lock = threading.Lock()
 _actual: str | None = None
+_cancelar = threading.Event()  # la Cola lo levanta para cortar el scraping entre fuente y fuente
 
 # Logs de LM Studio / gRPC que ensucian la salida que ve el usuario.
 _LOG_RUIDO = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|WARN)\]")
@@ -44,10 +49,10 @@ def en_curso() -> str | None:
 
 
 @contextlib.contextmanager
-def _reservar(nombre: str):
-    """Toma el lock sin esperar. Cede None si está ocupado."""
+def _reservar(nombre: str, esperar: bool = False):
+    """Toma el lock (sin esperar, salvo esperar=True). Cede None si está ocupado."""
     global _actual
-    if not _lock.acquire(blocking=False):
+    if not _lock.acquire(blocking=esperar):
         yield None
         return
     _actual = nombre
@@ -102,6 +107,9 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
     print(f"Procesando {len(fuentes)} fuentes (max {max_articulos} artículos/fuente)...", flush=True)
     aprobados = 0
     for doc in fuentes:
+        if _cancelar.is_set():
+            print("[CANCELADA] Scraping cortado a pedido del usuario.", flush=True)
+            return {"success": False, "error": "Cancelada.", "aprobados": aprobados}
         url = doc["url"]
         print(f"Scrapeando: {url}", flush=True)
         try:
@@ -148,26 +156,26 @@ def generacion(params: dict | None = None) -> dict:
         if not ok:
             print(f"[{datetime.datetime.now()}] {_ocupado('generacion')}", flush=True)
             return {"success": False, "error": _ocupado("generacion")}
-        try:
-            from afterdrive.generacion.generar_nota_fase2 import generar_nota
-
-            params = params or parametros_guardados()
-            if params is None:
-                print("[Generación] Sin categorías activas guardadas. Se omite.", flush=True)
-                return {"success": False, "error": "Sin categorías activas guardadas."}
-            print(f"[Generación] Categorías: {params['categorias']} | Persona: {params.get('persona')}", flush=True)
-            resultado = generar_nota(**params)
-        except Exception as e:
-            resultado = {"success": False, "error": f"Fallo en generación: {e}"}
-        if resultado.get("success"):
-            print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
-        else:
-            print(f"[Generación] [ERROR] {resultado.get('error')}", flush=True)
-        return resultado
+        return _generar(params)
 
 
-def en_segundo_plano(fn, *args) -> None:
-    threading.Thread(target=fn, args=args, daemon=True).start()
+def _generar(params: dict | None) -> dict:
+    try:
+        from afterdrive.generacion.generar_nota_fase2 import generar_nota
+
+        params = params or parametros_guardados()
+        if params is None:
+            print("[Generación] Sin categorías activas guardadas. Se omite.", flush=True)
+            return {"success": False, "error": "Sin categorías activas guardadas."}
+        print(f"[Generación] Categorías: {params['categorias']} | Persona: {params.get('persona')}", flush=True)
+        resultado = generar_nota(**params)
+    except Exception as e:
+        resultado = {"success": False, "error": f"Fallo en generación: {e}"}
+    if resultado.get("success"):
+        print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
+    else:
+        print(f"[Generación] [ERROR] {resultado.get('error')}", flush=True)
+    return resultado
 
 
 # ── Subprocess ────────────────────────────────────────────────────────────────
@@ -212,40 +220,50 @@ def stream(nombre: str, argv: list[str] | None = None) -> Iterator[str]:
         if not ok:
             yield f"[OCUPADO] {_ocupado(nombre)}\n"
             return
-        inicio = time.time()
-        emitidas = 0
-        try:
-            proc = subprocess.Popen(
-                _cmd(nombre, argv), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                bufsize=1, env=_env(), encoding="utf-8", errors="replace",
-            )
-        except Exception as e:
-            yield f"[ERROR] {e}\n"
-            return
+        yield from _subproceso(nombre, argv)
 
-        def _stderr_a_logs():
-            for line in proc.stderr:
-                if line.strip():
-                    print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
 
-        t = threading.Thread(target=_stderr_a_logs, daemon=True)
-        t.start()
-        try:
-            for line in proc.stdout:
-                if time.time() - inicio > TIMEOUT_S:
-                    yield "[TIME OUT] El proceso superó el límite de tiempo.\n"
-                    return
-                if _LOG_RUIDO.match(line):
-                    continue
-                emitidas += 1
-                yield line
-            proc.wait(timeout=10)
-            t.join(timeout=3)
-            if proc.returncode != 0 and not emitidas:
-                yield f"[ERROR] El proceso terminó con código {proc.returncode} sin output.\n"
-                yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
-        except Exception as e:
-            yield f"[ERROR] {e}\n"
-        finally:
-            if proc.poll() is None:
-                proc.kill()
+def _subproceso(nombre: str, argv: list[str] | None = None, al_iniciar=None) -> Iterator[str]:
+    """Corre el script sin tomar el lock (el que llama ya lo tiene) y emite su stdout.
+
+    al_iniciar(proc) le pasa el proceso a la Cola para que pueda cancelarlo.
+    """
+    inicio = time.time()
+    emitidas = 0
+    try:
+        proc = subprocess.Popen(
+            _cmd(nombre, argv), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            bufsize=1, env=_env(), encoding="utf-8", errors="replace",
+        )
+    except Exception as e:
+        yield f"[ERROR] {e}\n"
+        return
+    if al_iniciar:
+        al_iniciar(proc)
+
+    def _stderr_a_logs():
+        for line in proc.stderr:
+            if line.strip():
+                print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
+
+    t = threading.Thread(target=_stderr_a_logs, daemon=True)
+    t.start()
+    try:
+        for line in proc.stdout:
+            if time.time() - inicio > TIMEOUT_S:
+                yield "[TIME OUT] El proceso superó el límite de tiempo.\n"
+                return
+            if _LOG_RUIDO.match(line):
+                continue
+            emitidas += 1
+            yield line
+        proc.wait(timeout=10)
+        t.join(timeout=3)
+        if proc.returncode != 0 and not emitidas:
+            yield f"[ERROR] El proceso terminó con código {proc.returncode} sin output.\n"
+            yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
+    except Exception as e:
+        yield f"[ERROR] {e}\n"
+    finally:
+        if proc.poll() is None:
+            proc.kill()

@@ -58,6 +58,10 @@ Paso que convierte la respuesta cruda del modelo en una Nota publicable, o la re
 Ejecución puntual de una etapa del pipeline (scraping, generación u otro script); nunca corren dos a la vez.
 _Avoid_: job, tarea, ejecución
 
+**Cola**:
+Lista de Corridas esperando su turno; la que llega mientras otra corre espera en vez de rechazarse. Puede estar pendiente, en curso, ok, error, cancelada o interrumpida (el servidor se reinició mientras corría).
+_Avoid_: queue, fila
+
 **Proveedor**:
 Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA u OpenRouter.
 _Avoid_: provider, backend, modelo

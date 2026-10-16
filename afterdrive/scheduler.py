@@ -18,17 +18,23 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from afterdrive import config_store
-from afterdrive import corridas
+from afterdrive import cola, config_store
+
 ZONA = os.getenv("SCHEDULER_TZ", "America/Argentina/Buenos_Aires")
 
 # Con el keep-alive externo la instancia queda despierta 24/7, así que
 # APScheduler puede ejecutar a hora de reloj y no relativo al boot.
+# Las programadas se encolan: si a esa hora hay otra Corrida, esperan su turno
+# en vez de perderse.
 _JOBS = {
     # id: (lector de config, hora por defecto, qué correr)
-    "scraping": (lambda: config_store.get_scraping_config(), config_store.DEFAULT_SCRAPING["hora"], corridas.scraping),
+    "scraping": (
+        lambda: config_store.get_scraping_config(), config_store.DEFAULT_SCRAPING["hora"],
+        lambda: cola.encolar("scraping", origen="cron"),
+    ),
     "generacion": (
-        lambda: config_store.get_generacion_config(), config_store.DEFAULT_GENERACION["hora"], corridas.generacion,
+        lambda: config_store.get_generacion_config(), config_store.DEFAULT_GENERACION["hora"],
+        lambda: cola.encolar("generacion", origen="cron"),
     ),
 }
 
@@ -52,6 +58,7 @@ def aplicar() -> None:
 
 
 def iniciar() -> None:
+    cola.iniciar()
     aplicar()
     if not _scheduler.running:
         _scheduler.start()

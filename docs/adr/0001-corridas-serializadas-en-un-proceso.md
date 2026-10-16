@@ -4,4 +4,6 @@ Todas las Corridas (cron, botones del dashboard y endpoints con streaming) pasan
 
 ## Consequences
 
+Reemplazada en parte por [ADR-0002](0002-cola-de-corridas.md): las Corridas ya no se rechazan, se encolan.
+
 El lock solo protege dentro de un proceso: depende de que gunicorn corra con `--workers 1` (ver Dockerfile). Subir la cantidad de workers o instancias exige mover el lock a Mongo (o a Key Value) antes.

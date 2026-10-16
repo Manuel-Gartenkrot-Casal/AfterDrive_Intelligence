@@ -6,6 +6,7 @@ import time
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 from afterdrive import auth
+from afterdrive import cola
 from afterdrive import config_store
 from afterdrive import corridas
 from afterdrive.ia import llm
@@ -387,22 +388,84 @@ def set_fase2_config():
     return jsonify({"success": True, **cfg})
 
 
+def _encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None):
+    """202 con el id y la posición en la Cola, o 429 si la cola está llena."""
+    try:
+        r = cola.encolar(tipo, params, origen=origen, etiqueta=etiqueta)
+    except cola.ColaLlena as e:
+        return jsonify({"success": False, "error": str(e)}), 429
+    return jsonify({"success": True, **r}), 202
+
+
+def _origen() -> str:
+    """cron si la llamada vino con el token de las corridas automáticas."""
+    return "cron" if request.headers.get("Authorization", "").startswith("Bearer ") else "manual"
+
+
 @app.route("/api/run-automation", methods=["POST"])
 def run_automation():
-    """Dispara ya el scraping de URLs confiables (en background)."""
-    if corridas.en_curso():
-        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
-    corridas.en_segundo_plano(corridas.scraping)
-    return jsonify({"success": True, "message": "Scraping automatizado iniciado manualmente."})
+    """Encola el scraping de URLs confiables."""
+    return _encolar("scraping", origen=_origen())
 
 
 @app.route("/api/run-generacion", methods=["POST"])
 def run_generacion():
-    """Dispara ya la generación de una Nota Fase 2 con la config guardada (en background)."""
-    if corridas.en_curso():
-        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
-    corridas.en_segundo_plano(corridas.generacion)
-    return jsonify({"success": True, "message": "Generación automática iniciada."})
+    """Encola la generación de una Nota Fase 2 con la config guardada."""
+    return _encolar("generacion", origen=_origen())
+
+
+# ── Cola de Corridas ──────────────────────────────────────────────────────────
+
+
+@app.route("/api/corridas", methods=["GET"])
+def listar_corridas():
+    try:
+        return jsonify({"success": True, **cola.listar()})
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/corridas/<id_>/log", methods=["GET"])
+def log_corrida(id_: str):
+    desde = request.args.get("desde", "0")
+    r = cola.log(id_, int(desde) if desde.isdigit() else 0)
+    if r is None:
+        return jsonify({"success": False, "error": "Corrida no encontrada."}), 404
+    return jsonify({"success": True, **r})
+
+
+@app.route("/api/corridas/<id_>/cancelar", methods=["POST"])
+def cancelar_corrida(id_: str):
+    try:
+        return jsonify({"success": True, **cola.cancelar(id_)})
+    except KeyError:
+        return jsonify({"success": False, "error": "Corrida no encontrada."}), 404
+    except cola.NoCancelable as e:
+        return jsonify({"success": False, "error": str(e)}), 409
+
+
+@app.route("/api/corridas/scraping", methods=["POST"])
+def encolar_scraping():
+    return _encolar("scraping")
+
+
+@app.route("/api/corridas/generacion", methods=["POST"])
+def encolar_generacion():
+    """Encola una Nota Fase 2 con los parámetros del formulario (no los guardados)."""
+    argv, error = _argv_generar(request.get_json(silent=True) or {})
+    if error:
+        return error
+    return _encolar("script", {"modulo": "afterdrive.generacion.generar_nota_fase2", "argv": argv},
+                    etiqueta="Generar nota")
+
+
+@app.route("/api/corridas/ejemplos", methods=["POST"])
+def encolar_ejemplos():
+    argv, error = _args_scrape(request.get_json(silent=True) or {})
+    if error:
+        return error
+    return _encolar("script", {"modulo": "afterdrive.generacion.scraper_afterdrive", "argv": argv},
+                    etiqueta="Sincronizar ejemplos")
 
 
 @app.route("/api/stream/run-automation", methods=["POST"])
@@ -722,10 +785,19 @@ def fase2_generar():
 
 @app.route("/api/fase2/stream/generar", methods=["POST"])
 def fase2_stream_generar():
-    body = request.get_json(silent=True) or {}
-    listas, error = _listas(body, "categorias", "clientes", "regiones")
+    extra, error = _argv_generar(request.get_json(silent=True) or {})
     if error:
         return error
+    return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
+
+
+def _argv_generar(body: dict):
+    """(argv de generar_nota_fase2, None), o (None, respuesta 400)."""
+    listas, error = _listas(body, "categorias", "clientes", "regiones")
+    if error:
+        return None, error
+    if not listas["categorias"]:
+        return None, (jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400)
     puntapie_url = body.get("puntapie_url", "") or ""
     persona = body.get("persona", "comercial")
     tema = body.get("tema", "") or ""
@@ -741,8 +813,7 @@ def fase2_stream_generar():
         extra.append(f"--persona={persona}")
     if tema:
         extra.append(f"--tema={tema}")
-
-    return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
+    return extra, None
 
 
 @app.route("/api/fase2/ultima-nota", methods=["GET"])
