@@ -1378,6 +1378,36 @@
         transition-duration: 0.01ms !important;
       }
     }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       CONFIRMAR: un único <dialog> nativo para toda acción destructiva.
+       showModal() ya atrapa el foco, cierra con Esc y vuelve inerte el resto.
+       ═══════════════════════════════════════════════════════════════════════ */
+    .confirmar {
+      width: min(440px, calc(100vw - 32px));
+      margin: auto;  /* el reset global (* { margin: 0 }) lo saca del centro */
+      padding: var(--s5);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      background: var(--bg);
+      color: var(--text-hi);
+      box-shadow: var(--shadow-float);
+    }
+    .confirmar::backdrop { background: rgba(15, 18, 24, 0.45); }
+    .confirmar h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: var(--s2); }
+    .confirmar p { font-size: 0.875rem; color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
+    .confirmar-acciones { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); flex-wrap: wrap; }
+    .btn-peligro { background: var(--err); color: #FFFFFF; box-shadow: none; }
+    .btn-peligro:hover { background: color-mix(in srgb, var(--err) 88%, #000); }
+    [data-theme="dark"] .btn-peligro { color: #1B1E26; }
+
+    .fuente-fila { display: flex; align-items: center; gap: var(--s2); padding: 6px 0; border-bottom: 1px solid var(--hairline); }
+    .fuente-fila:last-child { border-bottom: 0; }
+    .fuente-info { min-width: 0; flex: 1; }
+    .fuente-url { font-size: 0.8rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fuente-fila.pausada .fuente-url { color: var(--text-lo); }
+    .fuente-meta { font-size: 0.7rem; color: var(--text-lo); }
+    .btn-xs { min-height: 28px; padding: 3px 10px; font-size: 0.7rem; }
   </style>
 </head>
 <body>
@@ -1742,6 +1772,17 @@
     </div>
   </div>
 
+  <dialog class="confirmar" id="confirmar" aria-labelledby="confirmar-titulo" aria-describedby="confirmar-texto">
+    <form method="dialog">
+      <h2 id="confirmar-titulo"></h2>
+      <p id="confirmar-texto"></p>
+      <div class="confirmar-acciones">
+        <button class="btn" value="no" autofocus id="confirmar-no">Cancelar</button>
+        <button class="btn" value="si" id="confirmar-si"></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal -->
   <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
@@ -1837,6 +1878,33 @@
     /* ═══════════════════════════════════════════════════════════════════════
        TOAST NOTIFICATIONS
        ═══════════════════════════════════════════════════════════════════════ */
+    /* Pregunta antes de una acción. Resuelve true solo si el usuario confirma;
+       Esc, Cancelar o cerrar resuelven false. */
+    function confirmar(opts) {
+      var dlg = $('confirmar');
+      $('confirmar-titulo').textContent = opts.titulo;
+      $('confirmar-texto').textContent = opts.mensaje;
+      var si = $('confirmar-si');
+      si.textContent = opts.accion || 'Confirmar';
+      si.className = 'btn ' + (opts.peligro === false ? 'btn-primary' : 'btn-peligro');
+      $('confirmar-no').textContent = opts.cancelar || 'Cancelar';
+      dlg.returnValue = '';
+      return new Promise(function(resolve) {
+        dlg.addEventListener('close', function() { resolve(dlg.returnValue === 'si'); }, { once: true });
+        dlg.showModal();
+        $('confirmar-no').focus();
+      });
+    }
+
+    /* fetch que falla si el server responde error, con el mensaje del server. */
+    async function pedir(url, opciones) {
+      var r = await fetch(url, opciones);
+      var d = {};
+      try { d = await r.json(); } catch (e) {}
+      if (!r.ok || d.success === false) throw new Error(d.error || ('Error ' + r.status));
+      return d;
+    }
+
     var _toastContainer = null;
     function showToast(msg, type, duration) {
       type = type || 'info';
@@ -2122,10 +2190,12 @@
           return;
         }
         list.innerHTML = d.urls.map(function(u) {
-          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--hairline)">'
-            + '<div style="min-width:0"><div style="font-size:0.8rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
-            + '<div style="font-size:0.7rem;color:var(--text-lo)">'+(u.estado==='activo'?'✓ activa':'✗ inactiva')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
-            + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
+          var activa = u.estado === 'activo';
+          return '<div class="fuente-fila' + (activa ? '' : ' pausada') + '">'
+            + '<div class="fuente-info"><div class="fuente-url" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
+            + '<div class="fuente-meta">'+(activa?'✓ activa':'⏸ pausada')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
+            + '<button class="btn btn-xs" onclick="pausarFuente(\''+encArg(u.url)+'\', '+activa+', this)">'+(activa?'Pausar':'Activar')+'</button>'
+            + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente '+escHtml(u.url)+'" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
             + '</div>';
         }).join('');
       } catch(e) {}
@@ -2162,14 +2232,41 @@
       finally { btn.disabled = false; }
     }
 
-    async function deleteTrustedUrl(encodedUrl) {
+    async function pausarFuente(encodedUrl, activa, btn) {
       var url = decodeURIComponent(encodedUrl);
+      btn.disabled = true;
       try {
-        await fetch('/api/trusted-urls/' + encodedUrl, {method: 'DELETE'});
-        log('URL eliminada: ' + url, 'warn');
+        await pedir('/api/trusted-urls/' + encodedUrl, {
+          method: 'PATCH', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({estado: activa ? 'inactivo' : 'activo'})
+        });
+        log((activa ? 'Fuente pausada: ' : 'Fuente activada: ') + url, 'info');
         loadTrustedUrls();
         updateStats();
-      } catch(e) {}
+      } catch(e) {
+        btn.disabled = false;
+        showToast('No se pudo cambiar la fuente: ' + e.message, 'error');
+      }
+    }
+
+    async function deleteTrustedUrl(encodedUrl) {
+      var url = decodeURIComponent(encodedUrl);
+      var ok = await confirmar({
+        titulo: '¿Eliminar esta fuente?',
+        mensaje: url + ' deja de scrapearse y sale de la lista. Los artículos que ya se guardaron de ella no se borran. '
+          + 'Si solo querés que deje de buscarse por un tiempo, pausala.',
+        accion: 'Eliminar fuente'
+      });
+      if (!ok) return;
+      try {
+        await pedir('/api/trusted-urls/' + encodedUrl, {method: 'DELETE'});
+        log('URL eliminada: ' + url, 'warn');
+        showToast('Fuente eliminada', 'success');
+        loadTrustedUrls();
+        updateStats();
+      } catch(e) {
+        showToast('No se pudo eliminar la fuente: ' + e.message, 'error');
+      }
     }
 
     async function addUrl() {
@@ -2964,15 +3061,26 @@
     }
 
     async function descartarSug(encodedUrl, btn) {
+      var url = decodeURIComponent(encodedUrl);
+      var dominio = url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+      var ok = await confirmar({
+        titulo: '¿Descartar esta recomendación?',
+        mensaje: 'Se descartan todas las recomendaciones de ' + dominio + '. Podés volver a encontrarlas con Buscar recomendaciones.',
+        accion: 'Descartar'
+      });
+      if (!ok) return;
       btn.disabled = true;
       try {
-        await fetch('/api/suggested-urls', {
+        await pedir('/api/suggested-urls', {
           method: 'DELETE',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url: decodeURIComponent(encodedUrl)})
+          body: JSON.stringify({url: url})
         });
         loadSugerencias();
-      } catch(e) { btn.disabled = false; }
+      } catch(e) {
+        btn.disabled = false;
+        showToast('No se pudo descartar: ' + e.message, 'error');
+      }
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -3184,7 +3292,7 @@
           '</div>' +
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<div class="toggle-switch"></div>' +
-            '<button class="btn" style="padding:4px 8px;font-size:0.65rem" onclick="fase2EliminarCliente(\'' + c.slug + '\')" title="Eliminar">✕</button>' +
+            '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
           '</div>';
         list.appendChild(item);
       });
@@ -3230,12 +3338,21 @@
     }
 
     async function fase2EliminarCliente(slug) {
+      var cliente = _f2Clientes.find(function(c) { return c.slug === slug; });
+      var ok = await confirmar({
+        titulo: '¿Eliminar este cliente?',
+        mensaje: (cliente ? cliente.nombre : slug) + ' deja de estar disponible para mencionarse en las notas. Las notas ya generadas no cambian.',
+        accion: 'Eliminar cliente'
+      });
+      if (!ok) return;
       try {
-        await fetch('/api/fase2/clientes/' + slug, { method: 'DELETE' });
+        await pedir('/api/fase2/clientes/' + encodeURIComponent(slug), { method: 'DELETE' });
         _f2ClientesActivos.delete(slug);
         await fase2CargarClientes();
         fase2GuardarConfig();
-      } catch(e) {}
+      } catch(e) {
+        showToast('No se pudo eliminar el cliente: ' + e.message, 'error');
+      }
     }
 
     function togglePuntapie() {

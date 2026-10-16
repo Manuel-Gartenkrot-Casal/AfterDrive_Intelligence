@@ -182,7 +182,7 @@ def test_dashboard_sanitiza_y_fija_versiones():
     # Datos del servidor que antes entraban a innerHTML sin escapar.
     assert "+u.url+" not in html and "' + k.replace(" not in html
     # encodeURIComponent deja pasar la comilla simple: no alcanza para un onclick='...'.
-    assert "encodeURIComponent(u.url)" not in html and html.count("encArg(u.url)") == 3
+    assert "encodeURIComponent(u.url)" not in html and html.count("encArg(u.url)") == 4
     # escHtml también tiene que servir dentro de atributos (title="...", href="...").
     assert "&quot;" in html and "&#39;" in html
     # Un link de fuente solo puede ser http(s), nunca javascript:.

@@ -560,9 +560,25 @@ def add_trusted_url_direct():
         return _error_interno(e)
 
 
+@app.route("/api/trusted-urls/<path:url>", methods=["PATCH"])
+def set_estado_trusted_url(url):
+    """Pausa o reactiva una Fuente confiable sin borrarla."""
+    from afterdrive.db import col_trusted_urls
+    estado = (request.get_json(silent=True) or {}).get("estado")
+    if estado not in ("activo", "inactivo"):
+        return jsonify({"success": False, "error": "Se requiere 'estado': 'activo' o 'inactivo'."}), 400
+    try:
+        result = col_trusted_urls.update_one({"url": url}, {"$set": {"estado": estado}})
+        if result.matched_count == 0:
+            return jsonify({"success": False, "error": "URL no encontrada."}), 404
+        return jsonify({"success": True, "estado": estado})
+    except Exception as e:
+        return _error_interno(e)
+
+
 @app.route("/api/trusted-urls/<path:url>", methods=["DELETE"])
 def delete_trusted_url(url):
-    """Elimina o desactiva una URL confiable."""
+    """Elimina una URL confiable. Para dejar de scrapearla sin perderla, PATCH con estado."""
     from afterdrive.db import col_trusted_urls
     try:
         result = col_trusted_urls.delete_one({"url": url})

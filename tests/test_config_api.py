@@ -157,3 +157,37 @@ def test_alta_de_url_publica_sigue_andando(client, monkeypatch):
     assert guardadas == ["https://sitio.com/noticias"]
     assert c.post("/api/add-url", json={"url": "https://sitio.com/noticias"}).json["output"] == "https://sitio.com/noticias"
 
+
+
+@pytest.fixture
+def fuentes(client, monkeypatch):
+    """Colección trusted_urls en memoria con una fuente activa."""
+    import mongomock
+
+    from afterdrive import db
+    col = mongomock.MongoClient().db.trusted_urls
+    col.insert_one({"url": "https://sitio.com/noticias", "estado": "activo", "nombre_fuente": "Sitio"})
+    monkeypatch.setattr(db, "col_trusted_urls", col)
+    return client[0], col
+
+
+def test_pausar_y_reactivar_una_fuente(fuentes):
+    c, col = fuentes
+    r = c.patch("/api/trusted-urls/https://sitio.com/noticias", json={"estado": "inactivo"})
+    assert r.status_code == 200
+    doc = col.find_one({"url": "https://sitio.com/noticias"})
+    assert doc["estado"] == "inactivo" and doc["nombre_fuente"] == "Sitio"
+    assert c.patch("/api/trusted-urls/https://sitio.com/noticias", json={"estado": "activo"}).status_code == 200
+    assert col.find_one({"url": "https://sitio.com/noticias"})["estado"] == "activo"
+
+
+@pytest.mark.parametrize("body", [{}, {"estado": "borrado"}, {"estado": True}])
+def test_estado_invalido_es_400(fuentes, body):
+    c, col = fuentes
+    assert c.patch("/api/trusted-urls/https://sitio.com/noticias", json=body).status_code == 400
+    assert col.find_one({"url": "https://sitio.com/noticias"})["estado"] == "activo"
+
+
+def test_pausar_una_fuente_inexistente_es_404(fuentes):
+    c, _ = fuentes
+    assert c.patch("/api/trusted-urls/https://otro.com", json={"estado": "inactivo"}).status_code == 404
