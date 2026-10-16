@@ -1,6 +1,6 @@
 # Plan: mejoras del dashboard (navegación, guardado, borrados, cola, estilo)
 
-Fecha: 2026-10-16 · Rama: `Render_Testing` · Estado: propuesta, sin implementar.
+Fecha: 2026-10-16 · Rama: `Render_Testing` · Estado: implementado (7 bloques, con las decisiones recomendadas D1–D6).
 
 ## 1. Hallazgos del código
 
