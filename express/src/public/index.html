@@ -23,23 +23,30 @@
   </script>
   <style>
     /* ═══════════════════════════════════════════════════════════════════════
-       NEUMORPHISM (soft UI)
-       Todo está hecho del mismo material que el fondo: los elementos se
-       distinguen solo por luz (arriba-izquierda) y sombra (abajo-derecha).
-         raised  = se puede tocar (cards, botones, chips)
-         inset   = contiene o recibe (inputs, consola, pozos de grupos, estado activo)
-       Accesibilidad: el neumorfismo tiene bajo contraste de bordes por
-       naturaleza, así que el texto va con contraste AA fuerte, los estados
-       activos también cambian de color (no solo de sombra) y el foco tiene
-       un anillo visible del color de acento.
-       Radios: contenedores 22px, controles 14px, toggles/chips pill.
+       SUPERFICIES PLANAS
+       La jerarquía sale del color de superficie y del borde, no de la sombra:
+         --canvas   fondo de la página
+         --bg       superficie de cards, botones y chips (blanco en claro)
+         --well     pozos: inputs, consola, grupos y estado activo/presionado
+       Los nombres --raised / --inset se conservan porque los usan todas las
+       reglas, pero ya no son sombras: --raised es un borde de 1px y --inset
+       un borde más un relleno con el color de pozo (sombra inset que tapa el
+       fondo, debajo del contenido). Solo lo flotante (modal, HUD, toast)
+       lleva sombra real: --shadow-float.
+       Accesibilidad: los bordes de controles usan --border-strong (≥3:1 contra
+       la superficie), los estados activos también cambian de color y el foco
+       tiene un anillo visible del color de acento.
+       Radios: contenedores 14px, controles 10px, toggles/chips pill.
        ═══════════════════════════════════════════════════════════════════════ */
     :root,
     [data-theme="light"] {
-      --bg: #E3E8EF;
-      --bg-deep: #D9DFE8;
-      --sh-dark: rgba(150, 164, 186, 0.62);
-      --sh-light: rgba(255, 255, 255, 0.92);
+      --canvas: #EDF0F4;
+      --bg: #FFFFFF;
+      --bg-deep: #F3F5F8;
+      --well: #F3F5F8;
+      --border: #DCE1E8;
+      --border-strong: #7A8496;
+      --shadow-float: 0 12px 32px rgba(35, 43, 58, 0.14), 0 2px 6px rgba(35, 43, 58, 0.08);
 
       --brand: #C23E60;
       --brand-hover: #AE3353;
@@ -62,10 +69,13 @@
     }
 
     [data-theme="dark"] {
-      --bg: #262B35;
-      --bg-deep: #20242D;
-      --sh-dark: rgba(11, 13, 18, 0.7);
-      --sh-light: rgba(62, 70, 86, 0.55);
+      --canvas: #1A1E26;
+      --bg: #242934;
+      --bg-deep: #1E222B;
+      --well: #1E222B;
+      --border: #343A47;
+      --border-strong: #6B7486;
+      --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
 
       --brand: #F07A94;
       --brand-hover: #F595AA;
@@ -88,12 +98,14 @@
     }
 
     :root {
-      /* Sombras neumórficas */
-      --raised: 7px 7px 16px var(--sh-dark), -7px -7px 16px var(--sh-light);
-      --raised-sm: 4px 4px 9px var(--sh-dark), -4px -4px 9px var(--sh-light);
-      --raised-xs: 2px 2px 5px var(--sh-dark), -2px -2px 5px var(--sh-light);
-      --inset: inset 5px 5px 11px var(--sh-dark), inset -5px -5px 11px var(--sh-light);
-      --inset-sm: inset 3px 3px 6px var(--sh-dark), inset -3px -3px 6px var(--sh-light);
+      /* Bordes con nombre de sombra (ver comentario de arriba). */
+      --raised: 0 0 0 1px var(--border);
+      --raised-sm: 0 0 0 1px var(--border);
+      --raised-xs: 0 0 0 1px var(--border);
+      --inset: inset 0 0 0 1px var(--border), inset 0 0 0 100vmax var(--well);
+      --inset-sm: inset 0 0 0 1px var(--border), inset 0 0 0 100vmax var(--well);
+      /* Campos editables y switches: borde ≥3:1 para que se reconozcan (WCAG 1.4.11). */
+      --field: inset 0 0 0 1px var(--border-strong), inset 0 0 0 100vmax var(--well);
       --flat: 0 0 0 transparent, 0 0 0 transparent;
 
       /* Alias de tokens que usa el markup/JS */
@@ -105,7 +117,7 @@
       --surface-input: var(--bg);
 
       --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
-      --r-sm:14px; --r-md:14px; --r-lg:22px; --r-xl:22px; --r-pill:999px;
+      --r-sm:10px; --r-md:10px; --r-lg:14px; --r-xl:14px; --r-pill:999px;
 
       --t-fast: 160ms;
       --t-med: 280ms;
@@ -119,10 +131,10 @@
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html { background: var(--bg); }
+    html { background: var(--canvas); }
 
     body {
-      background: var(--bg);
+      background: var(--canvas);
       color: var(--text-hi);
       font-family: var(--font);
       font-size: 0.9375rem;
@@ -197,10 +209,12 @@
       font-size: 1.05rem;
       letter-spacing: -0.02em;
       position: relative;
+      isolation: isolate;
     }
     .header-logo::before {
       content: '';
       position: absolute; inset: 7px;
+      z-index: -1;  /* el relleno del pozo va detrás de las letras */
       border-radius: 50%;
       box-shadow: var(--inset-sm);
     }
@@ -401,7 +415,7 @@
     .reloj.arrastrando .aguja { transition: none; }
     .reloj .aguja-hora line { stroke: var(--text-hi); stroke-width: 6; stroke-linecap: round; }
     .reloj .aguja-min line { stroke: var(--brand); stroke-width: 3.5; stroke-linecap: round; }
-    .reloj .perilla { fill: var(--bg); stroke-width: 2.5; cursor: grab; filter: drop-shadow(1px 1px 1.5px var(--sh-dark)); }
+    .reloj .perilla { fill: var(--bg); stroke-width: 2.5; cursor: grab; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
     .reloj .aguja-hora .perilla { stroke: var(--text-hi); }
     .reloj .aguja-min .perilla { stroke: var(--brand); }
     .reloj.arrastrando .perilla { cursor: grabbing; }
@@ -415,7 +429,7 @@
       border: 0;
       border-radius: var(--r-md);
       background: var(--bg);
-      box-shadow: var(--inset-sm);
+      box-shadow: var(--field);
       color: var(--text-hi);
       font-family: var(--mono);
       font-size: 1.6rem;
@@ -423,7 +437,7 @@
       text-align: center;
       letter-spacing: 0.02em;
     }
-    .hora-input:focus { box-shadow: var(--inset), 0 0 0 2px var(--brand); }
+    .hora-input:focus { box-shadow: var(--field), 0 0 0 2px var(--brand); }
     .hora-input::-webkit-calendar-picker-indicator { display: none; }
     .ampm { display: flex; gap: 4px; padding: 5px; border-radius: var(--r-pill); box-shadow: var(--inset-sm); }
     .ampm button {
@@ -500,7 +514,7 @@
       border: 0;
       border-radius: var(--r-md);
       background: var(--bg);
-      box-shadow: var(--inset-sm);
+      box-shadow: var(--field);
       color: var(--text-hi);
       font-family: var(--font);
       font-size: 0.9rem;
@@ -508,7 +522,7 @@
     }
     .input-field::placeholder { color: var(--text-lo); opacity: 1; }
     .input-field:focus, .select-field:focus {
-      box-shadow: var(--inset), 0 0 0 2px var(--brand);
+      box-shadow: var(--field), 0 0 0 2px var(--brand);
     }
     .input-field[type="number"] { font-family: var(--mono); }
     .select-field {
@@ -567,7 +581,7 @@
       box-shadow: var(--raised-sm), inset 1px 1px 2px rgba(255,255,255,0.25), inset -2px -2px 4px rgba(0,0,0,0.12);
     }
     .btn-primary:hover { background: var(--brand-hover); color: var(--on-brand); box-shadow: var(--raised), inset 1px 1px 2px rgba(255,255,255,0.25), inset -2px -2px 4px rgba(0,0,0,0.12); }
-    .btn-primary:active { background: var(--brand-deep); box-shadow: inset 3px 3px 7px rgba(0,0,0,0.25), inset -2px -2px 5px rgba(255,255,255,0.12); }
+    .btn-primary:active { background: var(--brand-deep); box-shadow: none; }
     .btn-primary:disabled { background: var(--bg); color: var(--text-lo); }
 
     .btn-large { min-height: 52px; padding: 12px 28px; font-size: 0.95rem; }
@@ -697,7 +711,7 @@
       padding: var(--s4) var(--s5);
       border-radius: var(--r-lg);
       background: var(--bg);
-      box-shadow: 12px 12px 28px var(--sh-dark), -8px -8px 22px var(--sh-light);
+      box-shadow: var(--shadow-float);
     }
     .pipeline-hud.visible { display: block; animation: dockIn 0.35s var(--ease-out); }
     @keyframes dockIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -833,7 +847,7 @@
       width: 40px; height: 22px;
       flex-shrink: 0;
       border-radius: var(--r-pill);
-      box-shadow: var(--inset-sm);
+      box-shadow: var(--field);
       position: relative;
       transition: background var(--t-med) var(--ease-out);
     }
@@ -844,11 +858,11 @@
       width: 16px; height: 16px;
       border-radius: 50%;
       background: var(--bg);
-      box-shadow: 2px 2px 4px var(--sh-dark), -1px -1px 3px var(--sh-light);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
       transition: transform var(--t-med) var(--ease-out);
     }
     .toggle-item.active .toggle-switch,
-    .puntapie-toggle.active .toggle-switch { background: var(--brand); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.2); }
+    .puntapie-toggle.active .toggle-switch { background: var(--brand); box-shadow: none; }
     .toggle-item.active .toggle-switch::after,
     .puntapie-toggle.active .toggle-switch::after { transform: translateX(18px); background: #F6F7FA; }
 
@@ -950,7 +964,7 @@
       padding: var(--s5);
       border-radius: var(--r-lg);
       background: var(--bg);
-      box-shadow: 14px 14px 32px var(--sh-dark), -14px -14px 32px var(--sh-light);
+      box-shadow: var(--shadow-float);
       animation: modalIn 0.35s var(--ease-out);
     }
     @keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
