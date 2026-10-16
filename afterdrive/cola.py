@@ -213,6 +213,7 @@ class _Tee(io.TextIOBase):
         self._real.write(s)
         self._pendiente += s
         *completas, self._pendiente = self._pendiente.split("\n")
+        completas = [ln for ln in completas if not ln.startswith("[Cola]")]  # avisos de la propia cola
         if completas:
             _agregar(completas)
         return len(s)
