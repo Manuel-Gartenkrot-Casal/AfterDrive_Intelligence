@@ -69,7 +69,9 @@ def _esta_bloqueado(html: str | None) -> bool:
 
 # Dominios cuyo origen no respondió en esta corrida (timeout / conexión
 # rechazada). Sus artículos van directo a Wayback en vez de esperar el mismo
-# timeout por cada link.
+# timeout por cada link. Se vacía al empezar cada start(): el scraping corre
+# dentro del proceso del servidor, que vive días, y un timeout de ayer no
+# tiene que mandar hoy la fuente entera a Wayback.
 _ORIGEN_CAIDO: set[str] = set()
 
 
@@ -317,7 +319,7 @@ def _procesar_individual(url: str, items: list):
         print("  [FAIL] No se pudo extraer contenido", flush=True)
 
 
-def _procesar_listado(url: str, max_articulos: int, items: list):
+def _procesar_listado(url: str, max_articulos: int, items: list, omitir=None):
     print(f"\n>>> URL (listado): {url}", flush=True)
 
     html = _fetch(url)
@@ -329,6 +331,15 @@ def _procesar_listado(url: str, max_articulos: int, items: list):
     if not enlaces:
         print("  [ERROR] No se encontraron enlaces a artículos", flush=True)
         return
+
+    if omitir:
+        conocidas = omitir(enlaces)
+        if conocidas:
+            enlaces = [e for e in enlaces if e not in conocidas]
+            print(f"  -> {len(conocidas)} enlace(s) ya procesado(s) antes: se omiten", flush=True)
+        if not enlaces:
+            print("  [OK] Sin artículos nuevos en esta fuente.", flush=True)
+            return
 
     candidatos = enlaces[: max_articulos * 3]
     print(f"  -> {len(enlaces)} enlaces encontrados, procesando {len(candidatos)} candidatos con {_MAX_WORKERS} workers...", flush=True)
@@ -355,12 +366,18 @@ def _procesar_listado(url: str, max_articulos: int, items: list):
     items.extend(lock_items[:max_articulos])
 
 
-def start(urls: list[str], max_articulos: int = 5, modo: str = "list") -> _Result:
+def start(urls: list[str], max_articulos: int = 5, modo: str = "list", omitir=None) -> _Result:
+    """Scrapea las URLs (como listado o como artículo individual).
+
+    omitir(links) -> set: los links que ya se procesaron en otra corrida. No se
+    descargan ni se vuelven a clasificar.
+    """
+    _ORIGEN_CAIDO.clear()
     items = []
     for url in urls:
         if modo == "single":
             _procesar_individual(url, items)
         else:
-            _procesar_listado(url, max_articulos, items)
+            _procesar_listado(url, max_articulos, items, omitir)
     print(f"\n>>> Total artículos extraídos: {len(items)}", flush=True)
     return _Result(items)

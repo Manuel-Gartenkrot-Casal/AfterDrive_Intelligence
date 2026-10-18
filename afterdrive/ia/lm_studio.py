@@ -166,8 +166,11 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
     try:
         data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1))
+        aprobado = data.get("aprobado", False)
+        if isinstance(aprobado, str):  # algunos modelos devuelven "false" entre comillas
+            aprobado = aprobado.strip().lower() in ("true", "si", "sí")
         return {
-            "aprobado": data.get("aprobado", False),
+            "aprobado": aprobado is True,
             "razon": data.get("razon", "Sin razón especificada"),
         }
     except json.JSONDecodeError:

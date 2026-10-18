@@ -274,3 +274,39 @@ def test_set_proveedor_local_se_acepta_si_lm_studio_responde(transporte, monkeyp
     monkeypatch.setenv("AI_PROVIDER", "nvidia")
     r = llm.set_proveedor("local")
     assert r["success"] and llm.proveedor_activo() == "local"
+
+
+def test_disponible_se_vuelve_a_chequear_despues_de_una_caida(monkeypatch, openrouter):
+    """Un 'no responde' no puede quedar cacheado para siempre (modo degradado eterno)."""
+    ahora = [1000.0]
+    respuestas = [False, True]
+    llamadas = []
+
+    def get(url, *, headers, timeout):
+        llamadas.append(url)
+        if not respuestas.pop(0):
+            raise ConnectionError("caído")
+
+    monkeypatch.setattr(llm, "_disponible_cache", {})
+    monkeypatch.setattr(llm, "_reloj", lambda: ahora[0])
+    monkeypatch.setattr(llm, "_transporte", {"get": get, "post": None})
+    assert llm.disponible() is False
+    assert llm.disponible() is False and len(llamadas) == 1   # dentro de la vigencia, no pregunta
+    ahora[0] += llm.VIGENCIA_CAIDO_S + 1
+    assert llm.disponible() is True and len(llamadas) == 2    # vencida, vuelve a preguntar
+    ahora[0] += llm.VIGENCIA_CAIDO_S + 1
+    assert llm.disponible() is True and len(llamadas) == 2    # un OK dura más
+
+
+@pytest.mark.parametrize("respuesta, esperado", [
+    ('{"aprobado": true, "razon": "ok"}', True),
+    ('{"aprobado": false, "razon": "no"}', False),
+    ('{"aprobado": "false", "razon": "no"}', False),
+    ('{"aprobado": "true", "razon": "ok"}', True),
+    ('{"aprobado": 1, "razon": "?"}', False),
+])
+def test_clasificador_lee_aprobado_sin_trampas(monkeypatch, respuesta, esperado):
+    from afterdrive.ia import lm_studio
+    monkeypatch.setattr(lm_studio.llm, "disponible", lambda: True)
+    monkeypatch.setattr(lm_studio.llm, "completar", lambda *a, **k: respuesta)
+    assert lm_studio.clasificar_articulo("t", "c")["aprobado"] is esperado

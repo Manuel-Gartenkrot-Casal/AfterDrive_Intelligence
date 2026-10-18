@@ -113,7 +113,7 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
         url = doc["url"]
         print(f"Scrapeando: {url}", flush=True)
         try:
-            items = start([url], modo="list", max_articulos=max_articulos).items
+            items = start([url], modo="list", max_articulos=max_articulos, omitir=ya_procesadas).items
             if items:
                 res = ingerir(items)
                 aprobados += res["aprobados"]
@@ -128,6 +128,16 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
 
     print(f"[{datetime.datetime.now()}] Scraping finalizado.", flush=True)
     return {"success": True, "aprobados": aprobados}
+
+
+def ya_procesadas(urls: list[str]) -> set[str]:
+    """De estas URLs, las que ya están guardadas o fueron descartadas antes."""
+    from afterdrive.db import col_articulos, col_descartados
+
+    conocidas = set()
+    for col in (col_articulos, col_descartados):
+        conocidas |= {d["url"] for d in col.find({"url": {"$in": list(urls)}}, {"url": 1, "_id": 0})}
+    return conocidas
 
 
 def parametros_guardados() -> dict | None:

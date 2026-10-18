@@ -185,20 +185,31 @@ def _dormir(segundos: float) -> None:
 
 # ── Disponibilidad ────────────────────────────────────────────────────────────
 
-_disponible_cache: dict[str, bool] = {}
+# proveedor -> (responde, cuándo se chequeó). El resultado vence: un "no
+# responde" cacheado para siempre dejaba el clasificador en modo degradado
+# (aprobando todo) hasta reiniciar el servidor, que en Render vive días.
+_disponible_cache: dict[str, tuple[bool, float]] = {}
+VIGENCIA_OK_S = 600       # si respondió, no se vuelve a preguntar por 10 min
+VIGENCIA_CAIDO_S = 60     # si no respondió, se reintenta al minuto
+_reloj = time.monotonic   # seam para los tests
 
 
 def disponible() -> bool:
-    """True si el proveedor activo responde. Se chequea una vez por proveedor."""
+    """True si el proveedor activo responde. El resultado se cachea un rato."""
     perfil = _perfil_chat()
-    if perfil.nombre not in _disponible_cache:
-        try:
-            _transporte["get"](f"{perfil.base_url}/models", headers=perfil.headers, timeout=5)
-            _disponible_cache[perfil.nombre] = True
-        except Exception:
-            _disponible_cache[perfil.nombre] = False
-            print(f"[AVISO] Proveedor '{perfil.nombre}' ({perfil.base_url}) no disponible.", flush=True)
-    return _disponible_cache[perfil.nombre]
+    cache = _disponible_cache.get(perfil.nombre)
+    if cache is not None:
+        ok, cuando = cache
+        if _reloj() - cuando < (VIGENCIA_OK_S if ok else VIGENCIA_CAIDO_S):
+            return ok
+    try:
+        _transporte["get"](f"{perfil.base_url}/models", headers=perfil.headers, timeout=5)
+        ok = True
+    except Exception:
+        ok = False
+        print(f"[AVISO] Proveedor '{perfil.nombre}' ({perfil.base_url}) no disponible.", flush=True)
+    _disponible_cache[perfil.nombre] = (ok, _reloj())
+    return ok
 
 
 def ajustes_redaccion() -> Redaccion:

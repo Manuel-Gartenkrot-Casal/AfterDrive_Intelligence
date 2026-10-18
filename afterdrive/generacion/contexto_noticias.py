@@ -87,6 +87,24 @@ def _recortar(texto: str, limite: int) -> str:
 # ── IO (Mongo + embeddings) ───────────────────────────────────────────────────
 
 
+def _fecha(d: dict) -> datetime.datetime | None:
+    """Fecha de publicación del artículo; si falta o no se entiende, la de guardado.
+
+    Antes se usaba siempre la de guardado (el _id): un artículo viejo
+    scrapeado hoy pesaba como recién publicado.
+    """
+    guardado = d["_id"].generation_time if hasattr(d.get("_id"), "generation_time") else None
+    texto = str(d.get("fecha") or "").strip()
+    try:
+        publicado = datetime.datetime.fromisoformat(texto[:10]).replace(tzinfo=datetime.UTC)
+    except ValueError:
+        return guardado
+    # Una fecha futura es un error de extracción: no puede ganarle a todas.
+    if guardado and publicado > guardado + datetime.timedelta(days=1):
+        return guardado
+    return publicado
+
+
 def _desde_doc(d: dict) -> Noticia:
     return Noticia(
         id=d["_id"],
@@ -94,7 +112,7 @@ def _desde_doc(d: dict) -> Noticia:
         cuerpo=d.get("cuerpo") or d.get("bajada") or "",
         url=d.get("url", ""),
         fuente=d.get("fuente", "") if d.get("fuente") not in ("custom", None) else "",
-        fecha=d["_id"].generation_time if hasattr(d["_id"], "generation_time") else None,
+        fecha=_fecha(d),
         usada=bool(d.get("usado_para_articulo")),
         embedding=d.get("embedding"),
     )
@@ -108,7 +126,8 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     docs = list(
         col_articulos.find(
             {"cuerpo": {"$exists": True, "$ne": ""}},
-            {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "embedding": 1, "usado_para_articulo": 1},
+            {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
+             "usado_para_articulo": 1},
         ).sort("_id", -1).limit(CANDIDATOS)
     )
     if not docs:

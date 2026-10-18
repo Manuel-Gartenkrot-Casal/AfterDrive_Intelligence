@@ -142,3 +142,17 @@ def test_formatear_respeta_presupuesto_y_no_corta_frases():
     assert len(txt) < 1500 + 300
     assert txt.count("[") == 3 and "https://n/2" in txt
     assert "completa. " in txt and not txt.rstrip().endswith("Una")
+
+
+def test_la_recencia_usa_la_fecha_de_publicacion():
+    import datetime
+
+    from bson import ObjectId
+
+    from afterdrive.generacion import contexto_noticias as cn
+    guardado_hoy = ObjectId.from_datetime(datetime.datetime(2026, 10, 18, tzinfo=datetime.UTC))
+    vieja = cn._desde_doc({"_id": guardado_hoy, "titulo": "t", "fecha": "2025-03-01"})
+    assert vieja.fecha == datetime.datetime(2025, 3, 1, tzinfo=datetime.UTC)
+    # Sin fecha, con basura o con una fecha futura: la de guardado.
+    for fecha in (None, "ayer", "2031-01-01"):
+        assert cn._desde_doc({"_id": guardado_hoy, "titulo": "t", "fecha": fecha}).fecha == guardado_hoy.generation_time
