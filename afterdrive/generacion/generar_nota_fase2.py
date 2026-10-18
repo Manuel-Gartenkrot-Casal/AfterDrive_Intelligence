@@ -23,7 +23,7 @@ import datetime
 import os
 import sys
 
-from afterdrive.db import db
+from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
 from afterdrive.generacion import contexto_noticias
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
 from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
@@ -184,13 +184,13 @@ def _pedido_de_correccion(fallas: list[str]) -> str:
     )
 
 
-def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str]:
-    """(nota saneada, "") o (None, motivo). Lanza ErrorLLM si el proveedor falla."""
+def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str, str]:
+    """(nota saneada, "", crudo) o (None, motivo, crudo). Lanza ErrorLLM si el proveedor falla."""
     crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True)
     saneo = sanear(crudo)
     if not saneo.ok:
-        return None, saneo.motivo
-    return saneo.texto, ""
+        return None, saneo.motivo, crudo
+    return saneo.texto, "", crudo
 
 
 def generar_nota(
@@ -236,13 +236,16 @@ def generar_nota(
         intentos = intento
         print("  Generando nota..." if intento == 1 else f"  Reescribiendo la nota (intento {intento})...", flush=True)
         try:
-            articulo, motivo = _redactar(system, pedido, ajustes)
+            articulo, motivo, crudo = _redactar(system, pedido, ajustes)
         except llm.ErrorLLM as e:
             if mejor:
                 break
             return {"success": False, "error": str(e)}
         if articulo is None:
             print(f"  [WARN] {motivo}. Se descarta esta versión.", flush=True)
+            registrar_nota_descartada(
+                "fase2", crudo, motivo, tema=tema, persona=persona, categorias=categorias, regiones=regiones,
+            )
             continue
 
         print("  Evaluando calidad...", flush=True)
@@ -280,6 +283,7 @@ def generar_nota(
             "reescrita_por": reescrita_por if intentos > 1 else [],
         },
         "proveedor": llm.proveedor_activo(),
+        "estado": ESTADO_BORRADOR,
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 

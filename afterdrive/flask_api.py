@@ -427,6 +427,81 @@ def run_generacion():
     return _encolar("generacion", origen=_origen())
 
 
+# ── Historial y revisión de notas ─────────────────────────────────────────────
+# La lógica vive en historial.py; acá solo se traducen parámetros y errores.
+
+
+@app.route("/api/historial/resumen", methods=["GET"])
+def historial_resumen():
+    from afterdrive import historial
+    try:
+        return jsonify({"success": True, **historial.resumen()})
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/historial/<seccion>", methods=["GET"])
+def historial_listar(seccion: str):
+    from afterdrive import historial
+    try:
+        datos = historial.listar(
+            seccion,
+            pagina=request.args.get("pagina", 1, type=int),
+            por_pagina=request.args.get("por_pagina", 20, type=int),
+            q=request.args.get("q", ""),
+            estado=request.args.get("estado", "todos"),
+        )
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    return jsonify({"success": True, **datos})
+
+
+@app.route("/api/historial/<seccion>/<coleccion>/<item_id>", methods=["GET"])
+def historial_detalle(seccion: str, coleccion: str, item_id: str):
+    from afterdrive import historial
+    try:
+        item = historial.detalle(seccion, coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "No encontrado."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/estado", methods=["POST"])
+def historial_estado():
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/contenido", methods=["PATCH"])
+def historial_editar():
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.editar(body.get("coleccion", ""), body.get("id", ""), body.get("contenido"))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
 # ── Cola de Corridas ──────────────────────────────────────────────────────────
 
 

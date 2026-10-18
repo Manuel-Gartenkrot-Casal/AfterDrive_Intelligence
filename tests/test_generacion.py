@@ -55,6 +55,9 @@ def entorno(monkeypatch):
     ])
     monkeypatch.setattr(g, "col_notas_fase2", col)
     monkeypatch.setattr(g, "col_clientes", ColFake())
+    descartadas = []
+    monkeypatch.setattr(g, "registrar_nota_descartada", lambda origen, crudo, motivo, **meta: descartadas.append(motivo))
+    llamadas["descartadas"] = descartadas
 
     def completar(system, user, **kw):
         llamadas.update(system=system, user=user, **kw)
@@ -206,6 +209,8 @@ def test_si_el_saneo_rechaza_la_primera_se_reintenta(entorno, monkeypatch):
     monkeypatch.setattr(g, "sanear", lambda crudo: type("S", (), {
         "ok": crudo == NOTA, "texto": crudo, "motivo": "el modelo escribió su razonamiento"})())
     assert g.generar_nota(["autopartes"])["success"] and col.docs[0]["calidad"]["intentos"] == 2
+    assert entorno[0]["descartadas"] == ["el modelo escribió su razonamiento"]
+    assert col.docs[0]["estado"] == "borrador"
 
 
 def test_sin_evaluacion_disponible_no_se_reescribe(entorno, monkeypatch):

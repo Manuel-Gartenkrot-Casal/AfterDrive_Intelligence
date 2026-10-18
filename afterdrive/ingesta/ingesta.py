@@ -53,9 +53,19 @@ def ingerir(items: list[dict]) -> dict:
 
         razon = veredicto.get("razon", "")
         print(f"    -> Rechazado: {razon[:80]}", flush=True)
+        # Además de la URL (que evita reprocesarlo) se guarda qué era y por qué
+        # se rechazó, para el historial. El cuerpo se acota para no inflar la base.
         col_descartados.replace_one(
             {"url": item.get("url", "")},
-            {"url": item.get("url", ""), "fecha_descarte": datetime.datetime.now(datetime.UTC).isoformat()},
+            {
+                "url": item.get("url", ""),
+                "titulo": titulo,
+                "cuerpo": (cuerpo or "")[:5000],
+                "fuente": item.get("fuente", ""),
+                "fecha": item.get("fecha", ""),
+                "razon": razon,
+                "fecha_descarte": datetime.datetime.now(datetime.UTC).isoformat(),
+            },
             upsert=True,
         )
         detalles.append({"titulo": titulo, "estado": "rechazado", "razon": razon})

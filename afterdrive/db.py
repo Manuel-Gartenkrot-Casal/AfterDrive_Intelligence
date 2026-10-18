@@ -1,4 +1,5 @@
 import contextlib
+import datetime
 import os
 
 from dotenv import load_dotenv
@@ -56,6 +57,19 @@ col_afterdrive_ejemplos = db["afterdrive_ejemplos"]  # Notas reales scrapeadas d
 col_notas_fase2 = db["notas_fase2"]                  # Notas generadas por Fase 2
 col_clientes = db["clientes"]                        # Clientes para mencionar en notas
 
+# Notas que el modelo llegó a escribir pero se descartaron (el saneo las
+# rechazó). Antes solo se imprimían en la consola y se perdían.
+col_notas_descartadas = db["notas_descartadas"]
+
+# Estado editorial de una Nota guardada. Las notas anteriores a este campo no
+# lo tienen y cuentan como borrador. "publicado" (y no "publicada") por
+# compatibilidad con lo que ya guardó la rama Front-Testing.
+ESTADO_BORRADOR = "borrador"
+ESTADO_APROBADA = "aprobada"
+ESTADO_RECHAZADA = "rechazada"
+ESTADO_PUBLICADO = "publicado"
+ESTADOS_NOTA = (ESTADO_BORRADOR, ESTADO_APROBADA, ESTADO_RECHAZADA, ESTADO_PUBLICADO)
+
 COLECCIONES_URLS = [col_articulos, col_afterdrive]
 
 COLECCIONES_TEXTO = {
@@ -73,7 +87,8 @@ INDICES = {
     "articulos_descartados": [[("url", 1)]],
     "trusted_urls": [[("url", 1)], [("estado", 1)]],
     "suggested_urls": [[("dominio", 1)]],
-    "notas_fase2": [[("generado_en", -1)]],
+    "notas_fase2": [[("generado_en", -1)], [("estado", 1)]],
+    "notas_descartadas": [[("descartado_en", -1)]],
     "afterdrive_ejemplos": [[("tag_slug", 1)]],
     "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],
 }
@@ -88,6 +103,24 @@ def crear_indices() -> None:
             except Exception as e:
                 print(f"[DB] No se pudo crear el índice {coleccion}.{campos}: {e}", flush=True)
     crear_indices_texto()
+
+
+def registrar_nota_descartada(origen: str, contenido: str, motivo: str, **meta) -> None:
+    """Guarda una Nota descartada para que el historial pueda mostrarla.
+
+    Nunca corta la generación: si Mongo falla, avisa y sigue. El contenido se
+    acota a 20000 caracteres: el texto crudo puede traer razonamiento largo.
+    """
+    try:
+        col_notas_descartadas.insert_one({
+            "origen": origen,
+            "contenido": (contenido or "")[:20000],
+            "motivo": motivo,
+            "descartado_en": datetime.datetime.now(datetime.UTC).isoformat(),
+            **meta,
+        })
+    except Exception as e:
+        print(f"[AVISO] No se pudo registrar la nota descartada: {e}", flush=True)
 
 
 def crear_indices_texto():
