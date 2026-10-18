@@ -8,7 +8,7 @@ Todo en `afterdrive/flask_api.py`. Las respuestas son JSON con `success: true|fa
 - **Todo pide sesión** salvo `/`, `/health` y `/api/login`. Sin sesión: 401.
 - **Cron externo**: `POST /api/run-automation` y `POST /api/run-generacion` aceptan también `Authorization: Bearer <CRON_TOKEN>`.
 - 5 intentos fallidos desde una IP bloquean el login 15 minutos.
-- Cabeceras de seguridad (CSP, `X-Frame-Options`…), cookie `HttpOnly` + `SameSite=Strict`, y el scraper rechaza URLs internas (SSRF). La CSP permite los dominios de Google Translate para el traductor.
+- Cabeceras de seguridad (CSP, `X-Frame-Options`…), cookie `HttpOnly` + `SameSite=Strict`, y el scraper rechaza URLs internas (SSRF).
 
 Login y guardia en `afterdrive/auth.py`.
 

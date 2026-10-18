@@ -9,10 +9,9 @@
 | Una generación empezada en el servidor no se cancela | `cola.py` | Corre dentro del proceso; hay que esperar que termine |
 | Log de la Corrida con ruido | `cola.py` | Mientras corre un scraping o una nota programada en el servidor, lo que imprimen otros threads también entra a su log |
 | Todo en memoria de un proceso | lock, scheduler, login | Obliga a un solo worker. El contador de intentos de login se reinicia en cada deploy |
-| El traductor ejecuta un script de Google | `index.html`, CSP | Solo se descarga al elegir PT, pero la CSP lo permite siempre y ese script puede leer la página. Si no se usa, conviene sacarlo |
 | Endpoints viejos fuera de la cola | `flask_api.py` | `/api/add-url`, `/api/discover-sources`, los `/stream/*` y Fase 1. El dashboard ya no los usa: se pueden borrar |
 | Código sin uso | `ia/lm_studio.py` (`extraer_temas`, `research_contexto`), `ingesta/jev_clasificador.py`, colección `afterdrive` | Ruido al leer |
-| `Front-Testing` sigue existiendo | rama | Sus funciones (historial, estados, descartes con motivo, traductor) ya están en `Render_Testing`. No se portó su rediseño visual (`workspace.*`, Express con TypeScript). Se puede archivar |
+| `Front-Testing` sigue existiendo (**pospuesto**) | rama | Sus funciones de historial, estados y descartes con motivo ya están en `Render_Testing`. Quedan sin decidir su rediseño visual (`workspace.*`, Express con TypeScript) y qué hacer con la rama. El traductor a portugués se descartó |
 
 ## Mejoras pendientes
 

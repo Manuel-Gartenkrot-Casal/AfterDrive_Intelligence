@@ -23,18 +23,13 @@ auth.init_app(app)
 
 # 'unsafe-inline' en scripts y estilos: el dashboard es un solo HTML con
 # <script>, <style> y onclick en línea. Sacarlo exige reescribir ese archivo.
-# Los dominios de Google Translate son para el traductor a portugués: su
-# script solo se descarga cuando alguien elige PT, pero la CSP lo tiene que
-# permitir siempre. Ese script puede leer la página (incluidas las notas).
-_TRADUCTOR = "https://translate.google.com https://translate.googleapis.com https://translate-pa.googleapis.com"
 _CSP = "; ".join([
     "default-src 'self'",
-    f"script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net {_TRADUCTOR}",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://translate.googleapis.com",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src https://fonts.gstatic.com",
     "img-src 'self' data: https:",
-    f"connect-src 'self' {_TRADUCTOR}",
-    f"frame-src {_TRADUCTOR}",
+    "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'self'",

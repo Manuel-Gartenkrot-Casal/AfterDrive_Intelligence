@@ -56,7 +56,7 @@ Empezá por **[docs/README.md](docs/README.md)**: dice qué leer según lo que v
 |---|---|
 | **`Render_Testing`** | **Producción y desarrollo activo.** Render despliega desde acá. Es la referencia de toda la documentación |
 | `main` | Recibió `Render_Testing` el 16/10 ([PR #13](https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence/pull/13)). No tiene lo posterior: cola de Corridas, historial y revisión, HubSpot, GitHub Actions |
-| `Front-Testing` | Rama paralela vieja. Sus funciones (historial, estados de las notas, descartes con motivo, traductor) ya están en `Render_Testing`; su rediseño visual no se portó. Se puede archivar |
+| `Front-Testing` | Rama paralela vieja. Su historial, estados de las notas y descartes con motivo ya están en `Render_Testing`. Lo que queda (rediseño visual) está **pospuesto** |
 | `Render_FrontTesting` | Copia de `Render_Testing` del 16/10, sin cambios propios |
 
 ## Stack
