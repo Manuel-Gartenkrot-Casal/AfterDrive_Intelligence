@@ -1475,6 +1475,9 @@
     .confirmar::backdrop { background: rgba(15, 18, 24, 0.45); }
     .confirmar h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: var(--s2); }
     .confirmar p { font-size: 0.875rem; color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
+    .confirmar-campo { display: block; width: 100%; margin-top: var(--s3); }
+    textarea.confirmar-campo { resize: vertical; font: inherit; }
+    .confirmar-campo[hidden] { display: none; }
     .confirmar-acciones { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); flex-wrap: wrap; }
     .btn-peligro { background: var(--err); color: #FFFFFF; box-shadow: none; }
     .btn-peligro:hover { background: color-mix(in srgb, var(--err) 88%, #000); }
@@ -1916,6 +1919,8 @@
     <form method="dialog">
       <h2 id="confirmar-titulo"></h2>
       <p id="confirmar-texto"></p>
+      <label class="control-label confirmar-campo" for="confirmar-valor" id="confirmar-etiqueta" hidden></label>
+      <textarea id="confirmar-valor" class="input-field confirmar-campo" rows="3" maxlength="300" hidden></textarea>
       <div class="confirmar-acciones">
         <button class="btn" value="no" autofocus id="confirmar-no">Cancelar</button>
         <button class="btn" value="si" id="confirmar-si"></button>
@@ -2020,9 +2025,15 @@
        TOAST NOTIFICATIONS
        ═══════════════════════════════════════════════════════════════════════ */
     /* Pregunta antes de una acción. Resuelve true solo si el usuario confirma;
-       Esc, Cancelar o cerrar resuelven false. */
+       Esc, Cancelar o cerrar resuelven false. Con opts.campo pide además un
+       texto (obligatorio) y resuelve ese texto en lugar de true. */
     function confirmar(opts) {
       var dlg = $('confirmar');
+      var conCampo = !!opts.campo;
+      $('confirmar-etiqueta').hidden = $('confirmar-valor').hidden = !conCampo;
+      $('confirmar-etiqueta').textContent = opts.campo || '';
+      $('confirmar-valor').value = '';
+      $('confirmar-valor').placeholder = opts.placeholder || '';
       $('confirmar-titulo').textContent = opts.titulo;
       $('confirmar-texto').textContent = opts.mensaje;
       var si = $('confirmar-si');
@@ -2030,10 +2041,16 @@
       si.className = 'btn ' + (opts.peligro === false ? 'btn-primary' : 'btn-peligro');
       $('confirmar-no').textContent = opts.cancelar || 'Cancelar';
       dlg.returnValue = '';
+      function validar() { si.disabled = conCampo && $('confirmar-valor').value.trim().length < 3; }
+      $('confirmar-valor').oninput = validar;
+      validar();
       return new Promise(function(resolve) {
-        dlg.addEventListener('close', function() { resolve(dlg.returnValue === 'si'); }, { once: true });
+        dlg.addEventListener('close', function() {
+          var ok = dlg.returnValue === 'si';
+          resolve(conCampo ? (ok ? $('confirmar-valor').value.trim() : false) : ok);
+        }, { once: true });
         dlg.showModal();
-        $('confirmar-no').focus();
+        (conCampo ? $('confirmar-valor') : $('confirmar-no')).focus();
       });
     }
 
@@ -3954,18 +3971,23 @@
 
     async function cambiarEstadoNota(estado) {
       var n = _notaActual;
+      var motivo = null;
       if (estado === 'aprobada' && n.estado === 'publicado' && n.hubspot && n.hubspot.id && !await confirmar({
         titulo: '¿Despublicar esta nota?', accion: 'Despublicar',
         mensaje: 'Deja de verse en el blog: en HubSpot vuelve a borrador. Acá queda aprobada, lista para publicar de nuevo.'
       })) return;
-      if (estado === 'rechazada' && !await confirmar({
-        titulo: '¿Rechazar esta nota?', accion: 'Rechazar',
-        mensaje: 'Queda en el historial como rechazada y no se publica. Podés volver a revisarla cuando quieras.'
-      })) return;
+      if (estado === 'rechazada') {
+        motivo = await confirmar({
+          titulo: '¿Rechazar esta nota?', accion: 'Rechazar',
+          mensaje: 'Queda en el historial como rechazada y no se publica. Las próximas notas van a tener en cuenta el motivo.',
+          campo: '¿Qué tiene mal?', placeholder: 'Ej: inventa cifras, suena a folleto, repite la introducción…'
+        });
+        if (!motivo) return;
+      }
       try {
         var d = await pedir('/api/historial/estado', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ coleccion: n.coleccion, id: n.id, estado: estado })
+          body: JSON.stringify({ coleccion: n.coleccion, id: n.id, estado: estado, motivo: motivo })
         });
         n.estado = d.item.estado;
         pintarAccionesNota();

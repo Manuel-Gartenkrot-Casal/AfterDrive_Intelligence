@@ -199,7 +199,7 @@ def test_endpoints_responden_400_y_404_con_json(client):
 
 def test_aprobar_y_rechazar_se_filtran_aparte(base):
     historial.cambiar_estado("notas_fase2", str(_oid(7)), "aprobada", base=base)
-    historial.cambiar_estado("notas_fase2", str(_oid(3)), "rechazada", base=base)
+    historial.cambiar_estado("notas_fase2", str(_oid(3)), "rechazada", base=base, motivo="Inventa cifras")
     assert [i["titulo"] for i in historial.listar("generados_aprobados", estado="aprobada", base=base)["items"]] == [
         "Neumáticos (+ datos)"]
     assert historial.listar("generados_aprobados", estado="rechazada", base=base)["total"] == 1
@@ -247,3 +247,29 @@ def test_ingesta_guarda_el_motivo_del_descarte(monkeypatch):
     ingesta.ingerir([{"url": "https://s/a", "titulo": "Lanzamiento 0 km", "cuerpo": "c" * 9000, "fuente": "S"}])
     doc = col.find_one()
     assert doc["razon"] == "Es sobre 0 km" and doc["titulo"] == "Lanzamiento 0 km" and len(doc["cuerpo"]) == 5000
+
+
+# ── Rechazos que enseñan ──────────────────────────────────────────────────────
+
+
+def test_rechazar_pide_motivo_y_lo_muestra(base):
+    with pytest.raises(historial.ErrorHistorial, match="por qué"):
+        historial.cambiar_estado("notas_fase2", str(_oid(7)), "rechazada", base=base)
+    item = historial.cambiar_estado("notas_fase2", str(_oid(7)), "rechazada", base=base,
+                                    motivo="  Demasiado   comercial,\nsuena a folleto ")
+    assert item["estado"] == "rechazada" and item["motivo"] == "Demasiado comercial, suena a folleto"
+    listado = historial.listar("generados_aprobados", estado="rechazada", base=base)["items"]
+    assert listado[0]["motivo"] == "Demasiado comercial, suena a folleto"
+
+
+def test_motivos_recientes_sin_repetir_y_el_mas_nuevo_primero(base):
+    for minuto, motivo in ((1, "Inventa cifras"), (3, "Muy largo"), (7, "inventa cifras")):
+        historial.cambiar_estado("notas_fase2" if minuto != 1 else "articulos_generados", str(_oid(minuto)),
+                                 "rechazada", base=base, motivo=motivo)
+    assert historial.motivos_recientes(base=base) == ["inventa cifras", "Muy largo"]
+
+
+def test_motivos_viejos_no_cuentan(base):
+    base.notas_fase2.update_one({"_id": _oid(7)}, {"$set": {
+        "estado": "rechazada", "motivo_rechazo": "Viejo", "rechazado_en": "2020-01-01T00:00:00+00:00"}})
+    assert historial.motivos_recientes(base=base) == []

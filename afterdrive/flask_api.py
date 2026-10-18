@@ -477,7 +477,8 @@ def historial_estado():
     from afterdrive import historial, hubspot
     body = request.get_json(silent=True) or {}
     try:
-        item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""))
+        item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""),
+                                        motivo=body.get("motivo"))
     except historial.ErrorHistorial as e:
         return jsonify({"success": False, "error": str(e)}), 400
     except hubspot.ErrorHubSpot as e:

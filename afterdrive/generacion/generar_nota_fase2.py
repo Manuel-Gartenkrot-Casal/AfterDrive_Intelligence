@@ -116,6 +116,7 @@ def _build_user_prompt(
     categorias: list[str],
     tema: str | None,
     ajustes: "llm.Redaccion | None" = None,
+    evitar: list[str] | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -136,6 +137,12 @@ def _build_user_prompt(
             "## Notas publicadas de referencia\n"
             "Imitá su tono, estructura y profundidad. No copies su contenido ni sus datos.\n\n"
             + _formatear_ejemplos(ejemplos, ajustes.chars_ejemplo)
+        )
+    if evitar:
+        partes.append(
+            "## Correcciones de notas anteriores\n"
+            "Una persona rechazó notas anteriores por estos motivos. No repitas esos errores:\n"
+            + "\n".join(f"- {m}" for m in evitar)
         )
     pedido = "Escribí la nota."
     if tema:
@@ -193,6 +200,16 @@ def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str, str
     return saneo.texto, "", crudo
 
 
+def _correcciones() -> list[str]:
+    """Motivos de rechazo recientes. Si Mongo falla, la nota se escribe igual."""
+    try:
+        from afterdrive.historial import motivos_recientes
+        return motivos_recientes()
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer las correcciones anteriores: {e}", flush=True)
+        return []
+
+
 def generar_nota(
     categorias: list[str],
     clientes_ids: list[str] | None = None,
@@ -223,7 +240,10 @@ def generar_nota(
     print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}", flush=True)
 
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes)
-    user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes)
+    evitar = _correcciones()
+    if evitar:
+        print(f"  Correcciones de notas rechazadas: {len(evitar)}", flush=True)
+    user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, evitar)
 
     from afterdrive.ia.lm_studio import evaluar_lineamientos
 
@@ -283,6 +303,7 @@ def generar_nota(
             "reescrita_por": reescrita_por if intentos > 1 else [],
         },
         "proveedor": llm.proveedor_activo(),
+        "correcciones_usadas": evitar,
         "estado": ESTADO_BORRADOR,
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }

@@ -55,6 +55,7 @@ def entorno(monkeypatch):
     ])
     monkeypatch.setattr(g, "col_notas_fase2", col)
     monkeypatch.setattr(g, "col_clientes", ColFake())
+    monkeypatch.setattr(g, "_correcciones", lambda: [])
     descartadas = []
     monkeypatch.setattr(g, "registrar_nota_descartada", lambda origen, crudo, motivo, **meta: descartadas.append(motivo))
     llamadas["descartadas"] = descartadas
@@ -283,3 +284,18 @@ def test_si_atlas_falla_se_sigue_con_las_recientes(vectorial, monkeypatch):
     monkeypatch.setenv("ATLAS_VECTOR_INDEX", "no-existe")
     vectorial(ColConVector([_doc(1, [0.0, 1.0])], [], falla=True))
     assert [n.titulo for n in contexto_noticias.seleccionar("frenos")] == ["N1"]
+
+
+def test_las_correcciones_de_rechazos_llegan_al_pedido(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.setattr(g, "_correcciones", lambda: ["Inventa cifras", "Muy comercial"])
+    g.generar_nota(["autopartes"])
+    assert "- Inventa cifras\n- Muy comercial" in llamadas["user"]
+    assert llamadas["user"].index("Correcciones") < llamadas["user"].index("## Pedido")
+    assert col.docs[0]["correcciones_usadas"] == ["Inventa cifras", "Muy comercial"]
+
+
+def test_sin_correcciones_no_aparece_la_seccion(entorno):
+    llamadas, _, _ = entorno
+    g.generar_nota(["autopartes"])
+    assert "Correcciones" not in llamadas["user"]

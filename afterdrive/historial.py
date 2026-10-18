@@ -173,6 +173,8 @@ def _normalizar(doc: dict, coleccion: str, seccion: str, completo: bool = False)
         item["editado_en"] = doc.get("editado_en")
         item["calidad"] = doc.get("calidad")
         item["hubspot"] = doc.get("hubspot")
+        if item["estado"] == _db.ESTADO_RECHAZADA:
+            item["motivo"] = doc.get("motivo_rechazo") or None
     if seccion.endswith("descartados"):
         # Los descartes anteriores a este cambio no guardaban el motivo.
         item["motivo"] = doc.get("motivo") or doc.get("razon") or None
@@ -261,12 +263,22 @@ def detalle(seccion: str, coleccion: str, item_id: str, base=None) -> dict | Non
     return _normalizar(doc, coleccion, seccion, completo=True) if doc else None
 
 
-def cambiar_estado(coleccion: str, item_id: str, estado: str, base=None) -> dict | None:
-    """Cambia el estado editorial de una Nota (borrador, aprobada, rechazada, publicado)."""
+MOTIVO_MAX = 300
+
+
+def cambiar_estado(coleccion: str, item_id: str, estado: str, base=None, motivo: str | None = None) -> dict | None:
+    """Cambia el estado editorial de una Nota (borrador, aprobada, rechazada, publicado).
+
+    Rechazar pide un motivo: se muestra en el historial y las notas siguientes
+    lo reciben como un error a evitar (ver motivos_recientes).
+    """
     if coleccion not in COLECCIONES_CON_ESTADO:
         raise ErrorHistorial("Solo las notas generadas tienen estado editorial.")
     if estado not in ESTADOS:
         raise ErrorHistorial(f"Estado inválido: {estado!r}.")
+    motivo = " ".join(motivo.split())[:MOTIVO_MAX] if isinstance(motivo, str) else ""
+    if estado == _db.ESTADO_RECHAZADA and len(motivo) < 3:
+        raise ErrorHistorial("Contá en pocas palabras por qué la rechazás: las próximas notas lo van a tener en cuenta.")
 
     col = _base(base)[coleccion]
     actual = col.find_one({"_id": _oid(item_id)}, {"estado": 1, "hubspot": 1})
@@ -278,6 +290,8 @@ def cambiar_estado(coleccion: str, item_id: str, estado: str, base=None) -> dict
         col.update_one({"_id": actual["_id"]}, {"$set": {"hubspot.estado": "DRAFT"}})
 
     cambios = {"$set": {"estado": estado}}
+    if estado == _db.ESTADO_RECHAZADA:
+        cambios["$set"].update(motivo_rechazo=motivo, rechazado_en=datetime.datetime.now(datetime.UTC).isoformat())
     if estado == _db.ESTADO_PUBLICADO:
         cambios["$set"]["publicado_en"] = datetime.datetime.now(datetime.UTC).isoformat()
     else:
@@ -333,3 +347,26 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None) ->
         cambios.update(estado=_db.ESTADO_PUBLICADO, publicado_en=ahora)
     col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
+
+
+def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
+    """Los motivos de las últimas notas rechazadas, sin repetir, el más nuevo primero.
+
+    Es lo que una persona corrigió: la generación los pasa al modelo como
+    errores a evitar. Solo los de los últimos `dias`, para que una queja vieja
+    (ya resuelta en los prompts) no siga pesando para siempre.
+    """
+    desde = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=dias)).isoformat()
+    motivos: list[str] = []
+    for coleccion in COLECCIONES_CON_ESTADO:
+        cursor = _base(base)[coleccion].find(
+            {"estado": _db.ESTADO_RECHAZADA, "motivo_rechazo": {"$nin": ["", None]}, "rechazado_en": {"$gte": desde}},
+            {"motivo_rechazo": 1, "rechazado_en": 1},
+        ).sort("rechazado_en", -1).limit(limite)
+        motivos += [(d["rechazado_en"], d["motivo_rechazo"]) for d in cursor]
+    vistos, resultado = set(), []
+    for _, m in sorted(motivos, reverse=True):
+        if m.lower() not in vistos:
+            vistos.add(m.lower())
+            resultado.append(m)
+    return resultado[:limite]
