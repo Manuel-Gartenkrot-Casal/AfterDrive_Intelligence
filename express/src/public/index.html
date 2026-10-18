@@ -942,6 +942,16 @@
     .modal-overlay.open { display: flex; }
     body.modal-abierto { overflow: hidden; }
     .fuentes-nota { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--s4); padding: var(--s3); border-radius: var(--r-md); box-shadow: var(--inset-sm); }
+    .calidad-resumen {
+      display: flex; flex-direction: column; gap: 4px;
+      margin-bottom: var(--s4); padding: var(--s3);
+      border-radius: var(--r-md);
+      border-left: 4px solid var(--ok);
+      box-shadow: var(--inset-sm);
+      font-size: 0.8rem; color: var(--text-mid);
+    }
+    .calidad-resumen strong { font-size: 1.1rem; color: var(--text-hi); }
+    .calidad-resumen.con-fallas { border-left-color: var(--warn); }
     .fuentes-nota-titulo { font-size: 0.75rem; font-weight: 600; color: var(--text-mid); }
     .fuentes-nota a { font-size: 0.78rem; color: var(--text-hi); text-decoration: none; line-height: 1.35; }
     .fuentes-nota a:hover { color: var(--brand); text-decoration: underline; }
@@ -3634,6 +3644,19 @@
         body.innerHTML = DOMPurify.sanitize(marked.parse(d.nota.contenido));
         check.innerHTML = '';
         comm.textContent = '';
+
+        var cal = d.nota.calidad;
+        if (cal && cal.puntaje !== null && cal.puntaje !== undefined) {
+          var res = document.createElement('div');
+          res.className = 'calidad-resumen' + (cal.fallas_criticas && cal.fallas_criticas.length ? ' con-fallas' : '');
+          var total = Object.keys((d.nota.evaluacion || {}).lineamientos || {}).length || 9;
+          res.innerHTML = '<strong>' + cal.puntaje + '/' + total + '</strong> lineamientos cumplidos'
+            + (cal.reescrita_por && cal.reescrita_por.length
+                ? '<span>Se reescribió porque falló en: ' + escHtml(cal.reescrita_por.join(', ').replace(/_/g, ' ')) + '.</span>' : '')
+            + (cal.fallas_criticas && cal.fallas_criticas.length
+                ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
+          check.appendChild(res);
+        }
 
         if (d.nota.categorias && d.nota.categorias.length) {
           var info = document.createElement('div');

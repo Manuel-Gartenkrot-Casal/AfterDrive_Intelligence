@@ -156,3 +156,60 @@ def test_la_recencia_usa_la_fecha_de_publicacion():
     # Sin fecha, con basura o con una fecha futura: la de guardado.
     for fecha in (None, "ayer", "2031-01-01"):
         assert cn._desde_doc({"_id": guardado_hoy, "titulo": "t", "fecha": fecha}).fecha == guardado_hoy.generation_time
+
+
+# ── Evaluación que actúa ──────────────────────────────────────────────────────
+
+
+def _evaluaciones(monkeypatch, *resultados):
+    """Cada llamada a la evaluación devuelve el siguiente resultado de la lista."""
+    from afterdrive.ia import lm_studio
+    cola = list(resultados)
+    monkeypatch.setattr(lm_studio, "evaluar_lineamientos", lambda texto: cola.pop(0))
+
+
+BUENA = {"lineamientos": {"sin_alucinaciones": True, "estructura_correcta": True, "tono_b2b": True}}
+INVENTA = {"lineamientos": {"sin_alucinaciones": False, "estructura_correcta": True, "tono_b2b": True}}
+
+
+def test_nota_que_pasa_no_se_reescribe(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    _evaluaciones(monkeypatch, BUENA)
+    assert g.generar_nota(["autopartes"])["success"]
+    assert col.docs[0]["calidad"] == {"puntaje": 3, "fallas_criticas": [], "intentos": 1, "reescrita_por": []}
+
+
+def test_nota_que_inventa_se_reescribe_una_vez_diciendo_por_que(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    _evaluaciones(monkeypatch, INVENTA, BUENA)
+    assert g.generar_nota(["autopartes"])["success"]
+    assert "inventaba datos" in llamadas["user"]          # el segundo pedido explica la falla
+    assert col.docs[0]["calidad"]["intentos"] == 2
+    assert col.docs[0]["calidad"]["reescrita_por"] == ["sin_alucinaciones"]
+    assert col.docs[0]["evaluacion"] == BUENA
+
+
+def test_si_las_dos_fallan_queda_la_mejor_y_no_hay_tercer_intento(entorno, monkeypatch):
+    _, col, _ = entorno
+    peor = {"lineamientos": {"sin_alucinaciones": False, "estructura_correcta": False}}
+    _evaluaciones(monkeypatch, INVENTA, peor)
+    assert g.generar_nota(["autopartes"])["success"]
+    assert len(col.docs) == 1 and col.docs[0]["evaluacion"] == INVENTA
+    assert col.docs[0]["calidad"]["fallas_criticas"] == ["sin_alucinaciones"]
+
+
+def test_si_el_saneo_rechaza_la_primera_se_reintenta(entorno, monkeypatch):
+    _, col, _ = entorno
+    respuestas = ["Primero voy a pensar el plan de la nota...", NOTA]
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: respuestas.pop(0))
+    _evaluaciones(monkeypatch, BUENA)
+    monkeypatch.setattr(g, "sanear", lambda crudo: type("S", (), {
+        "ok": crudo == NOTA, "texto": crudo, "motivo": "el modelo escribió su razonamiento"})())
+    assert g.generar_nota(["autopartes"])["success"] and col.docs[0]["calidad"]["intentos"] == 2
+
+
+def test_sin_evaluacion_disponible_no_se_reescribe(entorno, monkeypatch):
+    _, col, _ = entorno
+    _evaluaciones(monkeypatch, {"error": "proveedor caído", "lineamientos": {}})
+    assert g.generar_nota(["autopartes"])["success"]
+    assert col.docs[0]["evaluacion"] is None and col.docs[0]["calidad"]["intentos"] == 1

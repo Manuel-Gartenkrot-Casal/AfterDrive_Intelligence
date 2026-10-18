@@ -153,6 +153,46 @@ def _consulta(categorias: list[str], tema: str | None, regiones: list[str]) -> s
     return f"{base} {region} autopartes aftermarket".strip()
 
 
+# Lineamientos que, si fallan, justifican reescribir la nota una vez. Los demás
+# (negritas, vocabulario…) se informan pero no gastan otra llamada al modelo.
+CRITICOS = ("sin_alucinaciones", "sin_paywall", "no_repetitivo", "estructura_correcta")
+MAX_INTENTOS = 2
+
+
+def fallas_criticas(evaluacion: dict | None) -> list[str]:
+    """Lineamientos críticos que la evaluación marcó en falso. Sin evaluación: ninguno."""
+    lineamientos = (evaluacion or {}).get("lineamientos") or {}
+    return [k for k in CRITICOS if lineamientos.get(k) is False]
+
+
+def puntaje(evaluacion: dict | None) -> int:
+    """Cuántos lineamientos cumple la nota (0 a 9)."""
+    return sum(1 for v in ((evaluacion or {}).get("lineamientos") or {}).values() if v is True)
+
+
+def _pedido_de_correccion(fallas: list[str]) -> str:
+    nombres = {
+        "sin_alucinaciones": "inventaba datos, conceptos o casos que no están en las noticias",
+        "sin_paywall": "incluía frases de suscripción o paywall",
+        "no_repetitivo": "repetía información entre secciones",
+        "estructura_correcta": "no tenía secciones (##) bien definidas",
+    }
+    detalle = "; ".join(nombres.get(f, f) for f in fallas)
+    return (
+        "\n\nIMPORTANTE: una versión anterior de esta nota fue rechazada porque "
+        f"{detalle}. Escribila de nuevo corrigiendo eso."
+    )
+
+
+def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str]:
+    """(nota saneada, "") o (None, motivo). Lanza ErrorLLM si el proveedor falla."""
+    crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True)
+    saneo = sanear(crudo)
+    if not saneo.ok:
+        return None, saneo.motivo
+    return saneo.texto, ""
+
+
 def generar_nota(
     categorias: list[str],
     clientes_ids: list[str] | None = None,
@@ -185,21 +225,42 @@ def generar_nota(
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes)
 
-    print("  Generando nota...", flush=True)
-    try:
-        crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True)
-    except llm.ErrorLLM as e:
-        return {"success": False, "error": str(e)}
-
-    saneo = sanear(crudo)
-    if not saneo.ok:
-        print(f"  [WARN] {saneo.motivo}. Se descarta.", flush=True)
-        return {"success": False, "error": f"No se obtuvo una nota publicable: {saneo.motivo}"}
-    articulo = saneo.texto
-
-    print("  Evaluando calidad...", flush=True)
     from afterdrive.ia.lm_studio import evaluar_lineamientos
-    evaluacion = evaluar_lineamientos(articulo)
+
+    # Hasta MAX_INTENTOS: si la nota no pasa el saneo o falla un lineamiento
+    # crítico, se reescribe diciéndole al modelo qué estuvo mal. Queda la mejor.
+    mejor = None              # (articulo, evaluacion)
+    motivo, pedido, intentos = "", user_msg, 0
+    reescrita_por: list[str] = []
+    for intento in range(1, MAX_INTENTOS + 1):
+        intentos = intento
+        print("  Generando nota..." if intento == 1 else f"  Reescribiendo la nota (intento {intento})...", flush=True)
+        try:
+            articulo, motivo = _redactar(system, pedido, ajustes)
+        except llm.ErrorLLM as e:
+            if mejor:
+                break
+            return {"success": False, "error": str(e)}
+        if articulo is None:
+            print(f"  [WARN] {motivo}. Se descarta esta versión.", flush=True)
+            continue
+
+        print("  Evaluando calidad...", flush=True)
+        evaluacion = evaluar_lineamientos(articulo)
+        if evaluacion.get("error"):
+            evaluacion = None
+        if mejor is None or puntaje(evaluacion) > puntaje(mejor[1]):
+            mejor = (articulo, evaluacion)
+        fallas = fallas_criticas(evaluacion)
+        if not fallas:
+            break
+        print(f"  [WARN] La nota falló en: {', '.join(fallas)}.", flush=True)
+        reescrita_por = fallas
+        pedido = user_msg + _pedido_de_correccion(fallas)
+
+    if mejor is None:
+        return {"success": False, "error": f"No se obtuvo una nota publicable: {motivo}"}
+    articulo, evaluacion = mejor
 
     doc = {
         "contenido": articulo,
@@ -211,7 +272,13 @@ def generar_nota(
         "tema": tema,
         "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],
         "ejemplos_usados": [e.get("url") for e in ejemplos],
-        "evaluacion": evaluacion if not evaluacion.get("error") else None,
+        "evaluacion": evaluacion,
+        "calidad": {
+            "puntaje": puntaje(evaluacion) if evaluacion else None,
+            "fallas_criticas": fallas_criticas(evaluacion),
+            "intentos": intentos,
+            "reescrita_por": reescrita_por if intentos > 1 else [],
+        },
         "proveedor": llm.proveedor_activo(),
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
