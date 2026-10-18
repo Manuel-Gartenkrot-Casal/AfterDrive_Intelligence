@@ -51,7 +51,7 @@ SECCIONES = {
     },
     "scrapeados_aprobados": {
         # 'afterdrive' es una colección heredada: hoy nadie escribe ahí, pero
-        # generar_articulo.py todavía la lee y puede tener artículos viejos.
+        # puede tener artículos viejos.
         "colecciones": ["articulos", "afterdrive"],
         "campo_texto": "cuerpo",
     },

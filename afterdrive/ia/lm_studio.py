@@ -4,9 +4,7 @@ lm_studio.py — Prompts y tareas de IA del pipeline.
 Tareas (todas hablan con el proveedor a través del módulo LLM, llm.py):
   clasificar_articulo   ¿vale la pena guardar este artículo scrapeado?
   evaluar_lineamientos  checklist de calidad de una nota generada
-  generar_articulo      nota Fase 1 a partir de un contexto
-  extraer_temas         3 temas principales de un lote de artículos
-  research_contexto     brief de datos duros de un contexto
+  generar_articulo      nota a partir de un contexto (lo usa scripts/demo_mode.py)
 
 El nombre del archivo es histórico (empezó como cliente de LM Studio); el
 proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
@@ -230,74 +228,6 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
         print(saneo.texto.encode("utf-8", errors="replace").decode("utf-8"))
     print("\n[OK]")
     return saneo.texto
-
-
-# ── Prompt para extracción de temas ────────────────────────────────────────────
-
-PROMPT_TEMAS = """\
-Analizá los siguientes artículos y extraé los 3 temas principales que se tratan.
-Cada tema debe ser una frase corta de 2 a 5 palabras que capture el asunto central.
-Tu respuesta debe comenzar con "{" y terminar con "}". No incluyas texto fuera del JSON.
-
-Devolvé exactamente esta estructura:
-{
-  "temas": ["tema1", "tema2", "tema3"]
-}"""
-
-_TEMA_DEFAULT = ["autopartes aftermarket argentina"]
-
-
-def extraer_temas(articulos: list[dict]) -> list[str]:
-    if not articulos or not llm.disponible():
-        return _TEMA_DEFAULT
-
-    texto = ""
-    for i, doc in enumerate(articulos[:5], 1):
-        titulo = doc.get("titulo", "(sin título)")
-        cuerpo = doc.get("cuerpo", doc.get("bajada", ""))
-        texto += f"Artículo {i}: {titulo}\n{cuerpo[:500]}\n\n"
-
-    try:
-        data = _extraer_json(llm.completar(PROMPT_TEMAS, texto, temperature=0.3, max_tokens=512))
-        return data.get("temas", [])[:3] or _TEMA_DEFAULT
-    except Exception:
-        return _TEMA_DEFAULT
-
-
-# ── Research pass ──────────────────────────────────────────────────────────────
-
-PROMPT_RESEARCH = """\
-Analizá el contexto provisto y extraé un research brief con TODOS los datos relevantes.
-Incluí: nombres de empresas, nombres de ejecutivos con sus cargos, cifras exactas,
-porcentajes, fechas, citas textuales entre comillas, y tendencias mencionadas.
-
-Prestá atención especial a:
-- Competencia de importados (China, Brasil) vs producción local de autopartes
-- Oportunidades en el mercado de reposición / aftermarket (parque automotor usado)
-- Desafíos de digitalización, e-commerce y catálogos digitales en el sector
-- Costos locales vs internacionales y su impacto en competitividad
-- Datos sobre marketplaces, venta online, omnicanalidad
-
-Devolvé exactamente esta estructura JSON:
-{
-  "empresas": ["nombre1", "nombre2"],
-  "ejecutivos": [{"nombre": "...", "cargo": "...", "cita": "..."}],
-  "datos": [{"que": "...", "valor": "..."}],
-  "tendencias": ["..."],
-  "tema_principal": "..."
-}"""
-
-_RESEARCH_VACIO = '{"empresas":[],"ejecutivos":[],"datos":[],"tendencias":[],"tema_principal":""}'
-
-
-def research_contexto(contexto: str) -> str:
-    if not llm.disponible():
-        return _RESEARCH_VACIO
-    try:
-        data = _extraer_json(llm.completar(PROMPT_RESEARCH, contexto, temperature=0.1, max_tokens=1024))
-        return json.dumps(data, ensure_ascii=False)
-    except Exception:
-        return _RESEARCH_VACIO
 
 
 # ── Test rápido (python -m afterdrive.ia.lm_studio) ─────────────────────────────────────────

@@ -3,9 +3,9 @@ import re
 import threading
 import time
 
-from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+from flask import Flask, jsonify, request, send_from_directory
 
-from afterdrive import auth, cola, config_store, corridas, scheduler
+from afterdrive import auth, cola, config_store, scheduler
 from afterdrive.db import col_articulos, db
 from afterdrive.ia import llm
 
@@ -131,14 +131,6 @@ def _url_publica_o_400(body: dict):
     return url, None
 
 
-def _sse(lineas):
-    return Response(
-        stream_with_context(lineas),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
 # ── Endpoints de Gestión de Datos ────────────────────────────────────────────────
 
 
@@ -191,89 +183,14 @@ def db_check():
 
 @app.route("/api/articulos-stats", methods=["GET"])
 def articulos_stats():
-    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'.
-
-    Cuenta documentos en vez de reutilizar /api/check-volume, que resuelve
-    con una búsqueda $text. Esa búsqueda exige un índice de texto que solo
-    se crea al generar un artículo, así que en una base donde todavía no se
-    generó ninguno devolvía 500 y la tarjeta quedaba vacía.
-    """
+    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'."""
     try:
         return jsonify({"success": True, "total": col_articulos.count_documents({})})
     except Exception as e:
         return _error_interno(e)
 
 
-@app.route("/api/check-volume", methods=["GET"])
-def check_volume():
-    keyword = request.args.get("keyword", "")
-    if not keyword:
-        return jsonify({"success": False, "error": "Se requiere el parámetro 'keyword'."}), 400
-
-    try:
-        count = col_articulos.count_documents({"$text": {"$search": keyword}})
-        return jsonify({"success": True, "count": count})
-    except Exception as e:
-        return _error_interno(e)
-
-
-# ── Endpoints de Generación ───────────────────────────────────────────────────────
-
-
-@app.route("/ultimo-articulo", methods=["GET"])
-def ultimo_articulo():
-    col_generados = db["articulos_generados"]
-    doc = col_generados.find_one({}, sort=[("generado_en", -1)])
-    if not doc:
-        return jsonify({"success": False, "error": "Todavía no hay artículos generados."}), 404
-    return jsonify(
-        {
-            "success": True,
-            "articulo": {
-                "contenido": doc.get("contenido", ""),
-                "tema": doc.get("tema", ""),
-                "fuentes": doc.get("fuentes", []),
-                "generado_en": doc.get("generado_en", ""),
-                "docs_usados": doc.get("docs_usados", []),
-            },
-        }
-    )
-
-
-def _parse_request_args(body: dict) -> list[str]:
-    """Extrae argumentos de tema/persona del request body."""
-    # Siempre "--opcion=valor": así argparse nunca toma el valor como otra opción.
-    args_list = []
-    tema = str(body.get("tema") or "").strip()
-    persona = str(body.get("persona") or "").strip()
-    if tema:
-        args_list.append(f"--tema={tema}")
-    if persona in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
-        args_list.append(f"--persona={persona}")
-    return args_list
-
-
-@app.route("/generar", methods=["POST"])
-def generar():
-    body = request.get_json(silent=True) or {}
-    args_list = _parse_request_args(body)
-    result = corridas.script("afterdrive.generacion.generar_articulo", args_list)
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
-# ── Endpoints streaming (SSE) ─────────────────────────────────────────────────
-
-
-@app.route("/stream/generar", methods=["POST"])
-@app.route("/api/stream/generar", methods=["POST"])
-def stream_generar():
-    body = request.get_json(silent=True) or {}
-    args_list = _parse_request_args(body)
-    return _sse(corridas.stream("afterdrive.generacion.generar_articulo", args_list))
-
-
-# ── Endpoints para URLs Custom (Nuevas) ──────────────────────────────────────────
+# ── Configuración de scraping y generación ────────────────────────────────────
 
 
 @app.route("/api/scraping-config", methods=["GET"])
@@ -630,12 +547,6 @@ def encolar_ejemplos():
                     etiqueta="Sincronizar ejemplos")
 
 
-@app.route("/api/stream/run-automation", methods=["POST"])
-def stream_run_automation():
-    """Streaming SSE con el output en vivo del scraping de URLs confiables."""
-    return _sse(corridas.stream("afterdrive.ingesta.run_automation"))
-
-
 @app.route("/api/trusted-urls-stats", methods=["GET"])
 def trusted_urls_stats():
     """Estadísticas de las URLs confiables y última ejecución."""
@@ -739,13 +650,6 @@ def descartar_suggested_url():
     return jsonify({"success": True})
 
 
-@app.route("/api/discover-sources", methods=["POST"])
-def discover_sources():
-    result = corridas.script("afterdrive.ingesta.discover_sources")
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
 @app.route("/api/trusted-urls", methods=["GET"])
 def list_trusted_urls():
     """Lista todas las URLs confiables registradas."""
@@ -814,27 +718,6 @@ def delete_trusted_url(url):
         return _error_interno(e)
 
 
-@app.route("/api/add-url", methods=["POST"])
-def add_url():
-    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
-    if error:
-        return error
-
-    # Ejecutamos el nuevo script add_url.py
-    result = corridas.script("afterdrive.ingesta.add_url", [url])
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
-@app.route("/stream/add-url", methods=["POST"])
-def stream_add_url():
-    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
-    if error:
-        return error
-
-    return _sse(corridas.stream("afterdrive.ingesta.add_url", [url]))
-
-
 # ── Fase 2: Endpoints ─────────────────────────────────────────────────────────
 
 
@@ -869,23 +752,6 @@ def _args_scrape(body: dict):
     return (["--tags", *tags] if tags else []) + [f"--max={max_por_tag}"], None
 
 
-@app.route("/api/fase2/scrape", methods=["POST"])
-def fase2_scrape():
-    argv, error = _args_scrape(request.get_json(silent=True) or {})
-    if error:
-        return error
-    result = corridas.script("afterdrive.generacion.scraper_afterdrive", argv)
-    return jsonify(result), 200 if result["success"] else 500
-
-
-@app.route("/api/fase2/stream/scrape", methods=["POST"])
-def fase2_stream_scrape():
-    argv, error = _args_scrape(request.get_json(silent=True) or {})
-    if error:
-        return error
-    return _sse(corridas.stream("afterdrive.generacion.scraper_afterdrive", argv))
-
-
 @app.route("/api/fase2/clientes", methods=["GET"])
 def fase2_get_clientes():
     from afterdrive.db import col_clientes
@@ -917,40 +783,6 @@ def fase2_eliminar_cliente(slug: str):
     from afterdrive.db import col_clientes
     col_clientes.delete_one({"slug": slug})
     return jsonify({"success": True})
-
-
-@app.route("/api/fase2/generar", methods=["POST"])
-def fase2_generar():
-    body = request.get_json(silent=True) or {}
-    listas, error = _listas(body, "categorias", "clientes", "regiones")
-    if error:
-        return error
-    categorias, clientes, regiones = listas["categorias"], listas["clientes"], listas["regiones"]
-    puntapie_url = body.get("puntapie_url", None)
-    persona = body.get("persona", "comercial")
-    tema = body.get("tema", None)
-
-    if not categorias:
-        return jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400
-
-    resultado = corridas.generacion({
-        "categorias": categorias,
-        "clientes_ids": clientes,
-        "puntapie_url": puntapie_url,
-        "persona": persona,
-        "tema": tema,
-        "regiones": regiones,
-    })
-    status = 200 if resultado["success"] else 500
-    return jsonify(resultado), status
-
-
-@app.route("/api/fase2/stream/generar", methods=["POST"])
-def fase2_stream_generar():
-    extra, error = _argv_generar(request.get_json(silent=True) or {})
-    if error:
-        return error
-    return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
 
 
 def _argv_generar(body: dict):
@@ -987,19 +819,6 @@ def fase2_ultima_nota():
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
     return jsonify({"success": True, "nota": doc})
-
-
-@app.route("/api/fase2/notas", methods=["GET"])
-def fase2_notas():
-    import re
-
-    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
-    notas = []
-    for d in col_notas_fase2.find({}, {"contenido": 1, "generado_en": 1}).sort("generado_en", -1).limit(100):
-        m = re.search(r"^#{1,2}\s+(.+)$", d.get("contenido") or "", re.M)
-        notas.append({"id": str(d["_id"]), "titulo": m.group(1).strip("*_ ") if m else "Nota sin título",
-                      "generado_en": d.get("generado_en")})
-    return jsonify({"success": True, "notas": notas})
 
 
 @app.route("/api/fase2/notas/<nota_id>", methods=["GET"])

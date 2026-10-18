@@ -2,19 +2,18 @@
 corridas.py — El único camino para ejecutar una Corrida del pipeline.
 
 Una Corrida es una ejecución de scraping, generación o cualquier script del
-pipeline. Todas pasan por acá, la dispare el cron, un botón del dashboard o un
-endpoint con streaming, así que nunca corren dos a la vez (en el plan free de
-Render dos corridas simultáneas se quedan sin RAM).
+pipeline. Todas pasan por acá (casi siempre a través de la Cola), así que nunca
+corren dos a la vez (en el plan free de Render dos corridas simultáneas se
+quedan sin RAM).
 
 Interfaz:
-    scraping(max_articulos=None) -> dict      in-process (cron y botón)
-    generacion(params=None) -> dict           in-process; sin params usa la config guardada
-    script(nombre, argv) -> dict              subprocess, salida capturada
-    stream(nombre, argv) -> Iterator[str]     subprocess, salida línea por línea (SSE)
+    scraping(max_articulos=None) -> dict      in-process, con lock (línea de comandos)
+    generacion(params=None) -> dict           in-process, con lock; sin params usa la config guardada
     en_curso() -> str | None
 
-Si hay otra Corrida en curso, la nueva no espera: devuelve/emite un aviso de
-ocupado. El lock es por proceso; alcanza porque gunicorn corre con --workers 1.
+Si hay otra Corrida en curso, scraping() y generacion() no esperan: devuelven
+un aviso de ocupado. El lock es por proceso; alcanza porque gunicorn corre con
+--workers 1.
 
 La Cola (afterdrive/cola.py) es la que hace esperar: su consumidor toma este
 mismo lock esperando su turno y usa los ejecutores sin lock (_scrapear_fuentes,
@@ -41,7 +40,6 @@ _cancelar = threading.Event()  # la Cola lo levanta para cortar el scraping entr
 
 # Logs de LM Studio / gRPC que ensucian la salida que ve el usuario.
 _LOG_RUIDO = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|WARN)\]")
-_ERR_RUIDO = re.compile(r".*Channel Error.*", re.IGNORECASE)
 
 
 def en_curso() -> str | None:
@@ -199,38 +197,6 @@ def _cmd(nombre: str, argv: list[str] | None) -> list[str]:
 
 def _env() -> dict:
     return {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-
-
-def script(nombre: str, argv: list[str] | None = None) -> dict:
-    """Corre un script del pipeline y devuelve su salida completa."""
-    with _reservar(nombre) as ok:
-        if not ok:
-            return {"success": False, "output": "", "error": _ocupado(nombre)}
-        try:
-            r = subprocess.run(
-                _cmd(nombre, argv), capture_output=True, text=True, timeout=TIMEOUT_S,
-                env=_env(), encoding="utf-8", errors="replace",
-            )
-        except subprocess.TimeoutExpired:
-            return {"success": False, "output": "", "error": "Timeout: el proceso tardó más de 30 minutos."}
-        except Exception as e:
-            return {"success": False, "output": "", "error": str(e)}
-        out = [ln for ln in r.stdout.splitlines(True) if not _LOG_RUIDO.match(ln)]
-        err = [ln for ln in r.stderr.splitlines(True) if not _ERR_RUIDO.match(ln)]
-        return {"success": r.returncode == 0, "output": "".join(out), "error": "".join(err) if r.returncode else ""}
-
-
-def stream(nombre: str, argv: list[str] | None = None) -> Iterator[str]:
-    """Corre un script del pipeline y emite su stdout línea por línea.
-
-    Si el cliente corta la conexión (el generador se cierra), el proceso se
-    mata: seguir corriendo sin lector termina bloqueado con el pipe lleno.
-    """
-    with _reservar(nombre) as ok:
-        if not ok:
-            yield f"[OCUPADO] {_ocupado(nombre)}\n"
-            return
-        yield from _subproceso(nombre, argv)
 
 
 def _subproceso(nombre: str, argv: list[str] | None = None, al_iniciar=None) -> Iterator[str]:

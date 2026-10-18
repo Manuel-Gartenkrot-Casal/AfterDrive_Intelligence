@@ -20,32 +20,19 @@ def script_rapido(tmp_path):
     return str(p)
 
 
-def test_stream_emite_la_salida_y_libera(script_rapido):
-    assert list(corridas.stream(script_rapido)) == ["hola\n", "chau\n"]
+def test_subproceso_emite_la_salida(script_rapido):
+    assert list(corridas._subproceso(script_rapido)) == ["hola\n", "chau\n"]
+
+
+def test_con_otra_corrida_en_curso_se_rechaza():
+    with corridas._reservar("otra"):
+        assert corridas.en_curso() == "otra"
+        assert not corridas.generacion({"categorias": ["x"]})["success"]
+        assert not corridas.scraping()["success"]
     assert corridas.en_curso() is None
 
 
-def test_script_captura_la_salida(script_rapido):
-    r = corridas.script(script_rapido)
-    assert r["success"] and r["output"] == "hola\nchau\n"
-
-
-def test_segunda_corrida_mientras_hay_otra_se_rechaza(script_lento, script_rapido):
-    gen = corridas.stream(script_lento)
-    assert next(gen) == "uno\n"
-    assert corridas.en_curso() == script_lento
-
-    ocupado = list(corridas.stream(script_rapido))
-    assert len(ocupado) == 1 and ocupado[0].startswith("[OCUPADO]")
-    assert not corridas.script(script_rapido)["success"]
-    assert not corridas.generacion({"categorias": ["x"]})["success"]
-    assert not corridas.scraping()["success"]
-
-    gen.close()  # el cliente cortó la conexión
-    assert corridas.en_curso() is None
-
-
-def test_cortar_el_stream_mata_el_proceso(script_lento, monkeypatch):
+def test_cortar_la_lectura_mata_el_proceso(script_lento, monkeypatch):
     procesos = []
     popen = corridas.subprocess.Popen
 
@@ -54,8 +41,8 @@ def test_cortar_el_stream_mata_el_proceso(script_lento, monkeypatch):
         return procesos[-1]
 
     monkeypatch.setattr(corridas.subprocess, "Popen", espiar)
-    gen = corridas.stream(script_lento)
-    next(gen)
+    gen = corridas._subproceso(script_lento)
+    assert next(gen) == "uno\n"
     gen.close()
     assert procesos[0].wait(timeout=5) is not None
 
