@@ -33,6 +33,7 @@ import io
 import json
 import sys
 import threading
+import time
 
 from afterdrive import corridas
 
@@ -58,6 +59,8 @@ _actual: str | None = None   # id de la Corrida en curso
 _lineas: list[str] = []      # log en memoria de la Corrida en curso
 _proc = None                 # subprocess en curso (tipo script)
 _tipo_actual: str | None = None
+_volcado = 0.0               # última vez que el log en curso se guardó en Mongo
+VOLCAR_CADA_S = 5            # para que otro proceso (el dashboard) vea el log en vivo
 
 
 def _col():
@@ -184,8 +187,14 @@ def cancelar(id_: str) -> dict:
     if doc["estado"] != "en_curso":
         return {"estado": doc["estado"]}
     with _estado:
-        if _actual != id_:
-            return {"estado": doc["estado"]}
+        local = _actual == id_
+    if not local:
+        if doc.get("ejecutor") == "github":
+            # Corre en otro proceso: se deja el pedido y el ejecutor lo lee al volcar el log.
+            _col().update_one({"_id": doc["_id"]}, {"$set": {"cancelar_pedido": True}})
+            return {"estado": "cancelando"}
+        return {"estado": doc["estado"]}
+    with _estado:
         if _tipo_actual == "generacion":
             raise NoCancelable("La generación en curso no se puede cortar a mitad; termina en unos minutos.")
         corridas._cancelar.set()
@@ -228,8 +237,33 @@ class _Tee(io.TextIOBase):
 
 
 def _agregar(lineas: list[str]) -> None:
+    global _volcado
     with _estado:
         _lineas.extend(ln.rstrip("\r") for ln in lineas)
+        if time.monotonic() - _volcado < VOLCAR_CADA_S or _actual is None:
+            return
+        _volcado = time.monotonic()
+        id_, copia = _actual, list(_lineas[-LINEAS_GUARDADAS:])
+    _volcar(id_, copia)
+
+
+def _volcar(id_: str, lineas: list[str]) -> None:
+    """Guarda el log parcial y mira si desde otro proceso pidieron cancelar.
+
+    Hace falta cuando la Corrida corre en GitHub Actions: el dashboard está en
+    otro proceso y solo ve lo que hay en Mongo.
+    """
+    from bson import ObjectId
+    try:
+        doc = _col().find_one_and_update(
+            {"_id": ObjectId(id_)}, {"$set": {"log": lineas}}, projection={"cancelar_pedido": 1})
+    except Exception:
+        return
+    if doc and doc.get("cancelar_pedido"):
+        corridas._cancelar.set()
+        with _estado:
+            if _proc is not None and _proc.poll() is None:
+                _proc.kill()
 
 
 def _ejecutar(doc: dict) -> dict:
@@ -298,7 +332,7 @@ def _tomar_siguiente():
     from pymongo import ReturnDocument
     return _col().find_one_and_update(
         {"estado": "pendiente"},
-        {"$set": {"estado": "en_curso", "inicio": _ahora()}},
+        {"$set": {"estado": "en_curso", "inicio": _ahora(), "ejecutor": "servidor"}},
         sort=[("creada", 1)],
         return_document=ReturnDocument.AFTER,
     )
@@ -313,15 +347,40 @@ def procesar_pendientes() -> int:
     return n
 
 
+MAX_HORAS_EXTERNA = 3   # una Corrida de GitHub Actions que pasó esto sin terminar, murió
+
+
 def recuperar_al_arrancar() -> None:
-    """Las que estaban en curso cuando el proceso murió no se reintentan: quedan marcadas."""
+    """Las que estaban en curso cuando el proceso murió no se reintentan: quedan marcadas.
+
+    Las que corren en GitHub Actions no dependen de este servidor: solo se
+    marcan si llevan más de MAX_HORAS_EXTERNA (el runner murió sin avisar).
+    """
+    limite = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=MAX_HORAS_EXTERNA)).isoformat()
     r = _col().update_many(
-        {"estado": "en_curso"},
+        {"estado": "en_curso", "$or": [{"ejecutor": {"$ne": "github"}}, {"inicio": {"$lt": limite}}]},
         {"$set": {"estado": "interrumpida", "fin": _ahora(),
-                  "resultado": {"success": False, "error": "El servidor se reinició mientras corría."}}},
+                  "resultado": {"success": False, "error": "Se cortó mientras corría (reinicio o runner caído)."}}},
     )
     if r.modified_count:
         print(f"[Cola] {r.modified_count} corrida(s) interrumpida(s) por un reinicio.", flush=True)
+
+
+def ejecutar_aca(tipo: str, params: dict | None = None, origen: str = "cron", ejecutor: str = "github",
+                 etiqueta: str | None = None) -> str:
+    """Corre una Corrida en ESTE proceso sin pasar por la espera de la cola.
+
+    Para GitHub Actions: la Corrida queda registrada en la colección (el
+    dashboard la ve con su log) pero la ejecuta el runner. Devuelve el estado final.
+    """
+    doc = {
+        "tipo": tipo, "params": params or {}, "clave": _clave(tipo, params),
+        "etiqueta": etiqueta or ETIQUETAS.get(tipo, tipo), "origen": origen,
+        "estado": "en_curso", "creada": _ahora(), "inicio": _ahora(), "ejecutor": ejecutor,
+    }
+    doc["_id"] = _col().insert_one(doc).inserted_id
+    _correr(doc)
+    return _col().find_one({"_id": doc["_id"]}, {"estado": 1})["estado"]
 
 
 DIAS_HISTORIAL = 30

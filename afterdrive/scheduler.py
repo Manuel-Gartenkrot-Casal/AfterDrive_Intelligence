@@ -58,17 +58,32 @@ def trigger(hora: int, minuto: int, dias: int):
     return IntervalTrigger(days=dias, start_date=inicio, timezone=tz)
 
 
+def externas() -> bool:
+    """True si las Corridas programadas las ejecuta GitHub Actions y no este servidor."""
+    return os.getenv("CORRIDAS_EXTERNAS", "").strip().lower() == "github"
+
+
+def programacion(job_id: str) -> tuple[bool, int, int, int]:
+    """(habilitado, hora, minuto, cada_dias) de un job, según la config guardada."""
+    leer_config, hora_default, _ = _JOBS[job_id]
+    cfg = leer_config()
+    hora, minuto = (int(x) for x in (cfg.get("hora") or hora_default).split(":"))
+    return bool(cfg.get("enabled", True)), hora, minuto, max(1, int(cfg.get("interval_days", 1)))
+
+
 def aplicar() -> None:
     """Deja los jobs exactamente como dice la config guardada."""
-    for job_id, (leer_config, hora_default, correr) in _JOBS.items():
-        cfg = leer_config()
-        hora, minuto = (int(x) for x in (cfg.get("hora") or hora_default).split(":"))
+    for job_id, (_, _, correr) in _JOBS.items():
+        habilitado, hora, minuto, dias = programacion(job_id)
         if _scheduler.get_job(job_id):
             _scheduler.remove_job(job_id)
-        if not cfg.get("enabled", True):
+        if not habilitado:
             print(f"[Scheduler] {job_id}: deshabilitado por configuración.", flush=True)
             continue
-        dias = max(1, int(cfg.get("interval_days", 1)))
+        if externas():
+            # La misma programación la lee afterdrive/ejecutor_externo.py en GitHub Actions.
+            print(f"[Scheduler] {job_id}: a cargo de GitHub Actions (CORRIDAS_EXTERNAS=github).", flush=True)
+            continue
         _scheduler.add_job(correr, trigger(hora, minuto, dias), id=job_id)
         print(f"[Scheduler] {job_id}: {hora:02d}:{minuto:02d} ({ZONA}) cada {dias} día(s).", flush=True)
 
@@ -85,6 +100,12 @@ def iniciar() -> None:
 
 def proximas() -> dict:
     def _iso(job_id):
+        if externas():
+            habilitado, hora, minuto, dias = programacion(job_id)
+            if not habilitado:
+                return None
+            ahora = datetime.datetime.now(zoneinfo.ZoneInfo(ZONA))
+            return trigger(hora, minuto, dias).get_next_fire_time(None, ahora).isoformat()
         job = _scheduler.get_job(job_id)
         nxt = getattr(job, "next_run_time", None)  # los jobs pendientes (scheduler sin arrancar) no lo tienen
         return nxt.isoformat() if nxt else None

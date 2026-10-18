@@ -68,6 +68,18 @@ def _set_section(key: str, value: dict):
     )
 
 
+# ── Ejecutor externo (GitHub Actions) ─────────────────────────────────────────
+
+
+def get_ejecutor_externo() -> dict:
+    """{tipo: iso} de la última vez que GitHub Actions revisó qué tocaba correr."""
+    return _get_section("ejecutor_externo", {})
+
+
+def set_ejecutor_externo(revisado: dict) -> None:
+    _set_section("ejecutor_externo", revisado)
+
+
 # ── Scraping ──────────────────────────────────────────────────────────────────
 
 

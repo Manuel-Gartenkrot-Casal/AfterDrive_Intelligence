@@ -1,0 +1,84 @@
+# Corridas programadas (scraping y nota automática) ejecutadas en GitHub
+# Actions en lugar de Render: ~7 GB de RAM, Chromium disponible y no depende
+# de que la instancia de Render esté despierta.
+#
+# Está APAGADO hasta que se active: Settings > Secrets and variables > Actions
+#   - Variable  CORRIDAS_EN_GITHUB = true
+#   - Secretos  MONGO_URI, OPENROUTER_API_KEY, NVIDIA_API_KEY
+#   - En Render: CORRIDAS_EXTERNAS=github (para que el servidor deje de programarlas)
+# Paso a paso en docs/08-despliegue.md.
+#
+# Corre cada hora y ejecuta solo lo que tocaba según la programación del
+# dashboard (afterdrive/ejecutor_externo.py). También se puede lanzar a mano.
+name: Corridas
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+    inputs:
+      tipo:
+        description: "Qué correr"
+        type: choice
+        default: programadas
+        options: [programadas, scraping, generacion, ambas]
+
+permissions:
+  contents: read
+
+# Nunca dos a la vez: si una hora se estira, la siguiente espera.
+concurrency:
+  group: corridas
+  cancel-in-progress: false
+
+jobs:
+  corridas:
+    if: vars.CORRIDAS_EN_GITHUB == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'openrouter' }}
+      EMBEDDINGS_PROVIDER: ${{ vars.EMBEDDINGS_PROVIDER || 'nvidia' }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+      NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL }}
+      NVIDIA_EMB_MODEL: ${{ vars.NVIDIA_EMB_MODEL }}
+      ATLAS_VECTOR_INDEX: ${{ vars.ATLAS_VECTOR_INDEX }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Qué toca correr
+        id: plan
+        env:
+          TIPO: ${{ inputs.tipo || 'programadas' }}
+        run: |
+          case "$TIPO" in
+            scraping)   tipos="scraping" ;;
+            generacion) tipos="generacion" ;;
+            ambas)      tipos="scraping generacion" ;;
+            *)          tipos="$(python -m afterdrive.ejecutor_externo --pendientes | tail -n 1)" ;;
+          esac
+          echo "Tipos: ${tipos:-ninguno}"
+          echo "tipos=$tipos" >> "$GITHUB_OUTPUT"
+
+      - name: Instalar Chromium (solo si hay scraping)
+        if: contains(steps.plan.outputs.tipos, 'scraping')
+        run: |
+          python -m patchright install --with-deps chromium
+          python -c "from scrapling.cli import install; install([], standalone_mode=False)"
+
+      - name: Correr
+        if: steps.plan.outputs.tipos != ''
+        run: python -m afterdrive.ejecutor_externo --correr ${{ steps.plan.outputs.tipos }}
