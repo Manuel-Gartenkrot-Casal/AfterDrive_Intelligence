@@ -43,6 +43,7 @@ El programador interno las corre a la hora del dashboard, **si la instancia est�
 
 Para activarlo:
 
+0. **El workflow tiene que estar en la rama por defecto del repo** (hoy `main`): GitHub solo dispara los `schedule` desde ahí, y corre el código de esa rama. Mergeá `Render_Testing` en `main`, o cambiá la rama por defecto a `Render_Testing` (**Settings → General → Default branch**).
 1. GitHub → **Settings → Secrets and variables → Actions**:
    - **Secrets**: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`.
    - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `ATLAS_VECTOR_INDEX`.
