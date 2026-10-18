@@ -36,3 +36,27 @@ jobs:
         env:
           MONGO_URI: mongodb://localhost:27017/afterdrive
         run: python -m pytest -q
+
+  dashboard:
+    # El dashboard en un Chromium real: login, secciones, guardado, fuentes,
+    # revisión de notas y la cola. Mongo en memoria, sin internet.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias y Chromium
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Tests e2e (Playwright)
+        run: python -m pytest -m e2e tests/e2e -q

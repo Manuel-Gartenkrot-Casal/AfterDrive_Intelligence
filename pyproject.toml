@@ -37,6 +37,8 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["e2e: tests del dashboard en un navegador (python -m pytest -m e2e tests/e2e)"]
+addopts = "-m 'not e2e'"
 
 [tool.vercel]
 entrypoint = "afterdrive/flask_api.py"
