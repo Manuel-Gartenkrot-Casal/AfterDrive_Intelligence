@@ -324,10 +324,23 @@ def recuperar_al_arrancar() -> None:
         print(f"[Cola] {r.modified_count} corrida(s) interrumpida(s) por un reinicio.", flush=True)
 
 
+DIAS_HISTORIAL = 30
+
+
+def limpiar_viejas() -> int:
+    """Borra del historial las Corridas terminadas hace más de DIAS_HISTORIAL días."""
+    limite = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=DIAS_HISTORIAL)).isoformat()
+    r = _col().delete_many({"estado": {"$in": list(TERMINALES)}, "fin": {"$lt": limite}})
+    if r.deleted_count:
+        print(f"[Cola] {r.deleted_count} corrida(s) de más de {DIAS_HISTORIAL} días borradas del historial.", flush=True)
+    return r.deleted_count
+
+
 def _bucle() -> None:
     while True:
         try:
-            procesar_pendientes()
+            if procesar_pendientes():
+                limpiar_viejas()
         except Exception as e:
             print(f"[Cola] Error en el consumidor: {e}", flush=True)
         _despertar.wait(timeout=10)  # el timeout recoge lo que haya quedado sin aviso
@@ -344,6 +357,7 @@ def iniciar() -> None:
     _iniciada = True
     try:
         recuperar_al_arrancar()
+        limpiar_viejas()
     except Exception as e:
         print(f"[Cola] No se pudo revisar la cola al arrancar: {e}", flush=True)
     threading.Thread(target=_bucle, name="cola-corridas", daemon=True).start()

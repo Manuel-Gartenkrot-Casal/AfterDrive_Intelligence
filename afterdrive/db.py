@@ -64,6 +64,31 @@ COLECCIONES_TEXTO = {
 }
 
 
+# Índices para lo que se consulta en cada corrida. Sin ellos, cada upsert por
+# url y cada búsqueda de la cola recorren la colección entera. create_index es
+# idempotente: correrlo en cada arranque no cuesta nada si ya existen.
+INDICES = {
+    "articulos": [[("url", 1)], [("usado_para_articulo", 1)]],
+    "articulos_descartados": [[("url", 1)]],
+    "trusted_urls": [[("url", 1)], [("estado", 1)]],
+    "suggested_urls": [[("dominio", 1)]],
+    "notas_fase2": [[("generado_en", -1)]],
+    "afterdrive_ejemplos": [[("tag_slug", 1)]],
+    "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],
+}
+
+
+def crear_indices() -> None:
+    """Crea los índices que faltan. Nunca frena el arranque: si Mongo falla, avisa."""
+    for coleccion, indices in INDICES.items():
+        for campos in indices:
+            try:
+                db[coleccion].create_index(campos, background=True)
+            except Exception as e:
+                print(f"[DB] No se pudo crear el índice {coleccion}.{campos}: {e}", flush=True)
+    crear_indices_texto()
+
+
 def crear_indices_texto():
     for col, campos in COLECCIONES_TEXTO.items():
         try:

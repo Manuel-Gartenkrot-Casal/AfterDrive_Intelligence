@@ -13,10 +13,13 @@ Las horas se interpretan en ZONA (hora de Argentina por defecto), que es la
 que ve y edita el usuario en el dashboard.
 """
 
+import datetime
 import os
+import zoneinfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from afterdrive import cola, config_store
 
@@ -40,6 +43,20 @@ _JOBS = {
 
 _scheduler = BackgroundScheduler()
 
+# "Cada N días" se cuenta desde esta fecha fija, así el ritmo no cambia con
+# cada reinicio del servidor. Antes era CronTrigger(day="*/N"), que cuenta días
+# del mes: con N=2 corría el 31 y el 1, dos días seguidos.
+ANCLA = datetime.date(2026, 1, 1)
+
+
+def trigger(hora: int, minuto: int, dias: int):
+    """Todos los días a esa hora, o cada `dias` días contados desde ANCLA."""
+    tz = zoneinfo.ZoneInfo(ZONA)
+    if dias <= 1:
+        return CronTrigger(hour=hora, minute=minuto, timezone=tz)
+    inicio = datetime.datetime.combine(ANCLA, datetime.time(hora, minuto), tzinfo=tz)
+    return IntervalTrigger(days=dias, start_date=inicio, timezone=tz)
+
 
 def aplicar() -> None:
     """Deja los jobs exactamente como dice la config guardada."""
@@ -52,12 +69,13 @@ def aplicar() -> None:
             print(f"[Scheduler] {job_id}: deshabilitado por configuración.", flush=True)
             continue
         dias = max(1, int(cfg.get("interval_days", 1)))
-        trigger = CronTrigger(hour=hora, minute=minuto, day=f"*/{dias}", timezone=ZONA)
-        _scheduler.add_job(correr, trigger, id=job_id)
+        _scheduler.add_job(correr, trigger(hora, minuto, dias), id=job_id)
         print(f"[Scheduler] {job_id}: {hora:02d}:{minuto:02d} ({ZONA}) cada {dias} día(s).", flush=True)
 
 
 def iniciar() -> None:
+    from afterdrive.db import crear_indices
+    crear_indices()
     cola.iniciar()
     aplicar()
     if not _scheduler.running:

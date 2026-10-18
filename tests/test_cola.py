@@ -188,3 +188,16 @@ def test_api_cola_llena_es_429(client, col):
 def test_api_log_de_id_invalido_es_404(client):
     assert client.get("/api/corridas/no-es-un-id/log").status_code == 404
     assert client.post("/api/corridas/no-es-un-id/cancelar").status_code == 404
+
+
+def test_limpiar_viejas_borra_solo_terminadas_de_hace_mas_de_30_dias(col):
+    import datetime
+    hace = lambda d: (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=d)).isoformat()  # noqa: E731
+    col.insert_many([
+        {"estado": "ok", "fin": hace(40)},
+        {"estado": "error", "fin": hace(31)},
+        {"estado": "ok", "fin": hace(5)},
+        {"estado": "pendiente", "creada": hace(40)},
+    ])
+    assert cola.limpiar_viejas() == 2
+    assert sorted(d["estado"] for d in col.find()) == ["ok", "pendiente"]
