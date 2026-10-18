@@ -505,6 +505,36 @@ def historial_editar():
     return jsonify({"success": True, "item": item})
 
 
+@app.route("/api/historial/imagen", methods=["PATCH"])
+def historial_imagen():
+    """{coleccion, id, url, alt}: imagen destacada de una nota (url vacía la saca)."""
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.cambiar_imagen(body.get("coleccion", ""), body.get("id", ""), body.get("url", ""), body.get("alt", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/vista-previa/<coleccion>/<item_id>", methods=["GET"])
+def historial_vista_previa(coleccion: str, item_id: str):
+    from afterdrive import historial
+    try:
+        previa = historial.vista_previa(coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if previa is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **previa})
+
+
 @app.route("/api/hubspot/estado", methods=["GET"])
 def hubspot_estado():
     from afterdrive import hubspot

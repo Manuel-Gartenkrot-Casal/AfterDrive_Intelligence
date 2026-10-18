@@ -1370,6 +1370,23 @@
     .badge-calidad { font-family: var(--mono); font-size: 0.72rem; color: var(--text-lo); }
     .paginador { display: flex; align-items: center; justify-content: center; gap: var(--s3); margin-top: var(--s4); font-size: 0.82rem; color: var(--text-lo); }
     .nota-acciones { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-right: auto; }
+    .previa { max-width: 72ch; margin: 0 auto; color: var(--text-hi); }
+    .previa-imagen { display: block; width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--r-md); margin-bottom: var(--s4); }
+    .previa-sin-imagen { padding: var(--s5); margin-bottom: var(--s4); border-radius: var(--r-md); box-shadow: var(--inset-sm); color: var(--text-lo); text-align: center; font-size: 0.85rem; }
+    .previa h1 { font-size: 1.7rem; line-height: 1.2; margin-bottom: var(--s2); }
+    .previa-meta { color: var(--text-mid); font-style: italic; margin-bottom: var(--s3); }
+    .previa-meta.aviso { color: var(--warn); font-style: normal; font-size: 0.85rem; }
+    .previa-etiquetas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--s2); }
+    .previa-etiquetas span { padding: 2px 10px; border-radius: var(--r-pill); background: var(--brand-soft); color: var(--brand); font-size: 0.75rem; font-weight: 600; }
+    .previa-url { font-family: var(--mono); font-size: 0.75rem; color: var(--text-lo); margin-bottom: var(--s5); }
+    .previa-cuerpo { line-height: 1.75; }
+    .previa-cuerpo h2 { font-size: 1.2rem; margin: var(--s5) 0 var(--s2); }
+    .previa-cuerpo p, .previa-cuerpo ul, .previa-cuerpo ol { margin-bottom: var(--s3); }
+    .previa-cuerpo ul, .previa-cuerpo ol { padding-left: 1.4em; }
+    .previa-form { margin-top: var(--s6); padding: var(--s4); border: 1px solid var(--border); border-radius: var(--r-md); }
+    .previa-form legend { padding: 0 6px; font-weight: 600; font-size: 0.85rem; }
+    .previa-form .input-field { width: 100%; margin-bottom: var(--s3); }
+    .previa-acciones { display: flex; gap: var(--s2); }
     .editor-nota {
       width: 100%; min-height: 60vh; resize: vertical;
       padding: var(--s4); border: 0; border-radius: var(--r-md);
@@ -3928,6 +3945,7 @@
       if (e === 'rechazada') html += b('borrador', 'Volver a revisar');
       if (e === 'publicado') html += b('aprobada', 'Despublicar');
       if (e !== 'publicado') html += '<button type="button" class="btn btn-xs" onclick="editarNota()">Editar</button>';
+      html += '<button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Vista previa</button>';
       if (_hubspotConfigurado && (e === 'aprobada' || e === 'publicado')) {
         var yaEnviada = _notaActual.hubspot && _notaActual.hubspot.id;
         if (e === 'aprobada') html += '<button type="button" class="btn btn-xs" onclick="enviarAHubspot(false)">'
@@ -3994,6 +4012,49 @@
         showToast('Nota: ' + NOMBRE_ESTADO_NOTA[n.estado].toLowerCase(), 'success');
         cargarResumenHistorial();
         if (_seccion === 'historial') cargarHistorial(_hist.pagina);
+      } catch (e) { showToast(e.message, 'error'); }
+    }
+
+    /* Cómo quedaría el post en el blog: lo mismo que se manda a HubSpot. */
+    async function vistaPreviaNota() {
+      var n = _notaActual, d;
+      try { d = await pedir('/api/historial/vista-previa/' + n.coleccion + '/' + n.id); }
+      catch (e) { showToast(e.message, 'error'); return; }
+      var propia = d.imagen_propia || {};
+      $('art-body').innerHTML =
+        '<div class="previa">'
+        + (d.imagen.url ? '<img class="previa-imagen" src="' + urlSegura(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '">'
+                        : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
+        + '<h1>' + escHtml(d.titulo) + '</h1>'
+        + (d.meta ? '<p class="previa-meta">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
+        + (d.etiquetas.length ? '<div class="previa-etiquetas">' + d.etiquetas.map(function(t) { return '<span>' + escHtml(t) + '</span>'; }).join('') + '</div>' : '')
+        + '<div class="previa-url">/' + escHtml(d.slug) + '</div>'
+        + '<div class="previa-cuerpo">' + DOMPurify.sanitize(d.html) + '</div>'
+        + '</div>'
+        + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
+        + '<label class="control-label" for="previa-img-url">URL de la imagen (https)</label>'
+        + '<input id="previa-img-url" class="input-field" type="url" placeholder="https://…/imagen.jpg">'
+        + '<label class="control-label" for="previa-img-alt">Texto alternativo</label>'
+        + '<input id="previa-img-alt" class="input-field" type="text" maxlength="200" placeholder="Qué muestra la imagen">'
+        + '<div class="previa-acciones"><button type="button" class="btn btn-xs btn-primary" onclick="guardarImagenNota()">Guardar imagen</button>'
+        + (propia.url ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
+        + '</div></fieldset>';
+      $('previa-img-url').value = propia.url || '';
+      $('previa-img-alt').value = propia.alt || '';
+      $('nota-acciones').innerHTML = '<button type="button" class="btn btn-xs" onclick="cancelarEdicionNota()">Volver al texto</button>';
+      $('art-body').scrollTop = 0;
+    }
+
+    async function guardarImagenNota(quitar) {
+      var n = _notaActual;
+      try {
+        await pedir('/api/historial/imagen', {
+          method: 'PATCH', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ coleccion: n.coleccion, id: n.id,
+                                 url: quitar ? '' : $('previa-img-url').value.trim(), alt: $('previa-img-alt').value.trim() })
+        });
+        showToast(quitar ? 'Imagen quitada' : 'Imagen guardada', 'success');
+        vistaPreviaNota();
       } catch (e) { showToast(e.message, 'error'); }
     }
 

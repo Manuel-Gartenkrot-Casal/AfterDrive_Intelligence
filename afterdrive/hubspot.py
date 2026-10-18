@@ -4,6 +4,7 @@ hubspot.py — Publica Notas aprobadas en el blog de HubSpot.
 Interfaz:
     configurado() -> bool
     enviar(nota, publicar=False) -> dict   {"id", "url", "estado"}
+    vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
     preparar(contenido) -> dict             título, cuerpo HTML y meta description
     ErrorHubSpot
 
@@ -12,6 +13,11 @@ privada de HubSpot con el scope "content". Configuración:
     HUBSPOT_TOKEN      token de la app privada (Configuración > Integraciones > Apps privadas)
     HUBSPOT_BLOG_ID    id del blog (contentGroupId)
     HUBSPOT_AUTOR_ID   opcional: blogAuthorId
+    HUBSPOT_IMAGEN_DEFAULT  opcional: imagen destacada para las notas que no tienen una propia
+    HUBSPOT_IDIOMA     opcional: idioma de las etiquetas nuevas (es por defecto)
+
+Las etiquetas del post salen de las categorías de la Nota: se buscan en el blog
+y se crean las que falten. Si eso falla, la nota se publica igual, sin etiquetas.
 
 Si la Nota ya se envió antes (tiene hubspot.id), se actualiza esa misma entrada
 en lugar de crear otra: reenviar después de editar no duplica posts.
@@ -27,9 +33,11 @@ import markdown
 import requests
 
 API = "https://api.hubapi.com/cms/v3/blogs/posts"
+API_TAGS = "https://api.hubapi.com/cms/v3/blogs/tags"
 TIMEOUT_S = 30
 
-_transporte = {"post": requests.post, "patch": requests.patch}   # seam para los tests
+_transporte = {"post": requests.post, "patch": requests.patch, "get": requests.get}   # seam para los tests
+_tags_cache: dict[str, str] = {}   # nombre en minúsculas -> id de la etiqueta en HubSpot
 
 
 class ErrorHubSpot(RuntimeError):
@@ -68,7 +76,9 @@ def preparar(contenido: str) -> dict:
         if m and len(m.group(1)) <= 300:
             meta = m.group(1).strip()
             lineas.pop()
-    cuerpo = "\n".join(lineas).strip()
+    # Sin HTML crudo: si el modelo escribió un <script> o un <iframe>, llegaría
+    # tal cual al blog. Las notas son Markdown; un "<" literal se ve igual.
+    cuerpo = "\n".join(lineas).strip().replace("<", "&lt;")
     if not titulo:
         raise ErrorHubSpot("La nota no tiene título (una línea que empiece con '# ').")
     return {
@@ -108,10 +118,71 @@ def despublicar(post_id: str) -> None:
         raise _error(resp)
 
 
+def _nombres_etiquetas(nota: dict) -> list[str]:
+    from afterdrive.generacion.scraper_afterdrive import CATEGORIAS
+    return [CATEGORIAS.get(c, c) for c in nota.get("categorias") or []]
+
+
+def _imagen(nota: dict, titulo: str) -> dict:
+    """{url, alt} de la imagen destacada: la de la nota o la de por defecto."""
+    propia = nota.get("imagen") or {}
+    url = propia.get("url") or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
+    return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
+
+
+def vista_previa(nota: dict) -> dict:
+    """Lo que se mandaría a HubSpot (título, meta, imagen, etiquetas y cuerpo), sin llamarlo."""
+    partes = preparar(nota.get("contenido", ""))
+    previo = nota.get("hubspot") or {}
+    return {
+        **partes,
+        "imagen": _imagen(nota, partes["titulo"]),
+        "etiquetas": _nombres_etiquetas(nota),
+        "slug": previo.get("slug") or _slug(partes["titulo"], str(nota.get("_id", ""))[-6:]),
+    }
+
+
+def _ids_etiquetas(nombres: list[str]) -> list[str]:
+    """Ids de HubSpot de estas etiquetas, creando las que falten.
+
+    Nunca frena la publicación: si la API de etiquetas falla, se publica sin ellas.
+    """
+    if not nombres:
+        return []
+    try:
+        if not _tags_cache:
+            despues = None
+            while True:
+                params = {"limit": 100, **({"after": despues} if despues else {})}
+                resp = _transporte["get"](API_TAGS, params=params, headers=_headers(), timeout=TIMEOUT_S)
+                if resp.status_code >= 400:
+                    raise _error(resp)
+                data = resp.json()
+                _tags_cache.update({t["name"].strip().lower(): str(t["id"]) for t in data.get("results", [])})
+                despues = ((data.get("paging") or {}).get("next") or {}).get("after")
+                if not despues:
+                    break
+        ids = []
+        for nombre in nombres:
+            clave = nombre.strip().lower()
+            if clave not in _tags_cache:
+                resp = _transporte["post"](API_TAGS, json={"name": nombre, "language": os.getenv("HUBSPOT_IDIOMA", "es")},
+                                           headers=_headers(), timeout=TIMEOUT_S)
+                if resp.status_code >= 400:
+                    raise _error(resp)
+                _tags_cache[clave] = str(resp.json()["id"])
+            ids.append(_tags_cache[clave])
+        return ids
+    except Exception as e:
+        print(f"[HubSpot] No se pudieron preparar las etiquetas ({e}); se publica sin ellas.", flush=True)
+        return []
+
+
 def enviar(nota: dict, publicar: bool = False) -> dict:
     """Crea (o actualiza) el post de la Nota en HubSpot, como borrador o publicado.
 
-    nota: documento de Mongo con "_id", "contenido" y opcionalmente "hubspot".
+    nota: documento de Mongo con "_id", "contenido" y opcionalmente "hubspot",
+    "imagen" y "categorias".
     """
     if not configurado():
         raise ErrorHubSpot("HubSpot no está configurado: faltan HUBSPOT_TOKEN y HUBSPOT_BLOG_ID.")
@@ -126,6 +197,12 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
     }
     if os.getenv("HUBSPOT_AUTOR_ID"):
         cuerpo["blogAuthorId"] = os.getenv("HUBSPOT_AUTOR_ID")
+    imagen = _imagen(nota, partes["titulo"])
+    if imagen:
+        cuerpo.update(useFeaturedImage=True, featuredImage=imagen["url"], featuredImageAltText=imagen["alt"])
+    etiquetas = _ids_etiquetas(_nombres_etiquetas(nota))
+    if etiquetas:
+        cuerpo["tagIds"] = etiquetas
 
     previo = (nota.get("hubspot") or {}).get("id")
     try:
@@ -144,4 +221,5 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
         "id": str(data.get("id") or previo),
         "url": data.get("url") or "",
         "estado": data.get("state") or cuerpo["state"],
+        "slug": data.get("slug") or cuerpo.get("slug") or (nota.get("hubspot") or {}).get("slug") or "",
     }

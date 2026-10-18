@@ -370,3 +370,48 @@ def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
             vistos.add(m.lower())
             resultado.append(m)
     return resultado[:limite]
+
+
+def _url_imagen_valida(url: str) -> bool:
+    """https con un nombre de dominio (no una IP).
+
+    No hace falta el chequeo anti-SSRF del scraper: este servidor nunca
+    descarga la imagen, la piden HubSpot y el navegador.
+    """
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return False
+    host = p.hostname or ""
+    return p.scheme == "https" and "." in host and not re.fullmatch(r"[\d.]+|\[?[0-9a-f:]+\]?", host)
+
+
+def cambiar_imagen(coleccion: str, item_id: str, url: str, alt: str = "", base=None) -> dict | None:
+    """Imagen destacada de una Nota para HubSpot. url vacía la saca."""
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas tienen imagen destacada.")
+    url = url.strip() if isinstance(url, str) else ""
+    alt = " ".join(alt.split())[:200] if isinstance(alt, str) else ""
+    if url and not _url_imagen_valida(url):
+        raise ErrorHistorial("La imagen tiene que ser una URL https pública.")
+    col = _base(base)[coleccion]
+    cambio = {"$set": {"imagen": {"url": url, "alt": alt}}} if url else {"$unset": {"imagen": ""}}
+    if not col.update_one({"_id": _oid(item_id)}, cambio).matched_count:
+        return None
+    return _normalizar(col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
+
+
+def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
+    """Cómo quedaría la Nota en HubSpot. No necesita HubSpot configurado."""
+    from afterdrive import hubspot
+
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas tienen vista previa.")
+    doc = _base(base)[coleccion].find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING)
+    if not doc:
+        return None
+    try:
+        return {**hubspot.vista_previa(doc), "imagen_propia": doc.get("imagen") or None}
+    except hubspot.ErrorHubSpot as e:
+        raise ErrorHistorial(str(e)) from e

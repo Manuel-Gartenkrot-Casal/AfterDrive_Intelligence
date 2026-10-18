@@ -37,12 +37,13 @@ def hs(monkeypatch):
     respuesta = {"status": 200, "body": {"id": "999", "url": "https://blog/frenos", "state": "DRAFT"}}
 
     def fake(metodo):
-        def f(url, json, headers, timeout):
+        def f(url, json=None, headers=None, timeout=None, params=None):
             llamadas.append({"metodo": metodo, "url": url, "json": json, "headers": headers})
             return Resp(respuesta["status"], respuesta["body"])
         return f
 
-    monkeypatch.setattr(hubspot, "_transporte", {"post": fake("post"), "patch": fake("patch")})
+    monkeypatch.setattr(hubspot, "_transporte", {"post": fake("post"), "patch": fake("patch"), "get": fake("get")})
+    monkeypatch.setattr(hubspot, "_tags_cache", {})
     return llamadas, respuesta
 
 
@@ -67,7 +68,8 @@ def test_slug_sin_acentos_ni_simbolos():
 def test_enviar_crea_borrador_con_el_token(hs):
     llamadas, _ = hs
     r = hubspot.enviar({"_id": ObjectId(), "contenido": NOTA})
-    assert r == {"id": "999", "url": "https://blog/frenos", "estado": "DRAFT"}
+    assert r["id"] == "999" and r["url"] == "https://blog/frenos" and r["estado"] == "DRAFT"
+    assert r["slug"].startswith("frenos-la-demanda")
     c = llamadas[0]
     assert c["metodo"] == "post" and c["url"] == hubspot.API
     assert c["headers"]["Authorization"] == "Bearer pat-test"
@@ -162,3 +164,111 @@ def test_si_hubspot_falla_al_despublicar_no_cambia_nada(hs, base):
     with pytest.raises(hubspot.ErrorHubSpot):
         historial.cambiar_estado("notas_fase2", str(oid), "aprobada", base=base)
     assert base.notas_fase2.find_one({"_id": oid})["estado"] == "publicado"
+
+
+# ── Notas completas: imagen, etiquetas, vista previa ──────────────────────────
+
+
+def test_el_html_crudo_del_modelo_no_llega_al_blog():
+    p = hubspot.preparar("# Título\n\nTexto <script>alert(1)</script> y <iframe src=x>\n")
+    assert "<script>" not in p["html"] and "<iframe" not in p["html"]
+    assert "&lt;script&gt;" in p["html"]
+
+
+def test_imagen_propia_o_por_defecto(hs, monkeypatch):
+    llamadas, _ = hs
+    hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "imagen": {"url": "https://img/a.jpg", "alt": "Frenos"}})
+    c = llamadas[-1]["json"]
+    assert c["useFeaturedImage"] is True and c["featuredImage"] == "https://img/a.jpg" and c["featuredImageAltText"] == "Frenos"
+    monkeypatch.setenv("HUBSPOT_IMAGEN_DEFAULT", "https://img/default.jpg")
+    hubspot.enviar({"_id": ObjectId(), "contenido": NOTA})
+    c = llamadas[-1]["json"]
+    assert c["featuredImage"] == "https://img/default.jpg" and c["featuredImageAltText"].startswith("Frenos: la demanda")
+
+
+def test_sin_imagen_no_se_manda_el_campo(hs, monkeypatch):
+    llamadas, _ = hs
+    monkeypatch.delenv("HUBSPOT_IMAGEN_DEFAULT", raising=False)
+    hubspot.enviar({"_id": ObjectId(), "contenido": NOTA})
+    assert "featuredImage" not in llamadas[-1]["json"]
+
+
+@pytest.fixture
+def hs_tags(monkeypatch):
+    """HubSpot falso con una etiqueta existente ('Autopartes') y creación de nuevas."""
+    monkeypatch.setenv("HUBSPOT_TOKEN", "pat-test")
+    monkeypatch.setenv("HUBSPOT_BLOG_ID", "123")
+    monkeypatch.setattr(hubspot, "_tags_cache", {})
+    llamadas = []
+
+    def get(url, params=None, headers=None, timeout=None):
+        llamadas.append(("get", url, None))
+        return Resp(200, {"results": [{"id": 11, "name": "Autopartes"}]})
+
+    def post(url, json=None, headers=None, timeout=None):
+        llamadas.append(("post", url, json))
+        if url == hubspot.API_TAGS:
+            return Resp(200, {"id": 22, "name": json["name"]})
+        return Resp(200, {"id": "1", "state": json["state"]})
+
+    monkeypatch.setattr(hubspot, "_transporte", {"get": get, "post": post, "patch": post})
+    return llamadas
+
+
+def test_etiquetas_de_las_categorias_usa_las_existentes_y_crea_las_que_faltan(hs_tags):
+    nota = {"_id": ObjectId(), "contenido": NOTA, "categorias": ["autopartes", "marketplaces"]}
+    hubspot.enviar(nota)
+    creadas = [j for m, u, j in hs_tags if m == "post" and u == hubspot.API_TAGS]
+    assert creadas == [{"name": "Marketplaces", "language": "es"}]
+    post = [j for m, u, j in hs_tags if m == "post" and u == hubspot.API][0]
+    assert post["tagIds"] == ["11", "22"]
+    # La segunda vez ya están en caché: no se vuelven a listar ni a crear.
+    hs_tags.clear()
+    hubspot.enviar(nota)
+    assert [m for m, u, _ in hs_tags if u == hubspot.API_TAGS] == []
+
+
+def test_si_las_etiquetas_fallan_se_publica_igual(hs_tags, monkeypatch):
+    def get_roto(url, params=None, headers=None, timeout=None):
+        return Resp(500, {"message": "x"})
+
+    monkeypatch.setitem(hubspot._transporte, "get", get_roto)
+    r = hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "categorias": ["autopartes"]})
+    assert r["id"] == "1"
+    post = [j for m, u, j in hs_tags if u == hubspot.API][0]
+    assert "tagIds" not in post
+
+
+def test_vista_previa_no_llama_a_hubspot(monkeypatch, base):
+    monkeypatch.delenv("HUBSPOT_TOKEN", raising=False)
+    monkeypatch.setattr(hubspot, "_transporte", {})
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "categorias": ["autopartes"],
+                                       "imagen": {"url": "https://img/a.jpg", "alt": "x"}}).inserted_id
+    p = historial.vista_previa("notas_fase2", str(oid), base=base)
+    assert p["titulo"].startswith("Frenos") and p["etiquetas"] == ["Autopartes"]
+    assert p["imagen"]["url"] == "https://img/a.jpg" and p["meta"] and "<h2>" in p["html"]
+
+
+def test_cambiar_imagen_valida_la_url(base):
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada"}).inserted_id
+    for mala in ("http://img.com/a.jpg", "https://127.0.0.1/a.jpg", "javascript:alert(1)", "https://localhost/a.jpg",
+                 "https://[::1]/a.jpg"):
+        with pytest.raises(historial.ErrorHistorial):
+            historial.cambiar_imagen("notas_fase2", str(oid), mala, base=base)
+    historial.cambiar_imagen("notas_fase2", str(oid), "https://cdn.afterdrive.com/a.jpg", "Frenos", base=base)
+    assert base.notas_fase2.find_one({"_id": oid})["imagen"] == {"url": "https://cdn.afterdrive.com/a.jpg", "alt": "Frenos"}
+    historial.cambiar_imagen("notas_fase2", str(oid), "", base=base)
+    assert "imagen" not in base.notas_fase2.find_one({"_id": oid})
+
+
+def test_endpoints_imagen_y_vista_previa(api, monkeypatch, base):
+    flask_api, _ = api
+    monkeypatch.setattr(db_module, "db", base)
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    oid = str(base.notas_fase2.insert_one({"contenido": NOTA, "estado": "borrador"}).inserted_id)
+    assert c.patch("/api/historial/imagen", json={"coleccion": "notas_fase2", "id": oid, "url": "https://i.com/x.jpg"}).status_code == 200
+    r = c.get(f"/api/historial/vista-previa/notas_fase2/{oid}")
+    assert r.status_code == 200 and r.json["imagen"]["url"] == "https://i.com/x.jpg"
+    assert c.get("/api/historial/vista-previa/articulos/" + oid).status_code == 400
