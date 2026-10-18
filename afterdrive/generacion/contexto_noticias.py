@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import datetime
 import math
+import os
 from dataclasses import dataclass, field
 
 CANDIDATOS = 200          # noticias recientes que se consideran
+CANDIDATOS_VECTOR = 100   # con Atlas Vector Search: las más parecidas de toda la base
 VIDA_MEDIA_DIAS = 10      # a los 10 días una noticia pesa la mitad por recencia
 PESO_SIMILITUD = 0.65
 PESO_RECENCIA = 0.25
@@ -118,27 +120,57 @@ def _desde_doc(d: dict) -> Noticia:
     )
 
 
+_CAMPOS = {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
+           "usado_para_articulo": 1}
+
+
+def _parecidas_en_atlas(col, vec: list[float] | None) -> list[dict]:
+    """Las noticias más parecidas de TODA la base, con Atlas Vector Search.
+
+    Solo si ATLAS_VECTOR_INDEX tiene el nombre del índice. Sin él (o si Atlas
+    falla) devuelve [] y alcanza con las recientes: es una mejora, no un
+    requisito. El índice se crea en Atlas (ver docs/08-despliegue.md).
+    """
+    indice = os.getenv("ATLAS_VECTOR_INDEX", "").strip()
+    if not indice or not vec:
+        return []
+    try:
+        return list(col.aggregate([
+            {"$vectorSearch": {
+                "index": indice, "path": "embedding", "queryVector": vec,
+                "numCandidates": CANDIDATOS_VECTOR * 10, "limit": CANDIDATOS_VECTOR,
+            }},
+            {"$match": {"cuerpo": {"$exists": True, "$ne": ""}}},
+            {"$project": _CAMPOS},
+        ]))
+    except Exception as e:
+        print(f"  [AVISO] Atlas Vector Search no respondió ({e}); se usan las noticias recientes.", flush=True)
+        return []
+
+
 def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
-    """Las `limite` noticias más útiles para una nota sobre `consulta`."""
+    """Las `limite` noticias más útiles para una nota sobre `consulta`.
+
+    Candidatas: las CANDIDATOS más recientes y, si hay índice vectorial en
+    Atlas, también las más parecidas de toda la base. El orden final lo decide
+    rankear() (parecido, recencia y si ya se usó) igual en los dos casos.
+    """
     from afterdrive.db import col_articulos
     from afterdrive.ia import llm
 
-    docs = list(
-        col_articulos.find(
-            {"cuerpo": {"$exists": True, "$ne": ""}},
-            {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
-             "usado_para_articulo": 1},
-        ).sort("_id", -1).limit(CANDIDATOS)
-    )
-    if not docs:
-        return []
     vec = None
     try:
         vec = llm.embeber([consulta], tipo="query")[0]
     except Exception as e:
         print(f"  [AVISO] Sin embeddings para elegir noticias ({e}); se usan las más recientes.", flush=True)
+
+    recientes = list(col_articulos.find({"cuerpo": {"$exists": True, "$ne": ""}}, _CAMPOS)
+                     .sort("_id", -1).limit(CANDIDATOS))
+    docs = {d["_id"]: d for d in recientes + _parecidas_en_atlas(col_articulos, vec)}
+    if not docs:
+        return []
     ahora = datetime.datetime.now(datetime.UTC)
-    return rankear([_desde_doc(d) for d in docs], vec, ahora)[:limite]
+    return rankear([_desde_doc(d) for d in docs.values()], vec, ahora)[:limite]
 
 
 def marcar_usadas(noticias: list[Noticia]) -> None:

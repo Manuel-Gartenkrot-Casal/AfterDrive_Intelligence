@@ -218,3 +218,68 @@ def test_sin_evaluacion_disponible_no_se_reescribe(entorno, monkeypatch):
     _evaluaciones(monkeypatch, {"error": "proveedor caído", "lineamientos": {}})
     assert g.generar_nota(["autopartes"])["success"]
     assert col.docs[0]["evaluacion"] is None and col.docs[0]["calidad"]["intentos"] == 1
+
+
+# ── Atlas Vector Search (opcional) ────────────────────────────────────────────
+
+
+class ColConVector:
+    """Colección falsa: find() da las recientes y aggregate() las 'parecidas' de Atlas."""
+
+    def __init__(self, recientes, parecidas, falla=False):
+        self.recientes, self.parecidas, self.falla, self.pipelines = recientes, parecidas, falla, []
+
+    def find(self, *a, **k):
+        recientes = self.recientes
+
+        class Cursor:
+            def sort(self, *a):
+                return self
+
+            def limit(self, n):
+                return recientes[:n]
+
+        return Cursor()
+
+    def aggregate(self, pipeline):
+        self.pipelines.append(pipeline)
+        if self.falla:
+            raise RuntimeError("índice inexistente")
+        return self.parecidas
+
+
+def _doc(i, emb, **extra):
+    from bson import ObjectId
+    return {"_id": ObjectId(), "titulo": f"N{i}", "cuerpo": "texto", "embedding": emb, **extra}
+
+
+@pytest.fixture
+def vectorial(monkeypatch):
+    from afterdrive import db
+    monkeypatch.setattr(llm, "embeber", lambda textos, tipo="passage": [[1.0, 0.0]])
+
+    def instalar(col):
+        monkeypatch.setattr(db, "col_articulos", col)
+        return col
+    return instalar
+
+
+def test_sin_indice_vectorial_no_se_consulta_atlas(vectorial, monkeypatch):
+    monkeypatch.delenv("ATLAS_VECTOR_INDEX", raising=False)
+    col = vectorial(ColConVector([_doc(1, [0.0, 1.0])], [_doc(2, [1.0, 0.0])]))
+    assert [n.titulo for n in contexto_noticias.seleccionar("frenos")] == ["N1"] and col.pipelines == []
+
+
+def test_con_indice_suma_las_parecidas_de_toda_la_base(vectorial, monkeypatch):
+    monkeypatch.setenv("ATLAS_VECTOR_INDEX", "vector_articulos")
+    col = vectorial(ColConVector([_doc(1, [0.0, 1.0])], [_doc(2, [1.0, 0.0])]))
+    titulos = [n.titulo for n in contexto_noticias.seleccionar("frenos")]
+    assert titulos[0] == "N2"                     # la parecida (vieja) le gana a la reciente que no tiene que ver
+    etapa = col.pipelines[0][0]["$vectorSearch"]
+    assert etapa["index"] == "vector_articulos" and etapa["path"] == "embedding" and etapa["queryVector"] == [1.0, 0.0]
+
+
+def test_si_atlas_falla_se_sigue_con_las_recientes(vectorial, monkeypatch):
+    monkeypatch.setenv("ATLAS_VECTOR_INDEX", "no-existe")
+    vectorial(ColConVector([_doc(1, [0.0, 1.0])], [], falla=True))
+    assert [n.titulo for n in contexto_noticias.seleccionar("frenos")] == ["N1"]
