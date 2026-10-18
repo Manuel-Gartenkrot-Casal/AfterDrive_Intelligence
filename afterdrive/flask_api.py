@@ -614,7 +614,7 @@ def get_providers():
 
 @app.route("/api/providers", methods=["POST"])
 def set_provider():
-    """Cambiar proveedor de IA (local / nvidia / openrouter)."""
+    """Cambiar proveedor de IA (local / nvidia / openrouter / paga)."""
     body = request.get_json(silent=True) or {}
     provider = body.get("provider", "")
     if not provider:

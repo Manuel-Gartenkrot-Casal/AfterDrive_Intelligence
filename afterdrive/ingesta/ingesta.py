@@ -7,7 +7,7 @@ Interfaz:
 
 Acá vive el orden completo de la ingesta (clasificar, vectorizar, guardar) y
 la cadena de clasificadores: Jev primero; si no está configurado o falla, el
-clasificador LLM. La política de modo degradado del clasificador LLM está
+clasificador LLM. Con AI_PROVIDER=paga se saltea Jev y clasifica la API paga. La política de modo degradado del clasificador LLM está
 documentada en lm_studio.clasificar_articulo.
 """
 
@@ -22,6 +22,9 @@ from afterdrive.ingesta.embeddings import texto_para_embedding
 
 
 def clasificar(titulo: str, cuerpo: str) -> dict:
+    # Con la API paga activa (y bien configurada) clasifica siempre GPT: Jev no se consulta.
+    if llm.proveedor_activo() == "paga" and llm.paga_configurada("PAGA_MODEL"):
+        return lm_studio.clasificar_articulo(titulo, cuerpo)
     veredicto = jev_clasificador.clasificar(titulo, cuerpo)
     if veredicto is not None:
         return veredicto
@@ -72,10 +75,12 @@ def ingerir(items: list[dict]) -> dict:
 
     if aprobados:
         print(f"  Generando embeddings para {len(aprobados)} artículo(s) aprobado(s)...", flush=True)
+        modelo = llm.modelo_embeddings()
         vectores = llm.embeber([texto_para_embedding(item) for item in aprobados])
         for item, vec in zip(aprobados, vectores, strict=True):
             if vec:
                 item["embedding"] = vec
+                item["embedding_modelo"] = modelo
         col_articulos.bulk_write([
             UpdateOne({"url": item["url"]}, {"$set": item, "$setOnInsert": {"usado_para_articulo": False}}, upsert=True)
             for item in aprobados

@@ -312,3 +312,66 @@ def test_clasificador_lee_aprobado_sin_trampas(monkeypatch, respuesta, esperado)
     monkeypatch.setattr(lm_studio.llm, "disponible", lambda: True)
     monkeypatch.setattr(lm_studio.llm, "completar", lambda *a, **k: respuesta)
     assert lm_studio.clasificar_articulo("t", "c")["aprobado"] is esperado
+
+
+@pytest.fixture
+def paga(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "paga")
+    monkeypatch.setenv("PAGA_API_KEY", "pg-key")
+    monkeypatch.setenv("PAGA_BASE_URL", "https://api.paga.test/v1")
+    monkeypatch.setenv("PAGA_MODEL", "modelo-pago")
+    monkeypatch.delenv("PAGA_EMB_MODEL", raising=False)
+    monkeypatch.delenv("EMBEDDINGS_PROVIDER", raising=False)
+
+
+def test_paga_usa_su_url_key_y_modelo(transporte, paga):
+    t = transporte([chat("hola")])
+    assert llm.completar("s", "u") == "hola"
+    assert t.posts[0]["url"] == "https://api.paga.test/v1/chat/completions"
+    assert t.posts[0]["headers"] == {"Authorization": "Bearer pg-key"}
+    assert t.posts[0]["json"]["model"] == "modelo-pago"
+    assert "include_reasoning" not in t.posts[0]["json"]
+
+
+def test_paga_sin_modelo_de_embeddings_no_recibe_embeddings(transporte, paga, monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nv")
+    t = transporte([Resp(body={"data": [{"index": 0, "embedding": [1.0]}]})])
+    llm.embeber(["x"])
+    assert "integrate.api.nvidia.com" in t.posts[0]["url"]
+
+
+def test_set_proveedor_paga_exige_key_url_y_modelo(transporte, paga, monkeypatch):
+    transporte([])
+    monkeypatch.setenv("AI_PROVIDER", "local")
+    monkeypatch.delenv("PAGA_MODEL")
+    assert not llm.set_proveedor("paga")["success"]
+    monkeypatch.setenv("PAGA_MODEL", "modelo-pago")
+    r = llm.set_proveedor("paga")
+    assert r["success"] and r["provider"] == "paga" and r["paga_available"]
+
+
+def test_paga_elige_modelo_por_tarea(transporte, paga, monkeypatch):
+    monkeypatch.setenv("PAGA_MODEL_CLASIFICACION", "luna")
+    monkeypatch.setenv("PAGA_MODEL_REDACCION", "astra")
+    monkeypatch.delenv("PAGA_MODEL_EVALUACION", raising=False)
+    t = transporte([chat("a"), chat("b"), chat("c")])
+    llm.completar("s", "u", tarea="clasificacion")
+    llm.completar("s", "u", tarea="redaccion")
+    llm.completar("s", "u", tarea="evaluacion")
+    assert [p["json"]["model"] for p in t.posts] == ["luna", "astra", "modelo-pago"]
+    assert "max_completion_tokens" in t.posts[0]["json"] and "max_tokens" not in t.posts[0]["json"]
+
+
+def test_tarea_no_cambia_el_modelo_de_otros_proveedores(transporte, openrouter, monkeypatch):
+    monkeypatch.setenv("PAGA_MODEL_REDACCION", "astra")
+    t = transporte([chat("a")])
+    llm.completar("s", "u", tarea="redaccion")
+    assert t.posts[0]["json"]["model"] == "mistral-small"
+    assert "max_tokens" in t.posts[0]["json"] and "temperature" in t.posts[0]["json"]
+
+
+def test_paga_sin_temperatura(transporte, paga, monkeypatch):
+    monkeypatch.setenv("PAGA_TEMPERATURA", "0")
+    t = transporte([chat("a")])
+    llm.completar("s", "u")
+    assert "temperature" not in t.posts[0]["json"]

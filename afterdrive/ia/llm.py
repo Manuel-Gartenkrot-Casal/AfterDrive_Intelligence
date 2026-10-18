@@ -2,8 +2,9 @@
 llm.py — Módulo LLM: el único lugar que sabe hablar con un proveedor de IA.
 
 Interfaz:
-    completar(system, user, temperature=..., max_tokens=..., stream=False) -> str
+    completar(system, user, temperature=..., max_tokens=..., stream=False, tarea="") -> str
     embeber(textos, tipo="passage") -> list[vector | None]
+    modelo_embeddings() -> str
     disponible() -> bool
     ajustes_redaccion() -> Redaccion
     estado() -> dict
@@ -27,14 +28,23 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-PROVEEDORES = ("local", "nvidia", "openrouter")
+PROVEEDORES = ("local", "nvidia", "openrouter", "paga")
+
+# Tareas del pipeline que llaman al chat. Solo la API paga las separa en
+# modelos distintos (PAGA_MODEL_<TAREA>); el resto usa un modelo para todo.
+TAREAS = ("clasificacion", "redaccion", "evaluacion")
+
+
+def paga_configurada(*extra: str) -> bool:
+    """True si la API paga tiene key, URL y las variables extra pedidas (p. ej. PAGA_MODEL)."""
+    return all(os.getenv(v) for v in ("PAGA_API_KEY", "PAGA_BASE_URL", *extra))
 
 # Códigos que significan "este modelo ya no existe": reintentar no lo revive.
 # 404 = nunca existió con ese id; 410 = fue dado de baja por el proveedor.
@@ -78,6 +88,9 @@ class Perfil:
     modelo_emb: str = ""
     emb_max_chars: int = 8000
     emb_input_type: bool = False  # NVIDIA exige input_type en /embeddings
+    modelos_tarea: dict = field(default_factory=dict)  # tarea -> modelo (solo API paga)
+    campo_max_tokens: str = "max_tokens"  # OpenAI pide max_completion_tokens
+    enviar_temperatura: bool = True       # los modelos que razonan de OpenAI pueden rechazarla
     redaccion: Redaccion = field(default_factory=Redaccion)
 
     @property
@@ -124,6 +137,27 @@ def _perfil(nombre: str) -> Perfil:
             # temperatura reduce datos "creativos" sin volver rígido el texto.
             redaccion=Redaccion(temperatura=0.55),
         )
+    if nombre == "paga" and paga_configurada():
+        # API paga genérica compatible con OpenAI: el proveedor concreto se elige
+        # solo con variables de entorno. Sin defaults de URL/modelo a propósito.
+        return Perfil(
+            nombre="paga",
+            base_url=env("PAGA_BASE_URL", ""),
+            api_key=env("PAGA_API_KEY", ""),
+            modelo=env("PAGA_MODEL", ""),
+            modelo_fallback=env("PAGA_FALLBACK_MODEL", ""),
+            variable_modelo="PAGA_MODEL",
+            modelo_emb=env("PAGA_EMB_MODEL", ""),
+            # Un modelo por tarea; la que no tenga variable usa PAGA_MODEL.
+            modelos_tarea={t: env(f"PAGA_MODEL_{t.upper()}") for t in TAREAS if env(f"PAGA_MODEL_{t.upper()}")},
+            # ponytail: sin probar contra la API real. Si OpenAI rechaza un
+            # parámetro, se corrige desde estas variables sin tocar código.
+            campo_max_tokens=env("PAGA_CAMPO_MAX_TOKENS", "max_completion_tokens"),
+            enviar_temperatura=env("PAGA_TEMPERATURA", "1") != "0",
+            # Los modelos de OpenAI que razonan descuentan el razonamiento de este
+            # presupuesto: con 4000 pueden agotarlo y no escribir (como kimi-k3).
+            redaccion=Redaccion(max_tokens=16000),
+        )
     return Perfil(
         nombre="local",
         base_url=env("LMSTUDIO_URL", "http://localhost:1234/v1"),
@@ -142,7 +176,10 @@ def proveedor_activo() -> str:
 
 
 def _perfil_chat() -> Perfil:
-    return _perfil(proveedor_activo())
+    nombre = proveedor_activo()
+    if nombre == "paga" and not paga_configurada("PAGA_MODEL"):
+        nombre = "local"  # mismo criterio que un proveedor cloud sin key
+    return _perfil(nombre)
 
 
 def _perfil_emb() -> Perfil:
@@ -152,11 +189,29 @@ def _perfil_emb() -> Perfil:
     así que si terminara elegido se cae a LM Studio: es preferible fallar contra
     un endpoint local que mandar la request a un proveedor que devuelve 404.
     """
-    nombre = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower() or proveedor_activo()
-    if nombre == "openrouter":
+    explicito = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower()
+    nombre = explicito or proveedor_activo()
+    # La API paga vectoriza solo si se la pide explícitamente: elegirla para el
+    # chat desde el dashboard no debe cambiar el modelo de los vectores guardados.
+    paga_emb = explicito == "paga" and paga_configurada("PAGA_EMB_MODEL")
+    if nombre == "openrouter" or (nombre == "paga" and not paga_emb):
         # OpenRouter no tiene /embeddings. NVIDIA si hay key; si no, LM Studio.
         nombre = "nvidia" if os.getenv("NVIDIA_API_KEY") else "local"
     return _perfil(nombre)
+
+
+def modelo_embeddings() -> str:
+    """Id del modelo que produce los vectores hoy ("proveedor/modelo").
+
+    Se guarda junto a cada embedding: vectores de modelos distintos no se
+    pueden comparar, aunque tengan el mismo largo.
+    """
+    p = _perfil_emb()
+    return f"{p.nombre}/{p.modelo_emb}"
+
+
+def _variable_emb(perfil: Perfil) -> str:
+    return "LMSTUDIO_EMB_MODEL" if perfil.nombre == "local" else f"{perfil.nombre.upper()}_EMB_MODEL"
 
 
 def _stream_read_timeout() -> int:
@@ -234,6 +289,7 @@ def estado() -> dict:
         "local_available": local,
         "nvidia_available": bool(os.getenv("NVIDIA_API_KEY")),
         "openrouter_available": bool(os.getenv("OPENROUTER_API_KEY")),
+        "paga_available": paga_configurada("PAGA_MODEL"),
         "model": chat.modelo,
         "emb_model": emb.modelo_emb,
         "emb_provider": emb.nombre,
@@ -243,11 +299,13 @@ def estado() -> dict:
 def set_proveedor(nombre: str) -> dict:
     """Cambia el proveedor de chat en runtime (y para los subprocesos)."""
     if nombre not in PROVEEDORES:
-        return {"success": False, "error": "Proveedor inválido. Usá 'local', 'nvidia' u 'openrouter'."}
+        return {"success": False, "error": "Proveedor inválido. Usá 'local', 'nvidia', 'openrouter' o 'paga'."}
     if nombre == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
         return {"success": False, "error": "No hay API key de NVIDIA configurada."}
     if nombre == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
         return {"success": False, "error": "No hay API key de OpenRouter configurada."}
+    if nombre == "paga" and not paga_configurada("PAGA_MODEL"):
+        return {"success": False, "error": "La API paga necesita PAGA_API_KEY, PAGA_BASE_URL y PAGA_MODEL."}
     if nombre == "local":
         # La elección se persiste: aceptar "local" donde no hay LM Studio (p. ej.
         # en Render) deja fallando la generación programada hasta que alguien lo note.
@@ -411,8 +469,12 @@ def completar(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     stream: bool = False,
+    tarea: str = "",
 ) -> str:
     """Envía un system + user prompt al proveedor activo y devuelve el texto.
+
+    tarea ("clasificacion", "redaccion", "evaluacion") elige el modelo cuando
+    el proveedor separa modelos por tarea (API paga); si no, se ignora.
 
     stream=True es para generaciones largas: agrega heartbeat y corta si el
     proveedor queda mudo STREAM_READ_TIMEOUT segundos, pero la interfaz es la
@@ -423,16 +485,19 @@ def completar(
         proveedor mudo, HTTP inesperado).
     """
     perfil = _perfil_chat()
+    if perfil.modelos_tarea.get(tarea):
+        perfil = replace(perfil, modelo=perfil.modelos_tarea[tarea], variable_modelo=f"PAGA_MODEL_{tarea.upper()}")
     messages = [{"role": "system", "content": system}] if system else []
     messages.append({"role": "user", "content": user})
     payload = {
         "model": perfil.modelo,
         "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        perfil.campo_max_tokens: max_tokens,
         "stream": stream,
         **perfil.extra_payload,
     }
+    if perfil.enviar_temperatura:
+        payload["temperature"] = temperature
 
     if not stream:
         try:
@@ -496,7 +561,7 @@ def _embeber_uno(perfil: Perfil, texto: str, tipo: str) -> list[float] | None:
             resp = _post_emb(perfil, texto, tipo, timeout=30)
             if resp.status_code in _MODELO_CAIDO:
                 print("[ERROR] " + _error_modelo_caido(perfil, perfil.modelo_emb, resp.status_code,
-                                                       "NVIDIA_EMB_MODEL"), flush=True)
+                                                       _variable_emb(perfil)), flush=True)
                 return None
             # NVIDIA a veces devuelve 400 en vez de 429 para rate limit.
             if resp.status_code in (400, 429):
@@ -549,7 +614,7 @@ def embeber(textos: list[str], tipo: str = "passage") -> list[list[float] | None
             if resp.status_code in _MODELO_CAIDO:
                 # Caer al uno-por-uno fallaría igual N veces seguidas.
                 print("[ERROR] " + _error_modelo_caido(perfil, perfil.modelo_emb, resp.status_code,
-                                                       "NVIDIA_EMB_MODEL"), flush=True)
+                                                       _variable_emb(perfil)), flush=True)
                 return resultado
             if resp.status_code in (400, 429):
                 print(f"  [AVISO] Embedding batch rate-limited ({resp.status_code}), retry en {espera}s...", flush=True)

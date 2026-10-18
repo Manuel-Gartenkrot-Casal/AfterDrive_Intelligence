@@ -21,7 +21,7 @@ La imagen (`Dockerfile`) instala Python, Chromium (para Scrapling) y copia `afte
 ## Primer despliegue
 
 1. En [Render](https://render.com): **New → Blueprint** con este repo (usa `render.yaml`).
-2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN`, `HUBSPOT_BLOG_ID`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS`.
+2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN`, `HUBSPOT_BLOG_ID`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
 3. En Atlas, **Network Access** tiene que permitir `0.0.0.0/0`: Render free no tiene IP fija.
 4. Elegí cómo corren las tareas programadas (abajo).
 
@@ -45,8 +45,8 @@ Para activarlo:
 
 0. **El workflow tiene que estar en la rama por defecto del repo** (hoy `main`): GitHub solo dispara los `schedule` desde ahí, y corre el código de esa rama. Mergeá `Render_Testing` en `main`, o cambiá la rama por defecto a `Render_Testing` (**Settings → General → Default branch**).
 1. GitHub → **Settings → Secrets and variables → Actions**:
-   - **Secrets**: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`.
-   - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `ATLAS_VECTOR_INDEX`.
+   - **Secrets**: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY` (y `PAGA_API_KEY` para la API paga).
+   - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `ATLAS_VECTOR_INDEX` y, para la API paga, `PAGA_BASE_URL`, `PAGA_MODEL`, `PAGA_MODEL_CLASIFICACION`, `PAGA_MODEL_EVALUACION`, `PAGA_MODEL_REDACCION`, `PAGA_EMB_MODEL` (y, si hace falta, `PAGA_FALLBACK_MODEL`, `PAGA_CAMPO_MAX_TOKENS`, `PAGA_TEMPERATURA`).
 2. En Render: `CORRIDAS_EXTERNAS=github`. Sin esto, se corren dos veces.
 3. Probalo a mano: **Actions → Corridas → Run workflow** (elegí `scraping`).
 
@@ -60,19 +60,22 @@ Detalles:
 
 Mejora la elección de noticias para cada nota: busca entre las más parecidas de toda la base y no solo entre las 200 más recientes.
 
-1. En Atlas → tu cluster → **Atlas Search → Create Search Index → Vector Search**, base `afterdrive`, colección `articulos`, con esta definición (2048 son las dimensiones de `nvidia/nemotron-3-embed-1b`):
+1. En Atlas → tu cluster → **Atlas Search → Create Search Index → Vector Search**, base `afterdrive`, colección `articulos`, con esta definición (2048 son las dimensiones de `nvidia/nemotron-3-embed-1b`; `text-embedding-3-small` de OpenAI tiene 1536):
 
 ```json
 {
   "fields": [
-    { "type": "vector", "path": "embedding", "numDimensions": 2048, "similarity": "cosine" }
+    { "type": "vector", "path": "embedding", "numDimensions": 2048, "similarity": "cosine" },
+    { "type": "filter", "path": "embedding_modelo" }
   ]
 }
 ```
 
+   El `filter` hace que la búsqueda compare solo vectores del modelo actual. Un índice viejo sin él sigue andando: la búsqueda se reintenta sin filtro y avisa en el log. Antes de usarlo, corré una vez `python -m afterdrive.ingesta.embeddings` para etiquetar los vectores existentes.
+
 2. Poné el nombre del índice en `ATLAS_VECTOR_INDEX` (Render y, si usás la opción B, también en la variable de GitHub).
 
-Si el índice no existe o Atlas falla, la elección sigue como antes, con un aviso en el log. Si cambiás el modelo de embeddings, el índice tiene que tener sus dimensiones.
+Si el índice no existe o Atlas falla, la elección sigue como antes, con un aviso en el log. Si cambiás el modelo de embeddings (p. ej. a la API paga), el índice tiene que tener sus dimensiones: editalo con el `numDimensions` nuevo y corré el backfill.
 
 ## Qué limita el plan free de Render
 

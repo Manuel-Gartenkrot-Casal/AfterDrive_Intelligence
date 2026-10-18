@@ -29,6 +29,10 @@ function updateProviderUI(provider) {
   if (openrouterBtn) {
     openrouterBtn.classList.toggle('active', provider === 'openrouter');
   }
+  var pagaBtn = $('prov-paga');
+  if (pagaBtn) {
+    pagaBtn.classList.toggle('active', provider === 'paga');
+  }
 }
 
 async function switchProvider(provider) {
