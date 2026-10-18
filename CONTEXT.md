@@ -36,6 +36,13 @@ Nota escrita a partir de un tópico de Artículos elegido por similitud.
 **Nota Fase 2**:
 Nota escrita imitando notas reales publicadas de AfterDrive (Ejemplos), según Categorías, Regiones y Clientes elegidos.
 
+**Estado de una Nota**:
+Dónde está en la revisión: borrador (recién generada), aprobada, rechazada o publicado (en el blog de HubSpot).
+_Avoid_: status
+
+**Nota descartada**:
+Respuesta del modelo que el Saneo rechazó; se guarda con el motivo, nunca se publica.
+
 **Ejemplo**:
 Nota real publicada en el blog de AfterDrive, usada como referencia de tono y estructura.
 

@@ -1,6 +1,6 @@
 # 05 · Base de datos (MongoDB)
 
-Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema formal: estos son los campos que usa el código. Las colecciones se crean solas. Las referencias a colecciones están en `afterdrive/db.py`.
+Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema formal: estos son los campos que usa el código. Las colecciones se crean solas y los índices se crean al arrancar (`db.crear_indices()`). Las referencias a colecciones están en `afterdrive/db.py`.
 
 ## Entrada: lo que se junta
 
@@ -8,8 +8,8 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 |---|---|---|
 | `trusted_urls` | Fuentes de noticias | `url`, `nombre_fuente`, `estado` (`activo` / `inactivo`), `fecha_agregado`, `ultima_ejecucion` |
 | `suggested_urls` | Sitios recomendados, uno por dominio | `url`, `dominio`, `titulo`, `snippet`, `fecha_sugerida` |
-| `articulos` | **Noticias que la IA aprobó** | `url` (clave), `titulo`, `cuerpo`, `fecha`, `fuente`, `embedding`, `usado_para_articulo` |
-| `articulos_descartados` | Noticias que la IA rechazó | `url`, `fecha_descarte` |
+| `articulos` | **Noticias que la IA aprobó** | `url` (clave), `titulo`, `cuerpo`, `fecha` (publicación), `fuente`, `embedding`, `usado_para_articulo` |
+| `articulos_descartados` | Noticias que la IA rechazó | `url`, `titulo`, `cuerpo` (hasta 5000 caracteres), `fuente`, `fecha`, `razon`, `fecha_descarte`. Las viejas solo tienen `url` |
 | `afterdrive_ejemplos` | **Notas reales del blog** (referencia de estilo) | `url`, `titulo`, `cuerpo`, `categoria`, `regiones`, `region_principal` |
 | `clientes` | Empresas que se pueden mencionar en las notas | `slug`, `nombre`, `descripcion`, `productos`, `sector`, `url` |
 | `afterdrive` | Resto de una versión vieja; ya nadie la escribe | — |
@@ -18,15 +18,22 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes` (noticias usadas), `evaluacion` (checklist), `proveedor`, `embedding`, `generado_en` |
-| `articulos_generados` | Artículos del generador viejo (Fase 1) | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en` |
+| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `editado_en`, `publicado_en`, `hubspot` |
+| `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
+| `articulos_generados` | Artículos del generador viejo (Fase 1) | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
+
+**Estado de una nota**: `borrador` (o sin el campo, las viejas) → `aprobada` / `rechazada` → `publicado`. El valor es `publicado` y no `publicada` por compatibilidad con lo que guardó `Front-Testing`.
+
+**`calidad`**: `{puntaje (0–9), fallas_criticas, intentos, reescrita_por}`.
+
+**`hubspot`**: `{id, url, estado (DRAFT / PUBLISHED), enviado_en}`, solo si se envió.
 
 ## Operación
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`), `value` |
-| `corridas` | **La cola y el historial de Corridas** | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas) |
+| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `ejecutor_externo`), `value` |
+| `corridas` | **La cola y el historial de Corridas** (30 días) | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `ejecutor` (`servidor` / `github`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas), `cancelar_pedido` |
 
 Estados de una Corrida: `pendiente → en_curso → ok | error | cancelada | interrumpida`.
 
@@ -40,15 +47,17 @@ Definidos en `config_store.py`:
 | `generacion` | Activa, 11:00, cada 1 día, persona `comercial` |
 | `fase2` | Sin categorías: **la nota automática no corre hasta que se guarden** |
 | `provider` | `openrouter` |
+| `ejecutor_externo` | Cuándo revisó GitHub Actions qué tocaba correr |
 
 ## Búsqueda
 
-- **No se usan índices vectoriales de Atlas**: los embeddings se traen a memoria y la similitud se calcula en Python (`ingesta/embeddings.py`).
-- `db.crear_indices_texto()` crea índices de texto en español; lo usa el generador Fase 1.
+- **Similitud**: por defecto los embeddings se traen a memoria y la similitud se calcula en Python. Con `ATLAS_VECTOR_INDEX`, la elección de noticias usa además `$vectorSearch` (ver [08 Despliegue](08-despliegue.md)).
+- `db.crear_indices_texto()` crea índices de texto en español; lo usa el generador Fase 1 y el contador de volumen.
 
 ## Para agregar una colección
 
-1. Declarala en `afterdrive/db.py` (`col_algo = db["algo"]`).
+1. Declarala en `afterdrive/db.py` (`col_algo = db["algo"]`) y, si se consulta por algún campo, sumalo a `INDICES`.
 2. Importala **dentro de la función** que la usa (`from afterdrive.db import col_algo`): así los tests la pueden reemplazar.
 3. En los tests usá `mongomock` (ver `tests/test_cola.py`).
-4. Agregala a la tabla de arriba.
+4. Si el historial la tiene que mostrar, agregala a la lista blanca de `historial.SECCIONES`.
+5. Agregala a la tabla de arriba.

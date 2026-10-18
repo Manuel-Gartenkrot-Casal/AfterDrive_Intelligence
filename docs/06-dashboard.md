@@ -10,11 +10,12 @@ Una barra lateral con secciones; se ve una a la vez.
 |---|---|
 | **Inicio** | Resumen y última nota (vista Cliente) o estadísticas (vista Desarrollador) |
 | **Crear nota** | Categorías, regiones, clientes, tono, tema y puntapié. Botón Generar nota |
+| **Historial** | Notas para revisar (aprobar, rechazar, editar, publicar en HubSpot), notas descartadas y artículos guardados o descartados con su motivo |
 | **Programación** | Hora, frecuencia y activación del scraping y de la nota automática |
 | **Fuentes** | Fuentes de noticias (pausar, eliminar, agregar) y recomendaciones |
 | **Corridas** | Lo que está corriendo con su log, lo que espera y lo último que terminó |
 
-Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa) y, en Desarrollador, el **proveedor de IA**.
+Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa), el **idioma** (ES / PT, con el traductor de Google) y, en Desarrollador, el **proveedor de IA**.
 
 ## Cómo está organizado el código
 
@@ -26,6 +27,8 @@ El `<script>` está dividido en bloques con un encabezado `═══ NOMBRE ═�
 | `MODOS DE VISTA` | `setModo('cliente' \| 'dev')` |
 | `FORMULARIOS CON GUARDADO EXPLÍCITO` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
 | `COLA DE CORRIDAS` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
+| `HISTORIAL` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`) |
+| Traductor | Widget de Google Translate. Lo que no se debe traducir (marca, proveedores, consola) lleva `translate="no"` |
 | `confirmar()` y `pedir()` | Diálogo de confirmación y `fetch` que lanza error si el server responde error |
 
 ## Patrones que hay que respetar

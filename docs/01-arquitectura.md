@@ -30,9 +30,12 @@ Todo vive en **un solo proceso**: la API, el programador de tareas y la cola. No
 | API | `afterdrive/flask_api.py` | Endpoints, cabeceras de seguridad, sirve el dashboard, arranca el scheduler y el keep-alive |
 | Login | `afterdrive/auth.py` | Un usuario admin, sesión firmada, bloqueo tras 5 intentos |
 | Configuración | `afterdrive/config_store.py` | Lee y guarda lo que se cambia en el dashboard (colección `config`) |
-| Programador | `afterdrive/scheduler.py` | Encola scraping y generación a la hora configurada (hora argentina) |
+| Programador | `afterdrive/scheduler.py` | Encola scraping y generación a la hora configurada (hora argentina), salvo que las corra GitHub Actions |
+| Ejecutor externo | `afterdrive/ejecutor_externo.py` | Corre las tareas programadas en GitHub Actions (opcional, ver [08](08-despliegue.md)) |
 | Cola | `afterdrive/cola.py` | Guarda en Mongo las Corridas pendientes y las corre de a una |
 | Corridas | `afterdrive/corridas.py` | Ejecuta scraping, generación o scripts, con un lock para que nunca corran dos |
+| Historial | `afterdrive/historial.py` | Notas y artículos guardados o descartados; estados de revisión y edición de notas |
+| HubSpot | `afterdrive/hubspot.py` | Publica notas aprobadas en el blog |
 | Ingesta | `afterdrive/ingesta/` | Scrapear, clasificar, vectorizar y guardar noticias |
 | Generación | `afterdrive/generacion/` | Escribir Notas (Fase 2 es el generador principal) |
 | IA | `afterdrive/ia/` | Hablar con los proveedores (`llm.py`), prompts (`redaccion.py`, `lm_studio.py`), limpiar la salida (`saneo.py`) |
@@ -68,9 +71,9 @@ El porqué está en [ADR-0001](adr/0001-corridas-serializadas-en-un-proceso.md) 
 |---|---|---|
 | `scraping` | Dentro del proceso | Programador, botón "Buscar noticias", cron externo |
 | `generacion` | Dentro del proceso, con la config guardada | Programador, cron externo |
-| `script` | Subproceso de Python | Botón "Generar nota" (con lo que hay en pantalla), "Sincronizar ejemplos" |
+| `script` | Subproceso de Python | "Generar nota" (con lo que hay en pantalla), "Sincronizar ejemplos", "Probar y agregar", "Buscar recomendaciones" |
 
-Algunos endpoints viejos (probar una URL nueva, descubrir fuentes, Fase 1) todavía corren sincrónicos con el lock y responden "ocupado" si hay otra Corrida. Ver [09 Deuda y mejoras](09-deuda-y-mejoras.md).
+Con GitHub Actions activado, las programadas las ejecuta el runner de GitHub (`ejecutor: "github"`): quedan en la misma colección y el dashboard las ve igual, con su log en vivo.
 
 ## Configuración: dos lugares
 

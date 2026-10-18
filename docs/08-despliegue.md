@@ -12,44 +12,82 @@
 
 La imagen (`Dockerfile`) instala Python, Chromium (para Scrapling) y copia `afterdrive/` y el dashboard (`express/src/public/` → `static/`).
 
-> **Un solo worker es obligatorio.** El programador de tareas, el lock de Corridas y el contador de intentos de login viven en memoria. Con dos workers habría dos programadores y dos Corridas a la vez.
+> **Un solo worker es obligatorio.** El programador de tareas, el lock de Corridas y el contador de intentos de login viven en memoria.
+
+## Antes de que llegue a producción: CI
+
+`.github/workflows/ci.yml` corre `ruff` y `pytest` en cada push y pull request. Render no lo espera: si el CI queda rojo, arreglalo enseguida.
 
 ## Primer despliegue
 
 1. En [Render](https://render.com): **New → Blueprint** con este repo (usa `render.yaml`).
-2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render.
+2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN`, `HUBSPOT_BLOG_ID`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS`.
 3. En Atlas, **Network Access** tiene que permitir `0.0.0.0/0`: Render free no tiene IP fija.
-4. Configurá un monitor externo (ver abajo).
+4. Elegí cómo corren las tareas programadas (abajo).
 
-## Que no se duerma
+## Tareas programadas: dos opciones
 
-Si la instancia está dormida, **las tareas programadas no corren**. Tres capas:
+### A. En Render (como viene)
 
-| Capa | Cómo | Costo |
-|---|---|---|
-| Keep-alive interno | `flask_api.py` le pega a `RENDER_EXTERNAL_URL/health` cada 5 min | Gratis, no alcanza solo |
-| **Monitor externo** (recomendado) | UptimeRobot o cron-job.org: `GET /health` cada 5–10 min | Gratis |
-| Cron externo a hora fija | `POST /api/run-automation` y `/api/run-generacion` con `Authorization: Bearer <CRON_TOKEN>` | Gratis |
+El programador interno las corre a la hora del dashboard, **si la instancia está despierta**. Para que no se duerma:
 
-`render.yaml` define también cron jobs de Render, pero **solo funcionan en plan pago**.
+| Capa | Cómo |
+|---|---|
+| Keep-alive interno | `flask_api.py` le pega a `RENDER_EXTERNAL_URL/health` cada 5 min (no alcanza solo) |
+| **Monitor externo** (recomendado) | UptimeRobot o cron-job.org: `GET /health` cada 5–10 min |
+| Cron externo | `POST /api/run-automation` y `/api/run-generacion` con `Authorization: Bearer <CRON_TOKEN>` |
 
-Si el cron externo y el programador interno piden lo mismo mientras la primera todavía espera en la cola, no se duplica. Si la primera ya empezó, la segunda queda en espera y corre después.
+### B. En GitHub Actions (recomendado)
 
-## Qué limita el plan free
+`.github/workflows/corridas.yml` corre cada hora en GitHub, lee la programación del dashboard y ejecuta lo que tocaba. Gana ~7 GB de RAM, Chromium y no depende de que Render esté despierto. Las Corridas aparecen igual en el panel del dashboard, con su log, y se pueden cancelar desde ahí.
+
+Para activarlo:
+
+1. GitHub → **Settings → Secrets and variables → Actions**:
+   - **Secrets**: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`.
+   - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `ATLAS_VECTOR_INDEX`.
+2. En Render: `CORRIDAS_EXTERNAS=github`. Sin esto, se corren dos veces.
+3. Probalo a mano: **Actions → Corridas → Run workflow** (elegí `scraping`).
+
+Detalles:
+
+- Corre al minuto 7 de cada hora: una tarea programada a las 05:30 se ejecuta a las 06:07. GitHub puede demorar el cron unos minutos; si se saltea una hora, la siguiente la recupera.
+- El repo es público: los minutos de Actions son gratis.
+- Los botones del dashboard (Buscar ahora, Generar nota…) siguen corriendo en Render.
+
+## Atlas Vector Search (opcional)
+
+Mejora la elección de noticias para cada nota: busca entre las más parecidas de toda la base y no solo entre las 200 más recientes.
+
+1. En Atlas → tu cluster → **Atlas Search → Create Search Index → Vector Search**, base `afterdrive`, colección `articulos`, con esta definición (2048 son las dimensiones de `nvidia/nemotron-3-embed-1b`):
+
+```json
+{
+  "fields": [
+    { "type": "vector", "path": "embedding", "numDimensions": 2048, "similarity": "cosine" }
+  ]
+}
+```
+
+2. Poné el nombre del índice en `ATLAS_VECTOR_INDEX` (Render y, si usás la opción B, también en la variable de GitHub).
+
+Si el índice no existe o Atlas falla, la elección sigue como antes, con un aviso en el log. Si cambiás el modelo de embeddings, el índice tiene que tener sus dimensiones.
+
+## Qué limita el plan free de Render
 
 | Límite | Efecto |
 |---|---|
-| < 600 MB de RAM | Nunca usa Chromium: los sitios con Cloudflare o JavaScript fallan o caen a Wayback |
-| 0,1 CPU | El scraping con muchas fuentes es lento |
+| < 600 MB de RAM | Nunca usa Chromium: los sitios con Cloudflare o JavaScript caen a Wayback (salvo con la opción B) |
+| 0,1 CPU | El scraping con muchas fuentes es lento (salvo con la opción B) |
 | Una Corrida a la vez | Mientras corre el scraping, una nota espera en la cola |
 | Se duerme | Ver arriba |
 
-**La redacción no usa la CPU de Render**: el LLM corre en el proveedor. La calidad y la velocidad de las notas dependen más del modelo que del plan.
+**La redacción no usa la CPU de Render**: el LLM corre en el proveedor.
 
 ## Ver qué pasó
 
-- **Dashboard → Corridas**: estado, duración, error y log de cada Corrida (últimas 500 líneas, guardadas en Mongo).
-- **Logs de Render**: todo lo que imprime el proceso, incluidos los prints del scheduler (`[Scheduler]`), la cola (`[Cola]`) y la base (`[DB]`).
+- **Dashboard → Corridas**: estado, duración, error y log de cada Corrida (de Render o de GitHub).
+- **Logs de Render** o **GitHub → Actions → Corridas**: todo lo que imprime el proceso.
 
 ## Local igual que producción
 

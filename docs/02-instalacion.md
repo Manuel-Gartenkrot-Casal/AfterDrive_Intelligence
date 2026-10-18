@@ -101,14 +101,17 @@ Todo desde el dashboard, en la barra lateral:
 2. **Fuentes**: pegá la URL del listado de noticias de un sitio del rubro y tocá **Probar y agregar**. O usá **Buscar recomendaciones**.
 3. **Programación → Buscar ahora** ("Scrapear ahora" en la vista Desarrollador): corre el scraping una vez para tener noticias de contexto.
 4. **Crear nota**: elegí categorías y tocá **Generar nota**. Mirá el avance en **Corridas**.
-5. Para que se genere sola: dejá las categorías elegidas y tocá **Guardar cambios**. Revisá los horarios en **Programación**.
+5. **Historial → Notas → Para revisar**: abrí la nota, editala si hace falta y **Aprobala**. Con HubSpot configurado, desde ahí mismo se publica (ver [hubspot-integration.md](hubspot-integration.md)).
+6. Para que se genere sola: dejá las categorías elegidas y tocá **Guardar cambios**. Revisá los horarios en **Programación**.
 
 ## Tests y lint
 
 ```bash
 python -m pytest           # todos tienen que pasar
-ruff check afterdrive tests
+ruff check afterdrive tests scripts
 ```
+
+GitHub corre lo mismo en cada push ([CI](../.github/workflows/ci.yml)). Si falla, no lo subas a `Render_Testing`: Render despliega cada push.
 
 Los tests no tocan Mongo real ni proveedores de IA: usan fakes y `mongomock`.
 
@@ -125,6 +128,7 @@ Los tests no tocan Mongo real ni proveedores de IA: usan fakes y `mongomock`.
 | Artículos sin `embedding` | Falta `NVIDIA_API_KEY`. Configurala y corré `python -m afterdrive.ingesta.embeddings` |
 | La nota automática no se genera | No hay categorías guardadas: elegilas en Crear nota y tocá Guardar cambios |
 | Algo quedó "En espera" mucho tiempo | Hay otra Corrida corriendo; miralo en la sección Corridas |
+| No aparecen los botones de HubSpot | Faltan `HUBSPOT_TOKEN` y `HUBSPOT_BLOG_ID`, o la nota no está aprobada |
 
 ## Scripts por línea de comandos
 

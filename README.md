@@ -6,12 +6,12 @@ Genera **notas de blog B2B para [AfterDrive by Alephee](https://afterdrive.aleph
 2. **Filtra con IA**: un LLM descarta lo que no es del rubro; lo que sirve se guarda con su embedding.
 3. **Redacta con IA**: un LLM escribe notas nuevas usando las noticias como datos y las notas del blog como referencia de estilo.
 
-Todo se maneja desde un dashboard web con login, y corre solo todos los días con un programador de tareas interno. Las notas quedan guardadas para revisión: **no se publican solas**.
+Todo se maneja desde un dashboard web con login, y corre solo todos los días. Cada nota queda como borrador: una persona la **revisa y aprueba**, y recién ahí se puede publicar en el blog de HubSpot desde el mismo dashboard.
 
 ```
  Fuentes de noticias ──► Scraping ──► Filtro IA ──► articulos ─┐
- Blog AfterDrive ──────► Ejemplos de estilo ───────────────────┼──► Redacción IA ──► notas_fase2
-                                                               │      (+ saneo y evaluación)
+ Blog AfterDrive ──────► Ejemplos de estilo ───────────────────┼──► Redacción IA ──► notas_fase2 ──► revisión ──► HubSpot
+                                                               │      (+ saneo y evaluación)     (aprobar/editar)
  Dashboard (Flask) ─── configura, encola y revisa todo ────────┘
 ```
 
@@ -55,12 +55,12 @@ Empezá por **[docs/README.md](docs/README.md)**: dice qué leer según lo que v
 | Rama | Qué es |
 |---|---|
 | **`Render_Testing`** | **Producción y desarrollo activo.** Render despliega desde acá. Es la referencia de toda la documentación |
-| `main` | Recibió `Render_Testing` el 16/10 ([PR #13](https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence/pull/13)). No tiene lo posterior: cola de Corridas, barra lateral, guardado explícito |
-| `Front-Testing` | Rama paralela con historial de notas, estados borrador/publicado y traductor a portugués. Código en la raíz, sin el paquete `afterdrive/`. **Falta unificarla** |
+| `main` | Recibió `Render_Testing` el 16/10 ([PR #13](https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence/pull/13)). No tiene lo posterior: cola de Corridas, historial y revisión, HubSpot, GitHub Actions |
+| `Front-Testing` | Rama paralela vieja. Sus funciones (historial, estados de las notas, descartes con motivo, traductor) ya están en `Render_Testing`; su rediseño visual no se portó. Se puede archivar |
 | `Render_FrontTesting` | Copia de `Render_Testing` del 16/10, sin cambios propios |
 
 ## Stack
 
-Python 3.12 · Flask + Gunicorn · APScheduler · MongoDB Atlas · Scrapling + trafilatura · OpenRouter / NVIDIA Build / LM Studio · dashboard en HTML/CSS/JS sin framework · Docker en Render.
+Python 3.12 · Flask + Gunicorn · APScheduler · MongoDB Atlas (opcional: Vector Search) · Scrapling + trafilatura · OpenRouter / NVIDIA Build / LM Studio · HubSpot CMS API · dashboard en HTML/CSS/JS sin framework · Docker en Render · GitHub Actions (CI y, opcional, Corridas programadas).
 
 > El repo es público: **nunca subas el `.env`** ni pegues API keys en issues o commits.
