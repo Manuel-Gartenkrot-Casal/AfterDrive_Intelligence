@@ -174,11 +174,20 @@ def test_cabeceras_tambien_en_el_401(api):
     assert h["X-Frame-Options"] == "DENY" and "Content-Security-Policy" in h
 
 
+def _dashboard() -> tuple[str, str]:
+    """(index.html, todo el JS del dashboard concatenado)."""
+    publico = Path("express/src/public")
+    html = (publico / "index.html").read_text(encoding="utf-8")
+    js = "\n".join(p.read_text(encoding="utf-8") for p in sorted((publico / "assets" / "js").glob("*.js")))
+    return html, js
+
+
 def test_dashboard_sanitiza_y_fija_versiones():
-    html = Path("express/src/public/index.html").read_text(encoding="utf-8")
+    html, js = _dashboard()
+    externos = re.findall(r'<script src="https://cdn\.jsdelivr\.net[^>]*>', html)
+    html = html + js
     assert "DOMPurify.sanitize(marked.parse(" in html
     assert "innerHTML = marked.parse(" not in html
-    externos = re.findall(r'<script src="https://cdn\.jsdelivr\.net[^>]*>', html)
     assert len(externos) == 2
     for tag in externos:
         assert re.search(r"@\d+\.\d+\.\d+/", tag) and 'integrity="sha384-' in tag and "crossorigin" in tag
@@ -191,3 +200,30 @@ def test_dashboard_sanitiza_y_fija_versiones():
     # Un link de fuente solo puede ser http(s), nunca javascript:.
     assert "escHtml(f.url || '#')" not in html and "urlSegura(f.url)" in html
 
+
+
+def test_los_assets_del_dashboard_piden_sesion(api):
+    c = api[0].app.test_client()
+    assert c.get("/assets/js/base.js").status_code == 401
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    r = c.get("/assets/js/base.js")
+    assert r.status_code == 200 and "function confirmar" in r.get_data(as_text=True)
+    assert r.headers["Cache-Control"] == "no-cache"
+    assert c.get("/assets/css/dashboard.css").status_code == 200
+
+
+@pytest.mark.parametrize("ruta", ["/assets/../index.html", "/assets/%2e%2e/login.html", "/assets/js/no-existe.js",
+                                  "/assets/../../afterdrive/auth.py", "/assets/js/../../index.html"])
+def test_assets_no_sirve_otra_cosa(api, ruta):
+    c = api[0].app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    assert c.get(ruta).status_code == 404
+
+
+def test_index_carga_todos_los_js_que_existen():
+    html, _ = _dashboard()
+    cargados = re.findall(r'<script src="/assets/js/([a-z]+\.js)"></script>', html)
+    en_disco = sorted(p.name for p in Path("express/src/public/assets/js").glob("*.js"))
+    assert sorted(cargados) == en_disco and cargados[0] == "base.js" and cargados[-1] == "arranque.js"

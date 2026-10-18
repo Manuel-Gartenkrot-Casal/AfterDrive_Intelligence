@@ -73,6 +73,20 @@ def root():
     return resp
 
 
+@app.route("/assets/<path:archivo>")
+def assets(archivo: str):
+    """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
+
+    no-cache: el navegador revalida con el ETag, así un deploy nuevo se ve sin
+    tener que forzar la recarga.
+    """
+    if not archivo.endswith((".css", ".js")):
+        return jsonify({"success": False, "error": "Recurso no encontrado"}), 404
+    resp = send_from_directory(os.path.join(_STATIC_DIR, "assets"), archivo)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 # ── Manejadores Globales de Errores ────────────────────────────────────────────
 
 
