@@ -45,6 +45,12 @@ services:
         sync: false
       - key: ADMIN_PASSWORD_HASH
         sync: false
+      # Publicación en HubSpot (opcional): token de app privada con scope
+      # "content" e id del blog. Sin ellos el botón de HubSpot no aparece.
+      - key: HUBSPOT_TOKEN
+        sync: false
+      - key: HUBSPOT_BLOG_ID
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       # Autoriza a los cron de abajo (y a cualquier monitor externo) a disparar corridas.

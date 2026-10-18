@@ -268,13 +268,21 @@ def cambiar_estado(coleccion: str, item_id: str, estado: str, base=None) -> dict
     if estado not in ESTADOS:
         raise ErrorHistorial(f"Estado inválido: {estado!r}.")
 
+    col = _base(base)[coleccion]
+    actual = col.find_one({"_id": _oid(item_id)}, {"estado": 1, "hubspot": 1})
+    if actual and actual.get("estado") == _db.ESTADO_PUBLICADO and (actual.get("hubspot") or {}).get("id") \
+            and estado != _db.ESTADO_PUBLICADO:
+        # Si no, la nota quedaría como borrador acá y seguiría publicada en el blog.
+        from afterdrive import hubspot
+        hubspot.despublicar(actual["hubspot"]["id"])
+        col.update_one({"_id": actual["_id"]}, {"$set": {"hubspot.estado": "DRAFT"}})
+
     cambios = {"$set": {"estado": estado}}
     if estado == _db.ESTADO_PUBLICADO:
         cambios["$set"]["publicado_en"] = datetime.datetime.now(datetime.UTC).isoformat()
     else:
         cambios["$unset"] = {"publicado_en": ""}
 
-    col = _base(base)[coleccion]
     resultado = col.update_one({"_id": _oid(item_id)}, cambios)
     if not resultado.matched_count:
         return None
@@ -298,4 +306,30 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
         "contenido": contenido,
         "editado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }})
+    return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
+
+
+def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None) -> dict | None:
+    """Manda una Nota aprobada a HubSpot (borrador o publicada) y guarda el resultado.
+
+    Solo las notas aprobadas (o ya publicadas, para actualizarlas): así nada
+    llega al blog sin que una persona lo haya revisado.
+    """
+    from afterdrive import hubspot
+
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas se pueden enviar a HubSpot.")
+    col = _base(base)[coleccion]
+    doc = col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING)
+    if not doc:
+        return None
+    if doc.get("estado") not in (_db.ESTADO_APROBADA, _db.ESTADO_PUBLICADO):
+        raise ErrorHistorial("Aprobá la nota antes de enviarla a HubSpot.")
+
+    r = hubspot.enviar(doc, publicar=publicar)   # ErrorHubSpot sube tal cual
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+    cambios = {"hubspot": {**r, "enviado_en": ahora}}
+    if publicar:
+        cambios.update(estado=_db.ESTADO_PUBLICADO, publicado_en=ahora)
+    col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)

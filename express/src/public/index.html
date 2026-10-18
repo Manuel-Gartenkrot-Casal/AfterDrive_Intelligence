@@ -3945,13 +3945,55 @@
       if (e === 'borrador') html += b('aprobada', 'Aprobar', true) + b('rechazada', 'Rechazar');
       if (e === 'aprobada') html += b('borrador', 'Volver a revisar');
       if (e === 'rechazada') html += b('borrador', 'Volver a revisar');
-      if (e === 'publicado') html += b('borrador', 'Despublicar');
+      if (e === 'publicado') html += b('aprobada', 'Despublicar');
       if (e !== 'publicado') html += '<button type="button" class="btn btn-xs" onclick="editarNota()">Editar</button>';
+      if (_hubspotConfigurado && (e === 'aprobada' || e === 'publicado')) {
+        var yaEnviada = _notaActual.hubspot && _notaActual.hubspot.id;
+        if (e === 'aprobada') html += '<button type="button" class="btn btn-xs" onclick="enviarAHubspot(false)">'
+          + (yaEnviada ? 'Actualizar borrador en HubSpot' : 'Borrador en HubSpot') + '</button>';
+        html += '<button type="button" class="btn btn-xs btn-primary" onclick="enviarAHubspot(true)">'
+          + (e === 'publicado' && yaEnviada ? 'Actualizar en HubSpot' : 'Publicar en HubSpot') + '</button>';
+      }
+      if (_notaActual.hubspot && _notaActual.hubspot.url) {
+        html += '<a class="btn btn-xs" href="' + urlSegura(_notaActual.hubspot.url) + '" target="_blank" rel="noopener">Ver en HubSpot</a>';
+      }
       cont.innerHTML = html;
+    }
+
+    var _hubspotConfigurado = false;
+    async function cargarEstadoHubspot() {
+      try { _hubspotConfigurado = (await pedir('/api/hubspot/estado')).configurado; } catch (e) {}
+    }
+
+    async function enviarAHubspot(publicar) {
+      var n = _notaActual;
+      if (publicar && !await confirmar({
+        titulo: 'Publicar en el blog',
+        mensaje: 'La nota queda publicada en el blog de AfterDrive en HubSpot, visible para cualquiera. Si ya estaba, se actualiza con este texto.',
+        accion: 'Publicar', peligro: false
+      })) return;
+      var botones = document.querySelectorAll('#nota-acciones button');
+      botones.forEach(function(b) { b.disabled = true; });
+      try {
+        var d = await pedir('/api/hubspot/enviar', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ coleccion: n.coleccion, id: n.id, publicar: publicar })
+        });
+        n.estado = d.item.estado;
+        n.hubspot = d.item.hubspot;
+        showToast(publicar ? 'Publicada en HubSpot' : 'Guardada como borrador en HubSpot', 'success');
+        cargarResumenHistorial();
+        if (_seccion === 'historial') cargarHistorial(_hist.pagina);
+      } catch (e) { showToast(e.message, 'error'); }
+      pintarAccionesNota();
     }
 
     async function cambiarEstadoNota(estado) {
       var n = _notaActual;
+      if (estado === 'aprobada' && n.estado === 'publicado' && n.hubspot && n.hubspot.id && !await confirmar({
+        titulo: '¿Despublicar esta nota?', accion: 'Despublicar',
+        mensaje: 'Deja de verse en el blog: en HubSpot vuelve a borrador. Acá queda aprobada, lista para publicar de nuevo.'
+      })) return;
       if (estado === 'rechazada' && !await confirmar({
         titulo: '¿Rechazar esta nota?', accion: 'Rechazar',
         mensaje: 'Queda en el historial como rechazada y no se publica. Podés volver a revisarla cuando quieras.'
@@ -4233,6 +4275,7 @@
       initSecciones();
       initCorridas();
       initHistorial();
+      cargarEstadoHubspot();
       iniciarTraductor();
       initAgenda();
       fase2Init();

@@ -479,12 +479,14 @@ def historial_detalle(seccion: str, coleccion: str, item_id: str):
 
 @app.route("/api/historial/estado", methods=["POST"])
 def historial_estado():
-    from afterdrive import historial
+    from afterdrive import historial, hubspot
     body = request.get_json(silent=True) or {}
     try:
         item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""))
     except historial.ErrorHistorial as e:
         return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     except Exception as e:
         return _error_interno(e)
     if item is None:
@@ -500,6 +502,30 @@ def historial_editar():
         item = historial.editar(body.get("coleccion", ""), body.get("id", ""), body.get("contenido"))
     except historial.ErrorHistorial as e:
         return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/hubspot/estado", methods=["GET"])
+def hubspot_estado():
+    from afterdrive import hubspot
+    return jsonify({"success": True, "configurado": hubspot.configurado()})
+
+
+@app.route("/api/hubspot/enviar", methods=["POST"])
+def hubspot_enviar():
+    """Envía una nota aprobada a HubSpot: {"coleccion", "id", "publicar": bool}."""
+    from afterdrive import historial, hubspot
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.enviar_a_hubspot(body.get("coleccion", ""), body.get("id", ""), body.get("publicar") is True)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 502
     except Exception as e:
         return _error_interno(e)
     if item is None:
