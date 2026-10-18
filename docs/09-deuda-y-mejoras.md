@@ -4,20 +4,17 @@
 
 | Problema | Dónde | Impacto |
 |---|---|---|
-| El generador Fase 1 no lee las noticias | `generacion/generar_articulo.py` | La fuente `"general"` apunta a `articulos_generados` en vez de `articulos`. Probablemente un error. Fase 1 ya no está en el dashboard |
 | Modo degradado aprueba todo | `ingesta/ingesta.py` | Si el LLM no responde, puede entrar contenido irrelevante a `articulos`. Es intencional; ahora se reintenta al minuto en vez de quedar activo |
 | Una generación empezada en el servidor no se cancela | `cola.py` | Corre dentro del proceso; hay que esperar que termine |
 | Log de la Corrida con ruido | `cola.py` | Mientras corre un scraping o una nota programada en el servidor, lo que imprimen otros threads también entra a su log |
 | Todo en memoria de un proceso | lock, scheduler, login | Obliga a un solo worker. El contador de intentos de login se reinicia en cada deploy |
-| Endpoints viejos fuera de la cola | `flask_api.py` | `/api/add-url`, `/api/discover-sources`, los `/stream/*` y Fase 1. El dashboard ya no los usa: se pueden borrar |
-| Código sin uso | `ia/lm_studio.py` (`extraer_temas`, `research_contexto`), `ingesta/jev_clasificador.py`, colección `afterdrive` | Ruido al leer |
+| Código sin uso | `ingesta/jev_clasificador.py`, colección `afterdrive`. `ia/lm_studio.generar_articulo` solo lo usa `scripts/demo_mode.py` | Ruido al leer |
 | `Front-Testing` sigue existiendo (**pospuesto**) | rama | Sus funciones de historial, estados y descartes con motivo ya están en `Render_Testing`. Quedan sin decidir su rediseño visual (`workspace.*`, Express con TypeScript) y qué hacer con la rama. El traductor a portugués se descartó |
 
 ## Mejoras pendientes
 
 | Mejora | Por qué |
 |---|---|
-| **Borrar los endpoints viejos y Fase 1** | Menos código que mantener y probar |
 | **Ingesta por RSS / sitemaps** | Menos CPU, menos bloqueos y alta de fuentes más rápida |
 | **Clasificar en lote** | Menos llamadas al LLM y menos errores 429 |
 | **Imagen sin Chromium para Render** | Si las Corridas van a GitHub Actions, Render nunca lo usa: imagen más chica y deploys más rápidos |

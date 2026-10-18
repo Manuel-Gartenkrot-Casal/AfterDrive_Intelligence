@@ -59,7 +59,7 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 
 1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (65 %), recencia por **fecha de publicación** (25 %) y que no se hayan usado (10 %). **Son la única fuente permitida de cifras, empresas y casos.**
 2. **Referencias de estilo**: hasta 2 notas reales por categoría.
-3. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región).
+3. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región). Al pedido se suman las **correcciones**: los motivos de las últimas notas rechazadas en el Historial (hasta 5, de los últimos 60 días, `historial.motivos_recientes`), como errores a no repetir. La nota guarda cuáles usó en `correcciones_usadas`.
 4. **Redacción** con el LLM.
 5. **Saneo** (`ia/saneo.py`): limpia la respuesta y **la descarta si el modelo escribió su razonamiento en vez de la nota**. Lo descartado queda en `notas_descartadas` con el motivo.
 6. **Evaluación**: el LLM revisa la nota contra un checklist de 9 puntos.
@@ -83,8 +83,11 @@ borrador ──Aprobar──► aprobada ──Publicar en HubSpot──► publ
    └──Rechazar──► rechazada   Borrador en HubSpot        Despublicar → aprobada
 ```
 
-Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot. Detalle en [hubspot-integration.md](hubspot-integration.md).
+Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.
 
-## Generador Fase 1 (viejo)
+- **Rechazar pide un motivo** (mínimo 3 caracteres): queda en `motivo_rechazo` y alimenta las correcciones de las notas siguientes (paso 3).
+- **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imagen destacada, que se puede cambiar ahí mismo.
 
-`generacion/generar_articulo.py`. Elige un tema por embeddings y redacta. Ya no aparece en el dashboard; queda por API (`/generar`) y línea de comandos. Tiene un error conocido de origen de datos: ver [09 Deuda](09-deuda-y-mejoras.md).
+Detalle en [hubspot-integration.md](hubspot-integration.md).
+
+El generador viejo (Fase 1, `generar_articulo.py`) se borró. Sus notas viejas (`articulos_generados`) siguen apareciendo en el Historial.

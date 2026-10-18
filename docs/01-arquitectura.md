@@ -39,7 +39,7 @@ Todo vive en **un solo proceso**: la API, el programador de tareas y la cola. No
 | Ingesta | `afterdrive/ingesta/` | Scrapear, clasificar, vectorizar y guardar noticias |
 | Generación | `afterdrive/generacion/` | Escribir Notas (Fase 2 es el generador principal) |
 | IA | `afterdrive/ia/` | Hablar con los proveedores (`llm.py`), prompts (`redaccion.py`, `lm_studio.py`), limpiar la salida (`saneo.py`) |
-| Dashboard | `express/src/public/index.html` | Toda la interfaz en un archivo. La carpeta se llama `express/` por historia: ya no hay servidor Express |
+| Dashboard | `express/src/public/` | `index.html` + CSS y JS en `assets/`, sin build. La carpeta se llama `express/` por historia: ya no hay servidor Express |
 
 ## Cómo se ejecuta una Corrida
 

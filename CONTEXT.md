@@ -31,13 +31,16 @@ Texto original de blog B2B generado por el pipeline a partir de Artículos o de 
 _Avoid_: artículo generado, post, vlog
 
 **Nota Fase 1**:
-Nota escrita a partir de un tópico de Artículos elegido por similitud.
+Nota escrita a partir de un tópico de Artículos elegido por similitud. El generador se borró; quedan las notas viejas.
 
 **Nota Fase 2**:
 Nota escrita imitando notas reales publicadas de AfterDrive (Ejemplos), según Categorías, Regiones y Clientes elegidos.
 
 **Estado de una Nota**:
-Dónde está en la revisión: borrador (recién generada), aprobada, rechazada o publicado (en el blog de HubSpot).
+Dónde está en la revisión: borrador (recién generada), aprobada, rechazada (con un motivo, que pasa a ser una Corrección) o publicado (en el blog de HubSpot).
+
+**Corrección**:
+Motivo de rechazo reciente que se le pasa al modelo al escribir notas nuevas, como error a no repetir.
 _Avoid_: status
 
 **Nota descartada**:

@@ -6,7 +6,8 @@ Las notas **aprobadas** se pueden mandar al blog de AfterDrive en HubSpot desde 
 
 1. **Historial → Notas → Para revisar**: abrí la nota, revisala y, si hace falta, editala.
 2. **Aprobar**.
-3. **Borrador en HubSpot** (queda como borrador allá, para terminarla en HubSpot) o **Publicar en HubSpot** (sale en el blog).
+3. **Vista previa** (opcional): cómo va a salir en el blog. Ahí se elige la imagen destacada (URL https y texto alternativo).
+4. **Borrador en HubSpot** (queda como borrador allá, para terminarla en HubSpot) o **Publicar en HubSpot** (sale en el blog).
 
 - Una nota sin aprobar **no se puede enviar**: nada llega al blog sin que una persona lo haya revisado.
 - Reenviar una nota ya enviada **actualiza el mismo post**, no crea otro. El slug no cambia, así no se rompen links.
@@ -24,6 +25,8 @@ Las notas **aprobadas** se pueden mandar al blog de AfterDrive en HubSpot desde 
 | `HUBSPOT_TOKEN` | Sí | Token de la app privada |
 | `HUBSPOT_BLOG_ID` | Sí | Id del blog (`contentGroupId`) |
 | `HUBSPOT_AUTOR_ID` | No | Id del autor del blog (`blogAuthorId`) |
+| `HUBSPOT_IMAGEN_DEFAULT` | No | URL https de la imagen destacada para las notas que no tienen una propia |
+| `HUBSPOT_IDIOMA` | No | Idioma de las etiquetas que se crean (por defecto `es`) |
 
 Sin las dos primeras, los botones de HubSpot no aparecen.
 
@@ -38,6 +41,8 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `metaDescription` | La última línea en cursiva de la nota |
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único) |
 | `state` | `DRAFT` o `PUBLISHED` |
+| `featuredImage`, `featuredImageAltText` | La imagen de la nota o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
+| `tagIds` | Las categorías de la nota, con su nombre legible. Las etiquetas que no existen en el blog se crean (`/cms/v3/blogs/tags`). Si falla, el post se manda igual sin etiquetas |
 
 En la nota se guarda `hubspot: {id, url, estado, enviado_en}` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 

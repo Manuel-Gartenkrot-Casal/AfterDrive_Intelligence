@@ -18,15 +18,17 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `editado_en`, `publicado_en`, `hubspot` |
+| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen`, `editado_en`, `publicado_en`, `hubspot` |
 | `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
-| `articulos_generados` | Artículos del generador viejo (Fase 1) | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
+| `articulos_generados` | Notas del generador viejo (Fase 1, ya borrado). Solo se leen en el Historial | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
 
 **Estado de una nota**: `borrador` (o sin el campo, las viejas) → `aprobada` / `rechazada` → `publicado`. El valor es `publicado` y no `publicada` por compatibilidad con lo que guardó `Front-Testing`.
 
 **`calidad`**: `{puntaje (0–9), fallas_criticas, intentos, reescrita_por}`.
 
 **`hubspot`**: `{id, url, estado (DRAFT / PUBLISHED), enviado_en}`, solo si se envió.
+
+**`imagen`**: `{url, alt}`, la imagen destacada elegida a mano (https pública). Sin ella se usa `HUBSPOT_IMAGEN_DEFAULT`.
 
 ## Operación
 
@@ -52,7 +54,7 @@ Definidos en `config_store.py`:
 ## Búsqueda
 
 - **Similitud**: por defecto los embeddings se traen a memoria y la similitud se calcula en Python. Con `ATLAS_VECTOR_INDEX`, la elección de noticias usa además `$vectorSearch` (ver [08 Despliegue](08-despliegue.md)).
-- `db.crear_indices_texto()` crea índices de texto en español; lo usa el generador Fase 1 y el contador de volumen.
+- `db.crear_indices_texto()` crea índices de texto en español sobre `articulos` y `articulos_generados`.
 
 ## Para agregar una colección
 

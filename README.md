@@ -30,7 +30,7 @@ cp .env.example .env        # completar MONGO_URI, API keys y usuario del dashbo
 python -m afterdrive.flask_api                          # → http://localhost:5000
 ```
 
-Tests: `python -m pytest`.
+Tests: `python -m pytest`. Dashboard en un navegador: `python -m pytest -m e2e tests/e2e`.
 
 ## Documentación
 

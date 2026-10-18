@@ -1,6 +1,28 @@
 # 06 · Dashboard
 
-Toda la interfaz está en **`express/src/public/index.html`**: HTML, CSS y JS en un solo archivo, sin framework ni build. El login está en `login.html`. Flask los sirve directo: editás, recargás el navegador y lo ves.
+La interfaz está en **`express/src/public/`**, sin framework ni build. Flask sirve los archivos tal cual: editás, recargás el navegador y lo ves.
+
+```
+express/src/public/
+├── login.html
+├── index.html              solo el HTML (y el script del tema, para que no parpadee)
+└── assets/                 se sirve en /assets/, pide sesión y no se cachea
+    ├── css/dashboard.css   todos los estilos
+    └── js/                 se cargan en este orden, como scripts comunes (no módulos)
+        ├── base.js           $(), pedir(), escHtml(), confirmar(), formulario()
+        ├── estado.js         indicador Online, estadísticas
+        ├── fuentes.js        lista de fuentes, pausar, eliminar, agregar
+        ├── programacion.js   relojes y formulario de Programación
+        ├── navegacion.js     secciones y modos de vista
+        ├── corridas.js       correrEnCola() y el panel de Corridas
+        ├── proveedores.js    proveedor de IA
+        ├── sugerencias.js    fuentes recomendadas
+        ├── generador.js      Crear nota y el modal de la nota
+        ├── historial.js      Historial y revisión de notas
+        └── arranque.js       inicializa todo al cargar
+```
+
+Todas las funciones son globales (los `onclick` del HTML las llaman). Si agregás un archivo JS, sumalo al final de `index.html` en el lugar que le toque: un test (`tests/test_auth.py`) revisa que `index.html` cargue todos los de `assets/js/`.
 
 ## Lo que ve el usuario
 
@@ -19,16 +41,16 @@ Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, comple
 
 ## Cómo está organizado el código
 
-El `<script>` está dividido en bloques con un encabezado `═══ NOMBRE ═══`. Los que más vas a tocar:
+Lo que más vas a tocar:
 
-| Bloque | Qué hace |
+| Dónde | Qué hace |
 |---|---|
-| `SECCIONES` | Navegación. `irASeccion('fuentes')` cambia de sección; la sección vive en el hash (`#fuentes`) |
-| `MODOS DE VISTA` | `setModo('cliente' \| 'dev')` |
-| `FORMULARIOS CON GUARDADO EXPLÍCITO` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
-| `COLA DE CORRIDAS` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
-| `HISTORIAL` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`) |
-| `confirmar()` y `pedir()` | Diálogo de confirmación y `fetch` que lanza error si el server responde error |
+| `navegacion.js` | Navegación. `irASeccion('fuentes')` cambia de sección; la sección vive en el hash (`#fuentes`) |
+| `navegacion.js` | `setModo('cliente' \| 'dev')` |
+| `base.js` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
+| `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
+| `historial.js` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`): aprobar, rechazar con motivo, editar, vista previa con imagen y HubSpot |
+| `base.js` | `confirmar()` (diálogo; con `campo` pide un texto, como el motivo de un rechazo) y `pedir()` (`fetch` que lanza error si el server responde error) |
 
 ## Patrones que hay que respetar
 
@@ -59,7 +81,7 @@ if (fin.estado === 'ok') { … }
 
 ## Estilo
 
-Superficies planas con borde; la sombra queda solo para lo que flota (modal, toasts, barra de guardado). Todo sale de variables CSS al principio del `<style>`:
+Superficies planas con borde; la sombra queda solo para lo que flota (modal, toasts, barra de guardado). Todo sale de variables CSS al principio de `dashboard.css`:
 
 | Variable | Uso |
 |---|---|
@@ -78,4 +100,5 @@ Cada color tiene versión clara y oscura (`[data-theme="dark"]`). **No uses colo
 - Probalo en las dos vistas y los dos temas.
 - Probalo a 390 px de ancho: no puede aparecer scroll horizontal.
 - Mirá la consola del navegador: cero errores.
-- `python -m pytest` (hay tests que leen el HTML).
+- `python -m pytest` (hay tests que leen el HTML y el JS).
+- `python -m pytest -m e2e tests/e2e`: abre el dashboard en Chromium y prueba login, secciones, guardado, fuentes, revisión de notas, la cola y el ancho de celular. Si agregás un flujo nuevo, sumale un test en `tests/e2e/test_dashboard.py`.

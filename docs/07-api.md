@@ -46,8 +46,10 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/historial/resumen` | Totales por sección y notas por estado |
 | `GET /api/historial/<seccion>?pagina=&por_pagina=&q=&estado=` | Lista paginada. Secciones: `generados_aprobados`, `generados_descartados`, `scrapeados_aprobados`, `scrapeados_descartados` |
 | `GET /api/historial/<seccion>/<coleccion>/<id>` | Un ítem con su contenido completo |
-| `POST /api/historial/estado` | `{coleccion, id, estado}`: `borrador`, `aprobada`, `rechazada` o `publicado` |
+| `POST /api/historial/estado` | `{coleccion, id, estado, motivo}`: `borrador`, `aprobada`, `rechazada` (pide `motivo`, mínimo 3 caracteres) o `publicado` |
 | `PATCH /api/historial/contenido` | `{coleccion, id, contenido}`: editar el texto de una nota no publicada |
+| `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |
+| `GET /api/historial/vista-previa/<coleccion>/<id>` | Cómo saldría en el blog: `titulo`, `meta`, `slug`, `etiquetas`, `imagen`, `html` |
 | `GET /api/hubspot/estado` | `{configurado}` |
 | `POST /api/hubspot/enviar` | `{coleccion, id, publicar}`: manda una nota aprobada a HubSpot (502 si HubSpot falla) |
 
@@ -79,7 +81,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/fase2/ultima-nota`, `GET /api/fase2/notas/<id>` | Leer una nota |
 | `POST /api/evaluate-article` | Checklist de calidad a demanda |
 
-Quedan endpoints viejos que el dashboard ya no usa y corren sin pasar por la cola: `/api/add-url`, `/api/discover-sources`, `/api/stream/*`, `/api/fase2/stream/*`, `/api/fase2/generar`, `/api/fase2/scrape` y los de Fase 1 (`/generar`, `/ultimo-articulo`).
+Los endpoints viejos que corrían fuera de la cola (`/api/add-url`, `/api/discover-sources`, `/api/stream/*`, `/api/fase2/stream/*`, `/api/fase2/generar`, `/api/fase2/scrape`, Fase 1) se borraron.
 
 ## Para agregar un endpoint
 

@@ -115,6 +115,15 @@ GitHub corre lo mismo en cada push ([CI](../.github/workflows/ci.yml)). Si falla
 
 Los tests no tocan Mongo real ni proveedores de IA: usan fakes y `mongomock`.
 
+**Tests del dashboard (e2e)**: abren el dashboard en Chromium contra un servidor de prueba (Mongo en memoria, scraping y HubSpot falsos). `python -m pytest` no los corre; van aparte:
+
+```bash
+python -m playwright install chromium     # una vez
+python -m pytest -m e2e tests/e2e
+```
+
+Si ya tenés un Chromium instalado, apuntalo con `E2E_CHROMIUM=/ruta/a/chromium`. El CI los corre en un job propio.
+
 ## Problemas frecuentes
 
 | Síntoma | Solución |
