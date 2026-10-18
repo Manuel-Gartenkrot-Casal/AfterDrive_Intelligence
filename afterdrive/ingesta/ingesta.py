@@ -15,10 +15,9 @@ import datetime
 
 from pymongo import UpdateOne
 
-from afterdrive.ingesta import jev_clasificador
-from afterdrive.ia import llm
-from afterdrive.ia import lm_studio
 from afterdrive.db import col_articulos, col_descartados
+from afterdrive.ia import llm, lm_studio
+from afterdrive.ingesta import jev_clasificador
 from afterdrive.ingesta.embeddings import texto_para_embedding
 
 

@@ -9,9 +9,7 @@ Optimizaciones:
 """
 
 import datetime
-import re
 import time
-from html.parser import HTMLParser
 
 import requests
 import trafilatura
@@ -45,6 +43,7 @@ def _fetch_html(url: str) -> str | None:
 def _encontrar_links(html: str, base_url: str) -> list[str]:
     """Extrae enlaces a articulos del HTML usando BeautifulSoup."""
     from urllib.parse import urljoin
+
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "lxml")
@@ -58,10 +57,10 @@ def _encontrar_links(html: str, base_url: str) -> list[str]:
             continue
         full = urljoin(base_url, href)
         # Filtrar por patrones de articulos (no footer, no nav, etc.)
-        if any(p in full.lower() for p in ["/blog/", "/noticias/", "/articulo/", "/news/", "/post/", "/accesorios", "/repuestos"]):
-            if full not in seen:
-                seen.add(full)
-                links.append(full)
+        patrones = ["/blog/", "/noticias/", "/articulo/", "/news/", "/post/", "/accesorios", "/repuestos"]
+        if any(p in full.lower() for p in patrones) and full not in seen:
+            seen.add(full)
+            links.append(full)
     return links
 
 
@@ -130,10 +129,10 @@ def demo_scraping():
 def _guardar_rapido(items: list[dict], coleccion) -> dict:
     """Guardar items sin embeddings ni clasificacion IA (modo demo rapido)."""
     from pymongo import UpdateOne
-    from afterdrive.db import col_trusted_urls
+
 
     urls_existentes = set()
-    for col_name in ["afterdrive", "articulos_generados"]:
+    for _col_name in ["afterdrive", "articulos_generados"]:
         for doc in coleccion.find({}, {"url": 1, "_id": 0}):
             if url := doc.get("url"):
                 urls_existentes.add(url)
@@ -282,7 +281,7 @@ def run_demo():
     print(f"  Tiempo total: {elapsed_total:.1f}s")
     print(f"  Articulos scrapeados: {nuevos}")
     print(f"  Articulo generado: {'Si' if articulo else 'No'}")
-    print(f"  Scheduler: Activo")
+    print("  Scheduler: Activo")
     print("=" * 60)
 
     if elapsed_total < 60:

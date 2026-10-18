@@ -5,13 +5,9 @@ import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
-from afterdrive import auth
-from afterdrive import cola
-from afterdrive import config_store
-from afterdrive import corridas
-from afterdrive.ia import llm
-from afterdrive import scheduler
+from afterdrive import auth, cola, config_store, corridas, scheduler
 from afterdrive.db import col_articulos, db
+from afterdrive.ia import llm
 
 # Aplicar el proveedor elegido en el dashboard. llm lee AI_PROVIDER en cada
 # llamada y los subprocesos heredan os.environ, así que alcanza con setearlo.
@@ -847,6 +843,7 @@ def fase2_ultima_nota():
 @app.route("/api/fase2/notas", methods=["GET"])
 def fase2_notas():
     import re
+
     from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
     notas = []
     for d in col_notas_fase2.find({}, {"contenido": 1, "generado_en": 1}).sort("generado_en", -1).limit(100):
@@ -860,6 +857,7 @@ def fase2_notas():
 def fase2_nota(nota_id: str):
     from bson import ObjectId
     from bson.errors import InvalidId
+
     from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
     try:
         doc = col_notas_fase2.find_one({"_id": ObjectId(nota_id)})

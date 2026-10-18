@@ -4,6 +4,8 @@
 import pytest
 
 from afterdrive import corridas
+
+
 @pytest.fixture
 def script_lento(tmp_path):
     p = tmp_path / "lento.py"

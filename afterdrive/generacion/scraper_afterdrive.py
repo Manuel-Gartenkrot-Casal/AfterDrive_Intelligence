@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from pymongo import UpdateOne
 
 from afterdrive.db import db
-from afterdrive.generacion.regiones import clasificar_region, REGIONES
+from afterdrive.generacion.regiones import clasificar_region
 from afterdrive.ingesta.resource_detector import get_scrape_sleep, usar_browser
 
 col_ejemplos = db["afterdrive_ejemplos"]
@@ -165,7 +165,7 @@ def _extraer_articulo_bs4(html: str, url: str, tag_slug: str) -> dict | None:
             return None
 
         # Limpiar cuerpo de texto de navegación
-        lineas = [l.strip() for l in cuerpo.split("\n") if len(l.strip()) > 40]
+        lineas = [ln.strip() for ln in cuerpo.split("\n") if len(ln.strip()) > 40]
         cuerpo = "\n".join(lineas)
         if len(cuerpo) < 200:
             return None
@@ -331,7 +331,8 @@ def get_ejemplos_por_tags(tag_slugs: list[str], regiones: list[str] | None = Non
 
 
 if __name__ == "__main__":
-    import io, sys
+    import io
+    import sys
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")

@@ -120,8 +120,8 @@ def _desde_doc(d: dict) -> Noticia:
 
 def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     """Las `limite` noticias más útiles para una nota sobre `consulta`."""
-    from afterdrive.ia import llm
     from afterdrive.db import col_articulos
+    from afterdrive.ia import llm
 
     docs = list(
         col_articulos.find(

@@ -19,10 +19,10 @@ import argparse
 import datetime
 import re
 
-from afterdrive.ia import llm
 from afterdrive.db import col_afterdrive, crear_indices_texto, db
-from afterdrive.ingesta.embeddings import coseno
+from afterdrive.ia import llm
 from afterdrive.ia.lm_studio import generar_articulo as lm_generar
+from afterdrive.ingesta.embeddings import coseno
 
 _PAYWALL_PATTERNS = [
     r"El contenido al que quiere acceder es exclusivo para suscriptores",
@@ -346,17 +346,17 @@ def main():
 
     # Meta description duplicada al final
     lineas = articulo.strip().split("\n")
-    ultimas_3 = [l.strip() for l in lineas[-3:] if l.strip()]
+    ultimas_3 = [ln.strip() for ln in lineas[-3:] if ln.strip()]
     if len(ultimas_3) >= 2 and ultimas_3[-1] == ultimas_3[-2]:
         problemas.append("conclusion duplicada")
 
     # Detectar secciones con contenido identico (clonacion de viñetas)
     bloques_seccion = []
-    for l in lineas:
-        if l.strip().startswith("## "):
+    for ln in lineas:
+        if ln.strip().startswith("## "):
             bloques_seccion.append([])
         if bloques_seccion:
-            bloques_seccion[-1].append(l.strip())
+            bloques_seccion[-1].append(ln.strip())
     if len(bloques_seccion) >= 2:
         textos_bloques = []
         for b in bloques_seccion:
@@ -377,19 +377,18 @@ def main():
 
     # Detectar CTA repetido (mismo patrón de llamada a la acción)
     patron_cta = re.compile(r'(descubre|conoce|transforma|descarga|accede|visita)\b.*\b(tu negocio|el mercado|el sector|las oportunidades)', re.IGNORECASE)
-    ctas = [l for l in lineas if patron_cta.search(l)]
+    ctas = [ln for ln in lineas if patron_cta.search(ln)]
     if len(ctas) >= 2:
         problemas.append("CTA repetido")
 
     # Titulo con errores de concordancia detectables
     titulo_linea = ""
-    for l in lineas:
-        if l.strip().startswith("# ") and not l.strip().startswith("## "):
-            titulo_linea = l.strip()
+    for ln in lineas:
+        if ln.strip().startswith("# ") and not ln.strip().startswith("## "):
+            titulo_linea = ln.strip()
             break
-    if titulo_linea:
-        if re.search(r'cambiando la juego|revolucionando la', titulo_linea, re.IGNORECASE):
-            problemas.append("titulo con error gramatical")
+    if titulo_linea and re.search(r'cambiando la juego|revolucionando la', titulo_linea, re.IGNORECASE):
+        problemas.append("titulo con error gramatical")
 
     if problemas:
         print(f"   [RECHAZADO] Calidad insuficiente: {', '.join(problemas)}")

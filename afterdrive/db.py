@@ -1,3 +1,4 @@
+import contextlib
 import os
 
 from dotenv import load_dotenv
@@ -91,10 +92,8 @@ def crear_indices() -> None:
 
 def crear_indices_texto():
     for col, campos in COLECCIONES_TEXTO.items():
-        try:
+        with contextlib.suppress(Exception):
             col.create_index(campos, default_language="spanish", name="text_search", background=True)
-        except Exception:
-            pass
     try:
         col_generados = db["articulos_generados"]
         col_generados.create_index(

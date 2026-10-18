@@ -12,8 +12,8 @@ Uso:
 
 import math
 
-from afterdrive.ia import llm
 from afterdrive.db import col_afterdrive, col_articulos
+from afterdrive.ia import llm
 
 # Colecciones de contenido (excluye 'articulos_descartados').
 COLECCIONES_CONTENIDO = [col_articulos, col_afterdrive]
@@ -23,7 +23,7 @@ def coseno(a: list[float], b: list[float]) -> float:
     """Similitud coseno entre dos vectores (1.0 = idénticos, ~0 = sin relación)."""
     if not a or not b:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     return dot / (na * nb) if na and nb else 0.0

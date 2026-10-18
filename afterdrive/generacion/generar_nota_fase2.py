@@ -23,13 +23,12 @@ import datetime
 import os
 import sys
 
-from afterdrive.generacion import contexto_noticias
-from afterdrive.ia import llm
-from afterdrive.ia import redaccion
 from afterdrive.db import db
+from afterdrive.generacion import contexto_noticias
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
-from afterdrive.ia.saneo import sanear
 from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
+from afterdrive.ia import llm, redaccion
+from afterdrive.ia.saneo import sanear
 
 col_notas_fase2 = db["notas_fase2"]
 col_clientes = db["clientes"]

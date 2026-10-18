@@ -6,8 +6,8 @@ import pytest
 
 from afterdrive.generacion import contexto_noticias
 from afterdrive.generacion import generar_nota_fase2 as g
-from afterdrive.ia import llm
 from afterdrive.generacion.contexto_noticias import Noticia
+from afterdrive.ia import llm
 
 NOTA = """# El catálogo digital llega al mostrador
 

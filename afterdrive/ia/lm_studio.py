@@ -15,8 +15,7 @@ proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
 import json
 import re
 
-from afterdrive.ia import llm
-from afterdrive.ia import redaccion
+from afterdrive.ia import llm, redaccion
 from afterdrive.ia.saneo import sanear
 
 # ── System prompts optimizados con patrones de prompt engineering ──────────────

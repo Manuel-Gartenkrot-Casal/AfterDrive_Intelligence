@@ -5,8 +5,9 @@ import zoneinfo
 
 import pytest
 
-from afterdrive import config_store
-from afterdrive import scheduler
+from afterdrive import config_store, scheduler
+
+
 @pytest.fixture
 def config(monkeypatch):
     cfg = {

@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sys
 
@@ -24,10 +25,8 @@ except Exception as e:
 if __name__ == "__main__":
     max_articulos = None
     if len(sys.argv) > 1:
-        try:
+        with contextlib.suppress(ValueError):
             max_articulos = int(sys.argv[1])
-        except ValueError:
-            pass
     # Corre bajo el lock del proceso padre (flask); acá solo se ejecuta.
     resultado = corridas.scraping(max_articulos)
     sys.exit(0 if resultado.get("success") else 1)

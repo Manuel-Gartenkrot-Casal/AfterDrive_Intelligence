@@ -11,8 +11,13 @@ import trafilatura
 from bs4 import BeautifulSoup
 from urllib3.util import parse_url
 
-from afterdrive.ingesta.resource_detector import get_max_workers, get_perfil, usar_browser
-from afterdrive.ingesta.resource_detector import PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO
+from afterdrive.ingesta.resource_detector import (
+    PERFIL_ALTO,
+    PERFIL_MEDIO,
+    get_max_workers,
+    get_perfil,
+    usar_browser,
+)
 
 _PERFIL = get_perfil()
 _MAX_WORKERS = get_max_workers()
@@ -267,9 +272,7 @@ def _es_link_articulo(url: str, texto: str, dominio: str) -> bool:
         return False
     if any(url.endswith(ext) for ext in [".pdf", ".jpg", ".png", ".mp4", ".zip", ".xml", ".json"]):
         return False
-    if len(texto) < 25:
-        return False
-    return True
+    return len(texto) >= 25
 
 
 def _encontrar_links(html: str, base_url: str) -> list[str]:

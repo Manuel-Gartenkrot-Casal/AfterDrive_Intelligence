@@ -6,6 +6,8 @@ import pytest
 import requests
 
 from afterdrive.ingesta import scraper
+from afterdrive.ingesta.resource_detector import PERFIL_BAJO
+
 HTML = "<html><body>" + ("<p>contenido real del sitio</p>" * 40) + "</body></html>"
 
 
@@ -34,7 +36,7 @@ def red(monkeypatch):
         raise requests.exceptions.ReadTimeout("origen colgado")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     # Estos tests no prueban la validación de URLs: sin esto harían DNS real.
     monkeypatch.setattr(scraper, "_direcciones", lambda url: ["93.184.216.34"])
@@ -61,7 +63,7 @@ def test_wayback_que_redirige_a_otra_pagina_se_descarta(monkeypatch):
         raise requests.exceptions.ReadTimeout("x")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     assert scraper._fetch("https://www.aftermarketinternational.com/nota.html") is None
 
@@ -73,7 +75,7 @@ def test_articulo_no_archivado_devuelve_none(monkeypatch):
         raise requests.exceptions.ReadTimeout("x")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     assert scraper._fetch("https://www.aftermarketinternational.com/nota.html") is None
 
