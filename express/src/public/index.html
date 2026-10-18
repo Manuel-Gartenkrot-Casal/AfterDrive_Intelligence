@@ -2389,39 +2389,33 @@
       var btn = $('btn-addurl');
       btn.disabled = true;
       el.className = 'feedback info';
-      el.textContent = 'Procesando...';
+      el.textContent = 'Probando la fuente: se leen sus artículos y la IA decide si son del rubro...';
+      var agregada = false, ultima = '';
       try {
-        var r = await fetch('/api/add-url', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url: url})
+        var fin = await correrEnCola('/api/corridas/probar-fuente', {url: url}, function(l) {
+          if (l.indexOf('[OK] URL agregada') >= 0) agregada = true;
+          if (/^\s*\[(FAIL|WARN|ERROR)\]/.test(l)) ultima = l.replace(/^\s*\[[A-Z]+\]\s*/, '');
+          log(l, l.indexOf('[OK]') >= 0 ? 'success' : /\[(FAIL|ERROR)\]/.test(l) ? 'error' : 'info');
+        }, function(d) {
+          var t = textoEnCola(d);
+          if (t) el.textContent = 'Hay otra corrida en curso: la prueba quedó ' + t.toLowerCase().replace('…', '') + '.';
+          else el.textContent = 'Probando la fuente: se leen sus artículos y la IA decide si son del rubro...';
         });
-        var d = await r.json();
-        if (d.success) {
+        if (agregada) {
           el.className = 'feedback ok';
-          el.textContent = 'URL agregada correctamente';
+          el.textContent = 'Fuente agregada: tenía artículos del rubro.';
           $('url-in').value = '';
-          log('URL agregada: ' + url, 'success');
-          showToast('URL agregada correctamente', 'success');
+          showToast('Fuente agregada', 'success');
+          loadTrustedUrls();
           updateStats();
         } else {
           el.className = 'feedback err';
-          el.textContent = 'Error: ' + (d.error || 'Fallo');
-          log('Error al agregar URL: ' + d.error, 'error');
+          el.textContent = fin.estado === 'cancelada' ? 'La prueba se canceló.'
+            : 'No se agregó: ' + (ultima || 'no se encontraron artículos del rubro.');
         }
-      } catch(e) { el.className = 'feedback err'; el.textContent = 'Error de conexion'; }
+      } catch(e) { el.className = 'feedback err'; el.textContent = e.message; }
       finally { btn.disabled = false; }
     }
-
-    /* ═══════════════════════════════════════════════════════════════════════
-       SAVE CONFIG
-       ═══════════════════════════════════════════════════════════════════════ */
-
-
-
-
-
-
 
     /* ═══════════════════════════════════════════════════════════════════════
        RELOJ ANALÓGICO INTERACTIVO
@@ -3136,9 +3130,11 @@
       $('sug-list').innerHTML = '<div class="fuentes-vacio">Buscando sitios del sector...</div>';
       log('Buscando fuentes recomendadas...', 'warn');
       try {
-        var r = await fetch('/api/discover-sources', { method: 'POST' });
-        var d = await r.json();
-        if (!d.success) log('Error en la búsqueda: ' + (d.error || 'sin detalle'), 'error');
+        var fin = await correrEnCola('/api/corridas/recomendaciones', null, function(l) { log(l, 'info'); }, function(d) {
+          var t = textoEnCola(d);
+          btn.textContent = t || 'Buscando...';
+        });
+        if (fin.estado !== 'ok') log('La búsqueda terminó: ' + NOMBRE_ESTADO[fin.estado].toLowerCase() + '.', 'warn');
         var r2 = await fetch('/api/suggested-urls');
         var d2 = await r2.json();
         var urls = d2.success ? d2.urls : [];

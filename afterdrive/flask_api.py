@@ -472,6 +472,23 @@ def encolar_generacion():
                     etiqueta="Generar nota")
 
 
+@app.route("/api/corridas/probar-fuente", methods=["POST"])
+def encolar_probar_fuente():
+    """Encola 'Probar y agregar': scrapea la URL y la da de alta si aprueba algún artículo."""
+    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
+    if error:
+        return error
+    from urllib.parse import urlparse
+    return _encolar("script", {"modulo": "afterdrive.ingesta.add_url", "argv": [url]},
+                    etiqueta=f"Probar fuente {urlparse(url).netloc}")
+
+
+@app.route("/api/corridas/recomendaciones", methods=["POST"])
+def encolar_recomendaciones():
+    return _encolar("script", {"modulo": "afterdrive.ingesta.discover_sources", "argv": []},
+                    etiqueta="Buscar recomendaciones")
+
+
 @app.route("/api/corridas/ejemplos", methods=["POST"])
 def encolar_ejemplos():
     argv, error = _args_scrape(request.get_json(silent=True) or {})

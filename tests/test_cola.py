@@ -201,3 +201,19 @@ def test_limpiar_viejas_borra_solo_terminadas_de_hace_mas_de_30_dias(col):
     ])
     assert cola.limpiar_viejas() == 2
     assert sorted(d["estado"] for d in col.find()) == ["ok", "pendiente"]
+
+
+def test_api_probar_fuente_valida_la_url_y_encola(client, col, monkeypatch):
+    from afterdrive.ingesta import scraper
+    monkeypatch.setattr(scraper, "url_publica", lambda u: u.startswith("https://"))
+    assert client.post("/api/corridas/probar-fuente", json={"url": "http://127.0.0.1/x"}).status_code == 400
+    r = client.post("/api/corridas/probar-fuente", json={"url": "https://sitio.com/noticias"})
+    assert r.status_code == 202
+    doc = col.find_one()
+    assert doc["params"] == {"modulo": "afterdrive.ingesta.add_url", "argv": ["https://sitio.com/noticias"]}
+    assert doc["etiqueta"] == "Probar fuente sitio.com"
+
+
+def test_api_recomendaciones_encola(client, col):
+    assert client.post("/api/corridas/recomendaciones").status_code == 202
+    assert col.find_one()["params"]["modulo"] == "afterdrive.ingesta.discover_sources"
