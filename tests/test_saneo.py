@@ -137,3 +137,26 @@ def test_rechaza_texto_degenerado():
     r = sanear(basura)
     assert not r.ok
     assert "degenerad" in r.motivo
+
+
+# ── Formato para HubSpot (Python-Markdown no perdona lo que marked sí) ────────
+
+from afterdrive.ia.saneo import normalizar_formato  # noqa: E402
+
+
+def test_titulo_y_meta_sin_negritas_ni_etiqueta():
+    out = normalizar_formato("# Frasle invierte **US$ 20 millones**\n\nTexto.\n\n*Meta description: Sube **15%** la venta.*")
+    assert out.splitlines()[0] == "# Frasle invierte US$ 20 millones"
+    assert out.splitlines()[-1] == "*Sube 15% la venta.*"
+
+
+def test_listas_y_titulos_pegados_al_parrafo_se_separan():
+    out = normalizar_formato("# T\nPárrafo:\n- a\n  - sub\n- b\n1. uno\n## Sección\nTexto.")
+    assert out == "# T\nPárrafo:\n\n- a\n    - sub\n- b\n\n1. uno\n\n## Sección\nTexto."
+
+
+def test_normalizar_no_toca_lo_que_ya_esta_bien_ni_el_codigo():
+    bien = "# T\n\nPárrafo.\n\n- a\n- b\n\n## S\n\nTexto **con negrita**.\n\n*Meta.*"
+    assert normalizar_formato(bien) == bien
+    codigo = "```\nlinea\n- no es lista\n```"
+    assert normalizar_formato(codigo) == codigo

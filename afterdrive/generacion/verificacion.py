@@ -246,6 +246,11 @@ def sanear_enlaces(nota: str, noticias: list, permitidas: tuple[str, ...] = (),
     return _LINK.sub(reemplazo, nota), quitados
 
 
+def _escapar(titulo: str) -> str:
+    """Título de noticia apto para el texto de un link Markdown."""
+    return re.sub(r"([\\\[\]*_`])", r"\\\1", " ".join((titulo or "").split()))
+
+
 def agregar_fuentes(nota: str, noticias: list, titulo: str = "Fuentes") -> str:
     """Agrega (o reemplaza) la sección de fuentes, antes de la meta description."""
     lineas = nota.rstrip().splitlines()
@@ -267,7 +272,7 @@ def agregar_fuentes(nota: str, noticias: list, titulo: str = "Fuentes") -> str:
     while lineas and not lineas[-1].strip():
         lineas.pop()
     con_url = [n for n in noticias if n.url]
-    bloque = ["", f"## {titulo}", ""] + [f"- [{n.titulo.replace(']', ')')}]({n.url})" for n in con_url] if con_url else []
+    bloque = ["", f"## {titulo}", ""] + [f"- [{_escapar(n.titulo)}]({n.url})" for n in con_url] if con_url else []
     return "\n".join(lineas + bloque + meta)
 
 

@@ -60,7 +60,10 @@ def preparar(contenido: str) -> dict:
     HubSpot muestra el título aparte: si quedara también en el cuerpo, saldría
     dos veces. La meta description de la Nota es la última línea en cursiva.
     """
-    lineas = (contenido or "").strip().splitlines()
+    from afterdrive.ia.saneo import normalizar_formato
+
+    # Las notas anteriores al arreglo de formato también salen bien.
+    lineas = normalizar_formato((contenido or "").strip()).splitlines()
     titulo = ""
     for i, ln in enumerate(lineas):
         if ln.startswith("# "):

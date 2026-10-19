@@ -3,6 +3,7 @@ saneo.py — Texto crudo del modelo -> Nota publicable, o rechazo con motivo.
 
 Interfaz:
     sanear(crudo) -> Saneo(texto, motivo)
+    normalizar_formato(texto) -> texto   Markdown que se ve igual en el dashboard y en HubSpot
 
 Antes había dos copias de esta lógica (Fase 1 en lm_studio.generar_articulo,
 Fase 2 en generar_nota_fase2) y cada bug de salida del modelo se arreglaba en
@@ -56,7 +57,67 @@ def sanear(crudo: str) -> Saneo:
 
     if len(texto) < LARGO_MINIMO:
         return Saneo(texto, "no se pudo extraer una nota de largo suficiente")
-    return Saneo(texto)
+    return Saneo(normalizar_formato(texto))
+
+
+# ── Formato ───────────────────────────────────────────────────────────────────
+
+_LISTA = re.compile(r"^\s{0,3}([-+]|\*(?=\s)|\d+[.)])\s+")
+_ENCABEZADO = re.compile(r"^#{1,6}\s")
+_ENFASIS = re.compile(r"(\*\*|__)(.+?)\1")
+_META = re.compile(r"^[*_]{1,2}(.+?)[*_]{1,2}$")
+
+
+def _tipo_lista(linea: str) -> str:
+    return "numerada" if re.match(r"^\s*\d", linea) else "viñetas"
+
+
+def _sin_enfasis(s: str) -> str:
+    return _ENFASIS.sub(r"\2", s).strip()
+
+
+def normalizar_formato(texto: str) -> str:
+    """Arregla el Markdown que el dashboard (marked) perdona y HubSpot (Python-Markdown) no.
+
+    - Título y meta description sin negritas: son texto plano en HubSpot y los
+      asteriscos se verían tal cual.
+    - Línea en blanco antes de una lista o un título pegados al párrafo de
+      arriba: si no, Python-Markdown los deja como texto corrido.
+    - Sin la etiqueta "Meta description:" adentro de la meta.
+    """
+    lineas = (texto or "").split("\n")
+    salida: list[str] = []
+    en_codigo = False
+    for ln in lineas:
+        if ln.strip().startswith("```"):
+            en_codigo = not en_codigo
+        if not en_codigo:
+            if ln.startswith("# "):
+                ln = "# " + _sin_enfasis(ln[2:])
+            sangria = len(ln) - len(ln.lstrip(" "))
+            if 0 < sangria < 8 and _LISTA.match(ln.lstrip(" ")):
+                # Sub-ítems: Python-Markdown pide 4 espacios por nivel; los modelos usan 2.
+                ln = "    " * -(-sangria // 2) + ln.lstrip(" ")
+            previa = salida[-1] if salida else ""
+            if previa.strip() and not _LISTA.match(previa) and not previa.startswith(" ") and _LISTA.match(ln):
+                salida.append("")
+            elif _LISTA.match(previa) and _LISTA.match(ln) and not ln.startswith(" ") and not previa.startswith(" ") \
+                    and _tipo_lista(previa) != _tipo_lista(ln):
+                salida.append("")   # de viñetas a numerada: sin línea en blanco se pegan
+            elif previa.strip() and _ENCABEZADO.match(ln):
+                salida.append("")
+        salida.append(ln)
+    # Meta description: última línea no vacía, en cursiva.
+    for i in range(len(salida) - 1, -1, -1):
+        if not salida[i].strip():
+            continue
+        ultima = salida[i].strip()
+        if _META.fullmatch(ultima) and not _LISTA.match(ultima):
+            interior = _sin_enfasis(ultima.strip("*_"))
+            interior = re.sub(r"(?i)^meta\s*description\s*:\s*", "", interior).strip()
+            salida[i] = f"*{interior}*"
+        break
+    return "\n".join(salida)
 
 
 # ── Wrappers ──────────────────────────────────────────────────────────────────
