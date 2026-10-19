@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AfterDrive Intelligence</title>
+  <!-- Logo de la pestaña: inline para que también cargue en el login, sin sesión. -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='31' fill='%23C23E60'/%3E%3Ctext x='32' y='42.5' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='29' font-weight='700' letter-spacing='-1' fill='%23FFFFFF'%3EAD%3C/text%3E%3C/svg%3E">
   <!-- Versión fija + SRI: si el CDN sirviera otro archivo, el navegador no lo ejecuta. -->
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
@@ -166,6 +168,75 @@
       </div>
     </div>
 
+    <!-- Tablero de la vista Desarrollador: cómo viene el pipeline (ver metricas.js) -->
+    <section class="tablero-dev solo-dev" data-seccion="inicio" aria-labelledby="tablero-titulo">
+      <div class="tablero-head">
+        <div>
+          <h2 class="section-title" id="tablero-titulo">Cómo viene el pipeline</h2>
+          <p class="section-sub" id="tablero-sub">Hora de Argentina.</p>
+        </div>
+        <div class="modo-switch tablero-periodo" id="tablero-periodo" role="radiogroup" aria-label="Período de los gráficos">
+          <button type="button" role="radio" data-dias="7" aria-checked="false">7 días</button>
+          <button type="button" role="radio" data-dias="14" aria-checked="true">14 días</button>
+          <button type="button" role="radio" data-dias="30" aria-checked="false">30 días</button>
+        </div>
+      </div>
+      <p class="tablero-estado" id="tablero-estado" role="status"></p>
+      <div class="tablero-grid">
+        <article class="tablero-card" aria-labelledby="tc-art-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-art-t">Artículos por día</h3>
+            <p class="tablero-cifra" id="tc-art-cifra">—</p>
+          </header>
+          <ul class="tablero-leyenda" aria-label="Referencias">
+            <li><i class="serie-1"></i>Guardados</li><li><i class="serie-2"></i>Descartados por el filtro</li>
+          </ul>
+          <div class="grafico" id="g-articulos"></div>
+        </article>
+        <article class="tablero-card" aria-labelledby="tc-notas-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-notas-t">Notas por día</h3>
+            <p class="tablero-cifra" id="tc-notas-cifra">—</p>
+          </header>
+          <ul class="tablero-leyenda" aria-label="Referencias">
+            <li><i class="serie-1"></i>Escritas</li><li><i class="serie-2"></i>Versiones descartadas por el saneo</li>
+          </ul>
+          <div class="grafico" id="g-notas"></div>
+        </article>
+        <article class="tablero-card" aria-labelledby="tc-fuentes-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-fuentes-t">Sitios que más aportan</h3>
+            <p class="tablero-cifra" id="tc-fuentes-cifra">—</p>
+          </header>
+          <ul class="tablero-leyenda" aria-label="Referencias">
+            <li><i class="serie-1"></i>Guardados</li><li><i class="serie-2"></i>Descartados</li>
+          </ul>
+          <div id="g-fuentes" class="barras-h"></div>
+        </article>
+        <article class="tablero-card" aria-labelledby="tc-corridas-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-corridas-t">Corridas</h3>
+            <p class="tablero-cifra" id="tc-corridas-cifra">—</p>
+          </header>
+          <div id="g-corridas" class="corridas-metricas"></div>
+        </article>
+        <article class="tablero-card" aria-labelledby="tc-calidad-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-calidad-t">Calidad de las notas</h3>
+            <p class="tablero-cifra" id="tc-calidad-cifra">—</p>
+          </header>
+          <div id="g-calidad" class="calidad-metricas"></div>
+        </article>
+        <article class="tablero-card" aria-labelledby="tc-gasto-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-gasto-t">API paga este mes</h3>
+            <p class="tablero-cifra" id="tc-gasto-cifra">—</p>
+          </header>
+          <div id="g-gasto" class="gasto-metricas"></div>
+        </article>
+      </div>
+    </section>
+
     <!-- Programación automática -->
     <section class="agenda" data-seccion="programacion" aria-labelledby="agenda-title">
       <div class="section-head">
@@ -183,6 +254,7 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
+          <div class="reloj" id="reloj-scraping"></div>
           <div class="hora-row">
             <label class="sr-only" for="hora-scraping">Hora de scraping</label>
             <input type="time" id="hora-scraping" class="hora-input" step="300" required />
@@ -203,7 +275,6 @@
               <span>artículos por fuente</span>
             </label>
           </div>
-          <details class="reloj-opcional"><summary>Ajustar con reloj</summary><div class="reloj" id="reloj-scraping"></div></details>
           <footer class="agenda-foot">
             <div class="agenda-next">
               <span>Próxima corrida</span>
@@ -223,6 +294,7 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
+          <div class="reloj" id="reloj-generacion"></div>
           <div class="hora-row">
             <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
             <input type="time" id="hora-generacion" class="hora-input" step="300" required />
@@ -248,7 +320,6 @@
               </select>
             </label>
           </div>
-          <details class="reloj-opcional"><summary>Ajustar con reloj</summary><div class="reloj" id="reloj-generacion"></div></details>
           <footer class="agenda-foot">
             <div class="agenda-next">
               <span>Próxima nota</span>
@@ -533,6 +604,7 @@
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
   <script src="/assets/js/revision.js"></script>
+  <script src="/assets/js/metricas.js"></script>
   <script src="/assets/js/arranque.js"></script>
 </body>
 </html>

@@ -219,3 +219,18 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(panel.locator("#calibracion-resumen")).to_contain_text("1 nota calificada")
     panel.locator("summary").click()
     expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")
+
+
+def test_tablero_de_desarrollador(pagina):
+    tablero = pagina.locator(".tablero-dev")
+    expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
+    pagina.click('.modo-switch button[data-modo="dev"]')
+    expect(tablero).to_be_visible()
+    expect(pagina.locator("#g-articulos svg")).to_be_visible()
+    expect(pagina.locator("#g-notas svg")).to_be_visible()
+    expect(pagina.locator("#tc-art-cifra")).to_contain_text("guardados")
+    expect(pagina.locator("#g-corridas .corrida-metrica")).to_have_count(2)
+    # Cambiar el período vuelve a pedir las métricas con esa cantidad de días.
+    with pagina.expect_response(lambda r: "/api/metricas?dias=7" in r.url):
+        pagina.click('#tablero-periodo button[data-dias="7"]')
+    expect(pagina.locator("#tablero-periodo button[data-dias='7']")).to_have_attribute("aria-checked", "true")

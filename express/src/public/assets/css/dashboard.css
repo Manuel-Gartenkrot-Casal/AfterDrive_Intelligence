@@ -330,10 +330,8 @@ body {
 .agenda { margin-bottom: var(--s7); }
 .agenda-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
 .agenda-card {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 24px;
+  display: flex; flex-direction: column; gap: var(--s5);
+  padding: var(--s5) var(--s6) var(--s6);
   border-radius: var(--r-lg);
   background: var(--bg);
   box-shadow: var(--raised);
@@ -349,7 +347,16 @@ body {
 .agenda-card-head .puntapie-toggle { flex-shrink: 0; }
 
 /* Reloj: disco en relieve con cara hundida; agujas arrastrables */
-.reloj { width: min(180px,60vw); aspect-ratio: 1; margin: 12px auto; padding: 8px; border-radius: 50%; background: var(--bg); box-shadow: var(--raised); }
+.reloj {
+  width: min(260px, 72vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--raised);
+  transition: opacity var(--t-med);
+}
 .reloj-cara {
   width: 100%; height: 100%;
   border-radius: 50%;
@@ -819,6 +826,13 @@ body.hud-open .toast-container { bottom: 240px; }
 .puntapie-toggle:hover { color: var(--text-hi); }
 .puntapie-toggle.active { box-shadow: var(--inset-sm); }
 .puntapie-toggle.active span { color: var(--brand); font-weight: 600; }
+/* El de "Crear nota" es un <button>: sin esto toma el gris por defecto del
+   navegador. Apagado, la perilla va en gris sobre un riel con borde para que
+   se distinga en los dos temas. */
+button.puntapie-toggle { background: var(--bg); }
+.puntapie-toggle:not(.active) .toggle-switch { background: var(--well); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.puntapie-toggle:not(.active) .toggle-switch::after { background: var(--text-lo); box-shadow: none; }
+.puntapie-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    CONSOLA
@@ -1471,12 +1485,8 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .f2-regiones { grid-column: 1 / -1; }
 .f2-clientes { grid-column: 1 / -1; }
 .f2-clientes .input-row { max-width: 700px; }
-.agenda-card .hora-row { justify-content: flex-start; }
-.agenda-card .agenda-fields { justify-content: flex-start; }
 .agenda-card .agenda-foot { margin-top: auto; }
-.reloj-opcional { color: var(--text-mid); }
-.reloj-opcional summary, .revision-criterios summary, .fuentes-nota summary { cursor: pointer; padding: 10px 0; font-weight: 500; }
-.agenda-card .ampm { display: none; }
+.revision-criterios summary, .fuentes-nota summary { cursor: pointer; padding: 10px 0; font-weight: 500; }
 .revision-ayuda { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 20px; }
 .revision-criterios { border-top: 1px solid var(--border); }
 .fuentes-nota a { display: block; margin-top: 12px; }
@@ -1809,4 +1819,104 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 }
 @media (max-width: 640px) {
   .modal-sidebar { max-height: 30vh; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TABLERO DE DESARROLLADOR (Inicio): métricas del pipeline (metricas.js).
+   Series: azul = guardado, naranja = descartado. Pasos validados para
+   daltonismo y contraste sobre la superficie de cada tema. El estado de
+   las corridas y del gasto usa ok/warn/err siempre con ícono y texto.
+   ═══════════════════════════════════════════════════════════════════════ */
+[data-theme="light"] { --serie-1: #2a78d6; --serie-2: #eb6834; --grilla: #e6e9ee; }
+[data-theme="dark"]  { --serie-1: #3987e5; --serie-2: #d95926; --grilla: #323846; }
+
+.tablero-dev { margin-bottom: var(--s6); }
+.tablero-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s4); }
+.tablero-estado { font: 0.75rem var(--mono); color: var(--text-lo); min-height: 1em; margin-bottom: var(--s2); }
+.tablero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.tablero-card {
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  padding: var(--s5); border-radius: var(--r-lg);
+  background: var(--bg); box-shadow: var(--raised);
+}
+.tablero-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tablero-card-head h3 { font-size: 0.95rem; font-weight: 600; color: var(--text-hi); }
+.tablero-cifra { font-size: 0.8rem; color: var(--text-mid); }
+.tablero-cifra b { font-size: 1rem; color: var(--text-hi); font-weight: 600; }
+.tablero-vacio { font-size: 0.82rem; color: var(--text-lo); padding: 12px 0; }
+
+.tablero-leyenda { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; font-size: 0.75rem; color: var(--text-mid); }
+.tablero-leyenda li { display: inline-flex; align-items: center; gap: 6px; }
+.tablero-leyenda i, .tt-fila i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+i.serie-1 { background: var(--serie-1); }
+i.serie-2 { background: var(--serie-2); }
+
+.grafico { width: 100%; min-height: 190px; position: relative; }
+.grafico svg { display: block; overflow: visible; }
+.grafico .grilla { stroke: var(--grilla); stroke-width: 1; }
+.grafico .eje { fill: var(--text-lo); font: 10px var(--mono); }
+.grafico .serie-1 { fill: var(--serie-1); }
+.grafico .serie-2 { fill: var(--serie-2); }
+.grafico .hit { fill: transparent; cursor: default; }
+.grafico .hit.activo { fill: var(--text-hi); fill-opacity: 0.05; }
+
+.tablero-tooltip {
+  position: fixed; z-index: var(--z-toast); pointer-events: none;
+  min-width: 160px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg); box-shadow: var(--shadow-float);
+  font-size: 0.78rem; color: var(--text-hi);
+}
+.tt-titulo { font-weight: 600; margin-bottom: 6px; text-transform: capitalize; }
+.tt-fila { display: flex; align-items: center; gap: 8px; margin-top: 3px; color: var(--text-mid); }
+.tt-fila b { margin-left: auto; color: var(--text-hi); font-family: var(--mono); font-weight: 500; }
+.tt-pie { margin-top: 6px; color: var(--text-lo); }
+
+/* Sitios: barras horizontales apiladas, valor al final. */
+.barras-h { display: flex; flex-direction: column; gap: 10px; }
+.barra-fila { display: grid; grid-template-columns: minmax(90px, 32%) minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 0.8rem; }
+.barra-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-mid); font-family: var(--mono); font-size: 0.75rem; }
+.barra-pista { display: block; height: 14px; }
+.barra-largo { display: flex; gap: 2px; height: 100%; min-width: 4px; }
+.barra-largo i { display: block; height: 100%; min-width: 2px; }
+.barra-largo i:last-child { border-radius: 0 4px 4px 0; }
+.barra-valor { white-space: nowrap; color: var(--text-lo); font-size: 0.75rem; }
+.barra-valor b { color: var(--text-hi); font-weight: 600; }
+
+/* Medidor: la pista es un paso claro del mismo color que el relleno. */
+.medidor { height: 8px; border-radius: var(--r-pill); overflow: hidden; background: color-mix(in srgb, var(--nivel, var(--text-lo)) 18%, transparent); }
+.medidor > span { display: block; height: 100%; border-radius: var(--r-pill); background: var(--nivel, var(--text-lo)); transition: width var(--t-med) var(--ease-out); }
+.medidor-alto { height: 12px; }
+.nivel-ok { --nivel: var(--ok); }
+.nivel-warn { --nivel: var(--warn); }
+.nivel-err { --nivel: var(--err); }
+.nivel-nada { --nivel: var(--text-lo); }
+
+.corridas-metricas { display: flex; flex-direction: column; gap: 18px; }
+.corrida-metrica { display: flex; flex-direction: column; gap: 8px; }
+.cm-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cm-nombre { font-weight: 600; font-size: 0.88rem; }
+.cm-nivel { font-size: 0.75rem; font-weight: 600; color: var(--nivel); }
+.cm-cuentas { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; font-size: 0.75rem; color: var(--text-mid); }
+.cm-cuentas .cm-dur { margin-left: auto; font-family: var(--mono); color: var(--text-lo); }
+
+.cifras-fila { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cifra-grande { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: var(--r-md); background: var(--well); min-width: 0; }
+.cifra-grande strong { font-size: 1.6rem; font-weight: 600; line-height: 1.1; color: var(--text-hi); }
+.cifra-grande small { font-size: 0.8rem; font-weight: 500; color: var(--text-lo); }
+.cifra-grande span { font-size: 0.72rem; color: var(--text-mid); line-height: 1.35; }
+.estados-notas, .gasto-tareas { list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; font-size: 0.8rem; }
+.estados-notas li, .gasto-tareas li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); color: var(--text-mid); }
+.estados-notas b, .gasto-tareas b { color: var(--text-hi); font-family: var(--mono); font-weight: 500; }
+.gasto-metricas { display: flex; flex-direction: column; gap: 10px; }
+.gasto-nota { font-size: 0.78rem; color: var(--text-mid); }
+
+@media (max-width: 1100px) {
+  .tablero-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .tablero-card { padding: var(--s4); }
+  .cifras-fila { grid-template-columns: minmax(0, 1fr); }
+  .estados-notas, .gasto-tareas { grid-template-columns: minmax(0, 1fr); }
+  .barra-fila { grid-template-columns: minmax(70px, 34%) minmax(0, 1fr) auto; }
 }
