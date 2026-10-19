@@ -47,7 +47,8 @@ def sembrar() -> None:
          "calidad": {"puntaje": 8, "fallas_criticas": [], "intentos": 1, "reescrita_por": []},
          "evaluacion": {"lineamientos": {"estructura_correcta": True}, "comentarios": "Bien"}},
         {"contenido": "# Marketplaces y catálogo\n\n" + CUERPO, "generado_en": "2026-10-16T14:00:00+00:00",
-         "estado": "aprobada", "categorias": ["marketplaces"]},
+         "estado": "aprobada", "categorias": ["marketplaces"],
+         "evaluacion": {"lineamientos": {}, "comentarios": "Evaluación de prueba"}},
     ])
     dbm.db.articulos.insert_many(
         [{"url": f"https://s.com/{i}", "titulo": f"Noticia {i}", "cuerpo": "Texto. " * 20} for i in range(3)])

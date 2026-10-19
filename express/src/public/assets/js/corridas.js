@@ -77,17 +77,62 @@ function filaCorrida(c, extra) {
 }
 
 var _logActual = { id: null, desde: 0 };
+var _dockLog = { id: null, desde: 0, lineas: [] };
+var _leyendoCorridas = false;
+
+async function pintarActividad(d) {
+  var c = d.en_curso || d.pendientes[0];
+  $('inicio-actividad').textContent = c ? c.etiqueta + ' · ' + NOMBRE_ESTADO[c.estado] : 'Todo al día. No hay tareas en curso.';
+  $('inicio-actividad').dataset.estado = c ? c.estado : 'ok';
+  $('inicio-recientes').innerHTML = d.recientes.slice(0, 3).map(function(it) {
+    return filaCorrida(it, hace(it.fin));
+  }).join('') || '<p class="corridas-vacio">Las tareas terminadas aparecerán acá.</p>';
+  if (!c && _dockLog.id) c = d.recientes.find(function(it) { return it.id === _dockLog.id; });
+  var dock = $('actividad-dock');
+  if (!c) { dock.hidden = true; return; }
+  if (_dockLog.id !== c.id) {
+    _dockLog = { id: c.id, desde: 0, lineas: [] };
+    dock.open = true;
+  }
+  dock.hidden = false;
+  dock.dataset.estado = c.estado;
+  $('actividad-titulo').textContent = c.etiqueta + ' · ' + NOMBRE_ESTADO[c.estado];
+  try {
+    var lg = await pedir('/api/corridas/' + c.id + '/log?desde=' + _dockLog.desde);
+    _dockLog.desde = lg.siguiente;
+    _dockLog.lineas = _dockLog.lineas.concat(lg.lineas).slice(-500);
+    var pre = $('actividad-log');
+    var abajo = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+    pre.textContent = _dockLog.lineas.join('\n');
+    if (abajo) pre.scrollTop = pre.scrollHeight;
+    $('actividad-paso').textContent = c.estado === 'pendiente' ? 'Esperando su turno en la cola.'
+      : TERMINALES.includes(c.estado) ? (c.error || 'La tarea finalizó. Podés consultar el registro.')
+      : pasoGeneracion(_dockLog.lineas.at(-1) || '') || 'Procesando. El registro se actualiza automáticamente.';
+  } catch(e) { $('actividad-paso').textContent = 'No se pudo actualizar el registro. Reintentando…'; }
+}
 
 async function refrescarCorridas() {
+  if (_leyendoCorridas) return;
+  _leyendoCorridas = true;
+  try { await actualizarCorridas(); }
+  finally { _leyendoCorridas = false; }
+}
+
+async function actualizarCorridas() {
   var d;
   try { d = await pedir('/api/corridas'); } catch (e) { return; }
   _corridasActivas = (d.en_curso ? 1 : 0) + d.pendientes.length;
   $('nav-badge-corridas').textContent = _corridasActivas || '';
+  await pintarActividad(d);
   if (_seccion !== 'corridas') return;
 
   var actual = $('corrida-actual');
   if (!d.en_curso) {
-    actual.innerHTML = '<p class="corridas-vacio">No está corriendo nada.</p>';
+    // Se pinta una sola vez: repintar en cada consulta le saca el foco a los botones.
+    if (!actual.querySelector('.corridas-reposo')) actual.innerHTML = '<div class="corridas-vacio corridas-reposo"><strong>Sistema en reposo</strong>'
+      + '<span>No está corriendo nada.<span class="reposo-extra"> Las búsquedas y notas programadas arrancan solas; también podés pedir una ahora.</span></span>'
+      + '<span class="corridas-vacio-acciones"><button class="btn btn-sm btn-primary" onclick="irASeccion(\'crear\')">Crear una nota</button>'
+      + '<button class="btn btn-sm" onclick="irASeccion(\'programacion\')">Ver programación</button></span></div>';
     _logActual = { id: null, desde: 0 };
   } else {
     var c = d.en_curso;

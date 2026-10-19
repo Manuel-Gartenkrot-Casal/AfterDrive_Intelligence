@@ -4,6 +4,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -28,22 +29,28 @@ def _puerto_libre() -> int:
 @pytest.fixture(scope="session")
 def base_url():
     puerto = _puerto_libre()
-    proc = subprocess.Popen([sys.executable, "-m", "tests.e2e.servidor", str(puerto)],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    url = f"http://127.0.0.1:{puerto}"
-    for _ in range(60):
+    # El polling llena un PIPE sin lector en Windows y bloquea los logs de Flask.
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as salida:
+        proc = subprocess.Popen([sys.executable, "-X", "utf8", "-m", "tests.e2e.servidor", str(puerto)],
+                                stdout=salida, stderr=subprocess.STDOUT, text=True)
+        url = f"http://127.0.0.1:{puerto}"
         try:
-            urllib.request.urlopen(url + "/health", timeout=1)
-            break
-        except Exception:
-            if proc.poll() is not None:
-                pytest.fail("El servidor e2e no arrancó:\n" + proc.stdout.read())
-            time.sleep(0.5)
-    else:
-        proc.kill()
-        pytest.fail("El servidor e2e no respondió a tiempo.")
-    yield url
-    proc.kill()
+            for _ in range(60):
+                try:
+                    urllib.request.urlopen(url + "/health", timeout=1)
+                    break
+                except Exception:
+                    if proc.poll() is not None:
+                        salida.seek(0)
+                        pytest.fail("El servidor e2e no arrancó:\n" + salida.read())
+                    time.sleep(0.5)
+            else:
+                pytest.fail("El servidor e2e no respondió a tiempo.")
+            yield url
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
 
 
 @pytest.fixture(scope="session")

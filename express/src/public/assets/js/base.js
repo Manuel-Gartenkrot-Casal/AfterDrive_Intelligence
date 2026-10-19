@@ -232,12 +232,16 @@ function limpiarLogs() {
 /* ═══════════════════════════════════════════════════════════════════════
    THEME TOGGLE
    ═══════════════════════════════════════════════════════════════════════ */
+var _temaTimer;
 function toggleTheme() {
   var html = document.documentElement;
+  clearTimeout(_temaTimer);
+  html.classList.add('theme-changing');
   var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
   localStorage.setItem('ad-theme', next);
   $('themeBtn').innerHTML = next === 'dark' ? '&#9790;' : '&#9728;';
+  _temaTimer = setTimeout(function() { html.classList.remove('theme-changing'); }, 280);
 }
 
 (function() {

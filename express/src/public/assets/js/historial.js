@@ -23,6 +23,13 @@ function initHistorial() {
     _hist.timer = setTimeout(function() { _hist.q = $('hist-q').value.trim(); cargarHistorial(1); }, 300);
   });
   document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') cargarHistorial(_hist.pagina); });
+  $('hist-pestanas').addEventListener('keydown', function(ev) {
+    var tabs = Array.from(this.querySelectorAll('[role="tab"]')), i = tabs.indexOf(document.activeElement);
+    if (i < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(ev.key)) return;
+    ev.preventDefault();
+    i = ev.key === 'Home' ? 0 : ev.key === 'End' ? tabs.length - 1 : (i + (ev.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[i].focus(); tabs[i].click();
+  });
   cargarResumenHistorial();
 }
 
@@ -34,6 +41,8 @@ async function cargarResumenHistorial() {
     });
     var porRevisar = (r.generados_aprobados.por_estado || {}).borrador || 0;
     $('nav-badge-historial').textContent = porRevisar || '';
+    $('inicio-pendientes').textContent = porRevisar;
+    cargarPendientesInicio();
   } catch (e) {}
 }
 
@@ -54,15 +63,18 @@ async function cargarHistorial(pagina) {
     b.setAttribute('aria-pressed', b.dataset.estado === _hist.estado);
   });
   var lista = $('hist-lista');
+  lista.setAttribute('aria-busy', 'true');
+  $('hist-paginador').textContent = '';
   lista.innerHTML = '<p class="corridas-vacio">Cargando…</p>';
   var qs = '?pagina=' + _hist.pagina + '&por_pagina=15&q=' + encodeURIComponent(_hist.q)
     + (esNotas ? '&estado=' + _hist.estado : '');
   var d;
   try { d = await pedir('/api/historial/' + _hist.seccion + qs); }
-  catch (e) { lista.innerHTML = '<p class="corridas-vacio">No se pudo cargar: ' + escHtml(e.message) + '</p>'; return; }
+  catch (e) { lista.removeAttribute('aria-busy'); lista.innerHTML = '<p class="corridas-vacio">No se pudo cargar: ' + escHtml(e.message) + '</p>'; return; }
 
+  lista.removeAttribute('aria-busy');
   if (!d.items.length) {
-    lista.innerHTML = '<p class="corridas-vacio">' + (_hist.q ? 'No hay resultados para esa búsqueda.' : 'Todavía no hay nada acá.') + '</p>';
+    lista.innerHTML = '<p class="corridas-vacio">' + (_hist.q ? 'No hay resultados para esa búsqueda.' : ({generados_aprobados: 'No hay notas en este estado. Probá otro filtro o creá una nueva nota.', generados_descartados: 'No hay notas descartadas por la evaluación automática.', scrapeados_aprobados: 'Todavía no hay noticias guardadas. Revisá tus fuentes para empezar.', scrapeados_descartados: 'No hay noticias descartadas.'}[_hist.seccion])) + '</p>';
   } else {
     lista.innerHTML = d.items.map(function(it) {
       var lado = '';
@@ -71,7 +83,7 @@ async function cargarHistorial(pagina) {
         lado += '<span class="badge-calidad" title="Lineamientos de calidad cumplidos">' + it.calidad.puntaje + '/9</span>';
       return '<button type="button" class="hist-item" onclick="abrirItemHistorial(\'' + it.seccion + '\', \'' + it.coleccion + '\', \'' + it.id + '\')">'
         + '<div class="hist-cuerpo"><div class="hist-titulo">' + escHtml(it.titulo) + '</div>'
-        + (it.resumen ? '<div class="hist-resumen">' + escHtml(it.resumen) + '</div>' : '')
+        + (it.resumen ? '<div class="hist-resumen">' + escHtml(extractoHistorial(it)) + '</div>' : '')
         + (it.motivo ? '<div class="hist-motivo">Motivo: ' + escHtml(it.motivo) + '</div>' : '')
         + '<div class="hist-meta">' + escHtml(it.origen) + ' · ' + fechaCorta(it.fecha) + '</div></div>'
         + (lado ? '<div class="hist-lado">' + lado + '</div>' : '')
@@ -265,4 +277,27 @@ async function guardarEdicionNota() {
     showToast('Texto guardado', 'success');
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+function extractoHistorial(it) {
+  var texto = (it.resumen || '').trim(), titulo = (it.titulo || '').trim();
+  if (titulo && texto.toLocaleLowerCase().startsWith(titulo.toLocaleLowerCase())) texto = texto.slice(titulo.length).trim();
+  return texto;
+}
+function abrirPendientes() {
+  _hist.seccion = 'generados_aprobados'; _hist.estado = 'borrador'; _hist.q = ''; $('hist-q').value = '';
+  if (_seccion === 'historial') cargarHistorial(1);
+  else { _hist.pagina = 1; irASeccion('historial'); }
+}
+async function cargarPendientesInicio() {
+  try {
+    var d = await pedir('/api/historial/generados_aprobados?estado=borrador&por_pagina=4&pagina=1');
+    $('inicio-lista').innerHTML = d.items.length ? d.items.map(function(it) {
+      return '<button class="inicio-nota" onclick="abrirItemHistorial(\'' + it.seccion + '\',\'' + it.coleccion + '\',\'' + it.id + '\')">'
+        + '<span>' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
+    }).join('') + (d.total > d.items.length
+      ? '<button class="btn btn-sm inicio-mas" onclick="abrirPendientes()">Ver las ' + d.total + ' notas pendientes</button>'
+      : '<p class="corridas-vacio inicio-fin">No hay más notas para revisar. Las nuevas aparecen acá apenas se generan.</p>')
+      : '<p class="corridas-vacio">Estás al día. Las nuevas notas aparecerán acá para revisarlas.</p>';
+  } catch(e) { $('inicio-lista').textContent = 'No se pudieron cargar las notas. Podés reintentar desde Historial.'; }
 }
