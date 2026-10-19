@@ -29,6 +29,7 @@ DEFAULT_GENERACION = {
     "hora": "11:00",
     "interval_days": 1,
     "persona": "comercial",
+    "largo": "medio",
     "tema": "",
     "puntapie_url": "",
 }
@@ -120,8 +121,11 @@ def set_generacion_config(
     tema: str | None = None,
     puntapie_url: str | None = None,
     hora: str | None = None,
+    largo: str | None = None,
 ):
     cfg = get_generacion_config()
+    if largo is not None:
+        cfg["largo"] = largo
     if hora is not None:
         cfg["hora"] = hora
     if enabled is not None:

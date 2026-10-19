@@ -20,6 +20,10 @@ from __future__ import annotations
 from afterdrive.ia import llm
 
 TITULO_MAX = 60
+# El plan es un JSON corto: con la API paga va al modelo de evaluación (ver
+# llm.RESPALDO_TAREA) y con este presupuesto. Antes usaba el de redacción con
+# 16000 tokens, y un modelo que razona podía gastar varios centavos solo acá.
+MAX_TOKENS = 4000
 
 _SYSTEM = """\
 Sos el editor del blog B2B de AfterDrive by Alephee (aftermarket automotor en Latinoamérica). \
@@ -82,8 +86,8 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
                       "implicancias van en ese idioma, con la palabra clave que se busca en ese mercado.")
     partes.append("## Pedido\n" + pedido)
     try:
-        crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.4,
-                              max_tokens=llm.ajustes_redaccion().max_tokens, tarea="planificacion")
+        crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.4, max_tokens=MAX_TOKENS,
+                              tarea="planificacion")
         plan = _normalizar(_extraer_json(crudo), len(noticias))
     except Exception as e:
         print(f"  [AVISO] No se pudo armar el plan ({e}); se escribe sin plan.", flush=True)

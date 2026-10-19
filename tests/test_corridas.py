@@ -63,7 +63,7 @@ def test_generacion_sin_params_usa_la_config_guardada(monkeypatch):
     assert corridas.generacion()["success"]
     assert recibido == {
         "categorias": ["autopartes"], "clientes_ids": ["acme"], "puntapie_url": "https://alephee.com",
-        "persona": "ejecutivo", "tema": None, "regiones": ["brasil"],
+        "persona": "ejecutivo", "tema": None, "regiones": ["brasil"], "largo": "medio",
     }
 
 

@@ -375,3 +375,16 @@ def test_paga_sin_temperatura(transporte, paga, monkeypatch):
     t = transporte([chat("a")])
     llm.completar("s", "u")
     assert "temperature" not in t.posts[0]["json"]
+
+
+def test_plan_y_correccion_usan_el_modelo_de_evaluacion(transporte, paga, monkeypatch):
+    monkeypatch.setenv("PAGA_MODEL_EVALUACION", "barato")
+    monkeypatch.setenv("PAGA_MODEL_REDACCION", "caro")
+    t = transporte([chat("x")] * 4)
+    for tarea in ("planificacion", "correccion", "redaccion", "otra"):
+        llm.completar("s", "u", tarea=tarea)
+    assert [p["json"]["model"] for p in t.posts] == ["barato", "barato", "caro", "modelo-pago"]
+    monkeypatch.setenv("PAGA_MODEL_CORRECCION", "propio")
+    t = transporte([chat("x")])
+    llm.completar("s", "u", tarea="correccion")
+    assert t.posts[0]["json"]["model"] == "propio"

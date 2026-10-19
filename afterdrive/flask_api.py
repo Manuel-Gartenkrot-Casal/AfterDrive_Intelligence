@@ -268,6 +268,9 @@ def set_scraping_config():
     return jsonify({"success": True, "message": message})
 
 
+_LARGOS = ("corto", "medio", "largo")   # redaccion.LARGOS, sin importar el módulo de prompts acá
+
+
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
     cfg = config_store.get_generacion_config()
@@ -283,6 +286,9 @@ def set_generacion_config():
 
     if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
         return jsonify({"success": False, "error": "Persona inválida."}), 400
+    largo = body.get("largo")
+    if largo is not None and largo not in _LARGOS:
+        return jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400
     if days is not None and not _entero_valido(days):
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
     if hora is not None and not _hora_valida(hora):
@@ -295,6 +301,7 @@ def set_generacion_config():
         tema=body.get("tema"),
         puntapie_url=body.get("puntapie_url"),
         hora=hora,
+        largo=largo,
     )
     scheduler.aplicar()
     return jsonify({"success": True, "message": "Configuración de generación actualizada."})
@@ -855,6 +862,9 @@ def _argv_generar(body: dict):
     puntapie_url = body.get("puntapie_url", "") or ""
     persona = body.get("persona", "comercial")
     tema = body.get("tema", "") or ""
+    largo = body.get("largo") or ""
+    if largo and largo not in _LARGOS:
+        return None, (jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400)
 
     extra = []
     for clave in ("categorias", "clientes", "regiones"):
@@ -867,6 +877,8 @@ def _argv_generar(body: dict):
         extra.append(f"--persona={persona}")
     if tema:
         extra.append(f"--tema={tema}")
+    if largo:
+        extra.append(f"--largo={largo}")
     return extra, None
 
 

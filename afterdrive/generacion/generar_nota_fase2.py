@@ -17,8 +17,12 @@ Recorrido de una nota:
   6. Redacción y revisión de cada versión: saneo (saneo.py), enlaces
      inventados afuera y datos contra las noticias (verificacion.py), estilo y
      SEO (calidad.py), evaluación con IA y parecido con notas recientes. Un
-     problema grave hace reescribir una vez; queda la mejor versión.
-  7. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
+     problema grave se arregla una vez con el modelo de corrección
+     (correccion.py, barato); solo una nota repetida se reescribe de cero.
+     Queda la mejor versión.
+  7. El largo (corto, medio, largo) se elige en Crear nota.
+  8. Lo que gastó la API paga en esta nota queda en `costo`.
+  9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
 Uso:
@@ -37,10 +41,10 @@ from dataclasses import dataclass, field
 
 from afterdrive import calibracion
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
-from afterdrive.generacion import calidad, contexto_noticias, plan, verificacion
+from afterdrive.generacion import calidad, contexto_noticias, correccion, plan, verificacion
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
 from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
-from afterdrive.ia import llm, redaccion
+from afterdrive.ia import consumo, llm, redaccion
 from afterdrive.ia.saneo import sanear
 
 col_notas_fase2 = db["notas_fase2"]
@@ -89,13 +93,14 @@ def _build_system_prompt(
     persona: str,
     regiones: list[str] | None = None,
     ajustes: "llm.Redaccion | None" = None,
+    largo: str | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     base = redaccion.system_prompt(
         persona,
         region=regiones,
         compacto=ajustes.compacto,
-        extension="entre 600 y 900 palabras" if puntapie_url else None,
+        extension=redaccion.extension(largo),
         puntapie_url=puntapie_url,
     )
     extra = []
@@ -350,7 +355,18 @@ def generar_nota(
     persona: str = "comercial",
     tema: str | None = None,
     regiones: list[str] | None = None,
+    largo: str = redaccion.LARGO_DEFAULT,
 ) -> dict:
+    """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo)."""
+    with consumo.medir() as costo:
+        resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo)
+    if costo.llamadas:
+        detalle = ", ".join(f"{k} {v:.3f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
+        print(f"  [COSTO] Esta nota: USD {costo.total:.3f} ({detalle})", flush=True)
+    return resultado
+
+
+def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo) -> dict:
     clientes_ids = clientes_ids or []
     regiones = regiones or []
     ajustes = llm.ajustes_redaccion()
@@ -394,7 +410,7 @@ def generar_nota(
     if plan_nota:
         print(f"  Plan: {plan_nota['titulo']}", flush=True)
 
-    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes)
+    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
                                   cal.aciertos, propios, enlaces)
 
@@ -407,17 +423,31 @@ def generar_nota(
     # una nota reciente, no llega al umbral calibrado), se reescribe diciéndole
     # al modelo qué estuvo mal. Queda la mejor.
     mejor: _Version | None = None
+    anterior: _Version | None = None
     motivo, pedido, intentos = "", user_msg, 0
     reescrita_por: list[str] = []
+    segundo_intento = ""   # "correccion" o "reescritura"
     for intento in range(1, MAX_INTENTOS + 1):
         intentos = intento
-        print("  Generando nota..." if intento == 1 else f"  Reescribiendo la nota (intento {intento})...", flush=True)
-        try:
-            articulo, motivo, crudo = _redactar(system, pedido, ajustes)
-        except llm.ErrorLLM as e:
-            if mejor:
+        if anterior is not None and not correccion.necesita_reescritura(anterior.codigos):
+            # Retocar con el modelo de corrección (barato) en lugar de pagar otra redacción entera.
+            segundo_intento = "correccion"
+            print("  Corrigiendo la nota...", flush=True)
+            articulo = correccion.corregir(anterior.texto, anterior.problemas, contexto_noticias.formatear(noticias),
+                                           max_tokens=ajustes.max_tokens)
+            if articulo is None:
                 break
-            return {"success": False, "error": str(e)}
+        else:
+            if intento > 1:
+                segundo_intento = "reescritura"
+            print("  Generando nota..." if intento == 1 else f"  Reescribiendo la nota (intento {intento})...",
+                  flush=True)
+            try:
+                articulo, motivo, crudo = _redactar(system, pedido, ajustes)
+            except llm.ErrorLLM as e:
+                if mejor:
+                    break
+                return {"success": False, "error": str(e)}
         if articulo is None:
             print(f"  [WARN] {motivo}. Se descarta esta versión.", flush=True)
             registrar_nota_descartada(
@@ -429,6 +459,7 @@ def generar_nota(
                            recientes, cal.umbral)
         if mejor is None or version.orden < mejor.orden:
             mejor = version
+        anterior = version
         if not version.codigos:
             break
         print(f"  [WARN] La nota tiene problemas: {', '.join(version.codigos)}.", flush=True)
@@ -465,6 +496,7 @@ def generar_nota(
             "intentos": intentos,
             "reescrita_por": reescrita_por if intentos > 1 else [],
             "problemas": mejor.codigos,
+            "segundo_intento": segundo_intento or None,
         },
         "verificacion": mejor.verificacion.como_dict(),
         "estilo": mejor.revision.como_dict()["hallazgos"],
@@ -473,6 +505,7 @@ def generar_nota(
         "parecida_a": mejor.parecida,
         "enlaces_quitados": mejor.enlaces_quitados,
         "calibracion_usada": cal.como_dict(),
+        "largo": largo,
         "proveedor": llm.proveedor_activo(),
         "correcciones_usadas": cal.reglas,
         "estado": ESTADO_BORRADOR,
@@ -483,6 +516,7 @@ def generar_nota(
         doc["embedding"] = mejor.embedding
         doc["embedding_modelo"] = llm.modelo_embeddings()
 
+    doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
@@ -521,6 +555,7 @@ if __name__ == "__main__":
     parser.add_argument("--persona", default="comercial",
                         choices=["analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"])
     parser.add_argument("--tema", type=str, default=None)
+    parser.add_argument("--largo", choices=list(redaccion.LARGOS), default=redaccion.LARGO_DEFAULT)
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
     args = parser.parse_args()
@@ -533,6 +568,7 @@ if __name__ == "__main__":
         persona=args.persona,
         tema=args.tema,
         regiones=args.regiones,
+        largo=args.largo,
     )
 
     if resultado["success"]:

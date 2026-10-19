@@ -228,3 +228,21 @@ def test_config_fase2_permite_vaciar_el_puntapie(client):
     c, store = client
     assert c.post("/api/fase2/config", json={"puntapie_url": ""}).status_code == 200
     assert store["fase2"]["puntapie_url"] == ""
+
+
+def test_largo_de_la_nota(client):
+    c, store = client
+    assert c.post("/api/generacion-config", json={"largo": "corto"}).status_code == 200
+    assert store["generacion"]["largo"] == "corto"
+    assert c.post("/api/generacion-config", json={"largo": "enorme"}).status_code == 400
+
+
+def test_el_largo_llega_al_argv_de_la_generacion(client, monkeypatch):
+    from afterdrive import cola
+    c, _ = client
+    encolado = {}
+    monkeypatch.setattr(cola, "encolar", lambda tipo, params=None, **k: encolado.update(params) or
+                        {"id": "1", "posicion": 0, "duplicada": False})
+    assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "largo"}).status_code == 202
+    assert "--largo=largo" in encolado["argv"]
+    assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "x"}).status_code == 400

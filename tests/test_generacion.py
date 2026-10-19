@@ -216,7 +216,7 @@ def test_nota_que_pasa_no_se_reescribe(entorno, monkeypatch):
     _evaluaciones(monkeypatch, BUENA)
     assert g.generar_nota(["autopartes"])["success"]
     assert col.docs[0]["calidad"] == {"puntaje": 3, "fallas_criticas": [], "intentos": 1, "reescrita_por": [],
-                                      "problemas": []}
+                                      "problemas": [], "segundo_intento": None}
 
 
 def test_nota_que_inventa_se_reescribe_una_vez_diciendo_por_que(entorno, monkeypatch):
@@ -479,3 +479,80 @@ def test_formatear_usa_la_ficha_y_un_extracto():
     txt = contexto_noticias.formatear([n], max_chars=1200)
     assert "Resumen: Frasle amplía su planta." in txt and "- US$ 20 millones de inversión" in txt
     assert "Fecha: 2026-10-01" in txt and "Extracto: Cuerpo largo." in txt and len(txt) < 1600
+
+
+# ── Corrección barata, largo y costo por nota ─────────────────────────────────
+
+
+def _con_tareas(monkeypatch, respuestas_redaccion, correccion=None):
+    """llm.completar falso que registra (tarea, system) y responde según la tarea."""
+    tareas = []
+
+    def completar(system, user, **kw):
+        tareas.append(kw.get("tarea"))
+        if kw.get("tarea") == "planificacion":
+            return PLAN
+        if kw.get("tarea") == "correccion":
+            tareas.append(("correccion_user", user))
+            return correccion if correccion is not None else NOTA
+        return respuestas_redaccion.pop(0)
+
+    monkeypatch.setattr(llm, "completar", completar)
+    return tareas
+
+
+def test_un_problema_se_corrige_con_el_modelo_barato_sin_redactar_de_nuevo(entorno, monkeypatch):
+    _, col, _ = entorno
+    sin_seccion = NOTA.replace("## Qué significa para tu negocio", "## Otra cosa")
+    tareas = _con_tareas(monkeypatch, [sin_seccion])
+    assert g.generar_nota(["autopartes"])["success"]
+    assert tareas.count("redaccion") == 1 and tareas.count("correccion") == 1
+    pedido = next(t[1] for t in tareas if isinstance(t, tuple))
+    assert "Falta la sección" in pedido and "## Otra cosa" in pedido      # la nota y el problema
+    doc = col.docs[0]
+    assert doc["calidad"]["segundo_intento"] == "correccion" and doc["calidad"]["problemas"] == []
+    assert "## Qué significa para tu negocio" in doc["contenido"]
+
+
+def test_una_nota_repetida_si_se_redacta_de_nuevo(entorno, monkeypatch):
+    _, col, _ = entorno
+    monkeypatch.setattr(llm, "modelo_embeddings", lambda: "nvidia/x")
+    col.docs.append({"contenido": "# Nota vieja igual", "embedding": [0.1, 0.2], "embedding_modelo": "nvidia/x"})
+    tareas = _con_tareas(monkeypatch, [NOTA, NOTA])
+    g.generar_nota(["autopartes"])
+    assert tareas.count("redaccion") == 2 and "correccion" not in tareas
+    assert col.docs[-1]["calidad"]["segundo_intento"] == "reescritura"
+
+
+def test_si_la_correccion_falla_queda_la_primera_version(entorno, monkeypatch):
+    _, col, _ = entorno
+    sin_seccion = NOTA.replace("## Qué significa para tu negocio", "## Otra cosa")
+    _con_tareas(monkeypatch, [sin_seccion], correccion="")
+    assert g.generar_nota(["autopartes"])["success"]
+    assert "## Otra cosa" in col.docs[0]["contenido"] and col.docs[0]["calidad"]["problemas"] == ["sin_implicancias"]
+
+
+def test_el_largo_elegido_llega_al_prompt(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"], largo="corto")
+    assert "entre 500 y 700 palabras" in llamadas["system"] and col.docs[0]["largo"] == "corto"
+    g.generar_nota(["autopartes"], puntapie_url="https://alephee.com/x")
+    assert "entre 700 y 1000 palabras" in llamadas["system"]          # medio por defecto, también con puntapié
+
+
+def test_la_nota_guarda_lo_que_costo(entorno, monkeypatch):
+    from afterdrive.ia import consumo
+    _, col, _ = entorno
+
+    def completar(system, user, **kw):
+        consumo.registrar(kw.get("tarea", ""), "modelo-x", 1000, 1000)
+        return PLAN if kw.get("tarea") == "planificacion" else NOTA
+
+    monkeypatch.setattr(llm, "completar", completar)
+    g.generar_nota(["autopartes"])
+    costo = col.docs[0]["costo"]
+    assert costo["llamadas"] == 2 and set(costo["por_tarea"]) == {"planificacion", "redaccion"}
+    assert costo["total_usd"] > 0
+    # Lo que se gasta fuera de la nota no se le suma.
+    consumo.registrar("clasificacion", "modelo-x", 1000, 1000)
+    assert col.docs[0]["costo"]["llamadas"] == 2

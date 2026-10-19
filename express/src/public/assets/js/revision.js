@@ -104,7 +104,23 @@ function lista(items, clase) {
     + items.map(function(x) { return '<li>' + escHtml(x) + '</li>'; }).join('') + '</ul>';
 }
 
+var NOMBRE_TAREA = { redaccion: 'redacción', correccion: 'corrección', planificacion: 'plan', evaluacion: 'evaluación',
+                     clasificacion: 'fichas', embeddings: 'vectores', general: 'otras' };
+
+function pintarCosto(nota, contenedor) {
+  var c = nota.costo;
+  if (!c) return;
+  var usd = function(x) { return 'USD ' + x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }); };
+  var html = c.llamadas
+    ? '<p><strong>' + usd(c.total_usd) + '</strong>' + (c.estimado ? ' aprox.' : '') + ' en ' + c.llamadas + ' llamadas a la API paga.</p>'
+      + lista(Object.entries(c.por_tarea).sort(function(a, b) { return b[1] - a[1]; })
+          .map(function(e) { return (NOMBRE_TAREA[e[0]] || e[0]) + ': ' + usd(e[1]); }), 'seo')
+    : '<p class="revision-ok">Sin costo: se generó con un proveedor gratuito.</p>';
+  contenedor.appendChild(bloqueRevision('Costo de esta nota', html));
+}
+
 function pintarRevisionNota(nota, contenedor) {
+  pintarCosto(nota, contenedor);
   var v = nota.verificacion;
   if (v && v.total !== undefined) {
     var ok = (v.respaldados || []).length, html;
