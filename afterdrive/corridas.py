@@ -153,6 +153,7 @@ def parametros_guardados() -> dict | None:
         "clientes_ids": fase2.get("clientes") or [],
         "puntapie_url": puntapie_url,
         "persona": gen.get("persona") or "comercial",
+        "largo": gen.get("largo") or "medio",
         "tema": gen.get("tema") or None,
         "regiones": fase2.get("regiones") or [],
     }

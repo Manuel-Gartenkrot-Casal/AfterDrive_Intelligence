@@ -201,6 +201,9 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     assert "2 de 3 datos aparecen en las noticias" in lateral.inner_text()
     assert "US$ 80 millones" in lateral.locator(".revision-lista.mal").inner_text()
     assert "Palabra clave: rotación de stock" in lateral.inner_text()
+    assert "Se corrigió porque falló en" in lateral.inner_text()
+    costo = lateral.locator(".revision-bloque", has_text="Costo de esta nota")
+    assert "USD 0,231" in costo.inner_text() and "redacción: USD 0,18" in costo.inner_text()
     lateral.locator("summary", has_text="Ver el plan").click()
     expect(lateral.locator(".revision-criterios ol")).to_contain_text("Qué pasó")
 
@@ -234,3 +237,17 @@ def test_tablero_de_desarrollador(pagina):
     with pagina.expect_response(lambda r: "/api/metricas?dias=7" in r.url):
         pagina.click('#tablero-periodo button[data-dias="7"]')
     expect(pagina.locator("#tablero-periodo button[data-dias='7']")).to_have_attribute("aria-checked", "true")
+
+
+def test_el_largo_de_la_nota_se_guarda(pagina):
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    pagina.select_option("#f2-largo", "corto")
+    barra = pagina.locator("#barra-crear")
+    barra.wait_for(state="visible")
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator("#f2-largo")).to_have_value("corto")
+    pagina.select_option("#f2-largo", "medio")
+    pagina.locator("#barra-crear").locator('[data-accion="guardar"]').click()

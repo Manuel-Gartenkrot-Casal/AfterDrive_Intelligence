@@ -4,6 +4,7 @@ redaccion.py — System prompts de redacción de notas.
 Interfaz:
     system_prompt(persona, region=None, compacto=False, extension=None, directiva="") -> str
     voz(regiones) -> Voz
+    extension(largo) -> str          "corto" | "medio" | "largo" -> rango de palabras
     alephee_url() -> str
     PERSONAS
 
@@ -248,7 +249,19 @@ PERSONAS = {
     },
 }
 
-_EXTENSION_DEFAULT = "entre 900 y 1400 palabras"
+# Largo aproximado de la nota, elegible en Crear nota. Incluye las secciones
+# fijas. Más largo no es mejor: la nota de 1400 palabras repetía ideas.
+LARGOS = {
+    "corto": "entre 500 y 700 palabras",
+    "medio": "entre 700 y 1000 palabras",
+    "largo": "entre 1000 y 1400 palabras",
+}
+LARGO_DEFAULT = "medio"
+_EXTENSION_DEFAULT = LARGOS[LARGO_DEFAULT]
+
+
+def extension(largo: str | None) -> str:
+    return LARGOS.get(largo or "", _EXTENSION_DEFAULT)
 
 
 def _bloque_persona(p: dict) -> str:

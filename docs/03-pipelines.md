@@ -53,7 +53,8 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 | Categorías (obligatorio) | De qué trata la nota |
 | Regiones | Contexto e idioma: Brasil → portugués, Argentina o sin región → español rioplatense, otras de habla hispana → español neutro |
 | Clientes | Empresas que se mencionan como casos reales |
-| Puntapié | Una URL a la que la nota tiene que llevar al lector (600–900 palabras). Sin puntapié: 900–1400 palabras |
+| Puntapié | Una URL a la que la nota tiene que llevar al lector |
+| Largo aproximado | Corto (500–700 palabras), medio (700–1000, por defecto) o largo (1000–1400), con las secciones fijas incluidas. Se elige en Crear nota y queda guardado para la automática |
 | Persona | Estilo de redacción (ver [04 IA](04-ia.md)) |
 | Tema | Opcional, para acotar |
 
@@ -62,7 +63,7 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (65 %), recencia por **fecha de publicación** (25 %) y que no se hayan usado (10 %). Las que ya alimentaron una nota en los **últimos 30 días** quedan para el final: solo entran si no alcanzan las demás. Al prompt va la **ficha** de cada una más un extracto. **Son la única fuente permitida de cifras, empresas y casos.**
 2. **Referencias de estilo**: hasta 2 notas reales por categoría, que además son los **enlaces internos** sugeridos. Se suman hasta 2 **notas propias que el equipo calificó con 4 o 5 estrellas**.
 3. **Calibración** (`calibracion.py`, ver abajo): correcciones del equipo (rechazos, calificaciones bajas, etiquetas que se repiten, ediciones), aciertos y el umbral del evaluador.
-4. **Plan** (`generacion/plan.py`): el modelo propone ángulo, título (máx. 60 caracteres), palabra clave, secciones con qué noticia alimenta cada una e implicancias. Recibe los títulos de las últimas 15 notas para **no repetir su ángulo**. Si el plan falla, la nota se escribe sin plan.
+4. **Plan** (`generacion/plan.py`): el modelo barato (con la API paga, el de evaluación; 4000 tokens) propone ángulo, título (máx. 60 caracteres), palabra clave, secciones con qué noticia alimenta cada una e implicancias. Recibe los títulos de las últimas 15 notas para **no repetir su ángulo**. Si el plan falla, la nota se escribe sin plan.
 5. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región + **secciones fijas**: "Qué significa para tu negocio" con 3 a 5 acciones concretas y "Preguntas frecuentes" con 3 preguntas + reglas de SEO + citas con link a la noticia + CTA con link a Alephee). El pedido lleva noticias, referencias, correcciones, aciertos y el plan.
 6. **Redacción** con el LLM y **saneo** (`ia/saneo.py`): limpia la respuesta y **la descarta si el modelo escribió su razonamiento en vez de la nota**. Lo descartado queda en `notas_descartadas` con el motivo.
 7. **Revisión de la versión**:
@@ -71,9 +72,9 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
    - **Estilo y SEO sin IA** (`generacion/calidad.py`): título, meta description, secciones fijas, huecos tipo "un X%", muletillas de IA, anglicismos, términos de la casa, párrafos largos, palabra clave.
    - **Evaluación** con el LLM (checklist de 9 puntos).
    - **Repetición**: si el vector de la nota se parece a una de las últimas 15 más que `NOTA_PARECIDO_MAX` (0.93), es una repetida.
-8. **Reescritura**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, repetida, o menos lineamientos que el umbral calibrado), se escribe **una vez más** con la lista de problemas. Queda la mejor de las dos.
+8. **Corrección**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, o menos lineamientos que el umbral calibrado), el **modelo de corrección** (`generacion/correccion.py`; con la API paga, el de evaluación, unas 12 veces más barato que el de redacción) recibe la nota y la lista de problemas y devuelve la misma nota con solo eso arreglado. Solo una nota **repetida** se redacta de cero, porque el problema es el ángulo. La corrección se revisa igual que la primera versión y queda la mejor de las dos (`calidad.segundo_intento` dice cuál de los dos caminos se usó).
 9. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
-10. Se guarda en `notas_fase2` como **borrador**, con su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
+10. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
 
 **Manual o automática**
 

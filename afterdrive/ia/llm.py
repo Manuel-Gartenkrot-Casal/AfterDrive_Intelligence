@@ -45,7 +45,12 @@ PROVEEDORES = ("local", "nvidia", "openrouter", "paga")
 
 # Tareas del pipeline que llaman al chat. Solo la API paga las separa en
 # modelos distintos (PAGA_MODEL_<TAREA>); el resto usa un modelo para todo.
-TAREAS = ("clasificacion", "planificacion", "redaccion", "evaluacion")
+TAREAS = ("clasificacion", "planificacion", "redaccion", "correccion", "evaluacion")
+
+# Tareas que, sin modelo propio, usan el de otra tarea en lugar de PAGA_MODEL.
+# El plan y la corrección escriben poco o retocan texto: no necesitan el modelo
+# caro de la redacción, alcanza con el de evaluación.
+RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion"}
 
 
 def paga_configurada(*extra: str) -> bool:
@@ -564,8 +569,9 @@ def completar(
 ) -> str:
     """Envía un system + user prompt al proveedor activo y devuelve el texto.
 
-    tarea ("clasificacion", "redaccion", "evaluacion") elige el modelo cuando
-    el proveedor separa modelos por tarea (API paga); si no, se ignora.
+    tarea (ver TAREAS) elige el modelo cuando el proveedor separa modelos por
+    tarea (API paga): PAGA_MODEL_<TAREA>; si no está, el de RESPALDO_TAREA; si
+    tampoco, PAGA_MODEL. Los demás proveedores la ignoran.
 
     stream=True es para generaciones largas: agrega heartbeat y corta si el
     proveedor queda mudo STREAM_READ_TIMEOUT segundos, pero la interfaz es la
@@ -577,8 +583,10 @@ def completar(
     """
     verificar_cancelacion()
     perfil = replace(_perfil_chat(), tarea=tarea)
-    if perfil.modelos_tarea.get(tarea):
-        perfil = replace(perfil, modelo=perfil.modelos_tarea[tarea], variable_modelo=f"PAGA_MODEL_{tarea.upper()}")
+    for t in (tarea, RESPALDO_TAREA.get(tarea)):
+        if t and perfil.modelos_tarea.get(t):
+            perfil = replace(perfil, modelo=perfil.modelos_tarea[t], variable_modelo=f"PAGA_MODEL_{t.upper()}")
+            break
     if perfil.api == "converse":
         return _completar_converse(perfil, system, user, max_tokens=max_tokens, stream=stream)
     messages = [{"role": "system", "content": system}] if system else []

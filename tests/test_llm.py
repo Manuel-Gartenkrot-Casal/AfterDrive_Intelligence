@@ -399,3 +399,16 @@ def test_cancelada_no_llama_al_proveedor(transporte, openrouter, monkeypatch):
     with pytest.raises(llm.Cancelada):
         llm.completar("s", "u")
     assert t.posts == []
+
+
+def test_plan_y_correccion_usan_el_modelo_de_evaluacion(transporte, paga, monkeypatch):
+    monkeypatch.setenv("PAGA_MODEL_EVALUACION", "barato")
+    monkeypatch.setenv("PAGA_MODEL_REDACCION", "caro")
+    t = transporte([chat("x")] * 4)
+    for tarea in ("planificacion", "correccion", "redaccion", "otra"):
+        llm.completar("s", "u", tarea=tarea)
+    assert [p["json"]["model"] for p in t.posts] == ["barato", "barato", "caro", "modelo-pago"]
+    monkeypatch.setenv("PAGA_MODEL_CORRECCION", "propio")
+    t = transporte([chat("x")])
+    llm.completar("s", "u", tarea="correccion")
+    assert t.posts[0]["json"]["model"] == "propio"

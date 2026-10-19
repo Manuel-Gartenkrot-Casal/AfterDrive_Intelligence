@@ -79,7 +79,8 @@ async function fase2Init() {
         clientes: Array.from(_f2ClientesActivos).sort(),
         puntapie_activo: _f2PuntapieActivo,
         puntapie_url: $('f2-puntapie-url').value.trim(),
-        tema: $('f2-tema').value.trim()
+        tema: $('f2-tema').value.trim(),
+        largo: $('f2-largo').value
       };
     },
     aplicar: function(st) {
@@ -92,6 +93,7 @@ async function fase2Init() {
       pintarPuntapie(st.puntapie_activo);
       $('f2-puntapie-url').value = st.puntapie_url;
       $('f2-tema').value = st.tema;
+      $('f2-largo').value = st.largo || 'medio';
       resumenCrear();
     },
     guardar: async function(st, base) {
@@ -102,9 +104,10 @@ async function fase2Init() {
           puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url
         })
       });
-      if (st.tema !== base.tema) {
+      if (st.tema !== base.tema || st.largo !== base.largo) {
         await pedir('/api/generacion-config', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tema: st.tema })
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ tema: st.tema, largo: st.largo })
         });
       }
     }
@@ -114,13 +117,15 @@ async function fase2Init() {
   form.tomarBase();
   resumenCrear();
   $('f2-persona').addEventListener('change', resumenCrear);
+  $('f2-largo').addEventListener('change', marcarCrear);
 }
 
 function resumenCrear() {
   pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
   pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
   var n = _f2CategoriasActivas.size;
-  $('crear-resumen').textContent = n ? n + (n === 1 ? ' categoría' : ' categorías') + ' · ' + $('f2-persona').selectedOptions[0].textContent : 'Elegí las categorías de tu nota';
+  $('crear-resumen').textContent = n ? n + (n === 1 ? ' categoría' : ' categorías') + ' · ' + $('f2-persona').selectedOptions[0].textContent
+    + ' · ' + $('f2-largo').selectedOptions[0].textContent.split(' (')[0].toLowerCase() : 'Elegí las categorías de tu nota';
 }
 function marcarCrear() { resumenCrear(); if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
 
@@ -163,6 +168,7 @@ async function fase2CargarConfig() {
     if (genD.success) {
       if (genD.persona) $('f2-persona').value = genD.persona;
       if (genD.tema) $('f2-tema').value = genD.tema;
+      if (genD.largo) $('f2-largo').value = genD.largo;
       if (genD.puntapie_url && !d.puntapie_url) $('f2-puntapie-url').value = genD.puntapie_url;
     }
   } catch(e) {}
@@ -402,6 +408,7 @@ async function fase2GenerarStream() {
     clientes: Array.from(_f2ClientesActivos),
     persona: $('f2-persona').value,
     tema: $('f2-tema').value.trim() || null,
+    largo: $('f2-largo').value,
     puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
   };
 
@@ -531,7 +538,8 @@ async function fase2MostrarUltima(id) {
       res.className = 'calidad-resumen' + (cal.fallas_criticas && cal.fallas_criticas.length ? ' con-fallas' : '');
       res.innerHTML = '<strong>' + cal.puntaje + '/9</strong> lineamientos cumplidos'
         + (cal.reescrita_por && cal.reescrita_por.length
-            ? '<span>Se reescribió porque falló en: ' + escHtml(cal.reescrita_por.join(', ').replace(/_/g, ' ')) + '.</span>' : '')
+            ? '<span>' + (cal.segundo_intento === 'correccion' ? 'Se corrigió' : 'Se reescribió') + ' porque falló en: '
+              + escHtml(cal.reescrita_por.join(', ').replace(/_/g, ' ')) + '.</span>' : '')
         + (cal.fallas_criticas && cal.fallas_criticas.length
             ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
       check.appendChild(res);

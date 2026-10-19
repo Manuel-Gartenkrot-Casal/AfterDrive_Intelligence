@@ -3,6 +3,7 @@ consumo.py — Lo que gasta la API paga: un registro por llamada y el tope mensu
 
 Interfaz:
     registrar(tarea, modelo, tokens_entrada, tokens_salida, estimado=False) -> float (USD)
+    medir() -> Medicion        context manager: suma lo que se gasta adentro (el costo de una nota)
     precio_de_modelo(modelo) -> (entrada, salida)
     gastado_mes() -> float
     tope() -> float
@@ -22,8 +23,10 @@ corridas de GitHub Actions.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import os
+import threading
 import time
 
 # USD por 1M de tokens (entrada, salida), ruta US de Bedrock, medidos el
@@ -43,6 +46,7 @@ _VARIABLES = {
     "evaluacion": "PAGA_MODEL_EVALUACION",
     "redaccion": "PAGA_MODEL_REDACCION",
     "planificacion": "PAGA_MODEL_PLANIFICACION",
+    "correccion": "PAGA_MODEL_CORRECCION",
     "general": "PAGA_MODEL",
     "fallback": "PAGA_FALLBACK_MODEL",
     "embeddings": "PAGA_EMB_MODEL",
@@ -87,6 +91,46 @@ def precio_de_modelo(modelo: str) -> tuple[float, float]:
     return _PRECIO_MAXIMO
 
 
+class Medicion:
+    """Lo que se gastó dentro de un `with medir()`: total, por tarea y cantidad de llamadas."""
+
+    def __init__(self):
+        self.por_tarea: dict[str, float] = {}
+        self.llamadas = 0
+        self.estimado = False
+
+    def sumar(self, tarea: str, costo: float, estimado: bool) -> None:
+        self.por_tarea[tarea] = self.por_tarea.get(tarea, 0.0) + costo
+        self.llamadas += 1
+        self.estimado |= estimado
+
+    @property
+    def total(self) -> float:
+        return sum(self.por_tarea.values())
+
+    def como_dict(self) -> dict:
+        return {"total_usd": round(self.total, 4), "por_tarea": {k: round(v, 4) for k, v in self.por_tarea.items()},
+                "llamadas": self.llamadas, "estimado": self.estimado}
+
+
+# Por thread: cada Corrida corre en el suyo y no suma lo de otra.
+_medidores = threading.local()
+
+
+@contextlib.contextmanager
+def medir():
+    """Mide lo que gastan las llamadas pagas hechas en este thread dentro del bloque."""
+    m = Medicion()
+    activos = getattr(_medidores, "activos", None)
+    if activos is None:
+        activos = _medidores.activos = []
+    activos.append(m)
+    try:
+        yield m
+    finally:
+        activos.remove(m)
+
+
 def registrar(tarea: str, modelo: str, tokens_entrada: int, tokens_salida: int, estimado: bool = False) -> float:
     """Guarda una llamada paga y devuelve su costo en USD. Nunca lanza.
 
@@ -110,6 +154,8 @@ def registrar(tarea: str, modelo: str, tokens_entrada: int, tokens_salida: int, 
         # ponytail: se pierde si el proceso se reinicia antes de que Mongo vuelva.
         _sin_registrar[_mes()] = _sin_registrar.get(_mes(), 0.0) + costo
         print(f"[CONSUMO] No se pudo registrar el consumo ({e}); se suma en memoria.", flush=True)
+    for m in getattr(_medidores, "activos", []):
+        m.sumar(tarea or "general", costo, estimado)
     marca = " (estimado)" if estimado else ""
     print(f"  [CONSUMO] {tarea or 'general'}: {tokens_entrada} + {tokens_salida} tokens = USD {costo:.4f}{marca}",
           flush=True)
