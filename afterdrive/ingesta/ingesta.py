@@ -22,8 +22,8 @@ from afterdrive.ingesta.embeddings import texto_para_embedding
 
 
 def clasificar(titulo: str, cuerpo: str) -> dict:
-    # Con la API paga activa (y bien configurada) clasifica siempre GPT: Jev no se consulta.
-    if llm.proveedor_activo() == "paga" and llm.paga_configurada("PAGA_MODEL"):
+    # Con la API paga en uso (configurada y bajo el tope) clasifica ella: Jev no se consulta.
+    if llm.usa_api_paga():
         return lm_studio.clasificar_articulo(titulo, cuerpo)
     veredicto = jev_clasificador.clasificar(titulo, cuerpo)
     if veredicto is not None:

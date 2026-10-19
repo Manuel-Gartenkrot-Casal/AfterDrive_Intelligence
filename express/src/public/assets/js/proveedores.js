@@ -12,8 +12,21 @@ async function checkProviders() {
     if (d.success) {
       updateProviderUI(d.provider);
       log('Proveedor activo: ' + d.provider + ' (' + d.model + ')', 'info');
+      avisarConsumo(d);
     }
   } catch(e) { console.error('Error checking providers:', e); }
+}
+
+// Gasto del mes de la API paga y aviso si se llegó al tope (el chat pasa a NVIDIA).
+function avisarConsumo(d) {
+  if (d.paga_gastado_mes_usd === undefined) return;
+  var resumen = 'API paga: USD ' + d.paga_gastado_mes_usd.toFixed(2) + ' de ' + d.paga_tope_usd + ' este mes';
+  if (d.paga_tope_alcanzado) {
+    log(resumen + '. Tope alcanzado: se usa NVIDIA hasta el mes que viene.', 'error');
+    showToast('Tope mensual de la API paga alcanzado: se usa NVIDIA.', 'error');
+  } else {
+    log(resumen, 'info');
+  }
 }
 
 function updateProviderUI(provider) {
@@ -46,6 +59,7 @@ async function switchProvider(provider) {
     if (d.success) {
       updateProviderUI(provider);
       log('Proveedor cambiado a: ' + provider + ' (' + d.model + ')', 'success');
+      avisarConsumo(d);
     } else {
       log('Error: ' + d.error, 'error');
       showToast(d.error, 'error');

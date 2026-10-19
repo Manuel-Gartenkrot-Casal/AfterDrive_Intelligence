@@ -30,6 +30,11 @@ services:
       - key: OPENROUTER_MODEL
         value: "mistralai/mistral-small-3.1-24b-instruct:free"
       # API paga (AI_PROVIDER=paga). Se cargan a mano en el panel de Render.
+      # Bedrock: Converse con application inference profiles (ver .env.example).
+      - key: PAGA_API
+        value: converse
+      - key: PAGA_TOPE_MENSUAL_USD
+        value: "40"
       - key: PAGA_API_KEY
         sync: false
       - key: PAGA_BASE_URL
