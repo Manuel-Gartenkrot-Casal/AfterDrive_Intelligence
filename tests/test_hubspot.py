@@ -272,3 +272,9 @@ def test_endpoints_imagen_y_vista_previa(api, monkeypatch, base):
     r = c.get(f"/api/historial/vista-previa/notas_fase2/{oid}")
     assert r.status_code == 200 and r.json["imagen"]["url"] == "https://i.com/x.jpg"
     assert c.get("/api/historial/vista-previa/articulos/" + oid).status_code == 400
+
+
+def test_preparar_arregla_el_formato_de_notas_viejas():
+    p = hubspot.preparar("# Sube **15%** la venta\nTexto:\n- a\n- b\n\n*Meta con **negrita**.*")
+    assert p["titulo"] == "Sube 15% la venta" and p["meta"] == "Meta con negrita."
+    assert "<ul>\n<li>a</li>" in p["html"]

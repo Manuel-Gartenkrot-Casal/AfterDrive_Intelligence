@@ -99,6 +99,9 @@ def extraer_datos(nota: str) -> list[tuple[str, str]]:
 
     for m in _NEGRITA.finditer(texto):
         span = m.group(1).strip()
+        inicio_linea = texto.rfind("\n", 0, m.start()) + 1
+        if re.fullmatch(r"\s*(?:[-*+]|\d+[.)])\s*", texto[inicio_linea:m.start()]) and len(span.split()) == 1:
+            continue  # "- **Revisá** tus proveedores": un verbo destacado, no un dato
         if _NUMERO.search(span):
             continue  # la cifra se toma abajo, sola
         palabras = span.split()
@@ -141,6 +144,7 @@ _SYSTEM = """\
 Sos un verificador de datos. Te paso noticias y una lista de datos que aparecen en una nota.
 Para cada dato decí si las noticias lo respaldan (el mismo hecho, aunque esté escrito distinto).
 Un dato que no está en las noticias NO está respaldado, aunque sea verdad en el mundo.
+Si lo que te paso no es un dato (un verbo, una palabra común, un concepto general), marcalo respaldado.
 Respondé solo con este JSON:
 {"datos": [{"dato": "texto tal cual te lo pasé", "respaldado": true/false}]}"""
 
@@ -248,6 +252,11 @@ def sanear_enlaces(nota: str, noticias: list, permitidas: tuple[str, ...] = (),
     return _LINK.sub(reemplazo, nota), quitados
 
 
+def _escapar(titulo: str) -> str:
+    """Título de noticia apto para el texto de un link Markdown."""
+    return re.sub(r"([\\\[\]*_`])", r"\\\1", " ".join((titulo or "").split()))
+
+
 def agregar_fuentes(nota: str, noticias: list, titulo: str = "Fuentes") -> str:
     """Agrega (o reemplaza) la sección de fuentes, antes de la meta description."""
     lineas = nota.rstrip().splitlines()
@@ -269,7 +278,7 @@ def agregar_fuentes(nota: str, noticias: list, titulo: str = "Fuentes") -> str:
     while lineas and not lineas[-1].strip():
         lineas.pop()
     con_url = [n for n in noticias if n.url]
-    bloque = ["", f"## {titulo}", ""] + [f"- [{n.titulo.replace(']', ')')}]({n.url})" for n in con_url] if con_url else []
+    bloque = ["", f"## {titulo}", ""] + [f"- [{_escapar(n.titulo)}]({n.url})" for n in con_url] if con_url else []
     return "\n".join(lineas + bloque + meta)
 
 

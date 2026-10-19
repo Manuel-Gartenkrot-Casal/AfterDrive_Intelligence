@@ -64,7 +64,7 @@ def _normalizar(data: dict, n_noticias: int) -> dict | None:
 
 
 def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: list[str] = (),
-               reglas: list[str] = (), contexto: str = "") -> dict | None:
+               reglas: list[str] = (), contexto: str = "", idioma: str = "") -> dict | None:
     """Plan de la nota, o None si el modelo no devolvió uno válido. Nunca lanza."""
     from afterdrive.ia.lm_studio import _extraer_json
 
@@ -75,6 +75,11 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
         partes.append("## Notas ya publicadas (no repitas su ángulo)\n" + "\n".join(f"- {t}" for t in publicadas))
     if reglas:
         partes.append("## Correcciones del equipo\n" + "\n".join(f"- {r}" for r in reglas))
+    if idioma:
+        # Sin esto el plan salía en español aunque la nota fuera en portugués, y
+        # el título y la palabra clave mezclaban idiomas.
+        partes.append(f"## Idioma\nLa nota se escribe en {idioma}: título, palabra clave, secciones e "
+                      "implicancias van en ese idioma, con la palabra clave que se busca en ese mercado.")
     partes.append("## Pedido\n" + pedido)
     try:
         crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.4,

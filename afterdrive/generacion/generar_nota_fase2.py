@@ -389,7 +389,7 @@ def generar_nota(
     plan_nota = plan.planificar(
         noticias, _pedido(categorias, tema), estructura,
         publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
-        contexto=contexto_noticias.formatear(noticias, max_chars=5000),
+        contexto=contexto_noticias.formatear(noticias, max_chars=5000), idioma=voz.idioma,
     )
     if plan_nota:
         print(f"  Plan: {plan_nota['titulo']}", flush=True)

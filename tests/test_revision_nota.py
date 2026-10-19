@@ -194,3 +194,17 @@ def test_la_ingesta_guarda_la_ficha(monkeypatch):
     monkeypatch.setenv("FICHAS_NOTICIAS", "0")
     monkeypatch.setattr(ingesta.lm_studio, "fichar_articulo", lambda t, c: pytest.fail("fichas apagadas"))
     ingesta.ingerir([{"url": "https://b", "titulo": "t", "cuerpo": "c"}])
+
+
+def test_un_verbo_en_negrita_al_empezar_una_vinieta_no_es_un_dato():
+    # Caso real: "Cadastre", "Priorize"… marcados como datos sin respaldo forzaron una reescritura.
+    datos = verificacion.extraer_datos("## Qué significa\n\n- **Cadastre** a Himla.\n1. **Priorize** filtros.\n\n"
+                                       "**Frasle** cresce. Según **Grupo Tagle**, sí.\n- **Grupo SIMPA** distribuye.")
+    assert [d for d, _ in datos] == ["Frasle", "Grupo Tagle", "Grupo SIMPA"]
+
+
+def test_el_plan_pide_el_idioma_de_la_nota(monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(llm, "completar", lambda s, u, **k: pedidos.append(u) or "nada")
+    plan.planificar(NOTICIAS, "Escribí", [], idioma="portugués de Brasil")
+    assert "La nota se escribe en portugués de Brasil" in pedidos[0]
