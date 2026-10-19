@@ -44,6 +44,14 @@ def test_credenciales_malas_son_401(api, body):
     assert api[0].app.test_client().post("/api/login", json=body).status_code == 401
 
 
+@pytest.mark.parametrize("como_se_pego", ["'{h}'", '"{h}"', "{h}\n", "  '{h}'  "])
+def test_hash_pegado_con_comillas_o_espacios_igual_loguea(api, monkeypatch, como_se_pego):
+    import os
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", como_se_pego.format(h=os.environ["ADMIN_PASSWORD_HASH"]))
+    monkeypatch.setenv("ADMIN_USER", "admin ")
+    assert api[0].app.test_client().post("/api/login", json=OK).status_code == 200
+
+
 def test_body_no_json_es_401(api):
     assert api[0].app.test_client().post("/api/login", data="hola").status_code == 401
 
