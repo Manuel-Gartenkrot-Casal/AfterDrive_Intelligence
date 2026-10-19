@@ -78,13 +78,12 @@ def root():
 
 @app.route("/assets/<path:archivo>")
 def assets(archivo: str):
-    """CSS, JS e imágenes del dashboard. Piden sesión (la guardia de auth.py), como el
-    dashboard, salvo la imagen del login.
+    """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
 
     no-cache: el navegador revalida con el ETag, así un deploy nuevo se ve sin
     tener que forzar la recarga.
     """
-    if not archivo.endswith((".css", ".js", ".webp")):
+    if not archivo.endswith((".css", ".js")):
         return jsonify({"success": False, "error": "Recurso no encontrado"}), 404
     resp = send_from_directory(os.path.join(_STATIC_DIR, "assets"), archivo)
     resp.headers["Cache-Control"] = "no-cache"

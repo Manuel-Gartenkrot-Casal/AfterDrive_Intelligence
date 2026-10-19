@@ -176,44 +176,27 @@ body {
 .header.active::after { opacity: 1; animation: scanline 1.8s linear infinite; }
 @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-.header-brand { display: flex; align-items: center; gap: var(--s4); min-width: 0; }
+.header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
-/* Logo de AfterDrive: "AD" con la raya del color de la marca. Se adapta al
-   tema: claro sobre claro, grafito sobre oscuro (igual en el login y la pestaña). */
+/* Isologo de AfterDrive: el ícono original de Alephee, siempre en su rosa,
+   con "afterdrive" y la bajada en el color de texto de cada tema. */
 .header-logo {
-  width: 52px; height: 52px;
+  height: 48px;
   flex-shrink: 0;
-  border-radius: 13px;
-  display: grid; place-items: center;
-  padding-bottom: 6px;
-  background: var(--logo-fondo);
-  box-shadow: 0 0 0 1px var(--logo-borde);
-  color: var(--logo-texto);
-  font-family: var(--font);
-  font-weight: 700;
-  font-size: 1.15rem;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  position: relative;
+  color: #E0566F;
 }
-.header-logo::before {
-  content: '';
-  position: absolute; left: 14px; right: 14px; bottom: 10px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--brand);
-}
+.header-logo svg { display: block; height: 100%; width: auto; }
 .header-logo.pulse { animation: logoPulse 0.6s var(--ease-out); }
-@keyframes logoPulse { 50% { transform: scale(0.94); box-shadow: var(--raised-xs); } }
+@keyframes logoPulse { 50% { transform: scale(0.94) rotate(-20deg); } }
 
 .header-title {
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.85;
   color: var(--text-hi);
 }
-.header-title span { color: var(--brand); font-weight: 500; }
+.header-title span { display: block; margin-top: 5px; padding-left: 2px; font-size: 0.72rem; font-weight: 500; letter-spacing: 0; line-height: 1.1; color: var(--text-mid); }
 .header-subtitle { font-size: 0.8125rem; color: var(--text-lo); margin-top: 2px; }
 
 .header-right { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; justify-content: flex-end; }
@@ -1572,11 +1555,9 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 @media (max-width: 640px) {
   .app-container { padding: 12px 12px 110px; }
   .header { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 12px; margin-bottom: 12px; }
-  .header-logo { width: 36px; height: 36px; }
-  .header-logo { border-radius: 10px; font-size: 0.85rem; padding-bottom: 4px; }
-  .header-logo::before { left: 10px; right: 10px; bottom: 7px; height: 2px; }
-  .header-title { font-size: 1.05rem; }
-  .header-subtitle { display: none; }
+  .header-logo { height: 38px; }
+
+  .header-title { font-size: 1.45rem; }
   .header-right { gap: 8px; margin-left: auto; }
   .theme-toggle { width: 36px; height: 36px; }
   .status-pill { padding: 10px; }
@@ -2012,8 +1993,9 @@ i.serie-2 { background: var(--serie-2); }
 /* Con una corrida en curso: barrido en el encabezado, logo latiendo y
    barras de actividad junto a "Corridas". */
 body.trabajando .header::after { opacity: 1; animation: scanline 1.8s linear infinite; }
-body.trabajando .header-logo { animation: logoLatido 1.6s ease-in-out infinite; }
-@keyframes logoLatido { 50% { transform: scale(0.94); } }
+/* Con una corrida en curso, la rueda del logo gira. */
+body.trabajando .header-logo svg { animation: logoGira 2.4s linear infinite; }
+@keyframes logoGira { to { transform: rotate(360deg); } }
 body.trabajando .status-dot::after { animation-duration: 1.1s; }
 .nav-actividad { display: none; align-items: flex-end; gap: 2px; height: 12px; margin-left: auto; }
 .nav-actividad i { display: block; width: 3px; height: 100%; border-radius: 2px; background: var(--brand); transform-origin: bottom; animation: ecualizador 900ms ease-in-out infinite; }

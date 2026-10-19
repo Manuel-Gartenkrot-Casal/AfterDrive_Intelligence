@@ -34,8 +34,7 @@ _fallos: dict[str, tuple[int, float]] = {}  # ip -> (cantidad, instante del últ
 _lock = threading.Lock()
 _ahora = time.monotonic
 
-# La imagen del login se ve antes de entrar: es el único asset sin sesión.
-_ABIERTAS = ("/", "/health", "/api/login", "/assets/img/login.webp")
+_ABIERTAS = ("/", "/health", "/api/login")
 _CRON = {("POST", "/api/run-automation"), ("POST", "/api/run-generacion")}
 
 
