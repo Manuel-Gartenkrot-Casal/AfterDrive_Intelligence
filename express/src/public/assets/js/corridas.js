@@ -83,6 +83,7 @@ var _leyendoCorridas = false;
 async function pintarActividad(d) {
   var c = d.en_curso || d.pendientes[0];
   $('inicio-actividad').textContent = c ? c.etiqueta + ' · ' + NOMBRE_ESTADO[c.estado] : 'Todo al día. No hay tareas en curso.';
+  $('inicio-actividad').dataset.estado = c ? c.estado : 'ok';
   $('inicio-recientes').innerHTML = d.recientes.slice(0, 3).map(function(it) {
     return filaCorrida(it, hace(it.fin));
   }).join('') || '<p class="corridas-vacio">Las tareas terminadas aparecerán acá.</p>';
@@ -127,7 +128,11 @@ async function actualizarCorridas() {
 
   var actual = $('corrida-actual');
   if (!d.en_curso) {
-    actual.innerHTML = '<p class="corridas-vacio">No está corriendo nada.</p>';
+    // Se pinta una sola vez: repintar en cada consulta le saca el foco a los botones.
+    if (!actual.querySelector('.corridas-reposo')) actual.innerHTML = '<div class="corridas-vacio corridas-reposo"><strong>Sistema en reposo</strong>'
+      + '<span>No está corriendo nada. Las búsquedas y notas programadas arrancan solas; también podés pedir una ahora.</span>'
+      + '<span class="corridas-vacio-acciones"><button class="btn btn-sm btn-primary" onclick="irASeccion(\'crear\')">Crear una nota</button>'
+      + '<button class="btn btn-sm" onclick="irASeccion(\'programacion\')">Ver programación</button></span></div>';
     _logActual = { id: null, desde: 0 };
   } else {
     var c = d.en_curso;

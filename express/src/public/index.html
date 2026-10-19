@@ -434,17 +434,21 @@
         <h2 class="section-title" id="corridas-title">Corridas</h2>
         <p class="section-sub">Lo que el sistema está haciendo ahora y lo que espera su turno. Corre una cosa a la vez: lo que pidas mientras tanto queda en cola.</p>
       </div>
-      <div class="corridas-bloque">
-        <h3>Ahora</h3>
-        <div id="corrida-actual"><p class="corridas-vacio">Cargando…</p></div>
-      </div>
-      <div class="corridas-bloque">
-        <h3>En espera</h3>
-        <div id="corridas-pendientes"></div>
-      </div>
-      <div class="corridas-bloque">
-        <h3>Últimas</h3>
-        <div id="corridas-recientes"></div>
+      <div class="corridas-grid">
+        <div class="corridas-col">
+          <div class="corridas-bloque corridas-ahora">
+            <h3>Ahora</h3>
+            <div id="corrida-actual"><p class="corridas-vacio">Cargando…</p></div>
+          </div>
+          <div class="corridas-bloque">
+            <h3>En espera</h3>
+            <div id="corridas-pendientes"></div>
+          </div>
+        </div>
+        <div class="corridas-bloque corridas-ultimas">
+          <h3>Últimas</h3>
+          <div id="corridas-recientes"></div>
+        </div>
       </div>
     </section>
 

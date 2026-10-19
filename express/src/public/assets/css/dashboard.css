@@ -1575,3 +1575,86 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   APP SHELL: en escritorio el área de trabajo ocupa todo el alto de la
+   pantalla. Los paneles se estiran hasta abajo y lo que no entra se
+   desplaza dentro del panel, no la página.
+   --shell-pie deja lugar abajo para el dock de actividad o el HUD.
+   ═══════════════════════════════════════════════════════════════════════ */
+body { --shell-pie: 24px; }
+body:has(.actividad-dock:not([hidden])) { --shell-pie: 96px; }
+body.hud-open.hud-open { --shell-pie: 220px; }
+.app-container, body.hud-open .app-container { padding-bottom: var(--shell-pie); }
+
+@media (min-width: 901px) {
+  /* 20px de margen + 80px de header + 24px de separación */
+  :root { --shell-top: 124px; }
+  .sidebar, .contenido { min-height: calc(100dvh - var(--shell-top) - var(--shell-pie)); }
+  .contenido { display: flex; flex-direction: column; }
+
+  .inicio-trabajo { flex: 1 1 0; min-height: 240px; grid-template-rows: minmax(0, 1fr); }
+  .corridas-seccion { flex: 1 1 0; min-height: 460px; margin-bottom: 0; display: flex; flex-direction: column; }
+  .corridas-grid { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .corridas-ahora .corrida-log { flex: 1; max-height: none; min-height: 160px; }
+}
+
+/* Paneles de Inicio: la lista ocupa el alto disponible del panel. */
+.inicio-panel { display: flex; flex-direction: column; min-height: 0; }
+#inicio-lista, #inicio-recientes { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.inicio-estado { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 0.9rem; color: var(--text-mid); }
+.inicio-estado::before { content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
+.inicio-estado[data-estado="en_curso"]::before { background: var(--info); box-shadow: 0 0 0 4px color-mix(in srgb, var(--info) 18%, transparent); animation: nodeBeat 1.2s ease-in-out infinite; }
+.inicio-estado[data-estado="pendiente"]::before { background: var(--warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
+.inicio-estado:not([data-estado])::before { background: var(--text-lo); box-shadow: none; }
+
+/* Corridas: lo que corre y la cola a la izquierda, el historial a la derecha. */
+.corridas-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 20px; }
+.corridas-col { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+.corridas-bloque { display: flex; flex-direction: column; min-height: 0; padding: 20px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
+.corridas-bloque + .corridas-bloque { margin-top: 0; }
+.corridas-bloque > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.corridas-ahora { flex: 1 1 auto; }
+.corridas-ultimas > #corridas-recientes { overflow-y: auto; scrollbar-width: thin; }
+.corridas-bloque .corrida { background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
+.corrida-actual { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
+
+/* Estados vacíos: ocupan el espacio del panel con un mensaje centrado. */
+:is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 96px; padding: 20px;
+  text-align: center; line-height: 1.5;
+  border: 1px dashed var(--border); border-radius: var(--r-md);
+}
+:is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio::before {
+  content: '';
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 18px no-repeat;
+  border: 1px solid var(--border);
+}
+.corridas-bloque > div > .corridas-vacio { background: var(--bg); }
+.corridas-reposo strong { font-size: 1rem; font-weight: 600; color: var(--text-hi); }
+.corridas-reposo > span { max-width: 46ch; }
+.corridas-reposo::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") !important;
+}
+.corridas-vacio-acciones { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+
+@media (max-width: 1100px) {
+  /* En una sola columna los paneles se apilan: crecen con su contenido. */
+  .corridas-grid { grid-template-columns: minmax(0, 1fr); }
+  .inicio-trabajo, .corridas-grid, .corridas-seccion { flex: 1 0 auto; min-height: 0; grid-template-rows: none; }
+}
+@media (max-width: 640px) {
+  .corridas-bloque { padding: 14px; }
+}
+#inicio-lista > .inicio-fin { margin-top: 12px; }
+#inicio-lista > .inicio-mas { align-self: flex-start; margin-top: 16px; }
+/* La fila de la corrida en curso va dentro de su tarjeta: sin segundo borde. */
+.corridas-bloque .corrida-actual .corrida { border: 0; background: transparent; }
+/* Si falta alto, se achica "Ahora" (su registro se desplaza); la cola se ve entera. */
+.corridas-col > .corridas-bloque:not(.corridas-ahora) { flex-shrink: 0; }
+@media (min-width: 901px) {
+  .corridas-col > .corridas-ahora { flex: 1 1 0; }
+}

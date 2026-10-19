@@ -295,6 +295,9 @@ async function cargarPendientesInicio() {
     $('inicio-lista').innerHTML = d.items.length ? d.items.map(function(it) {
       return '<button class="inicio-nota" onclick="abrirItemHistorial(\'' + it.seccion + '\',\'' + it.coleccion + '\',\'' + it.id + '\')">'
         + '<span>' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
-    }).join('') : '<p class="corridas-vacio">Estás al día. Las nuevas notas aparecerán acá para revisarlas.</p>';
+    }).join('') + (d.total > d.items.length
+      ? '<button class="btn btn-sm inicio-mas" onclick="abrirPendientes()">Ver las ' + d.total + ' notas pendientes</button>'
+      : '<p class="corridas-vacio inicio-fin">No hay más notas para revisar. Las nuevas aparecen acá apenas se generan.</p>')
+      : '<p class="corridas-vacio">Estás al día. Las nuevas notas aparecerán acá para revisarlas.</p>';
   } catch(e) { $('inicio-lista').textContent = 'No se pudieron cargar las notas. Podés reintentar desde Historial.'; }
 }
