@@ -76,6 +76,57 @@ def root():
     return resp
 
 
+@app.route("/ayuda")
+def ayuda():
+    """Documentación dentro de la app. Sin sesión, al login."""
+    from flask import redirect
+    if not auth.hay_sesion():
+        return redirect("/")
+    resp = send_from_directory(_STATIC_DIR, "ayuda.html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# Documentos que se pueden leer desde Ayuda: lista blanca (el slug llega del
+# navegador). slug -> (archivo relativo a la raíz, título, grupo).
+DOCUMENTOS = {
+    "guia-de-uso": ("docs/guia-de-uso.md", "Guía de uso", "Usar la aplicación"),
+    "glosario": ("CONTEXT.md", "Glosario", "Usar la aplicación"),
+    "indice": ("docs/README.md", "Índice técnico", "Documentación técnica"),
+    "01-arquitectura": ("docs/01-arquitectura.md", "Arquitectura", "Documentación técnica"),
+    "02-instalacion": ("docs/02-instalacion.md", "Instalación", "Documentación técnica"),
+    "03-pipelines": ("docs/03-pipelines.md", "Pipelines", "Documentación técnica"),
+    "04-ia": ("docs/04-ia.md", "IA", "Documentación técnica"),
+    "05-base-de-datos": ("docs/05-base-de-datos.md", "Base de datos", "Documentación técnica"),
+    "06-dashboard": ("docs/06-dashboard.md", "Dashboard", "Documentación técnica"),
+    "07-api": ("docs/07-api.md", "API", "Documentación técnica"),
+    "08-despliegue": ("docs/08-despliegue.md", "Despliegue", "Documentación técnica"),
+    "09-deuda-y-mejoras": ("docs/09-deuda-y-mejoras.md", "Deuda y mejoras", "Documentación técnica"),
+    "hubspot-integration": ("docs/hubspot-integration.md", "HubSpot", "Documentación técnica"),
+}
+
+
+@app.route("/api/docs", methods=["GET"])
+def listar_docs():
+    return jsonify({"success": True, "documentos": [
+        {"slug": s, "titulo": t, "grupo": g} for s, (a, t, g) in DOCUMENTOS.items()
+        if os.path.isfile(os.path.join(_RAIZ, a))
+    ]})
+
+
+@app.route("/api/docs/<slug>", methods=["GET"])
+def leer_doc(slug: str):
+    if slug not in DOCUMENTOS:
+        return jsonify({"success": False, "error": "Documento no encontrado."}), 404
+    archivo, titulo, _ = DOCUMENTOS[slug]
+    try:
+        with open(os.path.join(_RAIZ, archivo), encoding="utf-8") as f:
+            texto = f.read()
+    except OSError:
+        return jsonify({"success": False, "error": "Documento no disponible en este servidor."}), 404
+    return jsonify({"success": True, "slug": slug, "titulo": titulo, "markdown": texto})
+
+
 @app.route("/assets/<path:archivo>")
 def assets(archivo: str):
     """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.

@@ -34,7 +34,7 @@ _fallos: dict[str, tuple[int, float]] = {}  # ip -> (cantidad, instante del últ
 _lock = threading.Lock()
 _ahora = time.monotonic
 
-_ABIERTAS = ("/", "/health", "/api/login")
+_ABIERTAS = ("/", "/ayuda", "/health", "/api/login")   # "/" y "/ayuda" deciden ellas qué mostrar sin sesión
 _CRON = {("POST", "/api/run-automation"), ("POST", "/api/run-generacion")}
 
 

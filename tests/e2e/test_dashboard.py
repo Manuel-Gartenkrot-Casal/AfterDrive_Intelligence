@@ -246,3 +246,60 @@ def test_generar_la_imagen_destacada_con_ia(pagina):
     pagina.locator(".previa").wait_for()
     pagina.get_by_role("button", name="Quitar imagen").click()
     pagina.locator(".previa-sin-imagen").wait_for()
+
+
+def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):
+    # Contexto propio: abrir() marca el recorrido como visto en cada carga.
+    from tests.e2e.conftest import _SIN_CDN, CLAVE, USUARIO
+    ctx = navegador.new_context(viewport={"width": 1366, "height": 900})
+    ctx.add_init_script(f"localStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
+    pg = ctx.new_page()
+    pg.errores = []
+    pg.on("pageerror", lambda e: pg.errores.append(str(e)))
+    pg.goto(base_url + "/")
+    pg.fill("#usuario", USUARIO)
+    pg.fill("#password", CLAVE)
+    pg.keyboard.press("Enter")
+    globo = pg.locator(".tour-globo")
+    globo.wait_for()                                       # primera vez: arranca solo
+    assert "Bienvenido" in globo.inner_text() and globo.get_attribute("role") == "dialog"
+    vistos, secciones = [], set()
+    for _ in range(40):
+        vistos.append(pg.locator("#tour-titulo").inner_text())
+        secciones.add(pg.evaluate("location.hash"))
+        if pg.locator("#tour-siguiente").inner_text() == "Terminar":
+            break
+        pg.click("#tour-siguiente")
+        pg.wait_for_function("(t) => document.getElementById('tour-titulo').textContent !== t", arg=vistos[-1])
+    assert vistos[-1] == "Listo" and "Proveedor de IA" not in vistos     # en vista Cliente se saltea
+    assert {"#inicio", "#crear", "#historial", "#programacion", "#fuentes", "#corridas"} <= secciones
+    pg.click("#tour-siguiente")
+    globo.wait_for(state="detached")
+    assert pg.evaluate("localStorage.getItem('ad-tour-visto')") == "1"
+    pg.reload()
+    pg.wait_for_selector(".sidebar")
+    pg.wait_for_timeout(1000)
+    assert pg.locator(".tour-globo").count() == 0        # la segunda vez no
+
+    # Ayuda -> Repetir el tutorial; Esc lo cierra.
+    pg.click("#ayuda-btn")
+    pg.get_by_role("menuitem", name="Repetir el tutorial").click()
+    globo.wait_for()
+    pg.keyboard.press("Escape")
+    globo.wait_for(state="detached")
+    assert pg.errores == []
+    pg.context.close()
+
+
+def test_ayuda_abre_la_documentacion(pagina):
+    pagina.click("#ayuda-btn")
+    with pagina.context.expect_page() as nueva:
+        pagina.get_by_role("menuitem", name="Ver la documentación").click()
+    doc = nueva.value
+    doc.wait_for_load_state()
+    assert doc.url.endswith("/ayuda")
+    expect(doc.locator("#ayuda-doc")).to_contain_text("Guía de uso")
+    expect(doc.locator(".ayuda-indice")).to_contain_text("Documentación técnica")
+    doc.locator(".ayuda-indice a", has_text="Pipelines").click()
+    expect(doc.locator("#ayuda-doc")).to_contain_text("Pipelines")
+    assert doc.url.endswith("#03-pipelines")

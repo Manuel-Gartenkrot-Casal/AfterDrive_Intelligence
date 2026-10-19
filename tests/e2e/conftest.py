@@ -66,7 +66,8 @@ def navegador():
 
 def abrir(navegador, base_url, modo="cliente", ancho=1366, alto=900):
     ctx = navegador.new_context(viewport={"width": ancho, "height": alto})
-    ctx.add_init_script(f"localStorage.setItem('ad-modo','{modo}');{_SIN_CDN}")
+    # El recorrido guiado se abre solo la primera vez: en los tests, ya visto (tiene su propio test).
+    ctx.add_init_script(f"localStorage.setItem('ad-modo','{modo}');localStorage.setItem('ad-tour-visto','1');{_SIN_CDN}")
     pg = ctx.new_page()
     pg.errores = []
     pg.fallidos = []

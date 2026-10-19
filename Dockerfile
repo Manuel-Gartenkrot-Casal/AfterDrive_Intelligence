@@ -28,6 +28,10 @@ COPY afterdrive/ ./afterdrive/
 # Dashboard estático: HTML sin build, Flask lo sirve desde static/
 COPY express/src/public/ ./static/
 
+# Documentación que se lee desde Ayuda en el dashboard (ver DOCUMENTOS en flask_api.py)
+COPY docs/ ./docs/
+COPY CONTEXT.md ./CONTEXT.md
+
 # Cambiar propiedad y usar usuario no-root
 RUN chown -R appuser:appuser /app
 USER appuser

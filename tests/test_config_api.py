@@ -246,3 +246,20 @@ def test_el_largo_llega_al_argv_de_la_generacion(client, monkeypatch):
     assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "largo"}).status_code == 202
     assert "--largo=largo" in encolado["argv"]
     assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "x"}).status_code == 400
+
+
+def test_documentacion_en_ayuda(client, api):
+    c, _ = client
+    docs = c.get("/api/docs").json["documentos"]
+    assert docs[0] == {"slug": "guia-de-uso", "titulo": "Guía de uso", "grupo": "Usar la aplicación"}
+    assert any(d["slug"] == "glosario" for d in docs)
+    d = c.get("/api/docs/guia-de-uso").json
+    assert d["success"] and d["markdown"].startswith("# Guía de uso")
+    assert c.get("/api/docs/..%2F..%2Fetc%2Fpasswd").status_code == 404     # solo la lista blanca
+    assert c.get("/api/docs/no-existe").status_code == 404
+    flask_api, _ = api
+    anonimo = flask_api.app.test_client()
+    assert anonimo.get("/api/docs").status_code == 401
+    r = anonimo.get("/ayuda")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/")
+    assert c.get("/ayuda").status_code == 200

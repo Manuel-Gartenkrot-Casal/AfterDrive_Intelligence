@@ -83,6 +83,18 @@
           <button class="prov-btn" id="prov-paga" onclick="switchProvider('paga')">API paga</button>
         </div>
       </div>
+      <!-- Ayuda: repetir el recorrido guiado o abrir la documentación. -->
+      <div class="sidebar-ayuda">
+        <button type="button" class="ayuda-btn" id="ayuda-btn" aria-haspopup="menu" aria-expanded="false"
+                aria-controls="ayuda-menu" onclick="toggleMenuAyuda()" title="Ayuda">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+          <span>Ayuda</span>
+        </button>
+        <div class="ayuda-menu" id="ayuda-menu" role="menu" aria-label="Ayuda" hidden>
+          <button type="button" role="menuitem" onclick="iniciarTour()">Repetir el tutorial</button>
+          <a role="menuitem" href="/ayuda" target="_blank" rel="noopener" onclick="cerrarMenuAyuda()">Ver la documentación</a>
+        </div>
+      </div>
     </nav>
 
     <main class="contenido" id="contenido" tabindex="-1">
@@ -553,6 +565,7 @@
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
   <script src="/assets/js/revision.js"></script>
+  <script src="/assets/js/tour.js"></script>
   <script src="/assets/js/arranque.js"></script>
 </body>
 </html>

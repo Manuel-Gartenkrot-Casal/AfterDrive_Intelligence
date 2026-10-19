@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ayuda · AfterDrive Intelligence</title>
+  <!-- Versión fija + SRI: si el CDN sirviera otro archivo, el navegador no lo ejecuta. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("ad-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/css/dashboard.css">
+  <style>
+    .ayuda-pagina { max-width: 1180px; margin: 0 auto; padding: var(--s5); }
+    .ayuda-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
+    .ayuda-cabecera h1 { font-size: 1.35rem; font-weight: 600; }
+    .ayuda-cabecera h1 span { color: var(--brand); font-weight: 500; }
+    .ayuda-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s6); align-items: start; }
+    .ayuda-indice { position: sticky; top: var(--s5); padding: var(--s3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+    .ayuda-grupo { font-size: 0.7rem; font-weight: 600; color: var(--text-lo); text-transform: uppercase; letter-spacing: 0.06em; margin: var(--s3) 8px var(--s2); }
+    .ayuda-grupo:first-child { margin-top: 4px; }
+    .ayuda-indice a { display: block; padding: 8px 10px; border-radius: var(--r-md); color: var(--text-mid); text-decoration: none; font-size: 0.9rem; }
+    .ayuda-indice a:hover { background: var(--well); color: var(--text-hi); }
+    .ayuda-indice a[aria-current="page"] { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+    .ayuda-doc { padding: var(--s6); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); color: var(--text-mid); line-height: 1.65; min-width: 0; }
+    .ayuda-doc:focus { outline: none; }
+    .ayuda-doc h1 { font-size: 1.6rem; color: var(--text-hi); margin-bottom: var(--s4); letter-spacing: -0.02em; }
+    .ayuda-doc h2 { font-size: 1.2rem; color: var(--text-hi); margin: var(--s6) 0 var(--s3); }
+    .ayuda-doc h3 { font-size: 1rem; color: var(--text-hi); margin: var(--s5) 0 var(--s2); }
+    .ayuda-doc p, .ayuda-doc ul, .ayuda-doc ol, .ayuda-doc pre, .ayuda-doc table { margin-bottom: var(--s3); }
+    .ayuda-doc ul, .ayuda-doc ol { padding-left: var(--s5); }
+    .ayuda-doc li { margin-bottom: 4px; }
+    .ayuda-doc strong { color: var(--text-hi); }
+    .ayuda-doc a { color: var(--brand); }
+    .ayuda-doc code { font-family: var(--mono); font-size: 0.85em; padding: 1px 5px; border-radius: 5px; background: var(--well); }
+    .ayuda-doc pre { padding: var(--s3); border-radius: var(--r-md); background: var(--well); overflow-x: auto; }
+    .ayuda-doc pre code { padding: 0; background: none; }
+    .ayuda-doc table { width: 100%; border-collapse: collapse; font-size: 0.875rem; display: block; overflow-x: auto; }
+    .ayuda-doc th, .ayuda-doc td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    .ayuda-doc th { color: var(--text-hi); font-weight: 600; }
+    .ayuda-doc blockquote { margin: 0 0 var(--s3); padding: var(--s2) var(--s4); border-left: 3px solid var(--brand); background: var(--well); border-radius: 0 var(--r-md) var(--r-md) 0; }
+    @media (max-width: 900px) {
+      .ayuda-pagina { padding: var(--s4); }
+      .ayuda-layout { grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+      .ayuda-indice { position: static; }
+      .ayuda-doc { padding: var(--s4); }
+    }
+  </style>
+</head>
+<body>
+  <div class="ayuda-pagina">
+    <header class="ayuda-cabecera">
+      <h1>AfterDrive <span>Intelligence</span> · Ayuda</h1>
+      <a class="btn" href="/">Volver al dashboard</a>
+    </header>
+    <div class="ayuda-layout">
+      <nav class="ayuda-indice" id="ayuda-indice" aria-label="Documentos"></nav>
+      <main class="ayuda-doc" id="ayuda-doc" tabindex="-1" aria-live="polite">Cargando…</main>
+    </div>
+  </div>
+  <script src="/assets/js/paginas/ayuda.js"></script>
+</body>
+</html>

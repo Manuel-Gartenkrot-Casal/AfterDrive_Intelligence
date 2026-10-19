@@ -31,4 +31,5 @@ window.onload = function() {
   }, 1200);
 
   setInterval(updateStats, 15000);
+  initAyuda();   // y, la primera vez, el recorrido guiado
 };
