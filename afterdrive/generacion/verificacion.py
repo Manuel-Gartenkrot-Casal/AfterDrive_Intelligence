@@ -99,6 +99,9 @@ def extraer_datos(nota: str) -> list[tuple[str, str]]:
 
     for m in _NEGRITA.finditer(texto):
         span = m.group(1).strip()
+        inicio_linea = texto.rfind("\n", 0, m.start()) + 1
+        if re.fullmatch(r"\s*(?:[-*+]|\d+[.)])\s*", texto[inicio_linea:m.start()]) and len(span.split()) == 1:
+            continue  # "- **Revisá** tus proveedores": un verbo destacado, no un dato
         if _NUMERO.search(span):
             continue  # la cifra se toma abajo, sola
         palabras = span.split()
@@ -141,6 +144,7 @@ _SYSTEM = """\
 Sos un verificador de datos. Te paso noticias y una lista de datos que aparecen en una nota.
 Para cada dato decí si las noticias lo respaldan (el mismo hecho, aunque esté escrito distinto).
 Un dato que no está en las noticias NO está respaldado, aunque sea verdad en el mundo.
+Si lo que te paso no es un dato (un verbo, una palabra común, un concepto general), marcalo respaldado.
 Respondé solo con este JSON:
 {"datos": [{"dato": "texto tal cual te lo pasé", "respaldado": true/false}]}"""
 

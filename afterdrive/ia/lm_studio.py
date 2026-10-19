@@ -108,7 +108,7 @@ Analizar el articulo y validar el cumplimiento de lineamientos de estilo y forma
 3. **vocabulario_negocio** - Usa terminos del sector ("parque automotor", "demanda cautiva", "cadena de valor")?
 4. **tono_b2b** - Lenguaje directo, profesional, enfocado al negocio?
 5. **sin_paywall** - Sin frases de suscripcion o paywalls?
-6. **no_repetitivo** - Cada seccion aporta informacion nueva?
+6. **no_repetitivo** - Cada seccion aporta informacion nueva? Las secciones finales de implicancias para el negocio ("Qué significa para tu negocio") y de preguntas frecuentes retoman ideas de la nota a proposito: no cuentan como repeticion.
 7. **sin_alucinaciones** - No inventa conceptos tecnicos que no existen?
 8. **sin_obviedades** - No explica cosas basicas que el lector B2B ya sabe?
 9. **terminologia_correcta** - Usa los terminos correctos (neumaticos vs llantas, pastillas vs balatas)?

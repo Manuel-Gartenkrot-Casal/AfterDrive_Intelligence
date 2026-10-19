@@ -317,18 +317,26 @@ def _sin_cierre_repetido(lineas: list[str]) -> list[str]:
     return salida
 
 
+# Fin de oración: puntuación + espacio + mayúscula (o apertura). Así "50.000",
+# "2,5" y "www.ambito.com" no se cortan: antes se partía en cada "." y, si había
+# una oración repetida, la línea se rearmaba con ". " y rompía cifras y links.
+_FIN_ORACION = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡\"“(\[*])")
+
+
 def _sin_oraciones_repetidas(linea: str) -> str:
     stripped = linea.strip()
-    if len(stripped) <= 80 or stripped.count(".") < 2:
+    if len(stripped) <= 80:
         return linea
-    oraciones = [o.strip() for o in stripped.split(".") if o.strip()]
+    oraciones = [o for o in _FIN_ORACION.split(stripped) if o.strip()]
+    if len(oraciones) < 2:
+        return linea
     vistas, unicas = set(), []
     for o in oraciones:
-        clave = re.sub(r"\s+", " ", o.lower())
+        clave = re.sub(r"\s+", " ", o.lower()).strip()
         if clave not in vistas:
             vistas.add(clave)
-            unicas.append(o)
-    return ". ".join(unicas) + "." if len(unicas) < len(oraciones) else linea
+            unicas.append(o.strip())
+    return " ".join(unicas) if len(unicas) < len(oraciones) else linea
 
 
 def _sin_secciones_repetidas(lineas: list[str]) -> list[str]:

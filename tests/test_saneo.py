@@ -141,7 +141,7 @@ def test_rechaza_texto_degenerado():
 
 # ── Formato para HubSpot (Python-Markdown no perdona lo que marked sí) ────────
 
-from afterdrive.ia.saneo import normalizar_formato  # noqa: E402
+from afterdrive.ia.saneo import _sin_oraciones_repetidas, normalizar_formato  # noqa: E402
 
 
 def test_titulo_y_meta_sin_negritas_ni_etiqueta():
@@ -160,3 +160,16 @@ def test_normalizar_no_toca_lo_que_ya_esta_bien_ni_el_codigo():
     assert normalizar_formato(bien) == bien
     codigo = "```\nlinea\n- no es lista\n```"
     assert normalizar_formato(codigo) == codigo
+
+
+def test_quitar_oraciones_repetidas_no_rompe_cifras_ni_links():
+    # Caso real (nota Chery Himla): "50.000" salía "50. 000" y los links "https://www. ambito. com".
+    linea = ("El cupo de 50.000 unidades se mantuvo y el tope subió de u$s16.000 a u$s35.000. "
+             "Zuppi proyecta 515.000 unidades, según [declaraciones](https://www.ambito.com/autos/a-n1). "
+             "Geely evalúa una planta, [según confirmó](https://www.ambito.com/autos/b-n2). "
+             "Zuppi proyecta 515.000 unidades, según [declaraciones](https://www.ambito.com/autos/a-n1).")
+    out = _sin_oraciones_repetidas(linea)
+    assert "50.000" in out and "u$s35.000" in out and "https://www.ambito.com/autos/b-n2" in out
+    assert out.count("Zuppi proyecta") == 1
+    sin_repetir = linea.rsplit(" Zuppi", 1)[0]
+    assert _sin_oraciones_repetidas(sin_repetir) == sin_repetir
