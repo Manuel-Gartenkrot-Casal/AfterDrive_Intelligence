@@ -123,3 +123,11 @@ def test_tokens_de_todas_las_llamadas_y_gasto_solo_pago(base):
     clasif = next(x for x in t["por_tarea"] if x["tarea"] == "clasificacion")
     assert clasif["llamadas"] == 2 and clasif["cortadas"] == 1
     assert r["gasto"]["mes_usd"] == 0.3     # la llamada de NVIDIA no suma gasto
+
+
+def test_periodo_anterior_para_la_variacion(base):
+    a = metricas.resumen(1, base=base)["anterior"]       # ayer
+    assert a["guardados"] == 1 and a["escritas"] == 1 and a["descartados"] == 0
+    assert metricas.resumen(14, base=base)["anterior"]["guardados"] == 1   # el de hace 20 días
+    t = metricas.resumen(14, base=base)["tokens"]
+    assert len(t["llamadas_por_dia"]) == 14 and sum(t["llamadas_por_dia"]) == t["llamadas"]

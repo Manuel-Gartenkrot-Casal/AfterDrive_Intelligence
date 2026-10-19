@@ -79,7 +79,7 @@ function contarHasta(el, duracion) {
 
 /* ── Entrada escalonada de las tarjetas de cada sección ──────────────── */
 var TARJETAS = '.tablero-card, .stat-card, .inicio-panel, .hero-cliente, .agenda-card, .fuentes-panel,'
-  + ' .corridas-bloque, .fase2-grupo, .hist-item, .kpi';
+  + ' .corridas-bloque, .fase2-grupo, .hist-item, .kpi, .indicador';
 
 function entradaEscalonada(seccion) {
   document.querySelectorAll('.contenido > [data-seccion="' + seccion + '"]').forEach(function(bloque) {

@@ -4,10 +4,11 @@
 
    Los datos vienen de /api/metricas (afterdrive/metricas.py). Los gráficos
    son SVG armados a mano, al ancho real del contenedor, con un tooltip por
-   columna. Azul = lo que se guardó, naranja = lo que se descartó: la misma
-   codificación en todos los gráficos (paleta validada para daltonismo en
-   los dos temas). El estado de las corridas no usa verde/rojo como color de
-   serie: va con ícono y texto. */
+   columna. Arriba, una fila de indicadores con su variación contra el
+   período anterior (`anterior` en la respuesta). Rojo de la marca = lo que
+   se guardó o escribió, azul = lo que se descartó: la misma codificación en
+   todos los gráficos (paleta validada para daltonismo en los dos temas). El
+   estado de las corridas y del gasto va siempre con ícono y texto. */
 
 var _tablero = { dias: 14, datos: null, pedido: 0 };
 var _NUM = new Intl.NumberFormat('es-AR');
@@ -128,6 +129,114 @@ function _columnas(el, dias, series) {
         series.slice().reverse().map(function(s) { return _filaTooltip(s.clase, s.nombre, _NUM.format(s.valores[i])); }).join(''));
     });
     h.addEventListener('mouseleave', function() { h.classList.remove('activo'); _ocultarTooltip(); });
+  });
+}
+
+/* ── Indicadores (fila de arriba) ────────────────────────────────────── */
+// Línea fina por día, con el último punto marcado y un tooltip por día.
+function _sparkline(el, dias, valores, formato) {
+  var ancho = Math.max(120, el.clientWidth), alto = 40, pad = 4;
+  var max = Math.max.apply(null, valores.concat([1])), n = valores.length;
+  var x = function(i) { return pad + (ancho - 2 * pad) * (n > 1 ? i / (n - 1) : 0.5); };
+  var y = function(v) { return pad + (alto - 2 * pad) * (1 - v / max); };
+  var linea = valores.map(function(v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); }).join('');
+  var banda = (ancho - 2 * pad) / Math.max(1, n - 1);
+  el.innerHTML = '<svg width="' + ancho + '" height="' + alto + '" aria-hidden="true">' +
+    '<path class="spark-area" d="' + linea + 'L' + x(n - 1) + ',' + (alto - pad) + 'L' + x(0) + ',' + (alto - pad) + 'Z"/>' +
+    '<path class="spark-linea" pathLength="1" d="' + linea + '"/>' +
+    '<circle class="spark-punto" cx="' + x(n - 1) + '" cy="' + y(valores[n - 1]) + '" r="3.5"/>' +
+    '<line class="spark-guia" y1="' + pad + '" y2="' + (alto - pad) + '" x1="-9" x2="-9"/>' +
+    valores.map(function(_, i) {
+      return '<rect class="hit" data-i="' + i + '" x="' + (x(i) - banda / 2) + '" y="0" width="' + banda + '" height="' + alto + '"/>';
+    }).join('') + '</svg>';
+  var guia = el.querySelector('.spark-guia');
+  el.querySelectorAll('.hit').forEach(function(h) {
+    h.addEventListener('mousemove', function(ev) {
+      var i = +h.dataset.i;
+      guia.setAttribute('x1', x(i)); guia.setAttribute('x2', x(i));
+      _mostrarTooltip(ev, '<div class="tt-titulo">' + _diaLargo(dias[i]) + '</div><div class="tt-fila"><span>' + formato(valores[i]) + '</span></div>');
+    });
+    h.addEventListener('mouseleave', function() { guia.setAttribute('x1', -9); guia.setAttribute('x2', -9); _ocultarTooltip(); });
+  });
+}
+
+// Variación contra el período anterior del mismo largo. bueno: 'sube', 'baja' o null (neutral).
+function _variacion(actual, anterior, bueno, dias) {
+  var contra = '<span class="var-contra">vs ' + dias + ' días previos</span>';
+  if (!anterior && !actual) return '<p class="indicador-var var-igual">Sin datos ' + contra + '</p>';
+  if (!anterior) return '<p class="indicador-var var-igual"><span aria-hidden="true">●</span> Nuevo ' + contra + '</p>';
+  var pct = Math.round((actual - anterior) * 100 / anterior);
+  if (!pct) return '<p class="indicador-var var-igual"><span aria-hidden="true">=</span> Igual ' + contra + '</p>';
+  var sube = pct > 0, clase = !bueno ? 'var-igual' : (sube === (bueno === 'sube') ? 'var-bien' : 'var-mal');
+  return '<p class="indicador-var ' + clase + '"><span aria-hidden="true">' + (sube ? '▲' : '▼') + '</span> ' +
+    '<span class="sr-only">' + (sube ? 'Subió' : 'Bajó') + ' </span>' + _NUM.format(Math.abs(pct)) + '% ' + contra + '</p>';
+}
+
+function _pastilla(nv) {
+  return '<span class="pastilla ' + nv.clase + '"><span aria-hidden="true">' + nv.icono + '</span> ' + nv.texto + '</span>';
+}
+
+function _indicador(o) {
+  return '<article class="indicador' + (o.destacado ? ' indicador-destacado' : '') + '">' +
+    '<header class="indicador-cabeza"><h3>' + o.titulo + '</h3></header>' +
+    '<p class="indicador-valor">' + o.valor + (o.unidad ? '<small>' + o.unidad + '</small>' : '') + '</p>' +
+    // El estado va en la misma línea que la variación de los otros: así las cifras quedan alineadas.
+    (o.variacion || '<p class="indicador-var">' + o.pastilla + '</p>') +
+    (o.medidor !== undefined
+      ? '<div class="medidor ' + (o.nivel || '') + '" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(o.medidor) +
+        '" aria-label="' + o.titulo + '"><span style="width:' + Math.min(100, o.medidor) + '%"></span></div>'
+      : '<div class="indicador-spark" data-spark="' + o.spark + '"></div>') +
+    '<p class="indicador-pie">' + o.pie + '</p>' +
+  '</article>';
+}
+
+function _pintarIndicadores(d) {
+  var a = d.articulos, n = d.notas, t = d.tokens, g = d.gasto, ant = d.anterior || {}, nd = d.dias.length;
+  var guardados = _suma(a.guardados), descartados = _suma(a.descartados), escritas = _suma(n.escritas);
+  var tokens = t.entrada + t.salida;
+  var tokensDia = t.entrada_por_dia.map(function(e, i) { return e + t.salida_por_dia[i]; });
+  var corr = d.corridas, totalCorr = _suma(corr.map(function(c) { return c.total; })), okCorr = _suma(corr.map(function(c) { return c.ok; }));
+  var exito = totalCorr ? okCorr / totalCorr : null, nvCorr = _nivel(exito);
+  var usado = g.tope_usd ? g.mes_usd / g.tope_usd : 0;
+  var nvGasto = usado >= 1 ? { clase: 'nivel-err', icono: '✕', texto: 'tope alcanzado' }
+              : usado >= 0.7 ? { clase: 'nivel-warn', icono: '!', texto: 'atención' }
+              : { clase: 'nivel-ok', icono: '✓', texto: 'en orden' };
+  var tasa = guardados + descartados ? descartados / (guardados + descartados) : 0;
+  var tasaAnt = (ant.guardados || 0) + (ant.descartados || 0) ? ant.descartados / (ant.guardados + ant.descartados) : 0;
+  var pp = Math.round((tasa - tasaAnt) * 100);
+
+  var series = [a.guardados, n.escritas, a.descartados, tokensDia];
+  var formatos = [
+    function(v) { return _plural(v, 'artículo guardado', 'artículos guardados'); },
+    function(v) { return _plural(v, 'nota escrita', 'notas escritas'); },
+    function(v) { return _plural(v, 'descartado', 'descartados'); },
+    function(v) { return _NUM.format(v) + ' tokens'; },
+  ];
+  var el = $('indicadores');
+  el.innerHTML = [
+    _indicador({ titulo: 'Artículos guardados', valor: _NUM.format(guardados), destacado: true,
+      variacion: _variacion(guardados, ant.guardados, 'sube', nd), spark: 0,
+      pie: _NUM1.format(guardados / nd) + ' por día en promedio' }),
+    _indicador({ titulo: 'Notas escritas', valor: _NUM.format(escritas),
+      variacion: _variacion(escritas, ant.escritas, 'sube', nd), spark: 1,
+      pie: _plural(_suma(n.descartadas), 'versión descartada', 'versiones descartadas') }),
+    _indicador({ titulo: 'Descarte del filtro', valor: _NUM.format(Math.round(tasa * 100)), unidad: '%',
+      variacion: '<p class="indicador-var var-igual"><span aria-hidden="true">' + (pp > 0 ? '▲' : pp < 0 ? '▼' : '=') + '</span> ' +
+        (pp ? _NUM.format(Math.abs(pp)) + ' pts' : 'Igual') + ' <span class="var-contra">vs ' + nd + ' días previos</span></p>',
+      spark: 2, pie: _plural(descartados, 'artículo descartado', 'artículos descartados') }),
+    _indicador({ titulo: 'Corridas que terminaron bien', valor: exito === null ? '—' : _NUM.format(Math.round(exito * 100)), unidad: exito === null ? '' : '%',
+      pastilla: _pastilla(nvCorr), medidor: exito === null ? 0 : exito * 100, nivel: nvCorr.clase,
+      pie: _plural(totalCorr, 'corrida', 'corridas') + ' en ' + d.ventana_larga + ' días' }),
+    _indicador({ titulo: 'API paga este mes', valor: _USD.format(g.mes_usd),
+      pastilla: _pastilla(nvGasto), medidor: usado * 100, nivel: nvGasto.clase,
+      pie: Math.round(usado * 100) + '% del tope de ' + _USD.format(g.tope_usd) }),
+    _indicador({ titulo: 'Tokens de la IA', valor: (t.estimadas ? '≈ ' : '') + _COMPACTO.format(tokens),
+      variacion: _variacion(tokens, ant.tokens, null, nd), spark: 3,
+      pie: _plural(t.llamadas, 'llamada', 'llamadas') + ' · ' + _plural(t.cortadas, 'cortada', 'cortadas') }),
+  ].join('');
+  el.querySelectorAll('[data-spark]').forEach(function(s) {
+    var i = +s.dataset.spark;
+    _sparkline(s, d.dias, series[i], formatos[i]);
   });
 }
 
@@ -291,6 +400,7 @@ function _pintarTokens(d) {
 function _pintarTablero() {
   var d = _tablero.datos;
   if (!d) return;
+  _pintarIndicadores(d);
   _pintarArticulos(d);
   _pintarNotas(d);
   _pintarFuentes(d);
@@ -316,7 +426,7 @@ async function cargarTablero() {
     grilla.classList.remove('cargando');
     grilla.classList.add('animar');
     _pintarTablero();
-    grilla.querySelectorAll('.tablero-cifra b, .cifra-grande strong').forEach(function(el) { contarHasta(el, 900); });
+    grilla.querySelectorAll('.indicador-valor, .tablero-cifra b, .cifra-grande strong').forEach(function(el) { contarHasta(el, 900); });
     clearTimeout(_tablero.reloj);
     _tablero.reloj = setTimeout(function() { grilla.classList.remove('animar'); }, 1400);
   } catch (e) {

@@ -9,6 +9,8 @@ Todo sale de colecciones que ya existen, sin guardar nada nuevo:
     corridas                            resultado y duración de cada corrida
     consumo_ia                          tokens de cada llamada a la IA y gasto de la API paga
 
+`anterior` trae los totales del período previo, del mismo largo, para la variación.
+
 Los días se cuentan en hora de Argentina, como la programación. Las fechas
 salen del _id (ObjectId) o del campo de fecha de cada documento, y cada
 consulta se limita al período pedido para no recorrer la base entera.
@@ -187,7 +189,7 @@ def _gasto(b, dias):
 
 def _tokens(b, desde_corto, dias):
     """Tokens de cada llamada a la IA en el período, de todos los proveedores."""
-    entrada_dia, salida_dia = defaultdict(int), defaultdict(int)
+    entrada_dia, salida_dia, llamadas_dia = defaultdict(int), defaultdict(int), defaultdict(int)
     total = {"llamadas": 0, "entrada": 0, "salida": 0, "cortadas": 0, "estimadas": 0}
     por_tarea: dict[str, dict] = {}
     recientes = []
@@ -198,6 +200,7 @@ def _tokens(b, desde_corto, dias):
         dia = _dia(doc.get("fecha"))
         entrada_dia[dia] += e
         salida_dia[dia] += s
+        llamadas_dia[dia] += 1
         t = por_tarea.setdefault(doc.get("tarea") or "general",
                                  {"llamadas": 0, "entrada": 0, "salida": 0, "cortadas": 0, "limite": None})
         for grupo in (total, t):
@@ -213,8 +216,24 @@ def _tokens(b, desde_corto, dias):
         **total,
         "entrada_por_dia": [entrada_dia.get(d, 0) for d in dias],
         "salida_por_dia": [salida_dia.get(d, 0) for d in dias],
+        "llamadas_por_dia": [llamadas_dia.get(d, 0) for d in dias],
         "por_tarea": [{"tarea": k, **v} for k, v in sorted(por_tarea.items(), key=lambda kv: -(kv[1]["entrada"] + kv[1]["salida"]))],
         "recientes": [{**d, "proveedor": d.get("proveedor", "paga")} for d in recientes[:TOP_RECIENTES]],
+    }
+
+
+def _anterior(b, hoy: datetime.date, dias: int) -> dict:
+    """Totales de los `dias` previos al período, para mostrar cuánto subió o bajó cada cifra."""
+    serie = [(hoy - datetime.timedelta(days=i)).isoformat() for i in range(2 * dias - 1, dias - 1, -1)]
+    desde = _inicio_del_dia(hoy - datetime.timedelta(days=2 * dias - 1))
+    a, n, t = _articulos(b, desde, desde, serie), _notas(b, desde, desde, serie), _tokens(b, desde, serie)
+    return {
+        "guardados": sum(a["guardados"]),
+        "descartados": sum(a["descartados"]),
+        "escritas": sum(n["escritas"]),
+        "tokens": sum(t["entrada_por_dia"]) + sum(t["salida_por_dia"]),
+        "llamadas": sum(t["llamadas_por_dia"]),
+        "gasto_usd": round(sum(_gasto(b, serie)["por_dia"]), 4),
     }
 
 
@@ -233,4 +252,5 @@ def resumen(dias: int = 14, base=None) -> dict:
         "corridas": _corridas(b, desde_largo),
         "gasto": _gasto(b, serie),
         "tokens": _tokens(b, desde_corto, serie),
+        "anterior": _anterior(b, hoy, dias),
     }

@@ -26,11 +26,12 @@
   --border-strong: #7A8496;
   --shadow-float: 0 12px 32px rgba(35, 43, 58, 0.14), 0 2px 6px rgba(35, 43, 58, 0.08);
 
-  --brand: #C23E60;
-  --brand-hover: #AE3353;
-  --brand-deep: #9A2B48;
+  /* Rojo de AfterDrive (el de la imagen de la marca y el logo). */
+  --brand: #D3123A;
+  --brand-hover: #B80E31;
+  --brand-deep: #9E0B2A;
   --on-brand: #FFFFFF;
-  --brand-soft: rgba(194, 62, 96, 0.12);
+  --brand-soft: rgba(211, 18, 58, 0.1);
 
   --ok: #17875B;
   --err: #B83232;
@@ -55,11 +56,11 @@
   --border-strong: #6B7486;
   --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-  --brand: #F07A94;
-  --brand-hover: #F595AA;
-  --brand-deep: #E0607D;
+  --brand: #FF5A6E;
+  --brand-hover: #FF7585;
+  --brand-deep: #F03F55;
   --on-brand: #1B1E26;
-  --brand-soft: rgba(240, 122, 148, 0.14);
+  --brand-soft: rgba(255, 90, 110, 0.14);
 
   --ok: #52D6A0;
   --err: #FF8585;
@@ -168,27 +169,30 @@ body {
 
 .header-brand { display: flex; align-items: center; gap: var(--s4); min-width: 0; }
 
+/* Logo de AfterDrive: grafito, letras blancas y la raya roja de la marca,
+   igual en los dos temas (y en el login y la pestaña). */
 .header-logo {
   width: 52px; height: 52px;
   flex-shrink: 0;
-  border-radius: 50%;
+  border-radius: 13px;
   display: grid; place-items: center;
-  background: var(--bg);
-  box-shadow: var(--raised-sm);
-  color: var(--brand);
+  padding-bottom: 6px;
+  background: #141114;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
   font-family: var(--font);
   font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+  line-height: 1;
   position: relative;
-  isolation: isolate;
 }
 .header-logo::before {
   content: '';
-  position: absolute; inset: 7px;
-  z-index: -1;  /* el relleno del pozo va detrás de las letras */
-  border-radius: 50%;
-  box-shadow: var(--inset-sm);
+  position: absolute; left: 14px; right: 14px; bottom: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: #E5173F;
 }
 .header-logo.pulse { animation: logoPulse 0.6s var(--ease-out); }
 @keyframes logoPulse { 50% { transform: scale(0.94); box-shadow: var(--raised-xs); } }
@@ -1555,6 +1559,8 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
   .app-container { padding: 12px 12px 110px; }
   .header { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 12px; margin-bottom: 12px; }
   .header-logo { width: 36px; height: 36px; }
+  .header-logo { border-radius: 10px; font-size: 0.85rem; padding-bottom: 4px; }
+  .header-logo::before { left: 10px; right: 10px; bottom: 7px; height: 2px; }
   .header-title { font-size: 1.05rem; }
   .header-subtitle { display: none; }
   .header-right { gap: 8px; margin-left: auto; }
@@ -1823,12 +1829,14 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 
 /* ═══════════════════════════════════════════════════════════════════════
    TABLERO DE DESARROLLADOR (Inicio): métricas del pipeline (metricas.js).
-   Series: azul = guardado, naranja = descartado. Pasos validados para
-   daltonismo y contraste sobre la superficie de cada tema. El estado de
-   las corridas y del gasto usa ok/warn/err siempre con ícono y texto.
+   Solo la paleta de AfterDrive: rojo de la marca = guardado o escrito,
+   gris neutro = descartado (como el blanco de las barras en un panel de
+   control). El gris no tiene color propio: se distingue por la luminosidad,
+   y siempre va con leyenda, separación de 2px y tooltip. El estado de las
+   corridas y del gasto va con ícono y texto; lo que pide atención, en rojo.
    ═══════════════════════════════════════════════════════════════════════ */
-[data-theme="light"] { --serie-1: #2a78d6; --serie-2: #eb6834; --grilla: #e6e9ee; }
-[data-theme="dark"]  { --serie-1: #3987e5; --serie-2: #d95926; --grilla: #323846; }
+[data-theme="light"] { --serie-1: #D3123A; --serie-2: #8A8186; --grilla: #e6e9ee; }
+[data-theme="dark"]  { --serie-1: #F5334F; --serie-2: #C4BCC0; --grilla: #323846; }
 
 .tablero-dev { margin-bottom: var(--s6); }
 .tablero-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s4); }
@@ -1937,37 +1945,38 @@ i.serie-2 { background: var(--serie-2); }
 .tabla-metricas .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .tabla-metricas .mono { font-family: var(--mono); font-size: 0.72rem; }
 .tabla-metricas td.mono[title] { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-.tabla-metricas .es-cortada { color: var(--err); font-weight: 600; }
+.tabla-metricas .es-cortada { color: var(--brand); font-weight: 600; }
 .marca { display: inline-block; margin-right: 4px; padding: 1px 7px; border-radius: var(--r-pill); border: 1px solid var(--border); font-size: 0.68rem; font-weight: 600; color: var(--text-mid); }
 .marca.es-cortada { border-color: currentColor; }
 @media (max-width: 1100px) {
   .tokens-cuerpo { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* API paga en el selector de proveedor: aparte y en ámbar, porque cuesta
-   plata. Elegirla pide confirmación (proveedores.js). */
+/* API paga en el selector de proveedor: aparte, con borde punteado y el
+   ícono $, porque cuesta plata. Elegida, toma el rojo de la marca. Elegirla
+   pide confirmación (proveedores.js). */
 .provider-toggle .prov-paga {
   display: inline-flex; align-items: center; gap: 6px;
   flex-basis: 100%; justify-content: center;
   margin-top: 4px; padding: 6px 12px;
-  border: 1px dashed color-mix(in srgb, var(--warn) 70%, transparent);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--r-md);
-  color: var(--warn);
+  color: var(--text-hi);
 }
-.provider-toggle .prov-paga:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.provider-toggle .prov-paga:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
 .prov-paga-icono {
   display: grid; place-items: center;
   width: 18px; height: 18px; border-radius: 50%;
-  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  background: #141114; color: #FFFFFF;
   font-size: 0.7rem; font-weight: 700;
 }
 .provider-toggle .prov-paga.active {
-  border-style: solid; border-color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 16%, var(--bg));
-  color: var(--warn); box-shadow: none;
+  border-style: solid; border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand); box-shadow: none;
 }
-.provider-toggle .prov-paga.active .prov-paga-icono { background: var(--warn); color: var(--bg); animation: pagaLatido 2.4s ease-in-out infinite; }
-@keyframes pagaLatido { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--warn) 22%, transparent); } }
+.provider-toggle .prov-paga.active .prov-paga-icono { background: var(--brand); color: #FFFFFF; animation: pagaLatido 2.4s ease-in-out infinite; }
+@keyframes pagaLatido { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 22%, transparent); } }
 
 /* ═══════════════════════════════════════════════════════════════════════
    MOVIMIENTO (animaciones.js). Todo sigue la actividad real; el bloque
@@ -2070,3 +2079,68 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   padding-bottom: var(--s4); margin-bottom: var(--s4); border-bottom: 1px solid var(--border); }
 .previa-generar textarea { resize: vertical; font: inherit; font-size: 0.85rem; margin-bottom: 0; }
 .previa-ayuda { font-size: 0.8rem; color: var(--text-lo); line-height: 1.5; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TABLERO COMO PANEL DE CONTROL: fila de indicadores (cifra grande,
+   variación contra el período anterior, línea por día o medidor) y
+   tarjetas con encabezado en versalitas y la cifra principal destacada.
+   ═══════════════════════════════════════════════════════════════════════ */
+.indicadores { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.indicador {
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  padding: 16px 16px 14px; border-radius: 12px;
+  background: var(--bg); box-shadow: var(--raised);
+}
+.indicador-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px 8px; flex-wrap: wrap; min-height: 2.4em; }
+.indicador-cabeza h3 { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-mid); line-height: 1.35; }
+.indicador-valor { font-size: 1.85rem; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em; color: var(--text-hi); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.indicador-valor small { font-size: 0.95rem; font-weight: 500; color: var(--text-lo); margin-left: 2px; }
+.indicador-var { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 4px; font-size: 0.74rem; font-weight: 600; min-height: 1.2em; }
+.var-bien { color: var(--text-hi); }
+.var-mal { color: var(--brand); }
+.var-igual { color: var(--text-mid); }
+.var-contra { font-weight: 400; color: var(--text-lo); }
+.indicador-spark { height: 40px; margin-top: 4px; }
+.indicador-spark svg { display: block; overflow: visible; }
+.spark-linea { fill: none; stroke: var(--serie-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark-area { fill: var(--serie-1); fill-opacity: 0.1; }
+.spark-punto { fill: var(--serie-1); stroke: var(--bg); stroke-width: 2; }
+.spark-guia { stroke: var(--text-lo); stroke-width: 1; stroke-dasharray: 2 3; }
+.indicador-spark .hit { fill: transparent; }
+.indicador .medidor { margin: 20px 0 16px; }
+.indicador-pie { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.72rem; color: var(--text-lo); }
+
+.pastilla {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 2px 8px; border-radius: var(--r-pill);
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;
+  color: var(--nivel); background: color-mix(in srgb, var(--nivel) 14%, transparent);
+}
+
+.tablero-card { border-radius: 12px; gap: 14px; }
+.tablero-card-head { flex-direction: column; align-items: flex-start; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tablero-card-head h3 { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-mid); }
+.tablero-cifra { font-size: 0.8rem; color: var(--text-lo); }
+.tablero-cifra b { font-size: 1.45rem; letter-spacing: -0.02em; margin-right: 2px; font-variant-numeric: tabular-nums; }
+.grafico .grilla { stroke-dasharray: 3 4; }
+.cifra-grande { border-radius: 10px; }
+.cifra-grande strong { font-variant-numeric: tabular-nums; }
+
+/* En el tablero, los medidores llenan en rojo de la marca y el estado se lee
+   en la pastilla: neutra si está en orden, roja si pide atención. */
+.tablero-dev .medidor { background: color-mix(in srgb, var(--text-lo) 22%, transparent); }
+.tablero-dev .medidor > span { background: var(--serie-1); }
+.tablero-dev .nivel-ok, .tablero-dev .nivel-nada { --nivel: var(--text-mid); }
+.tablero-dev .nivel-warn, .tablero-dev .nivel-err { --nivel: var(--brand); }
+.tablero-dev .pastilla.nivel-ok { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.tablero-dev .pastilla.nivel-err { background: var(--brand); color: #FFFFFF; }
+
+.tablero-grid.animar .spark-linea { stroke-dasharray: 1; animation: trazar 1100ms var(--ease-out) both; }
+.tablero-grid.animar .spark-area, .tablero-grid.animar .spark-punto { animation: aparecerSuave 600ms 700ms var(--ease-out) both; }
+@keyframes trazar { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes aparecerSuave { from { opacity: 0; } }
+
+@media (max-width: 1400px) { .indicadores { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .indicadores { grid-template-columns: repeat(2, minmax(0, 1fr)); } .indicador-valor { font-size: 1.5rem; } }
+@media (max-width: 400px) { .indicadores { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .tablero-grid.animar .spark-linea, .tablero-grid.animar .spark-area, .tablero-grid.animar .spark-punto { animation: none; } }

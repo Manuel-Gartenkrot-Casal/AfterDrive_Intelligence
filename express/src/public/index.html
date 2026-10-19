@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AfterDrive Intelligence</title>
   <!-- Logo de la pestaña: inline para que también cargue en el login, sin sesión. -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='31' fill='%23C23E60'/%3E%3Ctext x='32' y='42.5' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='29' font-weight='700' letter-spacing='-1' fill='%23FFFFFF'%3EAD%3C/text%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23141114'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='26' font-weight='700' letter-spacing='-1' fill='%23FFFFFF'%3EAD%3C/text%3E%3Crect x='18' y='45' width='28' height='4' rx='2' fill='%23E5173F'/%3E%3C/svg%3E">
   <!-- Versión fija + SRI: si el CDN sirviera otro archivo, el navegador no lo ejecuta. -->
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
@@ -183,6 +183,7 @@
       </div>
       <p class="tablero-estado" id="tablero-estado" role="status"></p>
       <div class="tablero-grid">
+        <div class="indicadores" id="indicadores" role="group" aria-label="Resumen del período"></div>
         <article class="tablero-card" aria-labelledby="tc-art-t">
           <header class="tablero-card-head">
             <h3 id="tc-art-t">Artículos por día</h3>

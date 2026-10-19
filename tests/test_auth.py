@@ -235,3 +235,10 @@ def test_index_carga_todos_los_js_que_existen():
     cargados = re.findall(r'<script src="/assets/js/([a-z]+\.js)"></script>', html)
     en_disco = sorted(p.name for p in Path("express/src/public/assets/js").glob("*.js"))
     assert sorted(cargados) == en_disco and cargados[0] == "base.js" and cargados[-1] == "arranque.js"
+
+
+def test_la_imagen_del_login_se_ve_sin_sesion(api):
+    c = api[0].app.test_client()
+    r = c.get("/assets/img/login.webp")
+    assert r.status_code == 200 and r.mimetype == "image/webp"
+    assert c.get("/assets/css/dashboard.css").status_code == 401   # el resto sigue pidiendo sesión
