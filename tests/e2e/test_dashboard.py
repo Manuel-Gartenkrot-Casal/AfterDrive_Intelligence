@@ -161,7 +161,13 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
 
     pagina.route("**/api/providers", cambiar)
     pagina.click('.modo-switch button[data-modo="dev"]')
+    # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
+    expect(pagina.locator("#confirmar-titulo")).to_contain_text("API paga")
+    pagina.click("#confirmar-no")
+    assert pedidos == [] and "active" not in (pagina.locator("#prov-paga").get_attribute("class") or "")
+    pagina.click("#prov-paga")
+    pagina.click("#confirmar-si")
     pagina.wait_for_selector("#prov-paga.active")
     assert pedidos == [{"provider": "paga"}]
     assert "active" not in (pagina.locator("#prov-local").get_attribute("class") or "")

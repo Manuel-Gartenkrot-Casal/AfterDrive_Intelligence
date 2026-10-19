@@ -100,11 +100,11 @@ function _columnas(el, dias, series) {
       var arribaSeg = base - h, alturaSeg = Math.max(1, h - gap);
       if (j === visibles.length - 1) {
         var r = Math.min(4, alturaSeg, grosor / 2);   // solo la punta de arriba va redondeada
-        svg += '<path class="' + s.clase + '" d="M' + x + ',' + (base - gap) + 'V' + (arribaSeg + r) +
+        svg += '<path class="' + s.clase + '" style="--i:' + i + ';--base:' + y(0) + 'px" d="M' + x + ',' + (base - gap) + 'V' + (arribaSeg + r) +
           'Q' + x + ',' + arribaSeg + ' ' + (x + r) + ',' + arribaSeg + 'H' + (x + grosor - r) +
           'Q' + (x + grosor) + ',' + arribaSeg + ' ' + (x + grosor) + ',' + (arribaSeg + r) + 'V' + (base - gap) + 'Z"/>';
       } else {
-        svg += '<rect class="' + s.clase + '" x="' + x + '" y="' + arribaSeg + '" width="' + grosor + '" height="' + alturaSeg + '"/>';
+        svg += '<rect class="' + s.clase + '" style="--i:' + i + ';--base:' + y(0) + 'px" x="' + x + '" y="' + arribaSeg + '" width="' + grosor + '" height="' + alturaSeg + '"/>';
       }
       base = arribaSeg;
     });
@@ -302,16 +302,25 @@ function _pintarTablero() {
 
 async function cargarTablero() {
   if (document.documentElement.getAttribute('data-modo') !== 'dev') return;
-  var pedido = ++_tablero.pedido, estado = $('tablero-estado');
+  var pedido = ++_tablero.pedido, estado = $('tablero-estado'), grilla = document.querySelector('.tablero-grid');
   estado.textContent = _tablero.datos ? '' : 'Cargando métricas…';
+  grilla.classList.add('cargando');
   try {
     var d = await pedir('/api/metricas?dias=' + _tablero.dias);
     if (pedido !== _tablero.pedido) return;
     _tablero.datos = d;
     estado.textContent = '';
     $('tablero-sub').textContent = 'Del ' + _diaLargo(d.dias[0]) + ' al ' + _diaLargo(d.dias[d.dias.length - 1]) + ' · hora de Argentina.';
+    // Datos nuevos: las barras crecen y los números cuentan. Al repintar por
+    // un cambio de tamaño de la ventana, no se vuelve a animar.
+    grilla.classList.remove('cargando');
+    grilla.classList.add('animar');
     _pintarTablero();
+    grilla.querySelectorAll('.tablero-cifra b, .cifra-grande strong').forEach(function(el) { contarHasta(el, 900); });
+    clearTimeout(_tablero.reloj);
+    _tablero.reloj = setTimeout(function() { grilla.classList.remove('animar'); }, 1400);
   } catch (e) {
+    grilla.classList.remove('cargando');
     if (pedido === _tablero.pedido) estado.textContent = 'No se pudieron cargar las métricas: ' + e.message;
   }
 }

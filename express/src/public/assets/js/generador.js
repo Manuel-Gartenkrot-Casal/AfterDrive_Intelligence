@@ -401,6 +401,7 @@ async function fase2GenerarStream() {
   cancelar.disabled = true;  // se habilita apenas la cola devuelve el id
   st.className = 'feedback info';
   st.textContent = 'Generando nota...';
+  iniciarPasosNota();
 
   var body = {
     categorias: categorias,
@@ -422,6 +423,7 @@ async function fase2GenerarStream() {
       log(l.trim(), type);
       var paso = pasoGeneracion(l);
       if (paso && !_f2Cancelando) st.textContent = paso;
+      marcarPasoNota(l);
     }, function(d) {
       var t = textoEnCola(d);
       if (_f2Cancelando) return;
@@ -454,6 +456,7 @@ async function fase2GenerarStream() {
     st.className = 'feedback err';
     st.textContent = e.message;
   } finally {
+    terminarPasosNota(exito);
     setBtnLoading(btn, false);
     cancelar.hidden = true;
     _f2Corrida = null;

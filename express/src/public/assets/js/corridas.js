@@ -83,6 +83,7 @@ var _dockLog = { id: null, desde: 0, lineas: [] };
 var _leyendoCorridas = false;
 
 async function pintarActividad(d) {
+  document.body.classList.toggle('trabajando', !!d.en_curso);
   var c = d.en_curso || d.pendientes[0];
   $('inicio-actividad').textContent = c ? c.etiqueta + ' · ' + NOMBRE_ESTADO[c.estado] : 'Todo al día. No hay tareas en curso.';
   $('inicio-actividad').dataset.estado = c ? c.estado : 'ok';

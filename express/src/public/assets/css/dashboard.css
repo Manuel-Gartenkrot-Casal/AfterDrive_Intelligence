@@ -1943,3 +1943,124 @@ i.serie-2 { background: var(--serie-2); }
 @media (max-width: 1100px) {
   .tokens-cuerpo { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* API paga en el selector de proveedor: aparte y en ámbar, porque cuesta
+   plata. Elegirla pide confirmación (proveedores.js). */
+.provider-toggle .prov-paga {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex-basis: 100%; justify-content: center;
+  margin-top: 4px; padding: 6px 12px;
+  border: 1px dashed color-mix(in srgb, var(--warn) 70%, transparent);
+  border-radius: var(--r-md);
+  color: var(--warn);
+}
+.provider-toggle .prov-paga:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.prov-paga-icono {
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  font-size: 0.7rem; font-weight: 700;
+}
+.provider-toggle .prov-paga.active {
+  border-style: solid; border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, var(--bg));
+  color: var(--warn); box-shadow: none;
+}
+.provider-toggle .prov-paga.active .prov-paga-icono { background: var(--warn); color: var(--bg); animation: pagaLatido 2.4s ease-in-out infinite; }
+@keyframes pagaLatido { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--warn) 22%, transparent); } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOVIMIENTO (animaciones.js). Todo sigue la actividad real; el bloque
+   prefers-reduced-motion de más arriba lo apaga.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Entrada escalonada de las tarjetas al abrir una sección. */
+.entra { animation: tarjetaEntra 460ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
+@keyframes tarjetaEntra { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+/* Las tarjetas se levantan un poco al pasar el mouse. */
+.tablero-card, .agenda-card, .inicio-panel, .stat-card, .fuentes-panel {
+  transition: transform var(--t-med) var(--ease-out), box-shadow var(--t-med) var(--ease-out);
+}
+@media (hover: hover) {
+  .tablero-card:hover, .stat-card:hover, .inicio-panel:hover { transform: translateY(-2px); }
+}
+
+/* Con una corrida en curso: barrido en el encabezado, logo latiendo y
+   barras de actividad junto a "Corridas". */
+body.trabajando .header::after { opacity: 1; animation: scanline 1.8s linear infinite; }
+body.trabajando .header-logo { animation: logoLatido 1.6s ease-in-out infinite; }
+@keyframes logoLatido { 50% { transform: scale(0.94); } }
+body.trabajando .status-dot::after { animation-duration: 1.1s; }
+.nav-actividad { display: none; align-items: flex-end; gap: 2px; height: 12px; margin-left: auto; }
+.nav-actividad i { display: block; width: 3px; height: 100%; border-radius: 2px; background: var(--brand); transform-origin: bottom; animation: ecualizador 900ms ease-in-out infinite; }
+.nav-actividad i:nth-child(2) { animation-delay: -300ms; }
+.nav-actividad i:nth-child(3) { animation-delay: -600ms; }
+@keyframes ecualizador { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+body.trabajando .nav-actividad { display: inline-flex; }
+body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
+.nav-badge:not(:empty) { animation: badgeLatido 2.4s ease-in-out infinite; }
+@keyframes badgeLatido { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 25%, transparent); } }
+
+/* Dock de actividad corriendo: franja que avanza arriba. */
+.actividad-dock[data-estado="en_curso"] { overflow: hidden; }
+.actividad-dock[data-estado="en_curso"]::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--info), transparent);
+  background-size: 50% 100%; background-repeat: no-repeat;
+  animation: franja 1.4s linear infinite;
+}
+@keyframes franja { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+/* Pasos de la nota: el actual late, los hechos quedan tildados. */
+.f2-pasos { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin-top: 10px; counter-reset: paso; }
+.f2-pasos li {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px 5px 8px; border-radius: var(--r-pill);
+  border: 1px solid var(--border); background: var(--bg);
+  font-size: 0.75rem; color: var(--text-lo);
+  transition: color var(--t-med), border-color var(--t-med), background var(--t-med);
+}
+.f2-pasos li::before {
+  counter-increment: paso; content: counter(paso);
+  display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--well); font: 600 0.65rem var(--mono); color: var(--text-lo);
+}
+.f2-pasos li.actual { color: var(--text-hi); border-color: var(--info); }
+.f2-pasos li.actual::before { content: ''; background: var(--info); animation: pasoLatido 1s ease-in-out infinite; }
+@keyframes pasoLatido { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--info) 25%, transparent); } }
+.f2-pasos li.hecho { color: var(--text-mid); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.f2-pasos li.hecho::before { content: '✓'; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+.f2-pasos li.fallo { color: var(--err); border-color: var(--err); }
+.f2-pasos li.fallo::before { content: '✕'; background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+
+/* Tablero: brillo mientras carga; barras, medidores y sitios que crecen. */
+.tablero-grid.cargando .tablero-card { position: relative; overflow: hidden; }
+.tablero-grid.cargando .tablero-card::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--text-hi) 6%, transparent) 50%, transparent 70%);
+  background-size: 200% 100%; animation: brillo 1.2s linear infinite;
+}
+@keyframes brillo { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.tablero-grid.animar .grafico :is(.serie-1, .serie-2) {
+  /* La columna entera crece desde la línea del cero, no cada segmento desde el suyo. */
+  transform-box: view-box; transform-origin: 0 var(--base, 100%);
+  animation: crecer 620ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 28ms);
+}
+@keyframes crecer { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.tablero-grid.animar .barra-largo { transform-origin: left; animation: crecerX 700ms var(--ease-out) both; }
+.tablero-grid.animar .barra-fila:nth-child(2) .barra-largo { animation-delay: 60ms; }
+.tablero-grid.animar .barra-fila:nth-child(3) .barra-largo { animation-delay: 120ms; }
+.tablero-grid.animar .barra-fila:nth-child(4) .barra-largo { animation-delay: 180ms; }
+.tablero-grid.animar .barra-fila:nth-child(5) .barra-largo { animation-delay: 240ms; }
+.tablero-grid.animar .barra-fila:nth-child(6) .barra-largo { animation-delay: 300ms; }
+.tablero-grid.animar .medidor > span { transform-origin: left; animation: crecerX 900ms var(--ease-out) both; }
+@keyframes crecerX { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Generando: el botón muestra una franja que avanza. */
+#btn-f2-generar.loading { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.22) 50%, transparent 65%); background-size: 250% 100%; animation: brillo 1.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .entra, .tablero-grid.animar *, .f2-pasos li { animation-delay: 0s !important; }
+}
+.f2-acciones .f2-pasos { flex-basis: 100%; margin-top: 2px; }
+.f2-acciones .f2-pasos[hidden] { display: none; }
