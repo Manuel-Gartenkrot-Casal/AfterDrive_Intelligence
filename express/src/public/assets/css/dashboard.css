@@ -18,60 +18,69 @@
    ═══════════════════════════════════════════════════════════════════════ */
 :root,
 [data-theme="light"] {
-  --canvas: #EDF0F4;
+  /* Paleta de Alephee: rosa #E0566F (un paso más oscuro para texto sobre
+     blanco), violeta oscuro #1B0D31 para la tinta y turquesa #4DF5E6. */
+  --canvas: #F4F2F7;
   --bg: #FFFFFF;
-  --bg-deep: #F3F5F8;
-  --well: #F3F5F8;
-  --border: #DCE1E8;
-  --border-strong: #7A8496;
-  --shadow-float: 0 12px 32px rgba(35, 43, 58, 0.14), 0 2px 6px rgba(35, 43, 58, 0.08);
+  --bg-deep: #F6F4F9;
+  --well: #F6F4F9;
+  --border: #E3DEEB;
+  --border-strong: #7C7290;
+  --shadow-float: 0 12px 32px rgba(27, 13, 49, 0.14), 0 2px 6px rgba(27, 13, 49, 0.08);
 
-  /* Rojo de AfterDrive (el de la imagen de la marca y el logo). */
-  --brand: #D3123A;
-  --brand-hover: #B80E31;
-  --brand-deep: #9E0B2A;
+  --brand: #C93D58;
+  --brand-hover: #B5324C;
+  --brand-deep: #9E2A41;
   --on-brand: #FFFFFF;
-  --brand-soft: rgba(211, 18, 58, 0.1);
+  --brand-soft: rgba(224, 86, 111, 0.12);
+  --turquesa: #0E9C8F;
+  --logo-fondo: #FFFFFF;
+  --logo-texto: #1B0D31;
+  --logo-borde: #E3DEEB;
 
   --ok: #17875B;
   --err: #B83232;
   --warn: #94600A;
-  --info: #3558B8;
+  --info: #0B7F74;
 
-  --text-hi: #232B3A;
-  --text-mid: #465266;
-  --text-lo: #566276;
-  --text-data: #2E3A4F;
-  --hairline: rgba(86, 98, 118, 0.18);
+  --text-hi: #1B0D31;
+  --text-mid: #4A3F5C;
+  --text-lo: #615672;
+  --text-data: #2C2140;
+  --hairline: rgba(97, 86, 114, 0.18);
 
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --canvas: #1A1E26;
-  --bg: #242934;
-  --bg-deep: #1E222B;
-  --well: #1E222B;
-  --border: #343A47;
-  --border-strong: #6B7486;
-  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --canvas: #140C22;
+  --bg: #1E1430;
+  --bg-deep: #180F28;
+  --well: #180F28;
+  --border: #33264A;
+  --border-strong: #6E6187;
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
 
-  --brand: #FF5A6E;
-  --brand-hover: #FF7585;
-  --brand-deep: #F03F55;
-  --on-brand: #1B1E26;
-  --brand-soft: rgba(255, 90, 110, 0.14);
+  --brand: #E0566F;
+  --brand-hover: #E8758A;
+  --brand-deep: #C93D58;
+  --on-brand: #1B0D31;
+  --brand-soft: rgba(224, 86, 111, 0.16);
+  --turquesa: #4DF5E6;
+  --logo-fondo: #1B0D31;
+  --logo-texto: #FFFFFF;
+  --logo-borde: rgba(255, 255, 255, 0.12);
 
   --ok: #52D6A0;
   --err: #FF8585;
   --warn: #F2BE5C;
-  --info: #97AAF7;
+  --info: #4DF5E6;
 
-  --text-hi: #E8EBF1;
-  --text-mid: #BCC3CF;
-  --text-lo: #9DA6B5;
-  --text-data: #D5DBE5;
-  --hairline: rgba(157, 166, 181, 0.16);
+  --text-hi: #EEEAF5;
+  --text-mid: #C2BAD3;
+  --text-lo: #A398B8;
+  --text-data: #DCD5E8;
+  --hairline: rgba(163, 152, 184, 0.16);
 
   color-scheme: dark;
 }
@@ -169,17 +178,17 @@ body {
 
 .header-brand { display: flex; align-items: center; gap: var(--s4); min-width: 0; }
 
-/* Logo de AfterDrive: grafito, letras blancas y la raya roja de la marca,
-   igual en los dos temas (y en el login y la pestaña). */
+/* Logo de AfterDrive: "AD" con la raya del color de la marca. Se adapta al
+   tema: claro sobre claro, grafito sobre oscuro (igual en el login y la pestaña). */
 .header-logo {
   width: 52px; height: 52px;
   flex-shrink: 0;
   border-radius: 13px;
   display: grid; place-items: center;
   padding-bottom: 6px;
-  background: #141114;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
-  color: #FFFFFF;
+  background: var(--logo-fondo);
+  box-shadow: 0 0 0 1px var(--logo-borde);
+  color: var(--logo-texto);
   font-family: var(--font);
   font-weight: 700;
   font-size: 1.15rem;
@@ -192,7 +201,7 @@ body {
   position: absolute; left: 14px; right: 14px; bottom: 10px;
   height: 3px;
   border-radius: 2px;
-  background: #E5173F;
+  background: var(--brand);
 }
 .header-logo.pulse { animation: logoPulse 0.6s var(--ease-out); }
 @keyframes logoPulse { 50% { transform: scale(0.94); box-shadow: var(--raised-xs); } }
@@ -1428,7 +1437,7 @@ html { overflow-x: clip; scrollbar-gutter: stable; }
   color: var(--text-hi);
   box-shadow: var(--shadow-float);
 }
-.confirmar::backdrop { background: rgba(15, 18, 24, 0.45); }
+.confirmar::backdrop { background: rgba(27, 13, 49, 0.5); }
 .confirmar h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: var(--s2); }
 .confirmar p { font-size: 0.875rem; color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
 .confirmar-campo { display: block; width: 100%; margin-top: var(--s3); }
@@ -1437,7 +1446,7 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .confirmar-acciones { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); flex-wrap: wrap; }
 .btn-peligro { background: var(--err); color: #FFFFFF; box-shadow: none; }
 .btn-peligro:hover { background: color-mix(in srgb, var(--err) 88%, #000); }
-[data-theme="dark"] .btn-peligro { color: #1B1E26; }
+[data-theme="dark"] .btn-peligro { color: #1B0D31; }
 
 .fuente-fila { display: flex; align-items: center; gap: var(--s2); padding: 6px 0; border-bottom: 1px solid var(--hairline); }
 .fuente-fila:last-child { border-bottom: 0; }
@@ -1834,14 +1843,14 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 
 /* ═══════════════════════════════════════════════════════════════════════
    TABLERO DE DESARROLLADOR (Inicio): métricas del pipeline (metricas.js).
-   Solo la paleta de AfterDrive: rojo de la marca = guardado o escrito,
-   gris neutro = descartado (como el blanco de las barras en un panel de
-   control). El gris no tiene color propio: se distingue por la luminosidad,
-   y siempre va con leyenda, separación de 2px y tooltip. El estado de las
-   corridas y del gasto va con ícono y texto; lo que pide atención, en rojo.
+   Paleta de Alephee: rosa = guardado o escrito, turquesa = descartado.
+   Pasos validados para daltonismo y contraste en los dos temas; en oscuro
+   la separación del par queda en la franja de 6 a 8, que se cubre con la
+   leyenda, la separación de 2px y el tooltip. El estado de las corridas y
+   del gasto va con ícono y texto; lo que pide atención, en rosa.
    ═══════════════════════════════════════════════════════════════════════ */
-[data-theme="light"] { --serie-1: #D3123A; --serie-2: #8A8186; --grilla: #e6e9ee; }
-[data-theme="dark"]  { --serie-1: #F5334F; --serie-2: #C4BCC0; --grilla: #323846; }
+[data-theme="light"] { --serie-1: #C93D58; --serie-2: #0E9C8F; --grilla: #ECE8F1; }
+[data-theme="dark"]  { --serie-1: #E0566F; --serie-2: #139B8F; --grilla: #2E2342; }
 
 .tablero-dev { margin-bottom: var(--s6); }
 .tablero-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s4); }
@@ -1958,7 +1967,7 @@ i.serie-2 { background: var(--serie-2); }
 }
 
 /* API paga en el selector de proveedor: aparte, con borde punteado y el
-   ícono $, porque cuesta plata. Elegida, toma el rojo de la marca. Elegirla
+   ícono $, porque cuesta plata. Elegida, toma el color de la marca. Elegirla
    pide confirmación (proveedores.js). */
 .provider-toggle .prov-paga {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1972,7 +1981,7 @@ i.serie-2 { background: var(--serie-2); }
 .prov-paga-icono {
   display: grid; place-items: center;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #141114; color: #FFFFFF;
+  background: var(--logo-fondo); color: var(--logo-texto); box-shadow: 0 0 0 1px var(--logo-borde);
   font-size: 0.7rem; font-weight: 700;
 }
 .provider-toggle .prov-paga.active {
@@ -1980,7 +1989,7 @@ i.serie-2 { background: var(--serie-2); }
   background: var(--brand-soft);
   color: var(--brand); box-shadow: none;
 }
-.provider-toggle .prov-paga.active .prov-paga-icono { background: var(--brand); color: #FFFFFF; animation: pagaLatido 2.4s ease-in-out infinite; }
+.provider-toggle .prov-paga.active .prov-paga-icono { background: var(--brand); color: var(--on-brand); animation: pagaLatido 2.4s ease-in-out infinite; }
 @keyframes pagaLatido { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 22%, transparent); } }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2132,14 +2141,14 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .cifra-grande { border-radius: 10px; }
 .cifra-grande strong { font-variant-numeric: tabular-nums; }
 
-/* En el tablero, los medidores llenan en rojo de la marca y el estado se lee
-   en la pastilla: neutra si está en orden, roja si pide atención. */
+/* En el tablero, los medidores llenan con el color de la marca y el estado se
+   lee en la pastilla: neutra si está en orden, de color si pide atención. */
 .tablero-dev .medidor { background: color-mix(in srgb, var(--text-lo) 22%, transparent); }
 .tablero-dev .medidor > span { background: var(--serie-1); }
 .tablero-dev .nivel-ok, .tablero-dev .nivel-nada { --nivel: var(--text-mid); }
 .tablero-dev .nivel-warn, .tablero-dev .nivel-err { --nivel: var(--brand); }
 .tablero-dev .pastilla.nivel-ok { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
-.tablero-dev .pastilla.nivel-err { background: var(--brand); color: #FFFFFF; }
+.tablero-dev .pastilla.nivel-err { background: var(--brand); color: var(--on-brand); }
 
 .tablero-grid.animar .spark-linea { stroke-dasharray: 1; animation: trazar 1100ms var(--ease-out) both; }
 .tablero-grid.animar .spark-area, .tablero-grid.animar .spark-punto { animation: aparecerSuave 600ms 700ms var(--ease-out) both; }

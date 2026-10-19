@@ -4,34 +4,82 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Entrar · AfterDrive Intelligence</title>
-  <!-- Logo de la pestaña: inline para que también cargue en el login, sin sesión. -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23141114'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-size='26' font-weight='700' letter-spacing='-1' fill='%23FFFFFF'%3EAD%3C/text%3E%3Crect x='18' y='45' width='28' height='4' rx='2' fill='%23E5173F'/%3E%3C/svg%3E">
+  <!-- Logo de Alephee en la pestaña: inline para que también cargue en el login, sin sesión. -->
+  <link rel="icon" type="image/png" href="data:image/png;base64,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">
   <link rel="preload" as="image" href="/assets/img/login.webp">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("ad-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <style>
-    /* Identidad de AfterDrive: grafito casi negro, rojo de marca y blanco,
-       con la imagen original de la marca a la izquierda. El login es siempre
-       oscuro, como la imagen; el tema claro/oscuro sigue en el dashboard. */
-    :root {
-      --fondo: #0B090A;
-      --marco: #141113;
-      --linea: rgba(255, 255, 255, 0.07);
-      --campo: #1E191C;
-      --campo-borde: #2E272B;
-      --campo-foco: #231D21;
-      --rojo: #E5173F;
-      --rojo-hover: #C9102F;
-      --rojo-texto: #FF5770;
-      --err: #FF7A8C;
+    /* Paleta de Alephee (rosa, violeta oscuro y turquesa), con la imagen
+       original de AfterDrive a la izquierda. Sigue el tema claro/oscuro del dashboard (misma clave en
+       localStorage), y el logo se adapta a los dos. */
+    :root,
+    [data-theme="light"] {
+      --fondo: #F4F2F7;
+      --marco: #FFFFFF;
+      --linea: #E3DEEB;
+      --campo: #F6F4F9;
+      --campo-borde: #E3DEEB;
+      --campo-borde-hover: #BDB3CC;
+      --campo-foco: #FFFFFF;
+      --marca: #C93D58;
+      --marca-hover: #B5324C;
+      --marca-rgb: 224, 86, 111;
+      --sobre-marca: #FFFFFF;
+      --turquesa-rgb: 77, 245, 230;
+      --err: #B83232;
+      --aviso: #94600A;
+      --text-hi: #1B0D31;
+      --text-mid: #4A3F5C;
+      --text-lo: #615672;
+      --chip: rgba(255, 255, 255, 0.88);
+      --chip-texto: #1B0D31;
+      --chip-sub: #4A3F5C;
+      --logo-fondo: #FFFFFF;
+      --logo-texto: #1B0D31;
+      --logo-borde: #E3DEEB;
+      --sombra: 0 0 0 1px var(--linea), 0 30px 70px -30px rgba(27, 13, 49, 0.35);
+      color-scheme: light;
+    }
+    [data-theme="dark"] {
+      --fondo: #140C22;
+      --marco: #1E1430;
+      --linea: #33264A;
+      --campo: #180F28;
+      --campo-borde: #33264A;
+      --campo-borde-hover: #4D3D68;
+      --campo-foco: #180F28;
+      --marca: #E0566F;
+      --marca-hover: #E8758A;
+      --marca-rgb: 224, 86, 111;
+      --sobre-marca: #1B0D31;
+      --turquesa-rgb: 77, 245, 230;
+      --err: #FF8585;
       --aviso: #F2BE5C;
-      --text-hi: #F6F3F4;
-      --text-mid: #B5ACB0;
-      --text-lo: #8C8287;
+      --text-hi: #EEEAF5;
+      --text-mid: #C2BAD3;
+      --text-lo: #A398B8;
+      --chip: rgba(27, 13, 49, 0.7);
+      --chip-texto: #FFFFFF;
+      --chip-sub: rgba(255, 255, 255, 0.72);
+      --logo-fondo: #1B0D31;
+      --logo-texto: #FFFFFF;
+      --logo-borde: rgba(255, 255, 255, 0.12);
+      --sombra: 0 0 0 1px var(--linea), 0 40px 90px -30px rgba(0, 0, 0, 0.7);
+      color-scheme: dark;
+    }
+    :root {
       --font: 'Outfit', system-ui, sans-serif;
       --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-      color-scheme: dark;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,8 +88,8 @@
 
     body {
       background:
-        radial-gradient(60% 50% at 20% 0%, rgba(229, 23, 63, 0.10), transparent 70%),
-        radial-gradient(50% 40% at 100% 100%, rgba(229, 23, 63, 0.06), transparent 70%),
+        radial-gradient(60% 50% at 20% 0%, rgba(var(--marca-rgb), 0.10), transparent 70%),
+        radial-gradient(50% 40% at 100% 100%, rgba(var(--turquesa-rgb), 0.10), transparent 70%),
         var(--fondo);
       color: var(--text-hi);
       font-family: var(--font);
@@ -55,7 +103,7 @@
     }
 
     :focus { outline: none; }
-    :focus-visible { outline: 2px solid var(--rojo-texto); outline-offset: 3px; }
+    :focus-visible { outline: 2px solid var(--marca); outline-offset: 3px; }
 
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -70,7 +118,7 @@
       padding: 12px;
       border-radius: 24px;
       background: var(--marco);
-      box-shadow: 0 0 0 1px var(--linea), 0 40px 90px -30px rgba(0, 0, 0, 0.8);
+      box-shadow: var(--sombra);
       animation: aparecer 600ms var(--ease-out) both;
     }
 
@@ -100,8 +148,8 @@
       position: absolute; inset: 0;
       z-index: -1;
       background:
-        linear-gradient(180deg, rgba(11, 9, 10, 0.55) 0%, rgba(11, 9, 10, 0) 26%),
-        linear-gradient(0deg, rgba(11, 9, 10, 0.92) 0%, rgba(11, 9, 10, 0.55) 30%, rgba(11, 9, 10, 0) 58%);
+        linear-gradient(180deg, rgba(27, 13, 49, 0.55) 0%, rgba(27, 13, 49, 0) 26%),
+        linear-gradient(0deg, rgba(27, 13, 49, 0.92) 0%, rgba(27, 13, 49, 0.55) 30%, rgba(27, 13, 49, 0) 58%);
     }
 
     .marca {
@@ -109,7 +157,8 @@
       display: flex; align-items: center; gap: 12px;
       padding: 6px 16px 6px 6px;
       border-radius: 16px;
-      background: rgba(11, 9, 10, 0.62);
+      background: var(--chip);
+      color: var(--chip-texto);
       -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
     }
@@ -118,8 +167,9 @@
       flex-shrink: 0;
       border-radius: 11px;
       display: grid; place-items: center;
-      background: #141114;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+      background: var(--logo-fondo);
+      color: var(--logo-texto);
+      box-shadow: 0 0 0 1px var(--logo-borde);
       position: relative;
       font-weight: 700;
       font-size: 1.02rem;
@@ -132,10 +182,10 @@
       position: absolute; left: 12px; right: 12px; bottom: 8px;
       height: 3px;
       border-radius: 2px;
-      background: var(--rojo);
+      background: var(--marca);
     }
     .marca-nombre { font-weight: 600; font-size: 1.05rem; letter-spacing: -0.01em; line-height: 1.15; }
-    .marca-nombre span { display: block; font-weight: 400; font-size: 0.78rem; color: rgba(255, 255, 255, 0.72); letter-spacing: 0.02em; }
+    .marca-nombre span { display: block; font-weight: 400; font-size: 0.78rem; color: var(--chip-sub); letter-spacing: 0.02em; }
 
     .lema-frases { display: grid; max-width: 30ch; }
     .lema-frases p {
@@ -167,7 +217,7 @@
       transition: background 300ms;
     }
     .lema-puntos button[aria-current="true"] { width: 52px; }
-    .lema-puntos button[aria-current="true"]::before { background: var(--rojo); }
+    .lema-puntos button[aria-current="true"]::before { background: var(--marca); }
 
     /* ── Acceso (derecha) ──────────────────────────────────────────────── */
     .acceso {
@@ -188,7 +238,7 @@
       letter-spacing: 0.12em; text-transform: uppercase;
       color: var(--text-mid);
     }
-    .etiqueta::before { content: ''; width: 18px; height: 2px; border-radius: 2px; background: var(--rojo); }
+    .etiqueta::before { content: ''; width: 18px; height: 2px; border-radius: 2px; background: var(--marca); }
 
     h1 {
       margin-top: 14px;
@@ -215,8 +265,8 @@
       transition: border-color 160ms, background 160ms, box-shadow 160ms;
     }
     input::placeholder { color: var(--text-lo); opacity: 1; }
-    input:hover { border-color: #3E353A; }
-    input:focus { border-color: var(--rojo); background: var(--campo-foco); box-shadow: 0 0 0 3px rgba(229, 23, 63, 0.18); }
+    input:hover { border-color: var(--campo-borde-hover); }
+    input:focus { border-color: var(--marca); background: var(--campo-foco); box-shadow: 0 0 0 3px rgba(var(--marca-rgb), 0.2); }
     input:focus-visible { outline: none; }
     .campo-clave input { padding-right: 56px; }
 
@@ -243,17 +293,17 @@
       padding: 12px 20px;
       border: 0;
       border-radius: 10px;
-      background: var(--rojo);
-      color: #FFFFFF;
+      background: var(--marca);
+      color: var(--sobre-marca);
       font-family: var(--font);
       font-size: 1rem;
       font-weight: 600;
       letter-spacing: 0.01em;
       cursor: pointer;
       transition: background 160ms, transform 160ms var(--ease-out), box-shadow 160ms;
-      box-shadow: 0 10px 24px -12px rgba(229, 23, 63, 0.7);
+      box-shadow: 0 10px 24px -12px rgba(var(--marca-rgb), 0.7);
     }
-    .entrar:hover { background: var(--rojo-hover); }
+    .entrar:hover { background: var(--marca-hover); }
     .entrar:active { transform: scale(0.99); }
     .entrar:disabled { cursor: progress; opacity: 0.75; }
 
