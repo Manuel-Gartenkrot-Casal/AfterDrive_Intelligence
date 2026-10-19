@@ -56,6 +56,18 @@
         <li><a class="nav-link" href="#fuentes" data-seccion="fuentes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>Fuentes</a></li>
         <li><a class="nav-link" href="#corridas" data-seccion="corridas"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Corridas<span class="nav-badge" id="nav-badge-corridas"></span></a></li>
       </ul>
+      <!-- Modo API paga: aparte de la configuración, a la vista en las dos vistas. -->
+      <div class="modo-pago" id="modo-pago">
+        <button type="button" class="modo-pago-btn" id="modo-pago-btn" role="switch" aria-checked="false"
+                aria-describedby="modo-pago-detalle" onclick="toggleModoPago()" disabled>
+          <span class="modo-pago-icono" aria-hidden="true">$</span>
+          <span class="modo-pago-texto">
+            <span class="modo-pago-nombre">API paga</span>
+            <span class="modo-pago-detalle" id="modo-pago-detalle">Cargando…</span>
+          </span>
+          <span class="modo-pago-switch" aria-hidden="true"></span>
+        </button>
+      </div>
       <div class="sidebar-pie">
         <span class="sidebar-etiqueta">Vista</span>
         <div class="modo-switch" role="radiogroup" aria-label="Vista">
@@ -68,6 +80,7 @@
           <button class="prov-btn" id="prov-local" onclick="switchProvider('local')">Local</button>
           <button class="prov-btn" id="prov-nvidia" onclick="switchProvider('nvidia')">NVIDIA</button>
           <button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')">OpenRouter</button>
+          <button class="prov-btn" id="prov-paga" onclick="switchProvider('paga')">API paga</button>
         </div>
       </div>
     </nav>

@@ -162,7 +162,7 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
 
     mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
     try:
-        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1))
+        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1, tarea="clasificacion"))
         aprobado = data.get("aprobado", False)
         if isinstance(aprobado, str):  # algunos modelos devuelven "false" entre comillas
             aprobado = aprobado.strip().lower() in ("true", "si", "sí")
@@ -186,6 +186,7 @@ def evaluar_lineamientos(articulo: str) -> dict:
             f"Analizá el siguiente artículo:\n\n{articulo}",
             temperature=0.1,
             max_tokens=1024,
+            tarea="evaluacion",
         )
         return _extraer_json(texto)
     except Exception as e:
@@ -216,7 +217,7 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
 
     crudo = llm.completar(
         get_system_prompt_redactar(persona), mensaje,
-        temperature=llm.ajustes_redaccion().temperatura, max_tokens=4000, stream=True,
+        temperature=llm.ajustes_redaccion().temperatura, max_tokens=4000, stream=True, tarea="redaccion",
     )
     saneo = sanear(crudo)
     if not saneo.ok:

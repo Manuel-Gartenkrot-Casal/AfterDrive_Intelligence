@@ -34,7 +34,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `ejecutor_externo`), `value` |
+| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`), `value` |
 | `corridas` | **La cola y el historial de Corridas** (30 días) | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `ejecutor` (`servidor` / `github`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas), `cancelar_pedido` |
 
 Estados de una Corrida: `pendiente → en_curso → ok | error | cancelada | interrumpida`.
@@ -49,6 +49,7 @@ Definidos en `config_store.py`:
 | `generacion` | Activa, 11:00, cada 1 día, persona `comercial` |
 | `fase2` | Sin categorías: **la nota automática no corre hasta que se guarden** |
 | `provider` | `openrouter` |
+| `modo_pago` | Apagado (`hasta` vacío). Prendido guarda cuándo vence, en UTC |
 | `ejecutor_externo` | Cuándo revisó GitHub Actions qué tocaba correr |
 
 ## Búsqueda

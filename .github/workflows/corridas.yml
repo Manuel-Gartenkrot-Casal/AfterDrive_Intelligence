@@ -4,7 +4,7 @@
 #
 # Está APAGADO hasta que se active: Settings > Secrets and variables > Actions
 #   - Variable  CORRIDAS_EN_GITHUB = true
-#   - Secretos  MONGO_URI, OPENROUTER_API_KEY, NVIDIA_API_KEY
+#   - Secretos  MONGO_URI, OPENROUTER_API_KEY, NVIDIA_API_KEY (y PAGA_API_KEY si se usa la API paga)
 #   - En Render: CORRIDAS_EXTERNAS=github (para que el servidor deje de programarlas)
 # Paso a paso en docs/08-despliegue.md.
 #
@@ -46,6 +46,26 @@ jobs:
       NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL }}
       NVIDIA_EMB_MODEL: ${{ vars.NVIDIA_EMB_MODEL }}
       ATLAS_VECTOR_INDEX: ${{ vars.ATLAS_VECTOR_INDEX }}
+      # API paga (AI_PROVIDER=paga). La key es secreto; el resto, variables.
+      PAGA_API: ${{ vars.PAGA_API }}
+      PAGA_TOPE_MENSUAL_USD: ${{ vars.PAGA_TOPE_MENSUAL_USD || '40' }}
+      PAGA_PRECIO_CLASIFICACION: ${{ vars.PAGA_PRECIO_CLASIFICACION }}
+      PAGA_PRECIO_EVALUACION: ${{ vars.PAGA_PRECIO_EVALUACION }}
+      PAGA_PRECIO_REDACCION: ${{ vars.PAGA_PRECIO_REDACCION }}
+      PAGA_PRECIO_GENERAL: ${{ vars.PAGA_PRECIO_GENERAL }}
+      PAGA_PRECIO_FALLBACK: ${{ vars.PAGA_PRECIO_FALLBACK }}
+      PAGA_PRECIO_EMBEDDINGS: ${{ vars.PAGA_PRECIO_EMBEDDINGS }}
+      CONVERSE_TIMEOUT: ${{ vars.CONVERSE_TIMEOUT || '600' }}
+      PAGA_API_KEY: ${{ secrets.PAGA_API_KEY }}
+      PAGA_BASE_URL: ${{ vars.PAGA_BASE_URL }}
+      PAGA_MODEL: ${{ vars.PAGA_MODEL }}
+      PAGA_FALLBACK_MODEL: ${{ vars.PAGA_FALLBACK_MODEL }}
+      PAGA_MODEL_CLASIFICACION: ${{ vars.PAGA_MODEL_CLASIFICACION }}
+      PAGA_MODEL_EVALUACION: ${{ vars.PAGA_MODEL_EVALUACION }}
+      PAGA_MODEL_REDACCION: ${{ vars.PAGA_MODEL_REDACCION }}
+      PAGA_EMB_MODEL: ${{ vars.PAGA_EMB_MODEL }}
+      PAGA_CAMPO_MAX_TOKENS: ${{ vars.PAGA_CAMPO_MAX_TOKENS || 'max_completion_tokens' }}
+      PAGA_TEMPERATURA: ${{ vars.PAGA_TEMPERATURA || '1' }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

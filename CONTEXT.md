@@ -73,5 +73,9 @@ Lista de Corridas esperando su turno; la que llega mientras otra corre espera en
 _Avoid_: queue, fila
 
 **Proveedor**:
-Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA u OpenRouter.
+Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA, OpenRouter o la API paga.
 _Avoid_: provider, backend, modelo
+
+**Modo pago**:
+Estado en que todo el pipeline usa la API paga por 24 horas como máximo; se prende desde la vista Cliente y se apaga solo.
+_Avoid_: modo premium, API paga activada

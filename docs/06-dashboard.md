@@ -39,6 +39,8 @@ Una barra lateral con secciones; se ve una a la vez.
 
 Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa) y, en Desarrollador, el **proveedor de IA**.
 
+Arriba de eso, separado y en las dos vistas, está el interruptor **API paga**: pone todo el pipeline en la API paga por 24 horas como máximo, con un aviso de costo antes de prenderse y la cuenta regresiva hasta que se apaga solo (ver [04-ia.md](04-ia.md)).
+
 ## Cómo está organizado el código
 
 Lo que más vas a tocar:

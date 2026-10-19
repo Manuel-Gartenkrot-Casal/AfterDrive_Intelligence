@@ -193,7 +193,8 @@ def _pedido_de_correccion(fallas: list[str]) -> str:
 
 def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str, str]:
     """(nota saneada, "", crudo) o (None, motivo, crudo). Lanza ErrorLLM si el proveedor falla."""
-    crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True)
+    crudo = llm.completar(system, user_msg, temperature=ajustes.temperatura, max_tokens=ajustes.max_tokens, stream=True,
+                          tarea="redaccion")
     saneo = sanear(crudo)
     if not saneo.ok:
         return None, saneo.motivo, crudo
@@ -308,15 +309,17 @@ def generar_nota(
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 
+    modelo_emb = llm.modelo_embeddings()  # antes de vectorizar: la etiqueta es del modelo que lo calculó
     emb = llm.embeber([articulo])[0]
     if emb:
         doc["embedding"] = emb
+        doc["embedding_modelo"] = modelo_emb
 
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
-    meta = {k: v for k, v in doc.items() if k != "embedding"}
+    meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo")}
     return {"success": True, "contenido": articulo, "meta": meta}
 
 
@@ -326,11 +329,13 @@ def get_ultima_nota() -> dict | None:
 
 def _validar_entorno() -> None:
     """Falla temprano y con mensaje claro si falta configuración crítica."""
-    provider = os.getenv("AI_PROVIDER", "local")
+    provider = llm.proveedor_activo()
     if provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
         sys.exit("[ERROR] AI_PROVIDER=openrouter pero OPENROUTER_API_KEY no está configurado.")
     if provider == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
         sys.exit("[ERROR] AI_PROVIDER=nvidia pero NVIDIA_API_KEY no está configurado.")
+    if provider == "paga" and not llm.paga_configurada("PAGA_MODEL"):
+        sys.exit("[ERROR] AI_PROVIDER=paga pero falta PAGA_API_KEY, PAGA_BASE_URL o PAGA_MODEL.")
     if not os.getenv("MONGO_URI"):
         sys.exit("[ERROR] MONGO_URI no está configurado.")
 

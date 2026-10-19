@@ -42,7 +42,7 @@ class Noticia:
 
 
 def _coseno(a, b) -> float:
-    if not a or not b:
+    if not a or not b or len(a) != len(b):  # largos distintos = modelos distintos
         return 0.0
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
@@ -121,28 +121,47 @@ def _desde_doc(d: dict) -> Noticia:
 
 
 _CAMPOS = {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
-           "usado_para_articulo": 1}
+           "embedding_modelo": 1, "usado_para_articulo": 1}
 
 
-def _parecidas_en_atlas(col, vec: list[float] | None) -> list[dict]:
+def _parecidas_en_atlas(col, vec: list[float] | None, modelo: str) -> list[dict]:
     """Las noticias más parecidas de TODA la base, con Atlas Vector Search.
 
     Solo si ATLAS_VECTOR_INDEX tiene el nombre del índice. Sin él (o si Atlas
     falla) devuelve [] y alcanza con las recientes: es una mejora, no un
     requisito. El índice se crea en Atlas (ver docs/08-despliegue.md).
+
+    Filtra por embedding_modelo: vectores de otro modelo no se comparan. Para
+    eso el índice declara ese campo como "filter"; con un índice que no lo
+    tiene, Atlas rechaza la búsqueda y se reintenta sin filtro (vector_de()
+    descarta después los de otro modelo).
     """
     indice = os.getenv("ATLAS_VECTOR_INDEX", "").strip()
     if not indice or not vec:
         return []
-    try:
+    busqueda = {
+        "index": indice, "path": "embedding", "queryVector": vec,
+        "numCandidates": CANDIDATOS_VECTOR * 10, "limit": CANDIDATOS_VECTOR,
+        "filter": {"embedding_modelo": {"$eq": modelo}},
+    }
+
+    def _buscar(etapa: dict) -> list[dict]:
         return list(col.aggregate([
-            {"$vectorSearch": {
-                "index": indice, "path": "embedding", "queryVector": vec,
-                "numCandidates": CANDIDATOS_VECTOR * 10, "limit": CANDIDATOS_VECTOR,
-            }},
+            {"$vectorSearch": etapa},
             {"$match": {"cuerpo": {"$exists": True, "$ne": ""}}},
             {"$project": _CAMPOS},
         ]))
+
+    from pymongo.errors import OperationFailure
+
+    try:
+        try:
+            return _buscar(busqueda)
+        except OperationFailure as e:
+            # Atlas rechazó la consulta (índice sin el filter); no es un timeout ni la red.
+            print(f"  [AVISO] Atlas Vector Search rechazó el filtro por modelo ({e}); se reintenta sin filtro. "
+                  "Agregá embedding_modelo como filter al índice (docs/08-despliegue.md).", flush=True)
+        return _buscar({k: v for k, v in busqueda.items() if k != "filter"})
     except Exception as e:
         print(f"  [AVISO] Atlas Vector Search no respondió ({e}); se usan las noticias recientes.", flush=True)
         return []
@@ -157,8 +176,10 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     """
     from afterdrive.db import col_articulos
     from afterdrive.ia import llm
+    from afterdrive.ingesta.embeddings import vector_de
 
     vec = None
+    modelo = llm.modelo_embeddings()  # antes de vectorizar: la etiqueta es del modelo que lo calculó
     try:
         vec = llm.embeber([consulta], tipo="query")[0]
     except Exception as e:
@@ -166,11 +187,16 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
 
     recientes = list(col_articulos.find({"cuerpo": {"$exists": True, "$ne": ""}}, _CAMPOS)
                      .sort("_id", -1).limit(CANDIDATOS))
-    docs = {d["_id"]: d for d in recientes + _parecidas_en_atlas(col_articulos, vec)}
+    docs = {d["_id"]: d for d in recientes + _parecidas_en_atlas(col_articulos, vec, modelo)}
     if not docs:
         return []
+    noticias = []
+    for d in docs.values():
+        n = _desde_doc(d)
+        n.embedding = vector_de(d, modelo)  # vectores de otro modelo no se comparan
+        noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
-    return rankear([_desde_doc(d) for d in docs.values()], vec, ahora)[:limite]
+    return rankear(noticias, vec, ahora)[:limite]
 
 
 def marcar_usadas(noticias: list[Noticia]) -> None:

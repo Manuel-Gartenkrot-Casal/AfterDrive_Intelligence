@@ -25,6 +25,8 @@ os.environ.update(
     ADMIN_USER=USUARIO, ADMIN_PASSWORD_HASH=generate_password_hash(CLAVE), SECRET_KEY="e2e",
     AI_PROVIDER_OVERRIDE="1", AI_PROVIDER="local", MONGO_URI="mongodb://e2e",
     HUBSPOT_TOKEN="pat-e2e", HUBSPOT_BLOG_ID="123",
+    # API paga configurada (a una URL falsa) para poder prender el modo pago.
+    PAGA_API_KEY="pg-e2e", PAGA_BASE_URL="http://127.0.0.1:9/v1", PAGA_MODEL="modelo-e2e",
 )
 
 from afterdrive import corridas, hubspot  # noqa: E402

@@ -7,16 +7,19 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from afterdrive import auth, cola, config_store, scheduler
 from afterdrive.db import col_articulos, db
-from afterdrive.ia import llm
+from afterdrive.ia import llm, modo_pago
 
-# Aplicar el proveedor elegido en el dashboard. llm lee AI_PROVIDER en cada
-# llamada y los subprocesos heredan os.environ, así que alcanza con setearlo.
+# Aplicar el proveedor elegido en el dashboard (y el modo pago, si quedó
+# prendido). llm lee AI_PROVIDER y MODO_PAGO_HASTA en cada llamada y los
+# subprocesos heredan os.environ, así que alcanza con setearlos.
 try:
     _p = config_store.get_provider_config()
     if _p and not os.getenv("AI_PROVIDER_OVERRIDE"):
         os.environ["AI_PROVIDER"] = _p
 except Exception:
     pass
+if not os.getenv("AI_PROVIDER_OVERRIDE"):
+    modo_pago.restaurar()
 
 app = Flask(__name__)
 auth.init_app(app)
@@ -614,7 +617,7 @@ def get_providers():
 
 @app.route("/api/providers", methods=["POST"])
 def set_provider():
-    """Cambiar proveedor de IA (local / nvidia / openrouter)."""
+    """Cambiar proveedor de IA (local / nvidia / openrouter / paga)."""
     body = request.get_json(silent=True) or {}
     provider = body.get("provider", "")
     if not provider:
@@ -623,6 +626,22 @@ def set_provider():
     result = llm.set_proveedor(provider)
     if result.get("success"):
         config_store.set_provider_config(provider)
+        if provider != "paga" and modo_pago.vigente():
+            # Elegir otro proveedor a mano es más explícito que el modo pago: lo apaga.
+            modo_pago.desactivar()
+            result = {"success": True, **llm.estado()}
+    return jsonify(result), 200 if result["success"] else 400
+
+
+@app.route("/api/modo-pago", methods=["POST"])
+def set_modo_pago():
+    """Prende o apaga el modo API paga (como máximo un día). Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    result = modo_pago.activar() if body["activo"] else modo_pago.desactivar()
+    if result.get("success"):
+        result = {"success": True, **llm.estado()}
     return jsonify(result), 200 if result["success"] else 400
 
 

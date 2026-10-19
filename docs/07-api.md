@@ -70,7 +70,8 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET/POST /api/scraping-config` | Hora, frecuencia, activación, artículos por fuente |
 | `GET/POST /api/generacion-config` | Hora, frecuencia, activación, persona, tema |
 | `GET/POST /api/fase2/config` | Categorías, regiones, clientes y puntapié de la nota automática. Solo cambia las claves que vienen |
-| `GET/POST /api/providers` | Proveedor de IA |
+| `GET/POST /api/providers` | Proveedor de IA. El GET informa también el modo pago (`modo_pago_activo`, `modo_pago_hasta`, `modo_pago_restante_s`) y el proveedor elegido en Desarrollador (`provider_base`) |
+| `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes |
 
 **Notas**
 

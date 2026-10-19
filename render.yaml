@@ -29,6 +29,28 @@ services:
         sync: false
       - key: OPENROUTER_MODEL
         value: "mistralai/mistral-small-3.1-24b-instruct:free"
+      # API paga (AI_PROVIDER=paga). Se cargan a mano en el panel de Render.
+      # Bedrock: Converse con application inference profiles (ver .env.example).
+      - key: PAGA_API
+        value: converse
+      - key: PAGA_TOPE_MENSUAL_USD
+        value: "40"
+      - key: PAGA_API_KEY
+        sync: false
+      - key: PAGA_BASE_URL
+        sync: false
+      - key: PAGA_MODEL
+        sync: false
+      - key: PAGA_MODEL_CLASIFICACION
+        sync: false
+      - key: PAGA_MODEL_EVALUACION
+        sync: false
+      - key: PAGA_MODEL_REDACCION
+        sync: false
+      # Embeddings por la API paga: cargar PAGA_EMB_MODEL, pasar EMBEDDINGS_PROVIDER
+      # a "paga" y correr una vez `python -m afterdrive.ingesta.embeddings`.
+      - key: PAGA_EMB_MODEL
+        sync: false
       - key: MONGO_URI
         sync: false
       - key: FORCE_PROFILE
