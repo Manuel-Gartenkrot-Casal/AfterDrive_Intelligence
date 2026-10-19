@@ -130,7 +130,7 @@ async function actualizarCorridas() {
   if (!d.en_curso) {
     // Se pinta una sola vez: repintar en cada consulta le saca el foco a los botones.
     if (!actual.querySelector('.corridas-reposo')) actual.innerHTML = '<div class="corridas-vacio corridas-reposo"><strong>Sistema en reposo</strong>'
-      + '<span>No está corriendo nada. Las búsquedas y notas programadas arrancan solas; también podés pedir una ahora.</span>'
+      + '<span>No está corriendo nada.<span class="reposo-extra"> Las búsquedas y notas programadas arrancan solas; también podés pedir una ahora.</span></span>'
       + '<span class="corridas-vacio-acciones"><button class="btn btn-sm btn-primary" onclick="irASeccion(\'crear\')">Crear una nota</button>'
       + '<button class="btn btn-sm" onclick="irASeccion(\'programacion\')">Ver programación</button></span></div>';
     _logActual = { id: null, desde: 0 };

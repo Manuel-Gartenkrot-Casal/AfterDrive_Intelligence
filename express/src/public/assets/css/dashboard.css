@@ -1512,8 +1512,17 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .inicio-estado { color: var(--text-mid); margin-bottom: 20px; }
 .crear-resumen { flex: 1; font-size: 0.875rem; color: var(--text-mid); min-width: 150px; }
 .fase2-grupos :is(input,select,button) { scroll-margin-top: 140px; }
-.selection-check { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--border-strong); border-radius: 5px; color: transparent; flex-shrink: 0; }
-.active .selection-check { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+/* El tilde se dibuja con CSS: el carácter ✓ en la fuente Outfit se ve como √. */
+.selection-check { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--border-strong); border-radius: 5px; font-size: 0; color: transparent; flex-shrink: 0; transition: background var(--t-fast), border-color var(--t-fast); }
+.selection-check::after {
+  content: '';
+  width: 5px; height: 9px;
+  border: solid var(--on-brand); border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg) scale(0);
+  transition: transform 140ms var(--ease-out);
+}
+.active .selection-check { background: var(--brand); border-color: var(--brand); }
+.active .selection-check::after { transform: translateY(-1px) rotate(45deg) scale(1); }
 .cliente-seleccion { display: block; flex: 1; border: 0; background: transparent; text-align: left; color: inherit; font: inherit; cursor: pointer; min-height: 36px; }
 .cliente-seleccion[aria-pressed="true"]::after { content: ' ✓'; color: var(--brand); }
 .puntapie-toggle { font: inherit; color: var(--text-mid); border: 1px solid var(--border); }
@@ -1637,84 +1646,88 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   APP SHELL: en escritorio el área de trabajo ocupa todo el alto de la
-   pantalla. Los paneles se estiran hasta abajo y lo que no entra se
-   desplaza dentro del panel, no la página.
+   APP SHELL (vista Cliente): en escritorio el área de trabajo ocupa todo
+   el alto de la pantalla. Los paneles se estiran hasta abajo y lo que no
+   entra se desplaza dentro del panel, no la página.
+   La vista Desarrollador conserva la distribución anterior: suma consola y
+   estadísticas debajo y estirar los paneles las encimaba.
    --shell-pie deja lugar abajo para el dock de actividad o el HUD.
    ═══════════════════════════════════════════════════════════════════════ */
-body { --shell-pie: 24px; }
-body:has(.actividad-dock:not([hidden])) { --shell-pie: 96px; }
-body.hud-open.hud-open { --shell-pie: 220px; }
-.app-container, body.hud-open .app-container { padding-bottom: var(--shell-pie); }
+[data-modo="cliente"] body { --shell-pie: 24px; }
+[data-modo="cliente"] body:has(.actividad-dock:not([hidden])) { --shell-pie: 96px; }
+[data-modo="cliente"] body.hud-open.hud-open { --shell-pie: 220px; }
+[data-modo="cliente"] .app-container,
+[data-modo="cliente"] body.hud-open .app-container { padding-bottom: var(--shell-pie); }
 
 @media (min-width: 901px) {
   /* 20px de margen + 80px de header + 24px de separación */
   :root { --shell-top: 124px; }
-  .sidebar, .contenido { min-height: calc(100dvh - var(--shell-top) - var(--shell-pie)); }
-  .contenido { display: flex; flex-direction: column; }
+  [data-modo="cliente"] :is(.sidebar, .contenido) { min-height: calc(100dvh - var(--shell-top) - var(--shell-pie)); }
+  [data-modo="cliente"] .contenido { display: flex; flex-direction: column; }
 
-  .inicio-trabajo { flex: 1 1 0; min-height: 240px; grid-template-rows: minmax(0, 1fr); }
-  .corridas-seccion { flex: 1 1 0; min-height: 460px; margin-bottom: 0; display: flex; flex-direction: column; }
-  .corridas-grid { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
-  .corridas-ahora .corrida-log { flex: 1; max-height: none; min-height: 160px; }
+  [data-modo="cliente"] .inicio-trabajo { flex: 1 1 0; min-height: 240px; grid-template-rows: minmax(0, 1fr); }
+  [data-modo="cliente"] .corridas-seccion { flex: 1 1 0; min-height: 460px; margin-bottom: 0; display: flex; flex-direction: column; }
+  [data-modo="cliente"] .corridas-grid { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  [data-modo="cliente"] .corridas-ahora .corrida-log { flex: 1; max-height: none; min-height: 160px; }
+  [data-modo="cliente"] .corridas-col > .corridas-ahora { flex: 1 1 0; }
 }
 
 /* Paneles de Inicio: la lista ocupa el alto disponible del panel. */
-.inicio-panel { display: flex; flex-direction: column; min-height: 0; }
-#inicio-lista, #inicio-recientes { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
-.inicio-estado { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 0.9rem; color: var(--text-mid); }
-.inicio-estado::before { content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
-.inicio-estado[data-estado="en_curso"]::before { background: var(--info); box-shadow: 0 0 0 4px color-mix(in srgb, var(--info) 18%, transparent); animation: nodeBeat 1.2s ease-in-out infinite; }
-.inicio-estado[data-estado="pendiente"]::before { background: var(--warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
-.inicio-estado:not([data-estado])::before { background: var(--text-lo); box-shadow: none; }
+[data-modo="cliente"] .inicio-panel { display: flex; flex-direction: column; min-height: 0; }
+[data-modo="cliente"] :is(#inicio-lista, #inicio-recientes) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+[data-modo="cliente"] .inicio-estado { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 0.9rem; color: var(--text-mid); }
+[data-modo="cliente"] .inicio-estado::before { content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
+[data-modo="cliente"] .inicio-estado[data-estado="en_curso"]::before { background: var(--info); box-shadow: 0 0 0 4px color-mix(in srgb, var(--info) 18%, transparent); animation: nodeBeat 1.2s ease-in-out infinite; }
+[data-modo="cliente"] .inicio-estado[data-estado="pendiente"]::before { background: var(--warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
+[data-modo="cliente"] .inicio-estado:not([data-estado])::before { background: var(--text-lo); box-shadow: none; }
+[data-modo="cliente"] #inicio-lista > .inicio-fin { margin-top: 12px; }
+#inicio-lista > .inicio-mas { align-self: flex-start; margin-top: 16px; }
 
 /* Corridas: lo que corre y la cola a la izquierda, el historial a la derecha. */
-.corridas-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 20px; }
-.corridas-col { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
-.corridas-bloque { display: flex; flex-direction: column; min-height: 0; padding: 20px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
-.corridas-bloque + .corridas-bloque { margin-top: 0; }
-.corridas-bloque > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.corridas-ahora { flex: 1 1 auto; }
-.corridas-ultimas > #corridas-recientes { overflow-y: auto; scrollbar-width: thin; }
-.corridas-bloque .corrida { background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
-.corrida-actual { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
+[data-modo="cliente"] .corridas-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 20px; }
+[data-modo="cliente"] .corridas-col { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+[data-modo="cliente"] .corridas-bloque { display: flex; flex-direction: column; min-height: 0; padding: 20px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
+[data-modo="cliente"] .corridas-bloque + .corridas-bloque { margin-top: 0; }
+[data-modo="cliente"] .corridas-col > .corridas-bloque:not(.corridas-ahora) { flex-shrink: 0; }
+[data-modo="cliente"] .corridas-bloque > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+[data-modo="cliente"] .corridas-ahora { flex: 1 1 auto; }
+[data-modo="cliente"] .corridas-ultimas > #corridas-recientes { overflow-y: auto; scrollbar-width: thin; }
+[data-modo="cliente"] .corridas-bloque .corrida { background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
+[data-modo="cliente"] .corrida-actual { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--bg); box-shadow: none; border: 1px solid var(--border); }
+/* La fila de la corrida en curso va dentro de su tarjeta: sin segundo borde. */
+[data-modo="cliente"] .corridas-bloque .corrida-actual .corrida { border: 0; background: transparent; }
 
 /* Estados vacíos: ocupan el espacio del panel con un mensaje centrado. */
-:is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio {
+[data-modo="cliente"] :is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio {
   flex: 1 1 auto;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
   min-height: 96px; padding: 20px;
   text-align: center; line-height: 1.5;
   border: 1px dashed var(--border); border-radius: var(--r-md);
 }
-:is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio::before {
+[data-modo="cliente"] :is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio::before {
   content: '';
   width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
   background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 18px no-repeat;
   border: 1px solid var(--border);
 }
-.corridas-bloque > div > .corridas-vacio { background: var(--bg); }
-.corridas-reposo strong { font-size: 1rem; font-weight: 600; color: var(--text-hi); }
-.corridas-reposo > span { max-width: 46ch; }
-.corridas-reposo::before {
+[data-modo="cliente"] .corridas-bloque > div > .corridas-vacio { background: var(--bg); }
+[data-modo="cliente"] .corridas-bloque > div > .corridas-reposo::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") !important;
 }
+.corridas-reposo strong { font-size: 1rem; font-weight: 600; color: var(--text-hi); }
+.corridas-reposo > span { max-width: 46ch; }
 .corridas-vacio-acciones { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+
+/* Vista Desarrollador: la distribución de antes (bloques apilados y textos simples). */
+[data-modo="dev"] .corridas-ultimas { margin-top: var(--s6); }
+[data-modo="dev"] :is(.corridas-reposo strong, .reposo-extra, .corridas-vacio-acciones, .inicio-fin) { display: none; }
 
 @media (max-width: 1100px) {
   /* En una sola columna los paneles se apilan: crecen con su contenido. */
-  .corridas-grid { grid-template-columns: minmax(0, 1fr); }
-  .inicio-trabajo, .corridas-grid, .corridas-seccion { flex: 1 0 auto; min-height: 0; grid-template-rows: none; }
+  [data-modo="cliente"] .corridas-grid { grid-template-columns: minmax(0, 1fr); }
+  [data-modo="cliente"] :is(.inicio-trabajo, .corridas-grid, .corridas-seccion) { flex: 1 0 auto; min-height: 0; grid-template-rows: none; }
 }
 @media (max-width: 640px) {
-  .corridas-bloque { padding: 14px; }
-}
-#inicio-lista > .inicio-fin { margin-top: 12px; }
-#inicio-lista > .inicio-mas { align-self: flex-start; margin-top: 16px; }
-/* La fila de la corrida en curso va dentro de su tarjeta: sin segundo borde. */
-.corridas-bloque .corrida-actual .corrida { border: 0; background: transparent; }
-/* Si falta alto, se achica "Ahora" (su registro se desplaza); la cola se ve entera. */
-.corridas-col > .corridas-bloque:not(.corridas-ahora) { flex-shrink: 0; }
-@media (min-width: 901px) {
-  .corridas-col > .corridas-ahora { flex: 1 1 0; }
+  [data-modo="cliente"] .corridas-bloque { padding: 14px; }
 }
