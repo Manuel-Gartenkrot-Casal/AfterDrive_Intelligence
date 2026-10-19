@@ -254,3 +254,17 @@ def test_stream_callado_registra_una_estimacion(monkeypatch, consumo_en_memoria)
         llm.completar("s", "u", max_tokens=16000, stream=True, tarea="redaccion")
     fila = consumo_en_memoria.find_one()
     assert fila["estimado"] and fila["tokens_salida"] == 16000
+
+
+@pytest.mark.parametrize("uso, esperado", [
+    ({"inputTokens": 2, "outputTokens": 50, "cacheReadInputTokens": 1100}, 1102),                 # cache aparte
+    ({"inputTokens": 2, "outputTokens": 50, "cacheWriteInputTokens": 900, "totalTokens": 1500}, 1450),  # total manda
+    ({"inputTokens": 2, "outputTokens": 50}, 1000),                                                 # piso por caracteres
+    ({"inputTokens": 3000, "outputTokens": 50}, 3000),                                              # lo informado alcanza
+])
+def test_entrada_contada_nunca_por_debajo_de_lo_enviado(bedrock, consumo_en_memoria, uso, esperado):
+    bedrock([Resp(body={"output": {"message": {"content": [{"text": "ok"}]}}, "stopReason": "end_turn",
+                        "usage": uso})])
+    llm.completar("", "x" * 4000, tarea="clasificacion")  # 4000 chars -> piso de 1000 tokens
+    fila = consumo_en_memoria.find_one()
+    assert (fila["tokens_entrada"], fila["tokens_salida"]) == (esperado, 50)

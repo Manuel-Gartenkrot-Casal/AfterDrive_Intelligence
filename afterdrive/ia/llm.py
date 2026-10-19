@@ -631,7 +631,18 @@ def _registrar_uso(perfil: Perfil, modelo: str, uso: dict, *, entrada: str = "",
     t_entrada = uso.get("prompt_tokens", uso.get("inputTokens", 0)) or 0
     t_salida = uso.get("completion_tokens", uso.get("outputTokens", 0)) or 0
     if t_entrada or t_salida:
-        consumo.registrar(perfil.tarea, modelo, int(t_entrada), int(t_salida))
+        # Bedrock informó inputTokens=2 con prompts de ~1100 tokens: la entrada
+        # cacheada se informa aparte (o solo en totalTokens). Se cuenta lo más
+        # alto entre lo informado, total - salida y un piso por caracteres, todo
+        # al precio de entrada completo (el cache suele ser más barato: sobreestima).
+        cache = (uso.get("cacheReadInputTokens") or 0) + (uso.get("cacheWriteInputTokens") or 0)
+        total = uso.get("totalTokens", uso.get("total_tokens")) or 0
+        piso = len(entrada) // 4
+        contada = max(t_entrada + cache, total - t_salida if total else 0, piso)
+        if contada != t_entrada:
+            crudo = {k: v for k, v in uso.items() if isinstance(v, int | float)}
+            print(f"  [CONSUMO] usage informado {crudo}: se cuentan {contada} tokens de entrada.", flush=True)
+        consumo.registrar(perfil.tarea, modelo, int(contada), int(t_salida))
         return
     print(f"  [CONSUMO] '{modelo}' no informó tokens: se registra una estimación.", flush=True)
     consumo.registrar(perfil.tarea, modelo, _tokens_estimados(len(entrada)),
