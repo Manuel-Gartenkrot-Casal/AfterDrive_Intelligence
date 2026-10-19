@@ -6,6 +6,7 @@
    BOOT SEQUENCE
    ═══════════════════════════════════════════════════════════════════════ */
 window.onload = function() {
+  initIdioma();   // primero: lo que pinta el resto se traduce al aparecer
   $('statusText').textContent = 'Conectando...';
   initParticles();
 
@@ -31,4 +32,5 @@ window.onload = function() {
   }, 1200);
 
   setInterval(updateStats, 15000);
+  initAyuda();   // y, la primera vez, el recorrido guiado
 };

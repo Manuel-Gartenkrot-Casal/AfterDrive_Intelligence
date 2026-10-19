@@ -50,6 +50,9 @@ scripts/
 segundo-cerebro/
 *.md
 !README.md
+# Se leen desde Ayuda en el dashboard
+!CONTEXT.md
+!docs/**/*.md
 
 # Agents
 .agents/

@@ -47,7 +47,7 @@ async function cargarResumenHistorial() {
 }
 
 function fechaCorta(iso) {
-  return iso ? new Date(iso).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  return iso ? new Date(iso).toLocaleString(localeUI(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 }
 
 async function cargarHistorial(pagina) {
@@ -84,8 +84,8 @@ async function cargarHistorial(pagina) {
       if (it.calificacion && it.calificacion.puntaje)
         lado += '<span class="badge-estrellas" title="Tu calificación" aria-label="Calificada con ' + it.calificacion.puntaje + ' de 5">' + estrellas(it.calificacion.puntaje) + '</span>';
       return '<button type="button" class="hist-item" onclick="abrirItemHistorial(\'' + it.seccion + '\', \'' + it.coleccion + '\', \'' + it.id + '\')">'
-        + '<div class="hist-cuerpo"><div class="hist-titulo">' + escHtml(it.titulo) + '</div>'
-        + (it.resumen ? '<div class="hist-resumen">' + escHtml(extractoHistorial(it)) + '</div>' : '')
+        + '<div class="hist-cuerpo"><div class="hist-titulo" translate="no">' + escHtml(it.titulo) + '</div>'
+        + (it.resumen ? '<div class="hist-resumen" translate="no">' + escHtml(extractoHistorial(it)) + '</div>' : '')
         + (it.motivo ? '<div class="hist-motivo">Motivo: ' + escHtml(it.motivo) + '</div>' : '')
         + '<div class="hist-meta">' + escHtml(it.origen) + ' · ' + fechaCorta(it.fecha) + '</div></div>'
         + (lado ? '<div class="hist-lado">' + lado + '</div>' : '')
@@ -114,8 +114,8 @@ async function abrirItemHistorial(seccion, coleccion, id) {
   if (it.motivo) html += '<p><strong>Por qué se descartó:</strong> ' + escHtml(it.motivo) + '</p>';
   if (it.url) html += '<p><a href="' + urlSegura(it.url) + '" target="_blank" rel="noopener">Ver el original</a></p>';
   html += seccion.indexOf('generados') === 0
-    ? DOMPurify.sanitize(marked.parse(it.contenido || ''))
-    : '<p>' + escHtml(it.contenido || '(sin texto guardado)').replace(/\n+/g, '</p><p>') + '</p>';
+    ? '<div translate="no">' + DOMPurify.sanitize(marked.parse(it.contenido || '')) + '</div>'
+    : (it.contenido ? '<div translate="no"><p>' + escHtml(it.contenido).replace(/\n+/g, '</p><p>') + '</p></div>' : '<p>(sin texto guardado)</p>');
   $('art-body').innerHTML = html;
   _notaActual = it.estado ? { coleccion: coleccion, id: it.id, estado: it.estado, contenido: it.contenido, hubspot: it.hubspot || null } : null;
   pintarAccionesNota();
@@ -219,11 +219,11 @@ async function vistaPreviaNota() {
     '<div class="previa">'
     + (d.imagen.url ? '<img class="previa-imagen" src="' + srcImagen(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '">'
                     : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
-    + '<h1>' + escHtml(d.titulo) + '</h1>'
-    + (d.meta ? '<p class="previa-meta">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
+    + '<h1 translate="no">' + escHtml(d.titulo) + '</h1>'
+    + (d.meta ? '<p class="previa-meta" translate="no">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
     + (d.etiquetas.length ? '<div class="previa-etiquetas">' + d.etiquetas.map(function(t) { return '<span>' + escHtml(t) + '</span>'; }).join('') + '</div>' : '')
     + '<div class="previa-url">/' + escHtml(d.slug) + '</div>'
-    + '<div class="previa-cuerpo">' + DOMPurify.sanitize(d.html) + '</div>'
+    + '<div class="previa-cuerpo" translate="no">' + DOMPurify.sanitize(d.html) + '</div>'
     + '</div>'
     + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
     + bloqueGenerarImagen(d, propia)
@@ -303,7 +303,7 @@ function editarNota() {
 }
 
 function cancelarEdicionNota() {
-  $('art-body').innerHTML = DOMPurify.sanitize(marked.parse(_notaActual.contenido || ''));
+  $('art-body').innerHTML = '<div translate="no">' + DOMPurify.sanitize(marked.parse(_notaActual.contenido || '')) + '</div>';
   pintarAccionesNota();
 }
 

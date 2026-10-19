@@ -301,6 +301,18 @@
       form { margin-top: 26px; }
     }
 
+    /* Idioma: se elige acá, antes de entrar (y antes del recorrido guiado). */
+    .acceso { position: relative; }
+    .idiomas { position: absolute; top: 20px; right: 20px; display: flex; gap: 2px; padding: 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--linea); animation: none; }
+    .idiomas button {
+      padding: 5px 10px; border: 0; border-radius: 999px;
+      background: transparent; color: var(--text-lo); cursor: pointer;
+      font-family: var(--font); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+    }
+    .idiomas button:hover { color: var(--text-hi); }
+    .idiomas button[aria-pressed="true"] { background: var(--marca); color: var(--sobre-marca); }
+    @media (max-width: 860px) { .idiomas { position: static; align-self: flex-end; margin-bottom: 16px; } }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
     }
@@ -336,9 +348,9 @@
 
       <div class="lema">
         <div class="lema-frases" aria-live="polite">
-          <p class="activa">El aftermarket automotor, en movimiento</p>
-          <p>Lo que pasa en el sector, contado por AfterDrive</p>
-          <p>Contenido con la tecnología de Alephee</p>
+          <p class="activa" data-t="frase1">El aftermarket automotor, en movimiento</p>
+          <p data-t="frase2">Lo que pasa en el sector, contado por AfterDrive</p>
+          <p data-t="frase3">Contenido con la tecnología de Alephee</p>
         </div>
         <div class="lema-puntos" role="group" aria-label="Frases">
           <button type="button" aria-label="Frase 1" aria-current="true"></button>
@@ -349,36 +361,97 @@
     </section>
 
     <main class="acceso">
-      <p class="etiqueta">AfterDrive Intelligence</p>
-      <h1>Iniciar sesión</h1>
-      <p class="sub">Ingresá con tu usuario y contraseña. Si todavía no tenés cuenta, pedila al administrador.</p>
+      <div class="idiomas" role="group" aria-label="Idioma">
+        <button type="button" data-idioma="es" title="Español">ES</button>
+        <button type="button" data-idioma="pt" title="Português">PT</button>
+        <button type="button" data-idioma="en" title="English">EN</button>
+      </div>
+      <p class="etiqueta" translate="no">AfterDrive Intelligence</p>
+      <h1 data-t="h1">Iniciar sesión</h1>
+      <p class="sub" data-t="sub">Ingresá con tu usuario y contraseña. Si todavía no tenés cuenta, pedila al administrador.</p>
 
       <form id="form" novalidate>
         <div class="campo">
-          <label class="sr" for="usuario">Usuario</label>
-          <input id="usuario" name="usuario" type="text" placeholder="Usuario" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+          <label class="sr" for="usuario" data-t="usuario">Usuario</label>
+          <input id="usuario" name="usuario" type="text" placeholder="Usuario" data-tp="usuario" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
         </div>
         <div class="campo campo-clave">
-          <label class="sr" for="password">Contraseña</label>
-          <input id="password" name="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+          <label class="sr" for="password" data-t="password">Contraseña</label>
+          <input id="password" name="password" type="password" placeholder="Contraseña" data-tp="password" autocomplete="current-password" required>
           <button type="button" class="ojo" id="ojo" aria-label="Mostrar contraseña" aria-pressed="false">
             <svg class="ojo-abierto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="ojo-tachado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-2.6 3.5M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
           </button>
         </div>
         <p class="mayus" id="mayus" aria-live="polite"></p>
-        <button class="entrar" id="entrar" type="submit">Entrar</button>
+        <button class="entrar" id="entrar" type="submit" data-t="entrar">Entrar</button>
         <p class="error" id="error" role="alert"></p>
       </form>
 
       <p class="nota">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        La sesión queda abierta en este navegador por 7 días.
+        <span data-t="nota">La sesión queda abierta en este navegador por 7 días.</span>
       </p>
     </main>
   </div>
 
   <script>
+    // Mismo idioma que el dashboard (localStorage "ad-idioma", ver assets/js/idioma.js).
+    var TEXTOS_LOGIN = {
+      es: { titulo: 'Entrar · AfterDrive Intelligence', h1: 'Iniciar sesión',
+            sub: 'Ingresá con tu usuario y contraseña. Si todavía no tenés cuenta, pedila al administrador.',
+            usuario: 'Usuario', password: 'Contraseña', entrar: 'Entrar', entrando: 'Entrando...',
+            completar: 'Completá usuario y contraseña.', noSesion: 'No se pudo iniciar sesión.',
+            noConecta: 'No se pudo conectar con el servidor.', nota: 'La sesión queda abierta en este navegador por 7 días.',
+            mostrar: 'Mostrar contraseña', ocultar: 'Ocultar contraseña', mayus: 'Mayúsculas activadas',
+            frase1: 'El aftermarket automotor, en movimiento', frase2: 'Lo que pasa en el sector, contado por AfterDrive',
+            frase3: 'Contenido con la tecnología de Alephee' },
+      pt: { titulo: 'Entrar · AfterDrive Intelligence', h1: 'Entrar',
+            sub: 'Entre com seu usuário e senha. Se ainda não tem conta, peça ao administrador.',
+            usuario: 'Usuário', password: 'Senha', entrar: 'Entrar', entrando: 'Entrando...',
+            completar: 'Preencha usuário e senha.', noSesion: 'Não foi possível entrar.',
+            noConecta: 'Não foi possível conectar ao servidor.', nota: 'A sessão fica aberta neste navegador por 7 dias.',
+            mostrar: 'Mostrar senha', ocultar: 'Ocultar senha', mayus: 'Caps Lock ativado',
+            frase1: 'O aftermarket automotivo, em movimento', frase2: 'O que acontece no setor, contado pela AfterDrive',
+            frase3: 'Conteúdo com a tecnologia da Alephee',
+            'Usuario o contraseña incorrectos.': 'Usuário ou senha incorretos.',
+            'Demasiados intentos. Probá de nuevo en 15 minutos.': 'Muitas tentativas. Tente de novo em 15 minutos.',
+            'Login no configurado en el servidor.': 'Login não configurado no servidor.' },
+      en: { titulo: 'Sign in · AfterDrive Intelligence', h1: 'Sign in',
+            sub: "Enter your username and password. If you don't have an account yet, ask the administrator.",
+            usuario: 'Username', password: 'Password', entrar: 'Sign in', entrando: 'Signing in...',
+            completar: 'Enter your username and password.', noSesion: 'Could not sign in.',
+            noConecta: 'Could not reach the server.', nota: 'You stay signed in on this browser for 7 days.',
+            mostrar: 'Show password', ocultar: 'Hide password', mayus: 'Caps Lock is on',
+            frase1: 'The automotive aftermarket, in motion', frase2: 'What happens in the industry, told by AfterDrive',
+            frase3: 'Content powered by Alephee',
+            'Usuario o contraseña incorrectos.': 'Wrong username or password.',
+            'Demasiados intentos. Probá de nuevo en 15 minutos.': 'Too many attempts. Try again in 15 minutes.',
+            'Login no configurado en el servidor.': 'Sign-in is not configured on the server.' }
+    };
+    function idioma() {
+      var c = null;
+      try { c = localStorage.getItem('ad-idioma'); } catch (e) {}
+      if (TEXTOS_LOGIN[c]) return c;
+      c = (navigator.language || 'es').slice(0, 2).toLowerCase();
+      return TEXTOS_LOGIN[c] ? c : 'es';
+    }
+    function txt(clave) { return TEXTOS_LOGIN[idioma()][clave] || TEXTOS_LOGIN.es[clave] || clave; }
+    function aplicarIdioma(c) {
+      if (c) { try { localStorage.setItem('ad-idioma', c); } catch (e) {} }
+      document.documentElement.lang = idioma();
+      document.title = txt('titulo');
+      document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = txt(el.dataset.t); });
+      document.querySelectorAll('[data-tp]').forEach(function (el) { el.placeholder = txt(el.dataset.tp); });
+      var o = document.getElementById('ojo');
+      if (o) o.setAttribute('aria-label', txt(o.getAttribute('aria-pressed') === 'true' ? 'ocultar' : 'mostrar'));
+      document.querySelectorAll('[data-idioma]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.idioma === idioma()); });
+    }
+    document.querySelectorAll('[data-idioma]').forEach(function (b) {
+      b.addEventListener('click', function () { aplicarIdioma(b.dataset.idioma); });
+    });
+    aplicarIdioma();
+
     var form = document.getElementById('form');
     var btn = document.getElementById('entrar');
     var error = document.getElementById('error');
@@ -389,12 +462,12 @@
       var usuario = document.getElementById('usuario').value.trim();
       var password = clave.value;
       if (!usuario || !password) {
-        error.textContent = 'Completá usuario y contraseña.';
+        error.textContent = txt('completar');
         return;
       }
       error.textContent = '';
       btn.disabled = true;
-      btn.textContent = 'Entrando...';
+      btn.textContent = txt('entrando');
       try {
         var r = await fetch('/api/login', {
           method: 'POST',
@@ -406,12 +479,12 @@
           return;
         }
         var d = await r.json().catch(function () { return {}; });
-        error.textContent = d.error || 'No se pudo iniciar sesión.';
+        error.textContent = d.error ? txt(d.error) : txt('noSesion');
       } catch (e) {
-        error.textContent = 'No se pudo conectar con el servidor.';
+        error.textContent = txt('noConecta');
       }
       btn.disabled = false;
-      btn.textContent = 'Entrar';
+      btn.textContent = txt('entrar');
     });
 
     // Ver u ocultar la contraseña.
@@ -420,14 +493,14 @@
       var ver = clave.type === 'password';
       clave.type = ver ? 'text' : 'password';
       ojo.setAttribute('aria-pressed', String(ver));
-      ojo.setAttribute('aria-label', ver ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      ojo.setAttribute('aria-label', txt(ver ? 'ocultar' : 'mostrar'));
       clave.focus();
     });
 
     // Aviso de mayúsculas activadas mientras se escribe la contraseña.
     var mayus = document.getElementById('mayus');
     function revisarMayus(ev) {
-      if (ev.getModifierState) mayus.textContent = ev.getModifierState('CapsLock') ? 'Mayúsculas activadas' : '';
+      if (ev.getModifierState) mayus.textContent = ev.getModifierState('CapsLock') ? txt('mayus') : '';
     }
     clave.addEventListener('keydown', revisarMayus);
     clave.addEventListener('keyup', revisarMayus);

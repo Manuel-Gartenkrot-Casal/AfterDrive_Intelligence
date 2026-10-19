@@ -23,7 +23,7 @@ async function loadTrustedUrls() {
       return '<div class="fuente-fila' + (activa ? '' : ' pausada') + '">'
         + '<div class="fuente-info"><div class="fuente-url" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
         + '<div class="fuente-meta"><span class="fuente-estado' + (activa ? ' activa' : '') + '">' + (activa ? 'Activa' : 'Pausada') + '</span>'
-        + (u.ultima_ejecucion ? '<span>Revisada el ' + new Date(u.ultima_ejecucion).toLocaleDateString('es-AR') + '</span>' : '') + '</div></div>'
+        + (u.ultima_ejecucion ? '<span>Revisada el ' + new Date(u.ultima_ejecucion).toLocaleDateString(localeUI()) + '</span>' : '') + '</div></div>'
         + '<button class="btn btn-xs" onclick="pausarFuente(\''+encArg(u.url)+'\', '+activa+', this)">'+(activa?'Pausar':'Activar')+'</button>'
         + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente '+escHtml(u.url)+'" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
         + '</div>';

@@ -6,6 +6,7 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 
 | Si querés… | Leé |
 |---|---|
+| Usar la aplicación (no desarrollar) | [Guía de uso](guia-de-uso.md), también en el dashboard: **Ayuda → Ver la documentación** |
 | Entender qué hace el sistema | [01 Arquitectura](01-arquitectura.md) y el [glosario](../CONTEXT.md) |
 | Correrlo en tu máquina | [02 Instalación](02-instalacion.md) |
 | Tocar el scraping o la generación | [03 Pipelines](03-pipelines.md) y [04 IA](04-ia.md) |
