@@ -18,11 +18,13 @@ function esperar(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 /* Encola en `ruta` y sigue la Corrida hasta que termina.
    onLinea(texto) por cada línea nueva del log; onEstado(d) cuando cambia
-   el estado o la posición en la cola. Devuelve el estado final. */
-async function correrEnCola(ruta, body, onLinea, onEstado) {
+   el estado o la posición en la cola; onEncolada(id) apenas se encola (para
+   poder cancelarla). Devuelve el estado final. */
+async function correrEnCola(ruta, body, onLinea, onEstado, onEncolada) {
   var enc = await pedir(ruta, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})
   });
+  if (onEncolada) onEncolada(enc.id);
   refrescarCorridas();
   var desde = 0, previo = '', fallos = 0;
   while (true) {

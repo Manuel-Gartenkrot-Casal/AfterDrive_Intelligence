@@ -30,6 +30,7 @@ import json
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from urllib.parse import quote
 
@@ -58,6 +59,33 @@ _MODELO_CAIDO = (404, 410)
 
 class ErrorLLM(RuntimeError):
     """Fallo del proveedor con un mensaje accionable para el usuario."""
+
+
+class Cancelada(ErrorLLM):
+    """La Corrida se canceló desde el dashboard.
+
+    Se corta antes de la próxima llamada o, en una respuesta por streaming, en
+    el próximo fragmento. Una llamada sin streaming (Bedrock Converse) no se
+    puede interrumpir: se corta cuando vuelve.
+    """
+
+
+def _nunca() -> bool:
+    return False
+
+
+_cancelada: Callable[[], bool] = _nunca
+
+
+def al_cancelar(consulta: Callable[[], bool]) -> None:
+    """Registra la función que dice si la Corrida en curso se canceló (la conecta cola.py)."""
+    global _cancelada
+    _cancelada = consulta
+
+
+def verificar_cancelacion() -> None:
+    if _cancelada():
+        raise Cancelada("Cancelada desde el dashboard.")
 
 
 _ANTI_RAZONAMIENTO = (
@@ -485,6 +513,7 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> _Stream:
     t0 = last = time.time()
     try:
         for line in resp.iter_lines():
+            verificar_cancelacion()
             if not line:
                 continue
             text = line.decode("utf-8") if isinstance(line, bytes) else line
@@ -546,6 +575,7 @@ def completar(
         ErrorLLM con un mensaje accionable (rate limit, modelo dado de baja,
         proveedor mudo, HTTP inesperado).
     """
+    verificar_cancelacion()
     perfil = replace(_perfil_chat(), tarea=tarea)
     if perfil.modelos_tarea.get(tarea):
         perfil = replace(perfil, modelo=perfil.modelos_tarea[tarea], variable_modelo=f"PAGA_MODEL_{tarea.upper()}")

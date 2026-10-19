@@ -117,12 +117,18 @@ def test_cancelar_un_script_en_curso_lo_mata(col, script_lento):
     assert corridas.en_curso() is None
 
 
-def test_la_generacion_en_curso_no_se_corta(col, monkeypatch):
-    listo, seguir = threading.Event(), threading.Event()
+def test_cancelar_la_generacion_en_curso_la_corta_en_la_proxima_llamada(col, monkeypatch):
+    from afterdrive.ia import llm
+
+    listo, llamadas = threading.Event(), []
 
     def generar(params):
+        # Simula la redacción: una llamada a la IA tras otra hasta que se cancela.
         listo.set()
-        seguir.wait(5)
+        for _ in range(500):
+            llm.verificar_cancelacion()
+            llamadas.append(1)
+            time.sleep(0.01)
         return {"success": True}
 
     monkeypatch.setattr(corridas, "_generar", generar)
@@ -130,11 +136,11 @@ def test_la_generacion_en_curso_no_se_corta(col, monkeypatch):
     t = threading.Thread(target=cola.procesar_pendientes)
     t.start()
     assert listo.wait(5)
-    with pytest.raises(cola.NoCancelable):
-        cola.cancelar(id_)
-    seguir.set()
+    assert cola.cancelar(id_) == {"estado": "cancelando"}
     t.join(timeout=5)
-    assert cola.log(id_)["estado"] == "ok"
+    assert not t.is_alive() and len(llamadas) < 500
+    assert cola.log(id_)["estado"] == "cancelada"
+    assert not corridas._cancelar.is_set()  # la próxima Corrida arranca limpia
 
 
 def test_el_cron_encola_en_vez_de_perderse(col, monkeypatch):

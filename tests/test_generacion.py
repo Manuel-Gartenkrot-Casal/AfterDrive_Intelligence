@@ -299,3 +299,36 @@ def test_sin_correcciones_no_aparece_la_seccion(entorno):
     llamadas, _, _ = entorno
     g.generar_nota(["autopartes"])
     assert "Correcciones" not in llamadas["user"]
+
+
+def test_cancelada_mientras_evalua_no_guarda_la_nota(entorno, monkeypatch):
+    _, col, usadas = entorno
+    cancelada = {"si": False}
+    from afterdrive.ia import lm_studio
+
+    def evaluar(texto):
+        cancelada["si"] = True  # el usuario cancela mientras se evalúa
+        return {"error": "Cancelada desde el dashboard."}
+
+    monkeypatch.setattr(lm_studio, "evaluar_lineamientos", evaluar)
+    monkeypatch.setattr(llm, "_cancelada", lambda: cancelada["si"])
+    with pytest.raises(llm.Cancelada):
+        g.generar_nota(["autopartes"])
+    assert col.docs == [] and usadas == []
+
+
+def test_cancelada_durante_la_reescritura_no_guarda_la_primera_version(entorno, monkeypatch):
+    _, col, _ = entorno
+    _evaluaciones(monkeypatch, INVENTA, BUENA)
+    respuestas = iter([NOTA])
+
+    def completar(system, user, **kw):
+        try:
+            return next(respuestas)
+        except StopIteration:
+            raise llm.Cancelada("Cancelada desde el dashboard.") from None
+
+    monkeypatch.setattr(llm, "completar", completar)
+    with pytest.raises(llm.Cancelada):
+        g.generar_nota(["autopartes"])
+    assert col.docs == []

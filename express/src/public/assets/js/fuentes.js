@@ -15,14 +15,15 @@ async function loadTrustedUrls() {
     var n = d.urls ? d.urls.length : 0;
     badge.textContent = n + (n === 1 ? ' fuente' : ' fuentes');
     if (!d.urls || d.urls.length === 0) {
-      list.innerHTML = '<div class="fuentes-vacio">Todavía no hay fuentes. Agregá una a mano o sumá una recomendada.</div>';
+      list.innerHTML = '<div class="fuentes-vacio"><span>Todavía no hay fuentes. Agregá una a mano o sumá una recomendada.</span></div>';
       return;
     }
     list.innerHTML = d.urls.map(function(u) {
       var activa = u.estado === 'activo';
       return '<div class="fuente-fila' + (activa ? '' : ' pausada') + '">'
         + '<div class="fuente-info"><div class="fuente-url" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
-        + '<div class="fuente-meta">'+(activa?'✓ activa':'⏸ pausada')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
+        + '<div class="fuente-meta"><span class="fuente-estado' + (activa ? ' activa' : '') + '">' + (activa ? 'Activa' : 'Pausada') + '</span>'
+        + (u.ultima_ejecucion ? '<span>Revisada el ' + new Date(u.ultima_ejecucion).toLocaleDateString('es-AR') + '</span>' : '') + '</div></div>'
         + '<button class="btn btn-xs" onclick="pausarFuente(\''+encArg(u.url)+'\', '+activa+', this)">'+(activa?'Pausar':'Activar')+'</button>'
         + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente '+escHtml(u.url)+'" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
         + '</div>';

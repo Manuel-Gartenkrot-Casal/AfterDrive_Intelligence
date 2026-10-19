@@ -179,6 +179,9 @@ def _generar(params: dict | None) -> dict:
         resultado = generar_nota(**params)
     except Exception as e:
         resultado = {"success": False, "error": f"Fallo en generación: {e}"}
+    if _cancelar.is_set():
+        print("[Generación] Cancelada desde el dashboard. No se guardó ninguna nota.", flush=True)
+        return {"success": False, "error": "Cancelada."}
     if resultado.get("success"):
         print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
     else:

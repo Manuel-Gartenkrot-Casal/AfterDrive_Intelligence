@@ -375,3 +375,27 @@ def test_paga_sin_temperatura(transporte, paga, monkeypatch):
     t = transporte([chat("a")])
     llm.completar("s", "u")
     assert "temperature" not in t.posts[0]["json"]
+
+
+def test_cancelar_corta_el_stream_en_el_proximo_fragmento(transporte, openrouter, monkeypatch):
+    leidos = []
+
+    def cancelada():
+        return len(leidos) >= 2  # se cancela después del segundo fragmento
+
+    lineas = sse(*({"choices": [{"delta": {"content": f"parte {i} "}}]} for i in range(50)))
+    resp = Resp(lineas=lineas)
+    resp.iter_lines = lambda: (leidos.append(linea) or linea for linea in lineas)
+    transporte([resp])
+    monkeypatch.setattr(llm, "_cancelada", cancelada)
+    with pytest.raises(llm.Cancelada):
+        llm.completar("s", "u", stream=True)
+    assert len(leidos) < 5
+
+
+def test_cancelada_no_llama_al_proveedor(transporte, openrouter, monkeypatch):
+    t = transporte([chat("no debería pedirse")])
+    monkeypatch.setattr(llm, "_cancelada", lambda: True)
+    with pytest.raises(llm.Cancelada):
+        llm.completar("s", "u")
+    assert t.posts == []
