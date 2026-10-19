@@ -112,7 +112,7 @@ async function cargarUltimaNota() {
     $('c-ultima-titulo').textContent = titulo.replace(/[*_]/g, '');
     $('c-ultima-extracto').textContent = cuerpo.slice(0, 220) + (cuerpo.length > 220 ? '...' : '');
     if (d.nota.generado_en) {
-      $('c-ultima-fecha').textContent = new Date(d.nota.generado_en).toLocaleString('es-AR', {
+      $('c-ultima-fecha').textContent = new Date(d.nota.generado_en).toLocaleString(localeUI(), {
         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
       });
     }

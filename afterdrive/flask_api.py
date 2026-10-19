@@ -106,6 +106,10 @@ DOCUMENTOS = {
 }
 
 
+# Idiomas con traducción posible de un documento (archivo.<idioma>.md al lado del original).
+IDIOMAS_DOCS = ("pt", "en")
+
+
 @app.route("/api/docs", methods=["GET"])
 def listar_docs():
     return jsonify({"success": True, "documentos": [
@@ -119,12 +123,20 @@ def leer_doc(slug: str):
     if slug not in DOCUMENTOS:
         return jsonify({"success": False, "error": "Documento no encontrado."}), 404
     archivo, titulo, _ = DOCUMENTOS[slug]
+    # ?idioma=pt|en: la traducción (docs/guia-de-uso.pt.md) si existe; si no, el original en español.
+    idioma = "es"
+    pedido = request.args.get("idioma", "es")
+    if pedido in IDIOMAS_DOCS:
+        raiz_archivo, ext = os.path.splitext(archivo)
+        traducido = f"{raiz_archivo}.{pedido}{ext}"
+        if os.path.isfile(os.path.join(_RAIZ, traducido)):
+            archivo, idioma = traducido, pedido
     try:
         with open(os.path.join(_RAIZ, archivo), encoding="utf-8") as f:
             texto = f.read()
     except OSError:
         return jsonify({"success": False, "error": "Documento no disponible en este servidor."}), 404
-    return jsonify({"success": True, "slug": slug, "titulo": titulo, "markdown": texto})
+    return jsonify({"success": True, "slug": slug, "titulo": titulo, "idioma": idioma, "markdown": texto})
 
 
 @app.route("/assets/<path:archivo>")

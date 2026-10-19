@@ -257,6 +257,13 @@ def test_documentacion_en_ayuda(client, api):
     assert d["success"] and d["markdown"].startswith("# Guía de uso")
     assert c.get("/api/docs/..%2F..%2Fetc%2Fpasswd").status_code == 404     # solo la lista blanca
     assert c.get("/api/docs/no-existe").status_code == 404
+    # En portugués o inglés, la traducción; un documento sin traducir llega en español.
+    assert c.get("/api/docs/guia-de-uso?idioma=pt").json["markdown"].startswith("# Guia de uso")
+    en = c.get("/api/docs/guia-de-uso?idioma=en").json
+    assert en["idioma"] == "en" and en["markdown"].startswith("# User guide")
+    glosario = c.get("/api/docs/glosario?idioma=en").json
+    assert glosario["success"] and glosario["idioma"] == "es"
+    assert c.get("/api/docs/guia-de-uso?idioma=../x").json["idioma"] == "es"
     flask_api, _ = api
     anonimo = flask_api.app.test_client()
     assert anonimo.get("/api/docs").status_code == 401

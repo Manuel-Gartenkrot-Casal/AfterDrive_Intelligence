@@ -151,6 +151,16 @@
 
     .error { min-height: 1.4em; font-size: 0.8125rem; font-weight: 500; color: var(--err); }
 
+    /* Idioma: se elige acá, antes de entrar (y antes del recorrido guiado). */
+    .idiomas { display: flex; justify-content: flex-end; gap: 4px; margin: -12px -12px 16px 0; }
+    .idiomas button {
+      min-height: 0; margin: 0; padding: 5px 9px; border-radius: 999px;
+      background: transparent; box-shadow: none; color: var(--text-lo);
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+    }
+    .idiomas button:hover { background: transparent; color: var(--text-hi); }
+    .idiomas button[aria-pressed="true"] { color: var(--brand); box-shadow: var(--inset-sm); }
+
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; }
     }
@@ -158,27 +168,73 @@
 </head>
 <body>
   <main class="card">
+    <div class="idiomas" role="group" aria-label="Idioma">
+      <button type="button" data-idioma="es" title="Español">ES</button>
+      <button type="button" data-idioma="pt" title="Português">PT</button>
+      <button type="button" data-idioma="en" title="English">EN</button>
+    </div>
     <div class="brand">
       <div class="logo" aria-hidden="true">AD</div>
       <div>
         <h1>AfterDrive <span>Intelligence</span></h1>
-        <p class="sub">Ingresá para ver el panel</p>
+        <p class="sub" data-t="sub">Ingresá para ver el panel</p>
       </div>
     </div>
 
     <form id="form" novalidate>
-      <label>Usuario
+      <label><span data-t="usuario">Usuario</span>
         <input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
       </label>
-      <label>Contraseña
+      <label><span data-t="password">Contraseña</span>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
       </label>
-      <button id="entrar" type="submit">Entrar</button>
+      <button id="entrar" type="submit" data-t="entrar">Entrar</button>
       <p class="error" id="error" role="alert"></p>
     </form>
   </main>
 
   <script>
+    // Mismo idioma que el dashboard (localStorage "ad-idioma", ver assets/js/idioma.js).
+    var TEXTOS_LOGIN = {
+      es: { sub: 'Ingresá para ver el panel', usuario: 'Usuario', password: 'Contraseña', entrar: 'Entrar',
+            entrando: 'Entrando...', completar: 'Completá usuario y contraseña.',
+            noSesion: 'No se pudo iniciar sesión.', noConecta: 'No se pudo conectar con el servidor.',
+            titulo: 'Entrar · AfterDrive Intelligence' },
+      pt: { sub: 'Entre para ver o painel', usuario: 'Usuário', password: 'Senha', entrar: 'Entrar',
+            entrando: 'Entrando...', completar: 'Preencha usuário e senha.',
+            noSesion: 'Não foi possível entrar.', noConecta: 'Não foi possível conectar ao servidor.',
+            titulo: 'Entrar · AfterDrive Intelligence',
+            'Usuario o contraseña incorrectos.': 'Usuário ou senha incorretos.',
+            'Demasiados intentos. Probá de nuevo en 15 minutos.': 'Muitas tentativas. Tente de novo em 15 minutos.',
+            'Login no configurado en el servidor.': 'Login não configurado no servidor.' },
+      en: { sub: 'Sign in to see the dashboard', usuario: 'Username', password: 'Password', entrar: 'Sign in',
+            entrando: 'Signing in...', completar: 'Enter your username and password.',
+            noSesion: 'Could not sign in.', noConecta: 'Could not reach the server.',
+            titulo: 'Sign in · AfterDrive Intelligence',
+            'Usuario o contraseña incorrectos.': 'Wrong username or password.',
+            'Demasiados intentos. Probá de nuevo en 15 minutos.': 'Too many attempts. Try again in 15 minutes.',
+            'Login no configurado en el servidor.': 'Sign-in is not configured on the server.' }
+    };
+    function idioma() {
+      var c = null;
+      try { c = localStorage.getItem('ad-idioma'); } catch (e) {}
+      if (TEXTOS_LOGIN[c]) return c;
+      c = (navigator.language || 'es').slice(0, 2).toLowerCase();
+      return TEXTOS_LOGIN[c] ? c : 'es';
+    }
+    function txt(clave) { return TEXTOS_LOGIN[idioma()][clave] || TEXTOS_LOGIN.es[clave] || clave; }
+    function aplicarIdioma(c) {
+      if (c) { try { localStorage.setItem('ad-idioma', c); } catch (e) {} }
+      document.documentElement.lang = idioma();
+      document.title = txt('titulo');
+      document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = txt(el.dataset.t); });
+      document.querySelectorAll('[data-idioma]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.idioma === idioma()); });
+    }
+    document.querySelectorAll('[data-idioma]').forEach(function (b) {
+      b.addEventListener('click', function () { aplicarIdioma(b.dataset.idioma); });
+    });
+    aplicarIdioma();
+
     var form = document.getElementById('form');
     var btn = document.getElementById('entrar');
     var error = document.getElementById('error');
@@ -188,12 +244,12 @@
       var usuario = document.getElementById('usuario').value.trim();
       var password = document.getElementById('password').value;
       if (!usuario || !password) {
-        error.textContent = 'Completá usuario y contraseña.';
+        error.textContent = txt('completar');
         return;
       }
       error.textContent = '';
       btn.disabled = true;
-      btn.textContent = 'Entrando...';
+      btn.textContent = txt('entrando');
       try {
         var r = await fetch('/api/login', {
           method: 'POST',
@@ -205,12 +261,12 @@
           return;
         }
         var d = await r.json().catch(function () { return {}; });
-        error.textContent = d.error || 'No se pudo iniciar sesión.';
+        error.textContent = d.error ? txt(d.error) : txt('noSesion');
       } catch (e) {
-        error.textContent = 'No se pudo conectar con el servidor.';
+        error.textContent = txt('noConecta');
       }
       btn.disabled = false;
-      btn.textContent = 'Entrar';
+      btn.textContent = txt('entrar');
     });
   </script>
 </body>

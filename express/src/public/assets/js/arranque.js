@@ -6,6 +6,7 @@
    BOOT SEQUENCE
    ═══════════════════════════════════════════════════════════════════════ */
 window.onload = function() {
+  initIdioma();   // primero: lo que pinta el resto se traduce al aparecer
   $('statusText').textContent = 'Conectando...';
   initParticles();
 

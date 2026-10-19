@@ -152,7 +152,7 @@ var _zona = 'America/Argentina/Buenos_Aires';
 
 function formatearProxima(iso) {
   if (!iso) return 'Pausado';
-  return new Date(iso).toLocaleString('es-AR', {
+  return new Date(iso).toLocaleString(localeUI(), {
     weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: _zona
   });
 }
@@ -162,10 +162,10 @@ function proximaCorta(iso) {
   var f = new Date(iso);
   var dia = function(x) { return x.toLocaleDateString('en-CA', { timeZone: _zona }); };
   var hoy = new Date(), manana = new Date(Date.now() + 864e5);
-  var hora = f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _zona });
+  var hora = f.toLocaleTimeString(localeUI(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _zona });
   if (dia(f) === dia(hoy)) return 'Hoy ' + hora;
   if (dia(f) === dia(manana)) return 'Mañana ' + hora;
-  return f.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', timeZone: _zona }) + ' ' + hora;
+  return f.toLocaleDateString(localeUI(), { weekday: 'short', day: 'numeric', timeZone: _zona }) + ' ' + hora;
 }
 
 function pintarAmPm(tipo, hhmm) {

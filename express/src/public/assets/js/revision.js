@@ -110,7 +110,7 @@ var NOMBRE_TAREA = { redaccion: 'redacción', correccion: 'corrección', planifi
 function pintarCosto(nota, contenedor) {
   var c = nota.costo;
   if (!c) return;
-  var usd = function(x) { return 'USD ' + x.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }); };
+  var usd = function(x) { return 'USD ' + x.toLocaleString(localeUI(), { minimumFractionDigits: 2, maximumFractionDigits: 3 }); };
   var html = c.llamadas
     ? '<p><strong>' + usd(c.total_usd) + '</strong>' + (c.estimado ? ' aprox.' : '') + ' en ' + c.llamadas + ' llamadas a la API paga.</p>'
       + lista(Object.entries(c.por_tarea).sort(function(a, b) { return b[1] - a[1]; })
@@ -173,7 +173,7 @@ function pintarRevisionNota(nota, contenedor) {
     det.innerHTML = '<summary>Ver el plan de la nota</summary>'
       + (p.angulo ? '<p class="revision-sub">Ángulo: ' + escHtml(p.angulo) + '</p>' : '')
       + '<ol class="revision-lista">' + p.secciones.map(function(x) {
-          return '<li>' + escHtml(x.titulo) + (x.noticias.length ? ' <small>(noticias ' + x.noticias.join(', ') + ')</small>' : '') + '</li>';
+          return '<li><span translate="no">' + escHtml(x.titulo) + '</span>' + (x.noticias.length ? ' <small>(noticias ' + x.noticias.join(', ') + ')</small>' : '') + '</li>';
         }).join('') + '</ol>';
     contenedor.appendChild(det);
   }

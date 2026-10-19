@@ -4,6 +4,8 @@ AfterDrive Intelligence busca noticias del sector autopartes en los sitios que e
 
 Esta guía explica cada parte de la aplicación. Para un recorrido rápido en pantalla: **Ayuda → Repetir el tutorial**, al pie de la barra lateral.
 
+> El idioma de la interfaz (Español, Português, English) se cambia con los botones **ES / PT / EN** arriba a la derecha o en el primer paso del tutorial. Cambia solo la interfaz: el idioma de cada nota depende de su región (ver **Crear nota**).
+
 ## Cómo funciona, en tres pasos
 
 1. **Juntar noticias.** Todos los días, a la hora que programes, el sistema revisa tus fuentes, guarda las noticias nuevas que son del rubro y descarta las que no (por ejemplo, venta de autos 0 km o seguros). De cada noticia guarda una ficha con sus datos principales.

@@ -54,7 +54,7 @@ function hace(iso) {
   if (s < 60) return 'hace ' + s + ' s';
   if (s < 3600) return 'hace ' + Math.round(s / 60) + ' min';
   if (s < 86400) return 'hace ' + Math.round(s / 3600) + ' h';
-  return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString(localeUI(), { day: 'numeric', month: 'short' });
 }
 
 function duracion(a, b) {

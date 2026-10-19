@@ -37,6 +37,11 @@
         </div>
       </div>
       <div class="header-right">
+        <div class="selector-idioma" role="group" aria-label="Idioma">
+          <button type="button" data-idioma="es" title="Español" onclick="setIdioma('es')">ES</button>
+          <button type="button" data-idioma="pt" title="Português" onclick="setIdioma('pt')">PT</button>
+          <button type="button" data-idioma="en" title="English" onclick="setIdioma('en')">EN</button>
+        </div>
         <div class="status-pill">
           <div class="status-dot off" id="statusPulse"></div>
           <span id="statusText">Conectando...</span>
@@ -497,7 +502,7 @@
         <span class="console-title">Consola de Procesos</span>
         <button class="btn" style="padding:5px 12px;font-size:0.75rem" onclick="limpiarLogs()">Limpiar</button>
       </div>
-      <div id="logs" class="console-container">
+      <div id="logs" class="console-container" translate="no">
         <div class="log-entry log-info"><span class="console-prompt">afterdrive &#9656;</span> Sistema listo. Esperando instrucciones...</div>
       </div>
     </div>
@@ -555,6 +560,8 @@
 
   <!-- El JS del dashboard, en orden: cada archivo usa lo que definieron los anteriores. -->
   <script src="/assets/js/base.js"></script>
+  <script src="/assets/js/i18n/textos.js"></script>
+  <script src="/assets/js/idioma.js"></script>
   <script src="/assets/js/estado.js"></script>
   <script src="/assets/js/fuentes.js"></script>
   <script src="/assets/js/programacion.js"></script>

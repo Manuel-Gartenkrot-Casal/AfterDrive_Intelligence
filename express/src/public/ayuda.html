@@ -23,6 +23,7 @@
     .ayuda-pagina { max-width: 1180px; margin: 0 auto; padding: var(--s5); }
     .ayuda-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin-bottom: var(--s5); }
     .ayuda-cabecera h1 { font-size: 1.35rem; font-weight: 600; }
+    .ayuda-acciones { display: flex; align-items: center; gap: var(--s3); }
     .ayuda-cabecera h1 span { color: var(--brand); font-weight: 500; }
     .ayuda-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s6); align-items: start; }
     .ayuda-indice { position: sticky; top: var(--s5); padding: var(--s3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
@@ -60,13 +61,22 @@
   <div class="ayuda-pagina">
     <header class="ayuda-cabecera">
       <h1>AfterDrive <span>Intelligence</span> · Ayuda</h1>
-      <a class="btn" href="/">Volver al dashboard</a>
+      <div class="ayuda-acciones">
+        <div class="selector-idioma" role="group" aria-label="Idioma">
+          <button type="button" data-idioma="es" title="Español" onclick="setIdioma('es')">ES</button>
+          <button type="button" data-idioma="pt" title="Português" onclick="setIdioma('pt')">PT</button>
+          <button type="button" data-idioma="en" title="English" onclick="setIdioma('en')">EN</button>
+        </div>
+        <a class="btn" href="/">Volver al dashboard</a>
+      </div>
     </header>
     <div class="ayuda-layout">
       <nav class="ayuda-indice" id="ayuda-indice" aria-label="Documentos"></nav>
-      <main class="ayuda-doc" id="ayuda-doc" tabindex="-1" aria-live="polite">Cargando…</main>
+      <main class="ayuda-doc" id="ayuda-doc" tabindex="-1" aria-live="polite"><p id="ayuda-estado">Cargando…</p><div id="ayuda-contenido" translate="no"></div></main>
     </div>
   </div>
+  <script src="/assets/js/i18n/textos.js"></script>
+  <script src="/assets/js/idioma.js"></script>
   <script src="/assets/js/paginas/ayuda.js"></script>
 </body>
 </html>

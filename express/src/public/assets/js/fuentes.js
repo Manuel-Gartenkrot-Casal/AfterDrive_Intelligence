@@ -22,7 +22,7 @@ async function loadTrustedUrls() {
       var activa = u.estado === 'activo';
       return '<div class="fuente-fila' + (activa ? '' : ' pausada') + '">'
         + '<div class="fuente-info"><div class="fuente-url" title="'+escHtml(u.url)+'">'+escHtml(u.url)+'</div>'
-        + '<div class="fuente-meta">'+(activa?'✓ activa':'⏸ pausada')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString('es-AR'):'')+'</div></div>'
+        + '<div class="fuente-meta">'+(activa?'✓ activa':'⏸ pausada')+(u.ultima_ejecucion?' · '+new Date(u.ultima_ejecucion).toLocaleDateString(localeUI()):'')+'</div></div>'
         + '<button class="btn btn-xs" onclick="pausarFuente(\''+encArg(u.url)+'\', '+activa+', this)">'+(activa?'Pausar':'Activar')+'</button>'
         + '<button class="icon-btn" title="Eliminar" aria-label="Eliminar fuente '+escHtml(u.url)+'" onclick="deleteTrustedUrl(\''+encArg(u.url)+'\')">✕</button>'
         + '</div>';

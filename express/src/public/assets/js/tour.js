@@ -94,6 +94,7 @@ function iniciarTour() {
   globo.innerHTML = '<div class="tour-paso" id="tour-paso"></div>'
     + '<h2 class="tour-titulo" id="tour-titulo"></h2>'
     + '<p class="tour-texto" id="tour-texto"></p>'
+    + '<div class="tour-idioma" id="tour-idioma"><span>Idioma</span>' + htmlSelectorIdioma() + '</div>'
     + '<div class="tour-progreso" aria-hidden="true"><i id="tour-barra"></i></div>'
     + '<div class="tour-acciones">'
     + '<button type="button" class="btn btn-xs tour-saltar" id="tour-saltar">Saltar</button>'
@@ -132,6 +133,9 @@ async function irAPasoTour(i, sentido) {
   $('tour-texto').textContent = paso.texto;
   $('tour-barra').style.width = ((i + 1) / _tour.pasos.length * 100) + '%';
   $('tour-anterior').disabled = i === 0;
+  // El idioma se elige en la bienvenida, antes de que empiece el recorrido.
+  $('tour-idioma').hidden = i !== 0;
+  pintarSelectorIdioma();
   $('tour-siguiente').textContent = i === _tour.pasos.length - 1 ? 'Terminar' : 'Siguiente';
   // En el celular el globo va abajo de todo: el elemento, arriba, para que no lo tape.
   if (el) el.scrollIntoView({ block: window.innerWidth <= 640 ? 'start' : 'center', behavior: 'auto' });

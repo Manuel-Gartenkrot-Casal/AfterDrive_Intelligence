@@ -473,11 +473,11 @@ async function fase2MostrarUltima(id) {
     var check = $('check-list');
     var comm = $('eval-comms');
     $('modal-titulo').textContent = id ? 'Nota' : 'Última nota';
-    $('modal-meta').textContent = d.nota.generado_en ? 'Generada el ' + new Date(d.nota.generado_en).toLocaleString('es-AR', {
+    $('modal-meta').textContent = d.nota.generado_en ? 'Generada el ' + new Date(d.nota.generado_en).toLocaleString(localeUI(), {
       day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
     }) : '';
     abrirModal();
-    body.innerHTML = DOMPurify.sanitize(marked.parse(d.nota.contenido));
+    body.innerHTML = '<div translate="no">' + DOMPurify.sanitize(marked.parse(d.nota.contenido)) + '</div>';   // contenido: no se traduce
     check.innerHTML = '';
     comm.textContent = '';
     _notaActual = { coleccion: 'notas_fase2', id: d.nota._id, estado: d.nota.estado || 'borrador',

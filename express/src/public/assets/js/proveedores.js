@@ -84,7 +84,7 @@ function _restante(ms) {
 }
 
 function _horaVence(fecha) {
-  return fecha.toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  return fecha.toLocaleString(localeUI(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 }
 
 function _pintarModoPago() {

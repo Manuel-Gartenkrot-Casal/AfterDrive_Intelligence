@@ -10,7 +10,7 @@ const $ = id => document.getElementById(id);
 const _fetch = window.fetch;
 window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location.reload(); return r; };
 async function salir() { await fetch('/api/logout', { method: 'POST' }); location.reload(); }
-function now() { return new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
+function now() { return new Date().toLocaleTimeString(localeUI(), {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 
 function log(msg, type='info') {
   const entry = document.createElement('div');

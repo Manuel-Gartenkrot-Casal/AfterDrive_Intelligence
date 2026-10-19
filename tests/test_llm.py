@@ -187,7 +187,8 @@ def test_embeber_con_chat_openrouter_usa_embeddings_provider(transporte, openrou
     assert t.posts[0]["url"] == "https://integrate.api.nvidia.com/v1/embeddings"
 
 
-def test_embeber_nunca_va_a_openrouter(transporte, openrouter):
+def test_embeber_nunca_va_a_openrouter(transporte, openrouter, monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)   # sin key de NVIDIA, a LM Studio
     t = transporte([Resp(body={"data": [{"index": 0, "embedding": [1.0]}]})])
     llm.embeber(["x"])
     assert t.posts[0]["url"].startswith("http://localhost:1234/v1")

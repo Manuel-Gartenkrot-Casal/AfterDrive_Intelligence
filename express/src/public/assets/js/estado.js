@@ -119,10 +119,10 @@ async function updateStats() {
       $('statUrls').classList.add('flash');
       setTimeout(function() { $('statUrls').classList.remove('flash'); }, 600);
       $('statUrlsSub').textContent = d.total + ' registradas';
-      $('c-fuentes').textContent = d.activas.toLocaleString('es-AR');
+      $('c-fuentes').textContent = d.activas.toLocaleString(localeUI());
       if (d.ultima_ejecucion) {
         var dt = new Date(d.ultima_ejecucion);
-        $('statLastRun').textContent = dt.toLocaleDateString('es-AR');
+        $('statLastRun').textContent = dt.toLocaleDateString(localeUI());
       } else {
         $('statLastRun').textContent = 'Nunca';
       }
@@ -133,7 +133,7 @@ async function updateStats() {
     var r2 = await fetch('/api/articulos-stats');
     var d2 = await r2.json();
     if (d2.success) {
-      $('c-articulos').textContent = d2.total.toLocaleString('es-AR');
+      $('c-articulos').textContent = d2.total.toLocaleString(localeUI());
       if (_firstStatsLoad) { countUp($('statArticles'), d2.total, 1100); }
       else { $('statArticles').textContent = d2.total.toLocaleString(); }
       $('statArticles').classList.add('flash');
@@ -145,7 +145,7 @@ async function updateStats() {
     var r3 = await fetch('/api/scraping-config');
     var d3 = await r3.json();
     if (d3.success) {
-      $('statNextRunVal').textContent = d3.next_execution ? new Date(d3.next_execution).toLocaleDateString('es-AR') : 'Pausado';
+      $('statNextRunVal').textContent = d3.next_execution ? new Date(d3.next_execution).toLocaleDateString(localeUI()) : 'Pausado';
       $('statInterval').textContent = 'A las ' + d3.hora + ', cada ' + d3.interval_days + ' día(s)';
     }
   } catch(e) {}
