@@ -11,6 +11,12 @@ escribía solo con las categorías y los ejemplos de estilo, y los prompts le
 pedían "usar datos del contexto" que nunca recibía. Acá se eligen las
 noticias más útiles para el pedido: parecidas al tema (embeddings), recientes
 y todavía no usadas en otra nota.
+
+Una noticia que ya alimentó una nota en los últimos DIAS_SIN_REPETIR días
+solo se usa si no alcanzan las demás: así dos notas seguidas no salen de la
+misma noticia. Al prompt va su ficha (resumen, hechos, cifras, empresas, ver
+lm_studio.fichar_articulo) más un extracto del cuerpo; a las elegidas que no
+tienen ficha se les arma en el momento y queda guardada.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ VIDA_MEDIA_DIAS = 10      # a los 10 días una noticia pesa la mitad por recenci
 PESO_SIMILITUD = 0.65
 PESO_RECENCIA = 0.25
 PESO_NO_USADA = 0.10
+DIAS_SIN_REPETIR = 30
 
 
 @dataclass
@@ -37,6 +44,8 @@ class Noticia:
     fuente: str = ""
     fecha: datetime.datetime | None = None
     usada: bool = False
+    usada_reciente: bool = False   # alimentó una nota en los últimos DIAS_SIN_REPETIR días
+    ficha: dict | None = field(default=None, repr=False)
     embedding: list[float] | None = field(default=None, repr=False)
     puntaje: float = 0.0
 
@@ -64,14 +73,33 @@ def rankear(noticias: list[Noticia], consulta_vec: list[float] | None, ahora: da
     return sorted(noticias, key=lambda n: n.puntaje, reverse=True)
 
 
+def _texto_ficha(f: dict) -> str:
+    partes = [f"Resumen: {f.get('resumen', '')}"]
+    for clave, nombre in (("hechos", "Hechos"), ("cifras", "Cifras"), ("empresas", "Empresas")):
+        if f.get(clave):
+            partes.append(f"{nombre}:\n" + "\n".join(f"- {x}" for x in f[clave]))
+    if f.get("fecha"):
+        partes.append(f"Fecha: {f['fecha']}")
+    return "\n".join(partes)
+
+
 def formatear(noticias: list[Noticia], max_chars: int = 7000) -> str:
-    """Bloque de contexto para el prompt, repartiendo el presupuesto entre las noticias."""
+    """Bloque de contexto para el prompt, repartiendo el presupuesto entre las noticias.
+
+    Con ficha va la ficha y un extracto corto del cuerpo (para matices y citas);
+    sin ficha, el cuerpo recortado como antes.
+    """
     if not noticias:
         return ""
     por_noticia = max(400, max_chars // len(noticias))
     bloques = []
     for i, n in enumerate(noticias, 1):
-        cuerpo = _recortar(n.cuerpo or "", por_noticia)
+        if n.ficha:
+            ficha = _texto_ficha(n.ficha)
+            extracto = _recortar(n.cuerpo or "", max(300, por_noticia - len(ficha)))
+            cuerpo = ficha + (f"\nExtracto: {extracto}" if extracto else "")
+        else:
+            cuerpo = _recortar(n.cuerpo or "", por_noticia)
         origen = " | ".join(x for x in (n.fuente, n.url) if x)
         bloques.append(f"[{i}] {n.titulo}\n{('Fuente: ' + origen) if origen else ''}\n{cuerpo}".strip())
     return "\n\n".join(bloques)
@@ -107,6 +135,18 @@ def _fecha(d: dict) -> datetime.datetime | None:
     return publicado
 
 
+def _usada_reciente(d: dict, ahora: datetime.datetime | None = None) -> bool:
+    usado_en = str(d.get("usado_en") or "")
+    if not usado_en:
+        return False   # las marcadas antes de guardar la fecha cuentan como usadas hace mucho
+    try:
+        cuando = datetime.datetime.fromisoformat(usado_en)
+    except ValueError:
+        return False
+    ahora = ahora or datetime.datetime.now(datetime.UTC)
+    return ahora - cuando < datetime.timedelta(days=DIAS_SIN_REPETIR)
+
+
 def _desde_doc(d: dict) -> Noticia:
     return Noticia(
         id=d["_id"],
@@ -116,12 +156,14 @@ def _desde_doc(d: dict) -> Noticia:
         fuente=d.get("fuente", "") if d.get("fuente") not in ("custom", None) else "",
         fecha=_fecha(d),
         usada=bool(d.get("usado_para_articulo")),
+        usada_reciente=_usada_reciente(d),
+        ficha=d.get("ficha") if isinstance(d.get("ficha"), dict) else None,
         embedding=d.get("embedding"),
     )
 
 
 _CAMPOS = {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
-           "embedding_modelo": 1, "usado_para_articulo": 1}
+           "embedding_modelo": 1, "usado_para_articulo": 1, "usado_en": 1, "ficha": 1}
 
 
 def _parecidas_en_atlas(col, vec: list[float] | None, modelo: str) -> list[dict]:
@@ -196,11 +238,41 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
         n.embedding = vector_de(d, modelo)  # vectores de otro modelo no se comparan
         noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
-    return rankear(noticias, vec, ahora)[:limite]
+    elegidas = elegir(rankear(noticias, vec, ahora), limite)
+    _completar_fichas(elegidas, col_articulos)
+    return elegidas
+
+
+def elegir(ranking: list[Noticia], limite: int) -> list[Noticia]:
+    """Las mejores del ranking, dejando para el final las usadas hace poco."""
+    frescas = [n for n in ranking if not n.usada_reciente]
+    return (frescas + [n for n in ranking if n.usada_reciente])[:limite]
+
+
+def _completar_fichas(noticias: list[Noticia], col) -> None:
+    """Arma la ficha de las elegidas que no la tienen (artículos guardados antes de las fichas)."""
+    from afterdrive.ingesta.ingesta import fichas_activas
+
+    if not fichas_activas():
+        return
+    from afterdrive.ia import lm_studio
+
+    for n in noticias:
+        if n.ficha or not (n.cuerpo or "").strip():
+            continue
+        n.ficha = lm_studio.fichar_articulo(n.titulo, n.cuerpo)
+        if n.ficha:
+            try:
+                col.update_one({"_id": n.id}, {"$set": {"ficha": n.ficha}})
+            except Exception as e:
+                print(f"  [AVISO] No se pudo guardar la ficha de '{n.titulo[:60]}': {e}", flush=True)
 
 
 def marcar_usadas(noticias: list[Noticia]) -> None:
     from afterdrive.db import col_articulos
 
     if noticias:
-        col_articulos.update_many({"_id": {"$in": [n.id for n in noticias]}}, {"$set": {"usado_para_articulo": True}})
+        col_articulos.update_many(
+            {"_id": {"$in": [n.id for n in noticias]}},
+            {"$set": {"usado_para_articulo": True, "usado_en": datetime.datetime.now(datetime.UTC).isoformat()}},
+        )

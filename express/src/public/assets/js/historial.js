@@ -22,7 +22,7 @@ function initHistorial() {
     clearTimeout(_hist.timer);
     _hist.timer = setTimeout(function() { _hist.q = $('hist-q').value.trim(); cargarHistorial(1); }, 300);
   });
-  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') cargarHistorial(_hist.pagina); });
+  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); } });
   $('hist-pestanas').addEventListener('keydown', function(ev) {
     var tabs = Array.from(this.querySelectorAll('[role="tab"]')), i = tabs.indexOf(document.activeElement);
     if (i < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(ev.key)) return;
@@ -81,6 +81,8 @@ async function cargarHistorial(pagina) {
       if (it.estado) lado += '<span class="estado-chip ' + it.estado + '">' + NOMBRE_ESTADO_NOTA[it.estado] + '</span>';
       if (it.calidad && it.calidad.puntaje !== null && it.calidad.puntaje !== undefined)
         lado += '<span class="badge-calidad" title="Lineamientos de calidad cumplidos">' + it.calidad.puntaje + '/9</span>';
+      if (it.calificacion && it.calificacion.puntaje)
+        lado += '<span class="badge-estrellas" title="Tu calificación" aria-label="Calificada con ' + it.calificacion.puntaje + ' de 5">' + estrellas(it.calificacion.puntaje) + '</span>';
       return '<button type="button" class="hist-item" onclick="abrirItemHistorial(\'' + it.seccion + '\', \'' + it.coleccion + '\', \'' + it.id + '\')">'
         + '<div class="hist-cuerpo"><div class="hist-titulo">' + escHtml(it.titulo) + '</div>'
         + (it.resumen ? '<div class="hist-resumen">' + escHtml(extractoHistorial(it)) + '</div>' : '')

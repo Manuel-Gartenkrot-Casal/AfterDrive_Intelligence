@@ -22,9 +22,28 @@ Con más oferta local, el distribuidor puede sostener stock de alta rotación si
 en importaciones. El desafío pasa a ser el catálogo: publicar fichas con compatibilidad por año,
 motor y versión evita devoluciones por fitment incorrecto y mejora la conversión en Mercado Libre.
 
-Descubrí cómo Alephee conecta tu catálogo con los principales marketplaces.
+## Qué significa para tu negocio
+- Revisá qué líneas de pastillas podés reponer con proveedores locales.
+- Completá la compatibilidad por año y motor en tus fichas.
+
+## Preguntas frecuentes
+
+### ¿Por qué importa la planta de Frasle?
+Porque acorta los plazos de reposición para los distribuidores de la región.
+
+### ¿Qué conviene mejorar primero en el catálogo?
+La compatibilidad por año, motor y versión, que evita devoluciones.
+
+Descubrí cómo [Alephee](https://alephee.com) conecta tu catálogo con los principales marketplaces.
 
 *Frasle amplía su planta y el catálogo digital se vuelve clave para la rotación de repuestos.*"""
+
+PLAN = (
+    '{"angulo": "La planta de Frasle cambia la reposición", "titulo": "Frasle acorta la reposición", '
+    '"palabra_clave": "pastillas de freno", "secciones": [{"titulo": "Qué pasó", "idea": "La inversión", '
+    '"noticias": [1]}, {"titulo": "Qué cambia", "idea": "El catálogo", "noticias": []}], '
+    '"implicancias": ["Revisar proveedores"]}'
+)
 
 
 class ColFake:
@@ -36,6 +55,18 @@ class ColFake:
 
     def find_one(self, *a, **k):
         return None
+
+    def find(self, *a, **k):
+        docs = self.docs
+
+        class Cursor:
+            def sort(self, *a):
+                return self
+
+            def limit(self, n):
+                return list(reversed(docs))[:n]
+
+        return Cursor()
 
 
 @pytest.fixture
@@ -55,12 +86,16 @@ def entorno(monkeypatch):
     ])
     monkeypatch.setattr(g, "col_notas_fase2", col)
     monkeypatch.setattr(g, "col_clientes", ColFake())
-    monkeypatch.setattr(g, "_correcciones", lambda: [])
+    from afterdrive import calibracion
+    monkeypatch.setattr(g, "_calibracion", lambda persona: calibracion.Calibracion())
     descartadas = []
     monkeypatch.setattr(g, "registrar_nota_descartada", lambda origen, crudo, motivo, **meta: descartadas.append(motivo))
     llamadas["descartadas"] = descartadas
 
     def completar(system, user, **kw):
+        if system.startswith("Sos el editor"):
+            llamadas["plan_user"] = user
+            return PLAN
         llamadas.update(system=system, user=user, **kw)
         return NOTA
 
@@ -180,7 +215,8 @@ def test_nota_que_pasa_no_se_reescribe(entorno, monkeypatch):
     llamadas, col, _ = entorno
     _evaluaciones(monkeypatch, BUENA)
     assert g.generar_nota(["autopartes"])["success"]
-    assert col.docs[0]["calidad"] == {"puntaje": 3, "fallas_criticas": [], "intentos": 1, "reescrita_por": []}
+    assert col.docs[0]["calidad"] == {"puntaje": 3, "fallas_criticas": [], "intentos": 1, "reescrita_por": [],
+                                      "problemas": []}
 
 
 def test_nota_que_inventa_se_reescribe_una_vez_diciendo_por_que(entorno, monkeypatch):
@@ -205,7 +241,8 @@ def test_si_las_dos_fallan_queda_la_mejor_y_no_hay_tercer_intento(entorno, monke
 def test_si_el_saneo_rechaza_la_primera_se_reintenta(entorno, monkeypatch):
     _, col, _ = entorno
     respuestas = ["Primero voy a pensar el plan de la nota...", NOTA]
-    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: respuestas.pop(0))
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: PLAN if system.startswith("Sos el editor")
+                        else respuestas.pop(0))
     _evaluaciones(monkeypatch, BUENA)
     monkeypatch.setattr(g, "sanear", lambda crudo: type("S", (), {
         "ok": crudo == NOTA, "texto": crudo, "motivo": "el modelo escribió su razonamiento"})())
@@ -288,7 +325,8 @@ def test_si_atlas_falla_se_sigue_con_las_recientes(vectorial, monkeypatch):
 
 def test_las_correcciones_de_rechazos_llegan_al_pedido(entorno, monkeypatch):
     llamadas, col, _ = entorno
-    monkeypatch.setattr(g, "_correcciones", lambda: ["Inventa cifras", "Muy comercial"])
+    from afterdrive import calibracion
+    monkeypatch.setattr(g, "_calibracion", lambda persona: calibracion.Calibracion(reglas=["Inventa cifras", "Muy comercial"]))
     g.generar_nota(["autopartes"])
     assert "- Inventa cifras\n- Muy comercial" in llamadas["user"]
     assert llamadas["user"].index("Correcciones") < llamadas["user"].index("## Pedido")
@@ -332,3 +370,145 @@ def test_cancelada_durante_la_reescritura_no_guarda_la_primera_version(entorno, 
     with pytest.raises(llm.Cancelada):
         g.generar_nota(["autopartes"])
     assert col.docs == []
+
+
+# ── Plan, verificación, secciones fijas, repetición y calibración ─────────────
+
+
+def test_el_plan_llega_a_la_redaccion_con_las_notas_recientes(entorno):
+    llamadas, col, _ = entorno
+    col.docs.append({"contenido": "# Una nota de la semana pasada\n\nTexto."})
+    g.generar_nota(["autopartes"])
+    assert "Una nota de la semana pasada" in llamadas["plan_user"]          # el plan evita su ángulo
+    assert "## Plan de la nota (seguilo)" in llamadas["user"]
+    assert "Palabra clave: pastillas de freno" in llamadas["user"]
+    assert col.docs[-1]["plan"]["titulo"] == "Frasle acorta la reposición"
+
+
+def test_sin_plan_valido_la_nota_se_escribe_igual(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: "no es json" if system.startswith("Sos el editor")
+                        else llamadas.update(user=user) or NOTA)
+    assert g.generar_nota(["autopartes"])["success"]
+    assert "Plan de la nota" not in llamadas["user"] and col.docs[0]["plan"] is None
+
+
+def test_la_nota_termina_con_sus_fuentes_antes_de_la_meta(entorno):
+    _, col, _ = entorno
+    contenido = col.docs[0]["contenido"] if g.generar_nota(["autopartes"])["success"] else ""
+    lineas = contenido.rstrip().splitlines()
+    assert lineas[-1].startswith("*Frasle amplía")
+    assert "## Fuentes" in contenido
+    # El plan asignó la noticia 1 a una sección: entra. La 2 no se usó en nada: no.
+    assert "- [Frasle amplía su planta de pastillas de freno](https://n/1)" in contenido
+    assert "https://n/2" not in contenido.split("## Fuentes")[1]
+
+
+def test_datos_sin_respaldo_hacen_reescribir_y_se_guardan(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    inventada = NOTA.replace("invirtió en ampliar", "invirtió **US$ 80 millones** en ampliar")
+    respuestas = [inventada, NOTA]
+
+    def completar(system, user, **kw):
+        if system.startswith("Sos el editor"):
+            return PLAN
+        if system.startswith("Sos un verificador"):
+            return '{"datos": [{"dato": "US$ 80 millones", "respaldado": false}]}'
+        llamadas.update(user=user)
+        return respuestas.pop(0)
+
+    monkeypatch.setattr(llm, "completar", completar)
+    assert g.generar_nota(["autopartes"])["success"]
+    assert "US$ 80 millones" in llamadas["user"] and "no aparecen en las noticias" in llamadas["user"]
+    doc = col.docs[0]
+    assert doc["calidad"]["intentos"] == 2 and doc["calidad"]["reescrita_por"] == ["datos_sin_respaldo"]
+    assert doc["verificacion"]["sin_respaldo"] == [] and "US$ 80" not in doc["contenido"]
+
+
+def test_falta_la_seccion_de_implicancias_hace_reescribir(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    sin_seccion = NOTA.replace("## Qué significa para tu negocio", "## Otra cosa")
+    respuestas = [sin_seccion, NOTA]
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: PLAN if system.startswith("Sos el editor")
+                        else llamadas.update(user=user) or respuestas.pop(0))
+    g.generar_nota(["autopartes"])
+    assert "Falta la sección" in llamadas["user"]
+    assert col.docs[0]["calidad"]["reescrita_por"] == ["sin_implicancias"]
+
+
+def test_una_nota_igual_a_una_reciente_se_reescribe(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.setattr(llm, "modelo_embeddings", lambda: "nvidia/x")
+    col.docs.append({"contenido": "# Nota vieja igual", "embedding": [0.1, 0.2], "embedding_modelo": "nvidia/x"})
+    g.generar_nota(["autopartes"])
+    assert "se parecía demasiado" in llamadas["user"] and "Nota vieja igual" in llamadas["user"]
+    nueva = col.docs[-1]
+    assert nueva["parecida_a"]["titulo"] == "Nota vieja igual" and "repetida" in nueva["calidad"]["problemas"]
+
+
+def test_los_enlaces_inventados_se_quitan(entorno, monkeypatch):
+    _, col, _ = entorno
+    con_link = NOTA.replace("Frasle invirtió", "[Frasle](https://inventado.example/x) invirtió")
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: PLAN if system.startswith("Sos el editor")
+                        else con_link)
+    g.generar_nota(["autopartes"])
+    assert "inventado.example" not in col.docs[0]["contenido"]
+    assert col.docs[0]["enlaces_quitados"] == ["https://inventado.example/x"]
+    assert "[Alephee](https://alephee.com)" in col.docs[0]["contenido"]      # el de la casa queda
+
+
+def test_la_calibracion_llega_al_pedido(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    from afterdrive import calibracion
+    cal = calibracion.Calibracion(
+        reglas=["Sé más breve"], aciertos=["El ángulo de márgenes funcionó"],
+        ejemplos_propios=[{"id": "abc", "titulo": "Nota propia buena", "cuerpo": "Cuerpo de la nota propia.", "puntaje": 5}],
+    )
+    monkeypatch.setattr(g, "_calibracion", lambda persona: cal)
+    g.generar_nota(["autopartes"])
+    u = llamadas["user"]
+    assert "- Sé más breve" in u and "- El ángulo de márgenes funcionó" in u
+    assert "Notas propias que el equipo calificó alto" in u and "Nota propia buena" in u
+    assert "Sé más breve" in llamadas["plan_user"]
+    assert col.docs[0]["calibracion_usada"]["ejemplos_propios"] == [{"id": "abc", "titulo": "Nota propia buena", "puntaje": 5}]
+
+
+def test_el_umbral_calibrado_hace_reescribir_notas_flojas(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    from afterdrive import calibracion
+    monkeypatch.setattr(g, "_calibracion", lambda persona: calibracion.Calibracion(umbral=5))
+    _evaluaciones(monkeypatch, BUENA, BUENA)   # 3 de 9: por debajo del umbral
+    g.generar_nota(["autopartes"])
+    assert "el equipo pide al menos 5" in llamadas["user"]
+    assert col.docs[0]["calidad"]["intentos"] == 2
+
+
+def test_se_guardan_estilo_y_seo(entorno):
+    _, col, _ = entorno
+    g.generar_nota(["autopartes"])
+    doc = col.docs[0]
+    assert doc["seo"]["palabra_clave"] == "pastillas de freno" and doc["seo"]["preguntas_frecuentes"] == 2
+    assert isinstance(doc["estilo"], list)
+
+
+def test_las_noticias_usadas_hace_poco_quedan_al_final():
+    ns = [Noticia(1, "a", "", usada_reciente=True), Noticia(2, "b", ""), Noticia(3, "c", "")]
+    assert [n.id for n in contexto_noticias.elegir(ns, 2)] == [2, 3]
+    assert [n.id for n in contexto_noticias.elegir(ns, 3)] == [2, 3, 1]
+
+
+def test_usada_reciente_mira_la_fecha():
+    from afterdrive.generacion import contexto_noticias as cn
+    ahora = datetime.datetime(2026, 10, 19, tzinfo=datetime.UTC)
+    assert cn._usada_reciente({"usado_en": "2026-10-10T00:00:00+00:00"}, ahora)
+    assert not cn._usada_reciente({"usado_en": "2026-08-01T00:00:00+00:00"}, ahora)
+    assert not cn._usada_reciente({"usado_para_articulo": True}, ahora)   # marcadas antes de guardar la fecha
+
+
+def test_formatear_usa_la_ficha_y_un_extracto():
+    n = Noticia(1, "Frasle amplía", "Cuerpo largo. " * 300, url="https://n/1",
+                ficha={"resumen": "Frasle amplía su planta.", "cifras": ["US$ 20 millones de inversión"],
+                       "empresas": ["Frasle"], "hechos": [], "fecha": "2026-10-01"})
+    txt = contexto_noticias.formatear([n], max_chars=1200)
+    assert "Resumen: Frasle amplía su planta." in txt and "- US$ 20 millones de inversión" in txt
+    assert "Fecha: 2026-10-01" in txt and "Extracto: Cuerpo largo." in txt and len(txt) < 1600

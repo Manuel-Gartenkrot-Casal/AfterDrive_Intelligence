@@ -19,6 +19,7 @@ express/src/public/
         ├── sugerencias.js    fuentes recomendadas
         ├── generador.js      Crear nota y el modal de la nota
         ├── historial.js      Historial y revisión de notas
+        ├── revision.js       calificación, lo revisado al generar y panel de calibración
         └── arranque.js       inicializa todo al cargar
 ```
 
@@ -52,6 +53,7 @@ Lo que más vas a tocar:
 | `base.js` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
 | `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
 | `historial.js` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`): aprobar, rechazar con motivo, editar, vista previa con imagen y HubSpot |
+| `revision.js` | Calificación de la nota abierta (estrellas, etiquetas, comentario), lo que se revisó al generarla (datos contra las noticias, estilo y SEO, plan) y el panel "Cómo aprende la generación" del Historial |
 | `base.js` | `confirmar()` (diálogo; con `campo` pide un texto, como el motivo de un rechazo) y `pedir()` (`fetch` que lanza error si el server responde error) |
 
 ## Patrones que hay que respetar

@@ -7,6 +7,7 @@ Interfaz:
     detalle(seccion, coleccion, item_id, base=None) -> ítem con el contenido completo
     cambiar_estado(coleccion, item_id, estado, base=None) -> ítem actualizado
     editar(coleccion, item_id, contenido, base=None) -> ítem actualizado
+                            (la primera edición guarda la versión generada en contenido_original)
 
 Secciones:
     generados_aprobados     Notas Fase 1 (articulos_generados) y Fase 2 (notas_fase2)
@@ -173,6 +174,7 @@ def _normalizar(doc: dict, coleccion: str, seccion: str, completo: bool = False)
         item["editado_en"] = doc.get("editado_en")
         item["calidad"] = doc.get("calidad")
         item["hubspot"] = doc.get("hubspot")
+        item["calificacion"] = doc.get("calificacion")
         if item["estado"] == _db.ESTADO_RECHAZADA:
             item["motivo"] = doc.get("motivo_rechazo") or None
     if seccion.endswith("descartados"):
@@ -311,15 +313,17 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
     if len(contenido) < LARGO_MINIMO_NOTA:
         raise ErrorHistorial(f"La nota quedó demasiado corta (mínimo {LARGO_MINIMO_NOTA} caracteres).")
     col = _base(base)[coleccion]
-    doc = col.find_one({"_id": _oid(item_id)}, {"estado": 1})
+    doc = col.find_one({"_id": _oid(item_id)}, {"estado": 1, "contenido": 1, "contenido_original": 1})
     if not doc:
         return None
     if doc.get("estado") == _db.ESTADO_PUBLICADO:
         raise ErrorHistorial("La nota ya está publicada: volvela a borrador para editarla.")
-    col.update_one({"_id": doc["_id"]}, {"$set": {
-        "contenido": contenido,
-        "editado_en": datetime.datetime.now(datetime.UTC).isoformat(),
-    }})
+    cambios = {"contenido": contenido, "editado_en": datetime.datetime.now(datetime.UTC).isoformat()}
+    if not doc.get("contenido_original") and doc.get("contenido") and doc["contenido"].strip() != contenido:
+        # La versión que escribió el modelo, una sola vez: de la diferencia con la
+        # editada salen las lecciones de calibracion.lecciones_de_ediciones.
+        cambios["contenido_original"] = doc["contenido"]
+    col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
 
 

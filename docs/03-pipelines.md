@@ -17,8 +17,10 @@ scraper.py   baja el listado → detecta links de artículos (prioriza URLs con 
       ▼
 ingesta.py   el LLM decide si es del rubro
       ├── no ──► articulos_descartados  (con título, cuerpo y motivo)
-      └── sí ──► embedding ──► articulos  (upsert por url)
+      └── sí ──► ficha ──► embedding ──► articulos  (upsert por url)
 ```
+
+- **Ficha** (`lm_studio.fichar_articulo`): el modelo de clasificación (el barato) resume cada artículo aprobado en español: resumen, hechos, cifras, empresas y fecha. La generación usa la ficha en lugar del cuerpo crudo. Una llamada por artículo aprobado; `FICHAS_NOTICIAS=0` la apaga. Los artículos viejos sin ficha la reciben la primera vez que se eligen para una nota.
 
 - Máximo de artículos por fuente: `max_articulos` (10 por defecto, se cambia en Programación).
 - **No se vuelve a procesar lo ya visto**: antes de descargar se consultan `articulos` y `articulos_descartados` (`corridas.ya_procesadas`). El contador de "nuevos" es real.
@@ -57,14 +59,21 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 
 **Pasos**
 
-1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (65 %), recencia por **fecha de publicación** (25 %) y que no se hayan usado (10 %). **Son la única fuente permitida de cifras, empresas y casos.**
-2. **Referencias de estilo**: hasta 2 notas reales por categoría.
-3. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región). Al pedido se suman las **correcciones**: los motivos de las últimas notas rechazadas en el Historial (hasta 5, de los últimos 60 días, `historial.motivos_recientes`), como errores a no repetir. La nota guarda cuáles usó en `correcciones_usadas`.
-4. **Redacción** con el LLM.
-5. **Saneo** (`ia/saneo.py`): limpia la respuesta y **la descarta si el modelo escribió su razonamiento en vez de la nota**. Lo descartado queda en `notas_descartadas` con el motivo.
-6. **Evaluación**: el LLM revisa la nota contra un checklist de 9 puntos.
-7. **Reescritura**: si la nota no pasó el saneo o falló un punto crítico (inventa datos, paywall, repeticiones o estructura), se escribe **una vez más** diciéndole al modelo qué falló. Queda la mejor de las dos.
-8. Se guarda en `notas_fase2` como **borrador**, con su evaluación y `calidad` (puntaje, fallas, intentos), y las noticias usadas quedan marcadas.
+1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (65 %), recencia por **fecha de publicación** (25 %) y que no se hayan usado (10 %). Las que ya alimentaron una nota en los **últimos 30 días** quedan para el final: solo entran si no alcanzan las demás. Al prompt va la **ficha** de cada una más un extracto. **Son la única fuente permitida de cifras, empresas y casos.**
+2. **Referencias de estilo**: hasta 2 notas reales por categoría, que además son los **enlaces internos** sugeridos. Se suman hasta 2 **notas propias que el equipo calificó con 4 o 5 estrellas**.
+3. **Calibración** (`calibracion.py`, ver abajo): correcciones del equipo (rechazos, calificaciones bajas, etiquetas que se repiten, ediciones), aciertos y el umbral del evaluador.
+4. **Plan** (`generacion/plan.py`): el modelo propone ángulo, título (máx. 60 caracteres), palabra clave, secciones con qué noticia alimenta cada una e implicancias. Recibe los títulos de las últimas 15 notas para **no repetir su ángulo**. Si el plan falla, la nota se escribe sin plan.
+5. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región + **secciones fijas**: "Qué significa para tu negocio" con 3 a 5 acciones concretas y "Preguntas frecuentes" con 3 preguntas + reglas de SEO + citas con link a la noticia + CTA con link a Alephee). El pedido lleva noticias, referencias, correcciones, aciertos y el plan.
+6. **Redacción** con el LLM y **saneo** (`ia/saneo.py`): limpia la respuesta y **la descarta si el modelo escribió su razonamiento en vez de la nota**. Lo descartado queda en `notas_descartadas` con el motivo.
+7. **Revisión de la versión**:
+   - **Enlaces**: se quitan los links a URLs que no salen de las noticias, del blog o de alephee.com (el texto queda).
+   - **Datos contra las noticias** (`generacion/verificacion.py`): cifras y nombres en negrita se buscan literal en las noticias, sus fichas, los clientes y el tema; lo que no aparece se le pregunta al modelo de evaluación (una llamada). Si el modelo no responde, una cifra no encontrada cuenta como sin respaldo.
+   - **Estilo y SEO sin IA** (`generacion/calidad.py`): título, meta description, secciones fijas, huecos tipo "un X%", muletillas de IA, anglicismos, términos de la casa, párrafos largos, palabra clave.
+   - **Evaluación** con el LLM (checklist de 9 puntos).
+   - **Repetición**: si el vector de la nota se parece a una de las últimas 15 más que `NOTA_PARECIDO_MAX` (0.93), es una repetida.
+8. **Reescritura**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, repetida, o menos lineamientos que el umbral calibrado), se escribe **una vez más** con la lista de problemas. Queda la mejor de las dos.
+9. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
+10. Se guarda en `notas_fase2` como **borrador**, con su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
 
 **Manual o automática**
 
@@ -86,6 +95,25 @@ borrador ──Aprobar──► aprobada ──Publicar en HubSpot──► publ
 Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.
 
 - **Rechazar pide un motivo** (mínimo 3 caracteres): queda en `motivo_rechazo` y alimenta las correcciones de las notas siguientes (paso 3).
+- **Calificar**: al abrir una nota, 1 a 5 estrellas, etiquetas (datos dudosos, genérica, suena a IA, muy larga, tono, poco útil, errores técnicos; y las positivas) y un comentario.
+- **Editar** guarda, la primera vez, la versión que escribió el modelo (`contenido_original`).
+- Al lado de la nota se ve lo que se revisó al generarla: datos sin respaldo, estilo, SEO y el plan.
+
+## Calibración: cómo aprende la generación
+
+Archivo: `calibracion.py`. Se lee de Mongo en cada nota; el estado se ve en **Historial → Cómo aprende la generación**.
+
+| Señal | Qué cambia en la próxima nota |
+|---|---|
+| Una etiqueta negativa en 2 o más de las últimas 20 notas calificadas (90 días) | Activa su regla fija en el prompt (por ejemplo "Suena a IA" → sin muletillas, oraciones concretas) |
+| Comentario de una nota con 1 o 2 estrellas | Entra como corrección a respetar |
+| Comentario de una nota con 4 o 5 estrellas | Entra como "lo que el equipo valoró" |
+| Nota con 4 o 5 estrellas | Pasa a ser referencia de estilo (primero las de la misma persona) |
+| Motivo de rechazo | Corrección (como antes) |
+| Edición de una nota | En la próxima generación, el modelo de evaluación resume la diferencia entre lo generado y lo editado en hasta 2 reglas generales; quedan guardadas en la nota (`leccion_edicion`) |
+| 8 o más notas calificadas con evaluación automática | Se calcula el puntaje automático mínimo (0 a 9) que mejor separa lo que el equipo califica con 3 o más; una nota por debajo se reescribe |
+
+Como mucho 8 correcciones por nota. El panel muestra además el promedio por persona y por proveedor, para decidir con datos (eso no cambia nada solo).
 - **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imagen destacada, que se puede cambiar ahí mismo.
 
 Detalle en [hubspot-integration.md](hubspot-integration.md).

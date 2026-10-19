@@ -76,6 +76,19 @@ _Avoid_: queue, fila
 Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA, OpenRouter o la API paga.
 _Avoid_: provider, backend, modelo
 
+**Ficha**:
+Resumen estructurado de un Artículo (resumen, hechos, cifras, empresas, fecha) que la generación usa en lugar del cuerpo crudo.
+
+**Plan**:
+Ángulo, título, palabra clave y secciones de una Nota, decididos antes de redactarla.
+
+**Calificación**:
+Puntaje de 1 a 5 estrellas, con etiquetas y comentario, que una persona le pone a una Nota.
+_Avoid_: rating, voto
+
+**Calibración**:
+Lo que la generación aprende de calificaciones, rechazos y ediciones: correcciones, referencias propias y el umbral del evaluador.
+
 **Modo pago**:
 Estado en que todo el pipeline usa la API paga por 24 horas como máximo; se prende desde la vista Cliente y se apaga solo.
 _Avoid_: modo premium, API paga activada

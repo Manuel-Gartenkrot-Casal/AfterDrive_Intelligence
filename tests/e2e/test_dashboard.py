@@ -192,3 +192,30 @@ def test_cancelar_la_nota_en_curso(pagina):
     expect(pagina.locator("#f2-status")).to_contain_text("cancelada", timeout=10000)
     expect(boton).to_be_hidden()
     assert cancelados == ["POST"]
+
+
+def test_calificar_una_nota_alimenta_la_calibracion(pagina):
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral = pagina.locator(".modal-sidebar")
+    # Lo que se revisó al generarla.
+    assert "2 de 3 datos aparecen en las noticias" in lateral.inner_text()
+    assert "US$ 80 millones" in lateral.locator(".revision-lista.mal").inner_text()
+    assert "Palabra clave: rotación de stock" in lateral.inner_text()
+    lateral.locator("summary", has_text="Ver el plan").click()
+    expect(lateral.locator(".revision-criterios ol")).to_contain_text("Qué pasó")
+
+    calificar = lateral.locator(".calificar")
+    calificar.wait_for()
+    assert calificar.get_by_role("button", name="Guardar calificación").is_disabled()
+    calificar.locator('.estrella[data-n="2"]').click()
+    calificar.locator('[data-etiqueta="muy_larga"]').click()
+    pagina.fill("#calificar-comentario", "El cierre repite la introducción")
+    calificar.get_by_role("button", name="Guardar calificación").click()
+    pagina.locator("#calificar-estado", has_text="Guardada").wait_for()
+
+    pagina.keyboard.press("Escape")
+    pagina.locator(".hist-item", has_text="Rotación de stock").locator(".badge-estrellas").wait_for()
+    panel = pagina.locator("#calibracion-panel")
+    expect(panel.locator("#calibracion-resumen")).to_contain_text("1 nota calificada")
+    panel.locator("summary").click()
+    expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")

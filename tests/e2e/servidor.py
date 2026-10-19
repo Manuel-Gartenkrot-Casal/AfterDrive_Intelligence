@@ -49,6 +49,21 @@ def sembrar() -> None:
         {"contenido": "# Marketplaces y catálogo\n\n" + CUERPO, "generado_en": "2026-10-16T14:00:00+00:00",
          "estado": "aprobada", "categorias": ["marketplaces"],
          "evaluacion": {"lineamientos": {}, "comentarios": "Evaluación de prueba"}},
+        {"contenido": "# Rotación de stock en el mostrador\n\n" + CUERPO + "\n*La rotación manda.*",
+         "generado_en": "2026-10-15T14:00:00+00:00", "estado": "aprobada", "categorias": ["autopartes"],
+         "persona": "comercial", "proveedor": "openrouter",
+         "calidad": {"puntaje": 7, "fallas_criticas": [], "intentos": 2, "reescrita_por": ["datos_sin_respaldo"],
+                     "problemas": ["datos_sin_respaldo"]},
+         "verificacion": {"total": 3, "respaldados": ["Frasle", "15%"], "sin_respaldo": ["US$ 80 millones"],
+                          "dudosos": [], "metodo": "literal+modelo", "noticias_citadas": [0]},
+         "estilo": [{"codigo": "anglicismos", "detalle": "Anglicismos con equivalente en español: \"feedback\"",
+                     "grave": False}],
+         "seo": {"titulo_caracteres": 35, "meta_caracteres": 19, "palabra_clave": "rotación de stock",
+                 "preguntas_frecuentes": 2, "enlaces_internos": 1, "enlaces": 3, "palabras": 120},
+         "plan": {"angulo": "La rotación define el margen", "titulo": "Rotación de stock",
+                  "palabra_clave": "rotación de stock", "implicancias": [],
+                  "secciones": [{"titulo": "Qué pasó", "idea": "x", "noticias": [1]},
+                                {"titulo": "Qué cambia", "idea": "y", "noticias": []}]}},
     ])
     dbm.db.articulos.insert_many(
         [{"url": f"https://s.com/{i}", "titulo": f"Noticia {i}", "cuerpo": "Texto. " * 20} for i in range(3)])

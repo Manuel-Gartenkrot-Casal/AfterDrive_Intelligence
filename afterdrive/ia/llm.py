@@ -45,7 +45,7 @@ PROVEEDORES = ("local", "nvidia", "openrouter", "paga")
 
 # Tareas del pipeline que llaman al chat. Solo la API paga las separa en
 # modelos distintos (PAGA_MODEL_<TAREA>); el resto usa un modelo para todo.
-TAREAS = ("clasificacion", "redaccion", "evaluacion")
+TAREAS = ("clasificacion", "planificacion", "redaccion", "evaluacion")
 
 
 def paga_configurada(*extra: str) -> bool:
