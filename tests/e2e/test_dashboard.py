@@ -143,3 +143,39 @@ def test_celular_sin_scroll_horizontal(navegador, base_url, modo):
         assert ancho <= 390, f"{s} ({modo}): {ancho}px"
     assert pg.errores == []
     pg.context.close()
+
+
+def test_modo_api_paga_con_aviso_y_toggle(pagina):
+    btn = pagina.locator("#modo-pago-btn")
+    detalle = pagina.locator("#modo-pago-detalle")
+    pagina.wait_for_selector("#modo-pago-btn:not([disabled])")
+    assert btn.is_visible() and btn.get_attribute("aria-checked") == "false"
+    assert "Apagada" in detalle.inner_text()
+
+    # Prender pide confirmación; cancelar lo deja apagado.
+    btn.click()
+    dialogo = pagina.locator("#confirmar")
+    dialogo.wait_for(state="visible")
+    assert "24 horas" in pagina.locator("#confirmar-titulo").inner_text()
+    assert "cuesta dinero" in pagina.locator("#confirmar-texto").inner_text()
+    pagina.click("#confirmar-no")
+    dialogo.wait_for(state="hidden")
+    assert btn.get_attribute("aria-checked") == "false"
+
+    btn.click()
+    pagina.click("#confirmar-si")
+    pagina.wait_for_selector('#modo-pago-btn[aria-checked="true"]')
+    assert "se apaga en" in detalle.inner_text()
+    assert pagina.evaluate("fetch('/api/providers').then(r => r.json())")["provider"] == "paga"
+
+    # Sigue a la vista en otra sección y en la vista Desarrollador.
+    pagina.click('.sidebar a[data-seccion="historial"]')
+    pagina.click('.modo-switch button[data-modo="dev"]')
+    assert btn.is_visible()
+    assert "active" in pagina.locator("#prov-paga").get_attribute("class")
+
+    # Apagar no pide confirmación.
+    btn.click()
+    pagina.wait_for_selector('#modo-pago-btn[aria-checked="false"]:not([disabled])')
+    assert not pagina.locator("#confirmar").is_visible()
+    assert pagina.evaluate("fetch('/api/providers').then(r => r.json())")["provider"] == "local"

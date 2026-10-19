@@ -176,3 +176,16 @@ def get_provider_config() -> str:
 
 def set_provider_config(provider: str):
     _set_section("provider", {"provider": provider})
+
+
+# ── Modo API paga (vista Cliente) ─────────────────────────────────────────────
+
+DEFAULT_MODO_PAGO = {"hasta": ""}  # ISO UTC; vacío = apagado. Ver afterdrive/ia/modo_pago.py
+
+
+def get_modo_pago_config() -> dict:
+    return _get_section("modo_pago", DEFAULT_MODO_PAGO)
+
+
+def set_modo_pago_config(hasta: str):
+    _set_section("modo_pago", {"hasta": hasta})

@@ -329,7 +329,7 @@ def get_ultima_nota() -> dict | None:
 
 def _validar_entorno() -> None:
     """Falla temprano y con mensaje claro si falta configuración crítica."""
-    provider = os.getenv("AI_PROVIDER", "local")
+    provider = llm.proveedor_activo()
     if provider == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
         sys.exit("[ERROR] AI_PROVIDER=openrouter pero OPENROUTER_API_KEY no está configurado.")
     if provider == "nvidia" and not os.getenv("NVIDIA_API_KEY"):

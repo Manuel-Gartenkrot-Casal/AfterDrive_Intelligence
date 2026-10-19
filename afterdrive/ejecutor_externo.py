@@ -56,8 +56,9 @@ def pendientes(ahora: datetime.datetime | None = None) -> list[str]:
 
 
 def _proveedor_guardado() -> None:
-    """Usa el proveedor de IA elegido en el dashboard, como hace el servidor."""
+    """Usa el proveedor de IA elegido en el dashboard (y el modo pago), como hace el servidor."""
     from afterdrive import config_store
+    from afterdrive.ia import modo_pago
     if os.getenv("AI_PROVIDER_OVERRIDE"):
         return
     try:
@@ -66,6 +67,7 @@ def _proveedor_guardado() -> None:
             os.environ["AI_PROVIDER"] = p
     except Exception as e:
         print(f"[ejecutor] No se pudo leer el proveedor guardado ({e}); se usa AI_PROVIDER.", flush=True)
+    modo_pago.restaurar()
 
 
 def correr(tipos: list[str]) -> int:

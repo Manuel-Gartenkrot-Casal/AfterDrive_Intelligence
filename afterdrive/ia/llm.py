@@ -6,6 +6,7 @@ Interfaz:
     embeber(textos, tipo="passage") -> list[vector | None]
     modelo_embeddings() -> str
     usa_api_paga() -> bool
+    proveedor_activo() / proveedor_base() -> str
     disponible() -> bool
     ajustes_redaccion() -> Redaccion
     estado() -> dict
@@ -35,7 +36,7 @@ from urllib.parse import quote
 import requests
 from dotenv import load_dotenv
 
-from afterdrive.ia import consumo
+from afterdrive.ia import consumo, modo_pago
 
 load_dotenv()
 
@@ -179,8 +180,16 @@ def _perfil(nombre: str) -> Perfil:
     )
 
 
-def proveedor_activo() -> str:
+def proveedor_base() -> str:
+    """El proveedor elegido en la vista Desarrollador (o por AI_PROVIDER)."""
     return os.getenv("AI_PROVIDER", "local")
+
+
+def proveedor_activo() -> str:
+    """El proveedor que usa el pipeline ahora: el modo pago, mientras dure, manda sobre el base."""
+    if modo_pago.vigente() and paga_configurada("PAGA_MODEL"):
+        return "paga"
+    return proveedor_base()
 
 
 def _perfil_chat() -> Perfil:
@@ -305,6 +314,8 @@ def estado() -> dict:
         local = False
     return {
         "provider": proveedor_activo(),
+        "provider_base": proveedor_base(),
+        **modo_pago.estado(),
         "local_available": local,
         "nvidia_available": bool(os.getenv("NVIDIA_API_KEY")),
         "openrouter_available": bool(os.getenv("OPENROUTER_API_KEY")),
@@ -317,7 +328,9 @@ def estado() -> dict:
 
 
 def _estado_consumo() -> dict:
-    if proveedor_activo() != "paga" or not paga_configurada("PAGA_MODEL"):
+    # Con la API paga configurada aunque no esté en uso: el aviso del modo pago
+    # muestra cuánto se gastó en el mes antes de prenderlo.
+    if not paga_configurada("PAGA_MODEL"):
         return {}
     motivo = consumo.motivo_tope()
     return {"paga_gastado_mes_usd": round(consumo.gastado_mes(), 4), "paga_tope_usd": consumo.tope(),
