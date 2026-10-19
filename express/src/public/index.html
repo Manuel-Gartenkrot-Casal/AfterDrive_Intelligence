@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="/assets/css/dashboard.css">
 </head>
 <body>
+  <a class="skip-link" href="#contenido" onclick="event.preventDefault(); document.getElementById('contenido').focus()">Ir al contenido</a>
   <div class="particles-canvas"></div>
   <div class="app-container">
     <!-- Header -->
@@ -72,40 +73,6 @@
     </nav>
 
     <main class="contenido" id="contenido" tabindex="-1">
-    <!-- Stats -->
-    <div class="stats-grid solo-dev" data-seccion="inicio">
-      <div class="stat-card">
-        <div class="stat-label">URLs Confiables</div>
-        <div class="stat-row">
-          <div class="stat-value count-up" id="statUrls">&mdash;</div>
-          <svg class="stat-sparkline" width="48" height="28" viewBox="0 0 48 28"><path id="spark-urls" d="M0,24 L8,20 L16,22 L24,14 L32,16 L40,8 L48,4" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-        </div>
-        <div class="stat-sub" id="statUrlsSub"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Articulos en DB</div>
-        <div class="stat-row">
-          <div class="stat-value count-up" id="statArticles">&mdash;</div>
-          <svg class="stat-sparkline" width="48" height="28" viewBox="0 0 48 28"><path id="spark-articles" d="M0,20 L8,18 L16,22 L24,12 L32,10 L40,6 L48,2" fill="none" stroke="var(--ok)" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
-        </div>
-        <div class="stat-sub" id="statArticlesSub"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Ultima Ejecucion</div>
-        <div class="stat-row">
-          <div class="stat-value" id="statLastRun" style="font-size:1.1rem">&mdash;</div>
-        </div>
-        <div class="stat-sub" id="statNextRun"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Proxima Ejecucion</div>
-        <div class="stat-row">
-          <div class="stat-value" id="statNextRunVal" style="font-size:1.1rem">&mdash;</div>
-        </div>
-        <div class="stat-sub" id="statInterval"></div>
-      </div>
-    </div>
-
     <!-- Pipeline HUD (hidden by default) -->
     <div class="pipeline-hud" id="pipelineHud">
       <div class="pipeline-label" data-cliente="Buscando noticias">Pipeline de Procesamiento</div>
@@ -126,17 +93,19 @@
     </div>
 
     <!-- Bienvenida (vista cliente) -->
-    <section class="hero-cliente solo-cliente" data-seccion="inicio" aria-labelledby="hero-title">
+    <section class="hero-cliente" data-seccion="inicio" aria-labelledby="hero-title">
       <div class="hero-intro">
-        <h2 class="hero-title" id="hero-title">Tu contenido de AfterDrive</h2>
-        <p class="hero-sub">El sistema busca noticias del sector y escribe notas por vos. Desde acá ves cómo va y creás una nota cuando quieras.</p>
+        <h2 class="hero-title" id="hero-title">Tu mesa editorial</h2>
+        <p class="hero-sub">Revisá lo que está listo, prepará la próxima nota y seguí el trabajo de tu equipo.</p>
         <div class="hero-kpis">
+          <button type="button" class="kpi kpi-prioridad" onclick="abrirPendientes()"><strong id="inicio-pendientes">—</strong><span>notas para revisar</span></button>
           <button type="button" class="kpi" onclick="irASeccion('crear')"><strong id="c-articulos">-</strong><span>noticias listas para usar</span></button>
           <button type="button" class="kpi" onclick="irASeccion('fuentes')"><strong id="c-fuentes">-</strong><span>fuentes activas</span></button>
           <button type="button" class="kpi" onclick="irASeccion('programacion')"><strong id="c-proxima">-</strong><span>próxima nota automática</span></button>
         </div>
         <div class="hero-ctas">
-          <button type="button" class="btn btn-primary" onclick="irASeccion('crear')">Crear una nota</button>
+          <button type="button" class="btn btn-primary" onclick="abrirPendientes()">Revisar pendientes</button>
+          <button type="button" class="btn" onclick="irASeccion('crear')">Crear una nota</button>
           <button type="button" class="btn" onclick="irASeccion('programacion')">Ver programación</button>
         </div>
       </div>
@@ -147,16 +116,60 @@
         <div class="ultima-foot">
           <span class="ultima-fecha" id="c-ultima-fecha"></span>
           <button class="btn btn-sm" onclick="fase2VerHistorial()">Ver anteriores</button>
-          <button class="btn btn-primary btn-sm" id="c-ultima-btn" onclick="fase2VerUltima()" disabled>Leer nota</button>
+          <button class="btn btn-sm" id="c-ultima-btn" onclick="fase2VerUltima()" disabled>Leer nota</button>
         </div>
       </article>
     </section>
+
+    <section class="inicio-trabajo" data-seccion="inicio" aria-label="Trabajo editorial">
+      <div class="inicio-panel">
+        <div class="panel-head"><h2>Para revisar</h2><button class="btn btn-sm" onclick="abrirPendientes()">Ver todas</button></div>
+        <div id="inicio-lista"><p class="corridas-vacio">Cargando notas pendientes…</p></div>
+      </div>
+      <div class="inicio-panel">
+        <div class="panel-head"><h2>Actividad del sistema</h2><button class="btn btn-sm" onclick="irASeccion('corridas')">Ver corridas</button></div>
+        <p class="inicio-estado" id="inicio-actividad">Consultando actividad…</p>
+        <div id="inicio-recientes"></div>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <div class="stats-grid solo-dev" data-seccion="inicio">
+      <div class="stat-card">
+        <div class="stat-label">Fuentes registradas</div>
+        <div class="stat-row">
+          <div class="stat-value count-up" id="statUrls">&mdash;</div>
+        </div>
+        <div class="stat-sub" id="statUrlsSub"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Artículos almacenados</div>
+        <div class="stat-row">
+          <div class="stat-value count-up" id="statArticles">&mdash;</div>
+        </div>
+        <div class="stat-sub" id="statArticlesSub"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Última ejecución</div>
+        <div class="stat-row">
+          <div class="stat-value" id="statLastRun" style="font-size:1.1rem">&mdash;</div>
+        </div>
+        <div class="stat-sub" id="statNextRun"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Próxima ejecución</div>
+        <div class="stat-row">
+          <div class="stat-value" id="statNextRunVal" style="font-size:1.1rem">&mdash;</div>
+        </div>
+        <div class="stat-sub" id="statInterval"></div>
+      </div>
+    </div>
 
     <!-- Programación automática -->
     <section class="agenda" data-seccion="programacion" aria-labelledby="agenda-title">
       <div class="section-head">
         <h2 class="section-title" id="agenda-title">Programación automática</h2>
-        <p class="section-sub">Arrastrá las agujas o escribí la hora y después guardá los cambios. Hora de Argentina.</p>
+        <p class="section-sub">Definí el horario y la frecuencia. Los cambios se aplican al guardar. Hora de Argentina.</p>
       </div>
       <div class="agenda-grid">
         <article class="agenda-card" id="agenda-scraping">
@@ -169,7 +182,6 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
-          <div class="reloj" id="reloj-scraping"></div>
           <div class="hora-row">
             <label class="sr-only" for="hora-scraping">Hora de scraping</label>
             <input type="time" id="hora-scraping" class="hora-input" step="300" required />
@@ -190,6 +202,7 @@
               <span>artículos por fuente</span>
             </label>
           </div>
+          <details class="reloj-opcional"><summary>Ajustar con reloj</summary><div class="reloj" id="reloj-scraping"></div></details>
           <footer class="agenda-foot">
             <div class="agenda-next">
               <span>Próxima corrida</span>
@@ -209,7 +222,6 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
-          <div class="reloj" id="reloj-generacion"></div>
           <div class="hora-row">
             <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
             <input type="time" id="hora-generacion" class="hora-input" step="300" required />
@@ -235,6 +247,7 @@
               </select>
             </label>
           </div>
+          <details class="reloj-opcional"><summary>Ajustar con reloj</summary><div class="reloj" id="reloj-generacion"></div></details>
           <footer class="agenda-foot">
             <div class="agenda-next">
               <span>Próxima nota</span>
@@ -266,9 +279,54 @@
         </div>
       </div>
 
+      <!-- Acción -->
+      <div class="f2-acciones">
+        <span id="crear-resumen" class="crear-resumen" role="status">Elegí las categorías de tu nota</span>
+        <button type="button" class="btn mas-opciones solo-cliente" id="btn-mas-opciones" aria-expanded="false" onclick="toggleMasOpciones()">Más opciones</button>
+        <button class="btn solo-dev" onclick="fase2VerUltima()">Última Nota</button>
+        <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
+      </div>
+
       <div class="fase2-grupos">
+        <!-- Opciones de generación -->
+        <div class="fase2-grupo f2-opciones">
+          <div class="fase2-grupo-title" data-cliente="Estilo de la nota">Opciones de nota</div>
+
+          <!-- Personalidad -->
+          <div style="margin-bottom:var(--s4)">
+            <label class="control-label" for="f2-persona" data-cliente="Tono">Personalidad / Tono</label>
+            <select id="f2-persona" class="select-field" style="width:100%">
+              <option value="comercial">Comercial</option>
+              <option value="analitico">Analítico-Técnico</option>
+              <option value="periodistico">Periodístico</option>
+              <option value="divulgativo">Divulgativo</option>
+              <option value="ejecutivo">Ejecutivo</option>
+            </select>
+          </div>
+
+          <!-- Tema libre -->
+          <div style="margin-bottom:var(--s4)">
+            <label class="control-label" for="f2-tema" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</label>
+            <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
+          </div>
+
+          <!-- Puntapié a link -->
+          <div class="f2-avanzado" style="margin-bottom:var(--s3)">
+            <div class="control-label" style="margin-bottom:var(--s2)" data-cliente="Llevar al lector a un link">Modo puntapié a link</div>
+            <div class="puntapie-row">
+              <button type="button" class="puntapie-toggle" id="f2-puntapie-toggle" role="switch" aria-checked="false" aria-label="Incluir enlace de destino" onclick="togglePuntapie()">
+                <div class="toggle-switch" id="f2-puntapie-switch"></div>
+                <span id="f2-puntapie-label">Desactivado</span>
+              </button>
+            </div>
+            <div id="f2-puntapie-url-wrap" style="display:none">
+              <input type="url" aria-label="Enlace de destino" id="f2-puntapie-url" class="input-field" style="width:100%" placeholder="https://..." />
+              <div style="font-size:0.75rem;color:var(--text-lo);margin-top:4px">La nota apuntará a redirigir al lector a esta URL</div>
+            </div>
+          </div>
+        </div>
         <!-- Categorías -->
-        <div class="fase2-grupo f2-categorias" style="grid-column:1/-1">
+        <div class="fase2-grupo f2-categorias">
           <div class="fase2-grupo-title" data-cliente="¿Sobre qué temas? Elegí uno o más">Categorías (seleccioná una o más)</div>
           <div class="toggles-grid" id="f2-categorias-grid">
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
@@ -276,7 +334,7 @@
         </div>
 
         <!-- Regiones -->
-        <div class="fase2-grupo f2-avanzado f2-regiones" style="grid-column:1/-1">
+        <div class="fase2-grupo f2-avanzado f2-regiones">
           <div class="fase2-grupo-title">Regiones (opcional: dejalas apagadas para no filtrar por región)</div>
           <div class="toggles-grid" id="f2-regiones-grid">
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando regiones...</div>
@@ -290,58 +348,16 @@
             <div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>
           </div>
           <div class="input-row">
-            <input type="text" id="f2-cli-nombre" class="input-field" placeholder="Nombre del cliente" />
+            <input type="text" aria-label="Nombre del cliente" id="f2-cli-nombre" class="input-field" placeholder="Nombre del cliente" />
             <button class="btn" onclick="fase2AgregarCliente()">Agregar</button>
           </div>
-          <input type="text" id="f2-cli-desc" class="input-field" placeholder="Descripción breve" style="margin-top:var(--s2);width:100%" />
+          <input type="text" aria-label="Descripción del cliente" id="f2-cli-desc" class="input-field" placeholder="Descripción breve" style="margin-top:var(--s2);width:100%" />
           <div id="f2-cli-status" class="feedback"></div>
         </div>
 
-        <!-- Opciones de generación -->
-        <div class="fase2-grupo f2-opciones">
-          <div class="fase2-grupo-title" data-cliente="Estilo de la nota">Opciones de nota</div>
 
-          <!-- Personalidad -->
-          <div style="margin-bottom:var(--s4)">
-            <div class="control-label" data-cliente="Tono">Personalidad / Tono</div>
-            <select id="f2-persona" class="select-field" style="width:100%">
-              <option value="comercial">Comercial</option>
-              <option value="analitico">Analítico-Técnico</option>
-              <option value="periodistico">Periodístico</option>
-              <option value="divulgativo">Divulgativo</option>
-              <option value="ejecutivo">Ejecutivo</option>
-            </select>
-          </div>
-
-          <!-- Tema libre -->
-          <div style="margin-bottom:var(--s4)">
-            <div class="control-label" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</div>
-            <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
-          </div>
-
-          <!-- Puntapié a link -->
-          <div class="f2-avanzado" style="margin-bottom:var(--s3)">
-            <div class="control-label" style="margin-bottom:var(--s2)" data-cliente="Llevar al lector a un link">Modo puntapié a link</div>
-            <div class="puntapie-row">
-              <div class="puntapie-toggle" id="f2-puntapie-toggle" onclick="togglePuntapie()">
-                <div class="toggle-switch" id="f2-puntapie-switch"></div>
-                <span id="f2-puntapie-label">Desactivado</span>
-              </div>
-            </div>
-            <div id="f2-puntapie-url-wrap" style="display:none">
-              <input type="url" id="f2-puntapie-url" class="input-field" style="width:100%" placeholder="https://..." />
-              <div style="font-size:0.75rem;color:var(--text-lo);margin-top:4px">La nota apuntará a redirigir al lector a esta URL</div>
-            </div>
-          </div>
-        </div>
       </div>
 
-      <!-- Acción -->
-      <div class="f2-acciones">
-        <button type="button" class="btn mas-opciones solo-cliente" id="btn-mas-opciones" aria-expanded="false" onclick="toggleMasOpciones()">Más opciones</button>
-        <button class="btn solo-dev" onclick="fase2VerUltima()">Última Nota</button>
-        <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
-      </div>
       <div id="f2-status" class="feedback"></div>
       <div class="barra-guardar" id="barra-crear" hidden>
         <span class="barra-texto">Cambiaste la configuración de la nota automática</span>
@@ -459,6 +475,15 @@
     </form>
   </dialog>
 
+  <details class="actividad-dock" id="actividad-dock" hidden>
+    <summary><span class="actividad-punto" aria-hidden="true"></span><span id="actividad-titulo">Actividad</span><span class="actividad-chevron" aria-hidden="true">⌃</span></summary>
+    <div class="actividad-detalle">
+      <p id="actividad-paso" role="status"></p>
+      <pre id="actividad-log" aria-label="Registro de la tarea"></pre>
+      <button class="btn btn-sm" onclick="irASeccion('corridas')">Ver todas las corridas</button>
+    </div>
+  </details>
+
   <!-- Modal -->
   <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
@@ -478,7 +503,7 @@
         </div>
       </div>
       <div class="modal-sidebar">
-        <h3 class="sidebar-title">Checklist de Calidad</h3>
+        <h3 class="sidebar-title">Contexto y evaluación</h3><p class="revision-ayuda">Evaluación automática orientativa. La revisión editorial sigue en tus manos.</p>
         <div class="checklist" id="check-list"></div>
         <div id="eval-comms" class="eval-comments"></div>
       </div>

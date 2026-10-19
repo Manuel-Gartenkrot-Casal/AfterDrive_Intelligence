@@ -21,17 +21,34 @@ function playClick() {
    VIEW LAST ARTICLE
    ═══════════════════════════════════════════════════════════════════════ */
 
+var _focoAntesNota = null;
 function abrirModal() {
+  if (!$('modal-art').classList.contains('open')) _focoAntesNota = document.activeElement;
   $('modal-art').classList.add('open');
   document.body.classList.add('modal-abierto');
+  document.querySelector('.app-container').inert = true;
+  $('actividad-dock').inert = true;
   $('art-body').scrollTop = 0;
+  $('modal-art').querySelector('.modal-close').focus();
 }
 function cerrar() {
   $('modal-art').classList.remove('open');
   document.body.classList.remove('modal-abierto');
+  document.querySelector('.app-container').inert = false;
+  $('actividad-dock').inert = false;
+  var foco = _focoAntesNota;
+  if (!foco || !foco.isConnected || !foco.getClientRects().length) foco = $('contenido');
+  foco.focus({preventScroll: true});
 }
 document.addEventListener('keydown', function(ev) {
-  if (ev.key === 'Escape' && $('modal-art').classList.contains('open')) cerrar();
+  if (!$('modal-art').classList.contains('open') || $('confirmar').open) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); cerrar(); }
+  if (ev.key !== 'Tab') return;
+  var controles = Array.from($('modal-art').querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]'))
+    .filter(function(el) { return !el.disabled && el.getClientRects().length; });
+  var primero = controles[0], ultimo = controles[controles.length - 1];
+  if (ev.shiftKey && document.activeElement === primero) { ev.preventDefault(); ultimo.focus(); }
+  else if (!ev.shiftKey && document.activeElement === ultimo) { ev.preventDefault(); primero.focus(); }
 });
 
 function copiar() {
@@ -75,6 +92,7 @@ async function fase2Init() {
       pintarPuntapie(st.puntapie_activo);
       $('f2-puntapie-url').value = st.puntapie_url;
       $('f2-tema').value = st.tema;
+      resumenCrear();
     },
     guardar: async function(st, base) {
       await pedir('/api/fase2/config', {
@@ -94,19 +112,29 @@ async function fase2Init() {
   await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
   await fase2CargarConfig();
   form.tomarBase();
+  resumenCrear();
+  $('f2-persona').addEventListener('change', resumenCrear);
 }
 
-function marcarCrear() { if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
+function resumenCrear() {
+  pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
+  pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
+  var n = _f2CategoriasActivas.size;
+  $('crear-resumen').textContent = n ? n + (n === 1 ? ' categoría' : ' categorías') + ' · ' + $('f2-persona').selectedOptions[0].textContent : 'Elegí las categorías de tu nota';
+}
+function marcarCrear() { resumenCrear(); if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
 
 function pintarToggles(grid, activos) {
   document.querySelectorAll(grid + ' .toggle-item').forEach(function(el) {
     el.classList.toggle('active', activos.has(el.dataset.slug));
+    el.setAttribute('aria-pressed', activos.has(el.dataset.slug));
   });
 }
 
 function pintarPuntapie(activo) {
   _f2PuntapieActivo = activo;
   $('f2-puntapie-toggle').classList.toggle('active', activo);
+  $('f2-puntapie-toggle').setAttribute('aria-checked', activo);
   $('f2-puntapie-label').textContent = activo ? 'Activado' : 'Desactivado';
   $('f2-puntapie-url-wrap').style.display = activo ? 'block' : 'none';
 }
@@ -151,14 +179,18 @@ async function fase2CargarCategorias() {
     var grid = $('f2-categorias-grid');
     grid.innerHTML = '';
     _f2Categorias.forEach(function(cat) {
-      var item = document.createElement('div');
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('aria-pressed', 'false');
       item.className = 'toggle-item';
       item.dataset.slug = cat.slug;
+      item.setAttribute('aria-label', cat.nombre);
+      item.title = (cat.ejemplos || 0) + ' ejemplos de referencia';
       item.innerHTML =
         '<span class="toggle-label">' + escHtml(cat.nombre) + '</span>' +
         '<div style="display:flex;align-items:center;gap:6px">' +
           '<span class="toggle-count">' + (cat.ejemplos || 0) + '</span>' +
-          '<div class="toggle-switch"></div>' +
+          '<span class="selection-check" aria-hidden="true">✓</span>' +
         '</div>';
       item.onclick = function() { fase2ToggleCategoria(cat.slug, item); };
       grid.appendChild(item);
@@ -186,14 +218,18 @@ async function fase2CargarRegiones() {
     var grid = $('f2-regiones-grid');
     grid.innerHTML = '';
     _f2Regiones.forEach(function(reg) {
-      var item = document.createElement('div');
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('aria-pressed', 'false');
       item.className = 'toggle-item';
       item.dataset.slug = reg.slug;
+      item.setAttribute('aria-label', reg.nombre);
+      item.title = (reg.ejemplos || 0) + ' ejemplos de referencia';
       item.innerHTML =
         '<span class="toggle-label">' + escHtml(reg.nombre) + '</span>' +
         '<div style="display:flex;align-items:center;gap:6px">' +
           '<span class="toggle-count">' + (reg.ejemplos || 0) + '</span>' +
-          '<div class="toggle-switch"></div>' +
+          '<span class="selection-check" aria-hidden="true">✓</span>' +
         '</div>';
       item.onclick = function() { fase2ToggleRegion(reg.slug, item); };
       grid.appendChild(item);
@@ -233,10 +269,10 @@ function renderClientes() {
     var item = document.createElement('div');
     item.className = 'cliente-item toggle-item' + (_f2ClientesActivos.has(c.slug) ? ' active' : '');
     item.innerHTML =
-      '<div style="flex:1;cursor:pointer" onclick="fase2ToggleCliente(\'' + c.slug + '\', this.parentElement)">' +
-        '<div class="cliente-nombre">' + escHtml(c.nombre) + '</div>' +
-        (c.sector ? '<div class="cliente-sector">' + escHtml(c.sector) + '</div>' : '') +
-      '</div>' +
+      '<button type="button" class="cliente-seleccion" aria-pressed="' + _f2ClientesActivos.has(c.slug) + '" onclick="fase2ToggleCliente(\'' + encArg(c.slug) + '\', this.parentElement)">' +
+        '<span class="cliente-nombre">' + escHtml(c.nombre) + '</span>' +
+        (c.sector ? '<span class="cliente-sector">' + escHtml(c.sector) + '</span>' : '') +
+      '</button>' +
       '<div style="display:flex;align-items:center;gap:6px">' +
         '<div class="toggle-switch"></div>' +
         '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
@@ -246,6 +282,7 @@ function renderClientes() {
 }
 
 function fase2ToggleCliente(slug, el) {
+  slug = decodeURIComponent(slug);
   if (_f2ClientesActivos.has(slug)) {
     _f2ClientesActivos.delete(slug);
     el.classList.remove('active');
@@ -253,6 +290,7 @@ function fase2ToggleCliente(slug, el) {
     _f2ClientesActivos.add(slug);
     el.classList.add('active');
   }
+  el.querySelector('.cliente-seleccion').setAttribute('aria-pressed', _f2ClientesActivos.has(slug));
   marcarCrear();
 }
 
@@ -460,9 +498,10 @@ async function fase2MostrarUltima(id) {
     }
 
     if (d.nota.fuentes && d.nota.fuentes.length) {
-      var fu = document.createElement('div');
+      var fu = document.createElement('details');
+      fu.open = true;
       fu.className = 'fuentes-nota';
-      fu.innerHTML = '<div class="fuentes-nota-titulo">Noticias usadas</div>' + d.nota.fuentes.map(function(f) {
+      fu.innerHTML = '<summary class="fuentes-nota-titulo">Noticias usadas</summary>' + d.nota.fuentes.map(function(f) {
         return '<a href="' + urlSegura(f.url) + '" target="_blank" rel="noopener">' + escHtml(f.titulo) + '</a>';
       }).join('');
       check.appendChild(fu);
@@ -492,12 +531,16 @@ async function fase2MostrarUltima(id) {
       check.appendChild(nd);
     }
     if (evD.success) {
+      var criterios = document.createElement('details');
+      criterios.className = 'revision-criterios';
+      criterios.innerHTML = '<summary>Ver criterios automáticos</summary>';
+      check.appendChild(criterios);
       Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
         var k = entry[0], v = entry[1];
         var item = document.createElement('div');
         item.className = 'check-item ' + (v ? 'ok' : 'fail');
-        item.innerHTML = '<div class="check-dot"></div> ' + escHtml(k.replace(/_/g, ' '));
-        check.appendChild(item);
+        item.innerHTML = '<div class="check-dot"></div> ' + escHtml(k === 'sin_alucinaciones' ? 'Sin indicios de invención detectados' : k.replace(/_/g, ' '));
+        criterios.appendChild(item);
       });
       if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
     }
