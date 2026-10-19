@@ -21,7 +21,8 @@ Recorrido de una nota:
      (correccion.py, barato); solo una nota repetida se reescribe de cero.
      Queda la mejor versión.
   7. El largo (corto, medio, largo) se elige en Crear nota.
-  8. Lo que gastó la API paga en esta nota queda en `costo`.
+  8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
+     destacada se genera con NVIDIA (imagenes.py), siempre gratis.
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -39,7 +40,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from afterdrive import calibracion
+from afterdrive import calibracion, imagenes
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
 from afterdrive.generacion import calidad, contexto_noticias, correccion, plan, verificacion
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
@@ -521,6 +522,13 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         doc["embedding"] = mejor.embedding
         doc["embedding_modelo"] = llm.modelo_embeddings()
 
+    if imagenes.automaticas():
+        # Siempre con NVIDIA (gratis), sin importar el proveedor de la redacción.
+        print("  Generando la imagen destacada...", flush=True)
+        try:
+            doc["imagen"] = imagenes.para_nota(plan_nota, categorias, calidad.partes(articulo).titulo)
+        except imagenes.ErrorImagen as e:
+            print(f"  [AVISO] La nota se guarda sin imagen: {e}", flush=True)
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)

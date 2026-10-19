@@ -36,12 +36,15 @@ Antes de que un redactor escriba, armás el plan de la nota.
 - La palabra clave es lo que un repuestero o un distribuidor buscaría en Google: de 2 a 4 palabras, en minúscula.
 - Título de 60 caracteres como máximo, que incluya la palabra clave.
 - Las implicancias son acciones concretas para un distribuidor, repuestero o taller (precios, stock, canales, catálogo).
+- La imagen es UNA oración EN INGLÉS que describe una foto editorial genérica para el encabezado: escena, objetos
+  y ambiente. Sin texto, sin logos, sin marcas y sin modelos de autos puntuales (mejor un mostrador, un depósito,
+  un taller o repuestos genéricos que un vehículo concreto).
 
 ## Formato de salida
 Respondé solo con este JSON:
 {"angulo": "una oración", "titulo": "...", "palabra_clave": "...",
  "secciones": [{"titulo": "...", "idea": "una oración", "noticias": [1, 2]}],
- "implicancias": ["...", "..."]}"""
+ "implicancias": ["...", "..."], "imagen": "..."}"""
 
 
 def _normalizar(data: dict, n_noticias: int) -> dict | None:
@@ -64,6 +67,7 @@ def _normalizar(data: dict, n_noticias: int) -> dict | None:
         "palabra_clave": " ".join(str(data.get("palabra_clave") or "").split()).lower()[:60],
         "secciones": secciones[:7],
         "implicancias": [" ".join(str(x).split())[:200] for x in (data.get("implicancias") or []) if str(x).strip()][:5],
+        "imagen": " ".join(str(data.get("imagen") or "").split())[:400],
     }
 
 

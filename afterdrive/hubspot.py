@@ -5,6 +5,7 @@ Interfaz:
     configurado() -> bool
     enviar(nota, publicar=False) -> dict   {"id", "url", "estado"}
     vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
+    subir_imagen(contenido, mime, nombre) -> url pública (scope "files")
     preparar(contenido) -> dict             título, cuerpo HTML y meta description
     ErrorHubSpot
 
@@ -25,6 +26,7 @@ en lugar de crear otra: reenviar después de editar no duplica posts.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import unicodedata
@@ -34,9 +36,12 @@ import requests
 
 API = "https://api.hubapi.com/cms/v3/blogs/posts"
 API_TAGS = "https://api.hubapi.com/cms/v3/blogs/tags"
+API_ARCHIVOS = "https://api.hubapi.com/files/v3/files"
+CARPETA_IMAGENES = "/afterdrive-notas"
 TIMEOUT_S = 30
 
-_transporte = {"post": requests.post, "patch": requests.patch, "get": requests.get}   # seam para los tests
+_transporte = {"post": requests.post, "patch": requests.patch, "get": requests.get,
+               "subir": requests.post}   # seam para los tests
 _tags_cache: dict[str, str] = {}   # nombre en minúsculas -> id de la etiqueta en HubSpot
 
 
@@ -126,11 +131,46 @@ def _nombres_etiquetas(nota: dict) -> list[str]:
     return [CATEGORIAS.get(c, c) for c in nota.get("categorias") or []]
 
 
-def _imagen(nota: dict, titulo: str) -> dict:
-    """{url, alt} de la imagen destacada: la de la nota o la de por defecto."""
+def _imagen(nota: dict, titulo: str, local: bool = False) -> dict:
+    """{url, alt} de la imagen destacada: la de la nota o la de por defecto.
+
+    Una imagen generada que todavía no se subió a HubSpot no tiene URL pública:
+    con local=True (vista previa en el dashboard) se usa la del servidor.
+    """
     propia = nota.get("imagen") or {}
-    url = propia.get("url") or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
+    url = propia.get("url")
+    if not url and local and (propia.get("generada") or {}).get("id"):
+        url = f"/api/imagenes/{propia['generada']['id']}"
+    url = url or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
+
+
+def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
+    """Sube una imagen al gestor de archivos de HubSpot y devuelve su URL pública.
+
+    Necesita el scope "files" en la app privada, además de "content".
+    """
+    if not configurado():
+        raise ErrorHubSpot("HubSpot no está configurado: faltan HUBSPOT_TOKEN y HUBSPOT_BLOG_ID.")
+    opciones = {"access": "PUBLIC_INDEXABLE", "overwrite": False, "duplicateValidationStrategy": "NONE"}
+    try:
+        resp = _transporte["subir"](
+            API_ARCHIVOS,
+            files={"file": (nombre, contenido, mime)},
+            data={"folderPath": CARPETA_IMAGENES, "fileName": nombre, "options": json.dumps(opciones)},
+            headers={"Authorization": f"Bearer {os.getenv('HUBSPOT_TOKEN', '')}"},
+            timeout=TIMEOUT_S,
+        )
+    except requests.RequestException as e:
+        raise ErrorHubSpot(f"No se pudo subir la imagen a HubSpot: {e}") from e
+    if resp.status_code in (401, 403):
+        raise ErrorHubSpot("HubSpot no dejó subir la imagen: la app privada necesita el scope 'files'.")
+    if resp.status_code >= 400:
+        raise _error(resp)
+    url = (resp.json() or {}).get("url") or ""
+    if not url:
+        raise ErrorHubSpot("HubSpot subió la imagen pero no devolvió su URL.")
+    return url
 
 
 def vista_previa(nota: dict) -> dict:
@@ -139,7 +179,7 @@ def vista_previa(nota: dict) -> dict:
     previo = nota.get("hubspot") or {}
     return {
         **partes,
-        "imagen": _imagen(nota, partes["titulo"]),
+        "imagen": _imagen(nota, partes["titulo"], local=True),
         "etiquetas": _nombres_etiquetas(nota),
         "slug": previo.get("slug") or _slug(partes["titulo"], str(nota.get("_id", ""))[-6:]),
     }

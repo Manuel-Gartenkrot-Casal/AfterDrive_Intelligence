@@ -10,7 +10,7 @@ import urllib.request
 
 import pytest
 
-from tests.e2e.servidor import CLAVE, USUARIO
+from tests.e2e.credenciales import CLAVE, USUARIO
 
 playwright = pytest.importorskip("playwright.sync_api")
 

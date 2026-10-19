@@ -2064,3 +2064,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 }
 .f2-acciones .f2-pasos { flex-basis: 100%; margin-top: 2px; }
 .f2-acciones .f2-pasos[hidden] { display: none; }
+
+/* Imagen destacada generada con IA (vista previa) */
+.previa-generar { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
+  padding-bottom: var(--s4); margin-bottom: var(--s4); border-bottom: 1px solid var(--border); }
+.previa-generar textarea { resize: vertical; font: inherit; font-size: 0.85rem; margin-bottom: 0; }
+.previa-ayuda { font-size: 0.8rem; color: var(--text-lo); line-height: 1.5; }

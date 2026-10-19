@@ -174,6 +174,7 @@ async function enviarAHubspot(publicar) {
     n.estado = d.item.estado;
     n.hubspot = d.item.hubspot;
     showToast(publicar ? 'Publicada en HubSpot' : 'Guardada como borrador en HubSpot', 'success');
+    if (d.item.aviso) showToast(d.item.aviso, 'warn', 8000);
     cargarResumenHistorial();
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   } catch (e) { showToast(e.message, 'error'); }
@@ -216,7 +217,7 @@ async function vistaPreviaNota() {
   var propia = d.imagen_propia || {};
   $('art-body').innerHTML =
     '<div class="previa">'
-    + (d.imagen.url ? '<img class="previa-imagen" src="' + urlSegura(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '">'
+    + (d.imagen.url ? '<img class="previa-imagen" src="' + srcImagen(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '">'
                     : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
     + '<h1>' + escHtml(d.titulo) + '</h1>'
     + (d.meta ? '<p class="previa-meta">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
@@ -225,17 +226,57 @@ async function vistaPreviaNota() {
     + '<div class="previa-cuerpo">' + DOMPurify.sanitize(d.html) + '</div>'
     + '</div>'
     + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
-    + '<label class="control-label" for="previa-img-url">URL de la imagen (https)</label>'
+    + bloqueGenerarImagen(d, propia)
+    + '<label class="control-label" for="previa-img-url">O pegá la URL de una imagen (https)</label>'
     + '<input id="previa-img-url" class="input-field" type="url" placeholder="https://…/imagen.jpg">'
     + '<label class="control-label" for="previa-img-alt">Texto alternativo</label>'
     + '<input id="previa-img-alt" class="input-field" type="text" maxlength="200" placeholder="Qué muestra la imagen">'
     + '<div class="previa-acciones"><button type="button" class="btn btn-xs btn-primary" onclick="guardarImagenNota()">Guardar imagen</button>'
-    + (propia.url ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
+    + (propia.url || propia.generada ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
     + '</div></fieldset>';
   $('previa-img-url').value = propia.url || '';
   $('previa-img-alt').value = propia.alt || '';
   $('nota-acciones').innerHTML = '<button type="button" class="btn btn-xs" onclick="cancelarEdicionNota()">Volver al texto</button>';
   $('art-body').scrollTop = 0;
+}
+
+/* Una imagen generada se sirve desde /api/imagenes/<id> hasta que se sube a HubSpot. */
+function srcImagen(u) {
+  return /^\/api\/imagenes\/[0-9a-f]{24}$/.test(u || '') ? u : urlSegura(u);
+}
+
+function bloqueGenerarImagen(d, propia) {
+  if (!d.imagenes_disponibles) {
+    return '<p class="previa-ayuda">Para generar imágenes con IA falta configurar NVIDIA_API_KEY en el servidor.</p>';
+  }
+  var gen = propia.generada;
+  return '<div class="previa-generar">'
+    + (gen ? '<p class="previa-ayuda">Imagen generada con IA (' + escHtml(gen.modelo || '') + ').'
+             + (propia.url ? ' Ya está subida a HubSpot.' : ' Se sube a HubSpot al enviar la nota.') + '</p>'
+           : '<p class="previa-ayuda">Generá una imagen con IA (NVIDIA, sin costo). Sin descripción usa la que propuso el plan de la nota.</p>')
+    + '<label class="control-label" for="previa-img-desc">Qué querés que muestre (opcional, mejor en inglés)</label>'
+    + '<textarea id="previa-img-desc" class="input-field" rows="2" maxlength="600" placeholder="Ej: a parts store counter with brake pads on display"></textarea>'
+    + '<button type="button" class="btn btn-xs btn-primary" id="btn-generar-imagen" onclick="generarImagenNota()">'
+    + (gen ? 'Generar otra imagen' : 'Generar imagen con IA') + '</button>'
+    + '</div>';
+}
+
+async function generarImagenNota() {
+  var n = _notaActual, btn = $('btn-generar-imagen');
+  btn.disabled = true;
+  btn.textContent = 'Generando… (puede tardar un minuto)';
+  try {
+    await pedir('/api/historial/imagen/generar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ coleccion: n.coleccion, id: n.id, descripcion: $('previa-img-desc').value.trim() })
+    });
+    showToast('Imagen generada', 'success');
+    vistaPreviaNota();
+  } catch (e) {
+    showToast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Generar imagen con IA';
+  }
 }
 
 async function guardarImagenNota(quitar) {
