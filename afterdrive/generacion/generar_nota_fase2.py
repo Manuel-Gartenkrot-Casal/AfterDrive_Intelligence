@@ -524,6 +524,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             doc["imagen"] = imagenes.para_nota(plan_nota, categorias, calidad.partes(articulo).titulo)
         except imagenes.ErrorImagen as e:
             print(f"  [AVISO] La nota se guarda sin imagen: {e}", flush=True)
+            doc["imagen_error"] = str(e)   # se muestra al revisar la nota
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)

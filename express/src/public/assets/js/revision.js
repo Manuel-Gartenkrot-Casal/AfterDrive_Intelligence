@@ -119,7 +119,23 @@ function pintarCosto(nota, contenedor) {
   contenedor.appendChild(bloqueRevision('Costo de esta nota', html));
 }
 
+function pintarImagen(nota, contenedor) {
+  var im = nota.imagen || {}, html;
+  var src = im.url || (im.generada && im.generada.id ? '/api/imagenes/' + im.generada.id : '');
+  if (src) {
+    html = '<img class="revision-imagen" src="' + srcImagen(src) + '" alt="' + escHtml(im.alt || '') + '">'
+      + (im.generada ? '<p class="revision-sub">Generada con IA. Para cambiarla: Vista previa.</p>' : '');
+  } else if (nota.imagen_error) {
+    html = '<p class="revision-mal">No se pudo generar: ' + escHtml(nota.imagen_error) + '</p>'
+      + '<p class="revision-sub">Podés generarla desde Vista previa.</p>';
+  } else {
+    html = '<p class="revision-sub">Sin imagen. Generala desde Vista previa.</p>';
+  }
+  contenedor.appendChild(bloqueRevision('Imagen destacada', html, nota.imagen_error && !src ? 'con-fallas' : ''));
+}
+
 function pintarRevisionNota(nota, contenedor) {
+  pintarImagen(nota, contenedor);
   pintarCosto(nota, contenedor);
   var v = nota.verificacion;
   if (v && v.total !== undefined) {

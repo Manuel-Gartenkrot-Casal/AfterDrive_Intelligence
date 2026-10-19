@@ -14,8 +14,8 @@ JPG = b"\xff\xd8\xff\xe0falso"
 
 
 class Resp:
-    def __init__(self, status=200, body=None):
-        self.status_code, self._body = status, body or {}
+    def __init__(self, status=200, body=None, headers=None):
+        self.status_code, self._body, self.headers = status, body or {}, headers or {}
         self.text = json.dumps(self._body)
 
     def json(self):
@@ -251,6 +251,7 @@ def test_la_nota_nueva_trae_su_imagen_y_un_fallo_no_la_frena(monkeypatch):
         raise imagenes.ErrorImagen("NVIDIA caído")
     monkeypatch.setattr(imagenes, "generar", falla)
     assert g.generar_nota(["frenos"])["success"] and "imagen" not in col.docs[1]
+    assert col.docs[1]["imagen_error"] == "NVIDIA caído"
 
 
 def test_el_plan_propone_la_escena_de_la_imagen(monkeypatch):
@@ -259,3 +260,27 @@ def test_el_plan_propone_la_escena_de_la_imagen(monkeypatch):
     monkeypatch.setattr(llm, "completar", lambda *a, **k: (
         '{"titulo": "T", "secciones": [{"titulo": "a"}, {"titulo": "b"}], "imagen": "A  parts counter."}'))
     assert plan.planificar([], "x", [])["imagen"] == "A parts counter."
+
+
+def test_si_nvidia_deja_la_imagen_en_proceso_se_espera(nvidia, monkeypatch):
+    # 202 + NVCF-REQID: hay que consultar el estado hasta que termine.
+    nvidia(Resp(202, headers={"NVCF-REQID": "req-1"}))
+    consultas = []
+    respuestas = [Resp(202, headers={"NVCF-REQID": "req-1"}), _artefacto(PNG)]
+    monkeypatch.setitem(imagenes._transporte, "get", lambda url, **kw: consultas.append(url) or respuestas.pop(0))
+    monkeypatch.setattr(imagenes, "_dormir", lambda s: None)
+    assert imagenes.generar("x") == (PNG, "image/png")
+    assert consultas == ["https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/req-1"] * 2
+
+
+def test_202_sin_id_es_un_error_claro(nvidia):
+    nvidia(Resp(202))
+    with pytest.raises(imagenes.ErrorImagen, match="NVCF-REQID"):
+        imagenes.generar("x")
+
+
+def test_regenerar_limpia_el_error_anterior(base, nota, monkeypatch):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagen_error": "NVIDIA caído"}})
+    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    historial.generar_imagen("notas_fase2", nota, base=base)
+    assert "imagen_error" not in base.notas_fase2.find_one({"_id": ObjectId(nota)})

@@ -32,15 +32,21 @@ from __future__ import annotations
 import base64
 import datetime
 import os
+import time
 
 import requests
 
 URL_BASE = "https://ai.api.nvidia.com/v1/genai"
+# Si la imagen tarda, NVIDIA responde 202 con un id (header NVCF-REQID) y hay
+# que consultar este endpoint hasta que esté lista.
+URL_ESTADO = "https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{}"
+ESPERA_S = 2
 MODELO_DEFAULT = "black-forest-labs/flux.1-dev"
 TAMANO_DEFAULT = "1344x768"   # apaisada, para el encabezado del blog
 TIMEOUT_S = 120
 
-_transporte = {"post": requests.post}   # seam para los tests
+_transporte = {"post": requests.post, "get": requests.get}   # seam para los tests
+_dormir = time.sleep
 
 _ESTILO = ("Editorial photograph for a B2B automotive aftermarket industry blog. Realistic, natural light, "
            "professional, clean composition, shallow depth of field. No text, no letters, no numbers, no logos, "
@@ -122,6 +128,24 @@ def _mime(contenido: bytes) -> str:
     return "image/jpeg"
 
 
+def _esperar(resp, headers: dict):
+    """Mientras NVIDIA responda 202 (en proceso), consulta el estado hasta que termine."""
+    limite = time.monotonic() + TIMEOUT_S
+    while resp.status_code == 202:
+        req_id = (getattr(resp, "headers", None) or {}).get("NVCF-REQID") or \
+            (getattr(resp, "headers", None) or {}).get("nvcf-reqid")
+        if not req_id:
+            raise ErrorImagen("NVIDIA dejó la imagen en proceso sin decir cómo consultarla (falta NVCF-REQID).")
+        if time.monotonic() > limite:
+            raise ErrorImagen(f"NVIDIA no terminó la imagen en {TIMEOUT_S} s: probá de nuevo.")
+        _dormir(ESPERA_S)
+        try:
+            resp = _transporte["get"](URL_ESTADO.format(req_id), headers=headers, timeout=TIMEOUT_S)
+        except requests.RequestException as e:
+            raise ErrorImagen(f"No se pudo consultar el estado de la imagen en NVIDIA: {e}") from e
+    return resp
+
+
 def generar(prompt: str) -> tuple[bytes, str]:
     """(bytes, mime) de la imagen. Si el tamaño apaisado no se acepta, reintenta cuadrada."""
     if not configurado():
@@ -135,6 +159,7 @@ def generar(prompt: str) -> tuple[bytes, str]:
                                        timeout=TIMEOUT_S)
         except requests.RequestException as e:
             raise ErrorImagen(f"No se pudo contactar a NVIDIA para la imagen: {e}") from e
+        resp = _esperar(resp, headers)
         if resp.status_code in (400, 422) and (intento_ancho, intento_alto) != (1024, 1024):
             continue   # el modelo no acepta ese tamaño
         if resp.status_code == 429:

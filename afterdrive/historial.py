@@ -400,7 +400,7 @@ def generar_imagen(coleccion: str, item_id: str, descripcion: str = "", base=Non
                                    pedido=descripcion, base=base)
     except imagenes.ErrorImagen as e:
         raise ErrorHistorial(str(e)) from e
-    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}})
+    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}, "$unset": {"imagen_error": ""}})
     imagenes.borrar(((doc.get("imagen") or {}).get("generada") or {}).get("id"), base=base)
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
 

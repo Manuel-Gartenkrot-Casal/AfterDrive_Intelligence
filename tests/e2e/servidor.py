@@ -55,6 +55,7 @@ def sembrar() -> None:
          "persona": "comercial", "proveedor": "openrouter",
          "calidad": {"puntaje": 7, "fallas_criticas": [], "intentos": 2, "reescrita_por": ["datos_sin_respaldo"],
                      "problemas": ["datos_sin_respaldo"], "segundo_intento": "correccion"},
+         "imagen_error": "NVIDIA respondió 500 al generar la imagen",
          "costo": {"total_usd": 0.231, "por_tarea": {"redaccion": 0.18, "correccion": 0.02, "planificacion": 0.031},
                    "llamadas": 6, "estimado": False},
          "verificacion": {"total": 3, "respaldados": ["Frasle", "15%"], "sin_respaldo": ["US$ 80 millones"],
