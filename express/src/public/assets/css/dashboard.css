@@ -1801,3 +1801,9 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 @media (max-width: 640px) {
   .modal-sidebar { max-height: 30vh; }
 }
+
+/* Imagen destacada generada con IA (vista previa) */
+.previa-generar { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
+  padding-bottom: var(--s4); margin-bottom: var(--s4); border-bottom: 1px solid var(--border); }
+.previa-generar textarea { resize: vertical; font: inherit; font-size: 0.85rem; margin-bottom: 0; }
+.previa-ayuda { font-size: 0.8rem; color: var(--text-lo); line-height: 1.5; }

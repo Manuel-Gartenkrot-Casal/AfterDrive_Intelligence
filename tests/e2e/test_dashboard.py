@@ -224,3 +224,18 @@ def test_el_largo_de_la_nota_se_guarda(pagina):
     expect(pagina.locator("#f2-largo")).to_have_value("corto")
     pagina.select_option("#f2-largo", "medio")
     pagina.locator("#barra-crear").locator('[data-accion="guardar"]').click()
+
+
+def test_generar_la_imagen_destacada_con_ia(pagina):
+    _abrir_nota(pagina, "Marketplaces")
+    pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
+    pagina.locator(".previa").wait_for()
+    pagina.fill("#previa-img-desc", "a parts store counter")
+    pagina.get_by_role("button", name="Generar imagen con IA").click()
+    imagen = pagina.locator("img.previa-imagen")
+    imagen.wait_for()
+    assert imagen.get_attribute("src").startswith("/api/imagenes/")
+    pagina.wait_for_function("() => document.querySelector('img.previa-imagen').naturalWidth > 0")
+    expect(pagina.locator(".previa-generar")).to_contain_text("Imagen generada con IA")
+    pagina.get_by_role("button", name="Quitar imagen").click()
+    pagina.locator(".previa-sin-imagen").wait_for()

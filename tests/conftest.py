@@ -23,6 +23,12 @@ def consumo_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_imagenes_automaticas(monkeypatch):
+    """Una key de NVIDIA en el .env no debe hacer que los tests generen imágenes de verdad."""
+    monkeypatch.setenv("IMAGENES_AUTOMATICAS", "0")
+
+
+@pytest.fixture(autouse=True)
 def sin_modo_pago(monkeypatch):
     """El modo pago se prende escribiendo os.environ directo: no debe pasar de un test a otro."""
     monkeypatch.delenv("MODO_PAGO_HASTA", raising=False)

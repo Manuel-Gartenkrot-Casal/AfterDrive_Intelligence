@@ -73,8 +73,9 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
    - **Evaluación** con el LLM (checklist de 9 puntos).
    - **Repetición**: si el vector de la nota se parece a una de las últimas 15 más que `NOTA_PARECIDO_MAX` (0.93), es una repetida.
 8. **Corrección**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, o menos lineamientos que el umbral calibrado), el **modelo de corrección** (`generacion/correccion.py`; con la API paga, el de evaluación, unas 12 veces más barato que el de redacción) recibe la nota y la lista de problemas y devuelve la misma nota con solo eso arreglado. Solo una nota **repetida** se redacta de cero, porque el problema es el ángulo. La corrección se revisa igual que la primera versión y queda la mejor de las dos (`calidad.segundo_intento` dice cuál de los dos caminos se usó).
-9. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
-10. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
+9. **Imagen destacada** (`imagenes.py`): con NVIDIA, siempre (gratis), con la escena que propuso el plan. Si falla, la nota se guarda sin imagen. Se cambia o regenera desde la vista previa; al enviar a HubSpot se sube a sus archivos.
+10. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
+11. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
 
 **Manual o automática**
 

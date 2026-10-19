@@ -45,6 +45,8 @@ jobs:
       OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
       NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL }}
       NVIDIA_EMB_MODEL: ${{ vars.NVIDIA_EMB_MODEL }}
+      NVIDIA_IMAGE_MODEL: ${{ vars.NVIDIA_IMAGE_MODEL }}
+      IMAGENES_AUTOMATICAS: ${{ vars.IMAGENES_AUTOMATICAS }}
       ATLAS_VECTOR_INDEX: ${{ vars.ATLAS_VECTOR_INDEX }}
       # API paga (AI_PROVIDER=paga). La key es secreto; el resto, variables.
       PAGA_API: ${{ vars.PAGA_API }}

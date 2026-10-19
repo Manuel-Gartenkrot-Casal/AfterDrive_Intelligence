@@ -18,7 +18,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen`, `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
+| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt` y, si se generó con IA, `generada`: id, prompt y modelo), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
 | `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
 | `articulos_generados` | Notas del generador viejo (Fase 1, ya borrado). Solo se leen en el Historial | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
 
@@ -35,6 +35,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
 | `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`), `value` |
+| `imagenes` | Imágenes destacadas generadas con NVIDIA | `contenido` (binario), `mime`, `prompt`, `modelo`, `creada`. Al regenerar o quitar la imagen de una nota se borra la anterior |
 | `corridas` | **La cola y el historial de Corridas** (30 días) | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `ejecutor` (`servidor` / `github`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas), `cancelar_pedido` |
 
 Estados de una Corrida: `pendiente → en_curso → ok | error | cancelada | interrumpida`.

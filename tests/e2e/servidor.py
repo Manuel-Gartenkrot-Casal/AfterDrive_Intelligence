@@ -27,6 +27,7 @@ os.environ.update(
     HUBSPOT_TOKEN="pat-e2e", HUBSPOT_BLOG_ID="123",
     # API paga configurada (a una URL falsa) para poder prender el modo pago.
     PAGA_API_KEY="pg-e2e", PAGA_BASE_URL="http://127.0.0.1:9/v1", PAGA_MODEL="modelo-e2e",
+    NVIDIA_API_KEY="nvapi-e2e", IMAGENES_AUTOMATICAS="0",
 )
 
 from afterdrive import corridas, hubspot  # noqa: E402
@@ -89,6 +90,23 @@ class _Resp:
         return {"id": "555", "url": "https://blog.e2e/nota", "state": self._estado, "results": []}
 
 
+# PNG de 1x1: NVIDIA falso para generar imágenes sin salir a internet.
+PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+
+def nvidia_falso() -> None:
+    from afterdrive import imagenes
+
+    class _RespImagen:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"artifacts": [{"base64": PNG_1X1, "finishReason": "SUCCESS"}]}
+
+    imagenes._transporte = {"post": lambda url, **kw: _RespImagen()}
+
+
 def hubspot_falso() -> None:
     def post(url, json=None, headers=None, timeout=None, params=None):
         return _Resp(json.get("state", "DRAFT") if json else "DRAFT")
@@ -99,6 +117,7 @@ if __name__ == "__main__":
     sembrar()
     corridas._scrapear_fuentes = scraping_falso
     hubspot_falso()
+    nvidia_falso()
     from afterdrive import flask_api, scheduler
     scheduler.iniciar()
     flask_api.app.run(host="127.0.0.1", port=int(sys.argv[1]), threaded=True)

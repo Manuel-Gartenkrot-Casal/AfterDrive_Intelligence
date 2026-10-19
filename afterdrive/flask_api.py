@@ -473,6 +473,34 @@ def calibracion_resumen():
         return jsonify({"success": False, "error": f"No se pudo leer la calibración: {e}"}), 500
 
 
+@app.route("/api/historial/imagen/generar", methods=["POST"])
+def historial_generar_imagen():
+    """Genera la imagen destacada con NVIDIA: {"coleccion", "id", "descripcion" (opcional)}."""
+    from afterdrive import historial
+
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.generar_imagen(body.get("coleccion", ""), body.get("id", ""), body.get("descripcion") or "")
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/imagenes/<imagen_id>", methods=["GET"])
+def ver_imagen(imagen_id: str):
+    """Una imagen generada, para el dashboard (HubSpot recibe la suya subida a sus archivos)."""
+    from flask import Response
+
+    from afterdrive import imagenes
+    datos = imagenes.leer(imagen_id)
+    if not datos:
+        return jsonify({"success": False, "error": "Imagen no encontrada."}), 404
+    contenido, mime = datos
+    return Response(contenido, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.route("/api/historial/imagen", methods=["PATCH"])
 def historial_imagen():
     """{coleccion, id, url, alt}: imagen destacada de una nota (url vacía la saca)."""

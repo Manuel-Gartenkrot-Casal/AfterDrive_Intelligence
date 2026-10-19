@@ -16,7 +16,7 @@ Las notas **aprobadas** se pueden mandar al blog de AfterDrive en HubSpot desde 
 ## Configuración (una sola vez)
 
 1. En HubSpot: **Configuración → Integraciones → Apps privadas → Crear app privada**.
-2. En **Scopes**, agregá **`content`**. Creá la app y copiá el token (empieza con `pat-`).
+2. En **Scopes**, agregá **`content`** y **`files`** (este último para subir las imágenes destacadas generadas con IA). Creá la app y copiá el token (empieza con `pat-`).
 3. Buscá el id del blog (`contentGroupId`) con la [API de configuración de blogs](https://developers.hubspot.com/docs/api-reference/latest/cms/blogs/blog-settings/guide) (lista los blogs de la cuenta con su id), o en la configuración del blog dentro de HubSpot.
 4. Cargá las variables en `.env` (local) o en **Environment** de Render:
 
@@ -51,6 +51,7 @@ En la nota se guarda `hubspot: {id, url, estado, enviado_en}` y, si se publicó,
 | Mensaje | Qué hacer |
 |---|---|
 | "HubSpot rechazó el token" (401/403) | Revisá `HUBSPOT_TOKEN` y que la app tenga el scope `content` |
+| "No se pudo subir la imagen… scope 'files'" | Agregá el scope `files` a la app privada. Mientras tanto la nota se publica sin la imagen generada |
 | "No encontró el blog o el post" (404) | Revisá `HUBSPOT_BLOG_ID` |
 | "Está limitando las llamadas" (429) | Esperá un minuto |
 
