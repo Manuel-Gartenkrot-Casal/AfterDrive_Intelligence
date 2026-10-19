@@ -42,6 +42,7 @@ _VARIABLES = {
     "clasificacion": "PAGA_MODEL_CLASIFICACION",
     "evaluacion": "PAGA_MODEL_EVALUACION",
     "redaccion": "PAGA_MODEL_REDACCION",
+    "planificacion": "PAGA_MODEL_PLANIFICACION",
     "general": "PAGA_MODEL",
     "fallback": "PAGA_FALLBACK_MODEL",
     "embeddings": "PAGA_EMB_MODEL",

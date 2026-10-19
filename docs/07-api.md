@@ -47,7 +47,9 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/historial/<seccion>?pagina=&por_pagina=&q=&estado=` | Lista paginada. Secciones: `generados_aprobados`, `generados_descartados`, `scrapeados_aprobados`, `scrapeados_descartados` |
 | `GET /api/historial/<seccion>/<coleccion>/<id>` | Un ítem con su contenido completo |
 | `POST /api/historial/estado` | `{coleccion, id, estado, motivo}`: `borrador`, `aprobada`, `rechazada` (pide `motivo`, mínimo 3 caracteres) o `publicado` |
-| `PATCH /api/historial/contenido` | `{coleccion, id, contenido}`: editar el texto de una nota no publicada |
+| `PATCH /api/historial/contenido` | `{coleccion, id, contenido}`: editar el texto de una nota no publicada. La primera edición guarda la versión generada |
+| `POST /api/historial/calificacion` | `{coleccion, id, puntaje (1-5), etiquetas, comentario}`: calificar una nota. Alimenta la calibración |
+| `GET /api/calibracion` | Lo que la generación aprendió: calificaciones, promedios por persona y proveedor, reglas activas, aciertos, notas propias de referencia y umbral del evaluador |
 | `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |
 | `GET /api/historial/vista-previa/<coleccion>/<id>` | Cómo saldría en el blog: `titulo`, `meta`, `slug`, `etiquetas`, `imagen`, `html` |
 | `GET /api/hubspot/estado` | `{configurado}` |

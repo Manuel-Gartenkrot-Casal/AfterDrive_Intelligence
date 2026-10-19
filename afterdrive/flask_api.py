@@ -439,6 +439,33 @@ def historial_editar():
     return jsonify({"success": True, "item": item})
 
 
+@app.route("/api/historial/calificacion", methods=["POST"])
+def historial_calificar():
+    """Calificación de una Nota: {"coleccion", "id", "puntaje": 1-5, "etiquetas": [...], "comentario"}."""
+    from afterdrive import calibracion
+
+    body = request.get_json(silent=True) or {}
+    try:
+        cal = calibracion.calificar(body.get("coleccion", ""), body.get("id", ""), body.get("puntaje"),
+                                    body.get("etiquetas") or [], body.get("comentario") or "")
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    if cal is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "calificacion": cal})
+
+
+@app.route("/api/calibracion", methods=["GET"])
+def calibracion_resumen():
+    """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""
+    from afterdrive import calibracion
+
+    try:
+        return jsonify({"success": True, **calibracion.resumen()})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"No se pudo leer la calibración: {e}"}), 500
+
+
 @app.route("/api/historial/imagen", methods=["PATCH"])
 def historial_imagen():
     """{coleccion, id, url, alt}: imagen destacada de una nota (url vacía la saca)."""

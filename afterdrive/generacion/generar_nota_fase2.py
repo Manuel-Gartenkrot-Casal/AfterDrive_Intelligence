@@ -3,12 +3,23 @@ generar_nota_fase2.py — Generador de notas estilo AfterDrive by Alephee.
 
 Recorrido de una nota:
   1. Noticias de contexto: las noticias scrapeadas más útiles para el pedido
-     (contexto_noticias). Son la única fuente de cifras, empresas y casos.
-  2. Referencias de estilo: notas reales del blog (afterdrive_ejemplos).
-  3. Prompt: system de redaccion.py (persona + región) ajustado al proveedor
-     activo (llm.ajustes_redaccion) + pedido con noticias y referencias.
-  4. Generación, saneo (saneo.py) y evaluación de calidad, que se guarda con
-     la nota para no re-evaluarla cada vez que se abre.
+     (contexto_noticias), con su ficha. Son la única fuente de cifras,
+     empresas y casos. Las usadas hace poco quedan para el final.
+  2. Referencias de estilo: notas reales del blog (afterdrive_ejemplos), que
+     también son los enlaces internos sugeridos, y notas propias que el equipo
+     calificó alto.
+  3. Calibración (calibracion.py): correcciones de rechazos, calificaciones y
+     ediciones; aciertos; umbral del evaluador.
+  4. Plan (plan.py): ángulo, título, palabra clave y secciones, sin repetir el
+     ángulo de las notas recientes.
+  5. Prompt: system de redaccion.py (persona + región + secciones fijas + SEO)
+     ajustado al proveedor activo + pedido con noticias, referencias y plan.
+  6. Redacción y revisión de cada versión: saneo (saneo.py), enlaces
+     inventados afuera y datos contra las noticias (verificacion.py), estilo y
+     SEO (calidad.py), evaluación con IA y parecido con notas recientes. Un
+     problema grave hace reescribir una vez; queda la mejor versión.
+  7. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
+     con la nota para mostrarlo al revisarla.
 
 Uso:
     python -m afterdrive.generacion.generar_nota_fase2 \\
@@ -22,9 +33,11 @@ import argparse
 import datetime
 import os
 import sys
+from dataclasses import dataclass, field
 
+from afterdrive import calibracion
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
-from afterdrive.generacion import contexto_noticias
+from afterdrive.generacion import calidad, contexto_noticias, plan, verificacion
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
 from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
 from afterdrive.ia import llm, redaccion
@@ -117,6 +130,10 @@ def _build_user_prompt(
     tema: str | None,
     ajustes: "llm.Redaccion | None" = None,
     evitar: list[str] | None = None,
+    plan_nota: dict | None = None,
+    aciertos: list[str] | None = None,
+    propios: list[dict] | None = None,
+    enlaces: list[dict] | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -138,19 +155,39 @@ def _build_user_prompt(
             "Imitá su tono, estructura y profundidad. No copies su contenido ni sus datos.\n\n"
             + _formatear_ejemplos(ejemplos, ajustes.chars_ejemplo)
         )
+    if propios:
+        partes.append(
+            "## Notas propias que el equipo calificó alto\n"
+            "Tomalas como referencia de lo que funciona. No copies su tema ni sus datos.\n\n"
+            + _formatear_ejemplos([{"titulo": p["titulo"], "cuerpo": p["cuerpo"]} for p in propios],
+                                  ajustes.chars_ejemplo)
+        )
+    if enlaces and not ajustes.compacto:
+        partes.append(
+            "## Notas del blog para enlazar\n"
+            "Enlazá una o dos donde aporten, con un texto de enlace descriptivo.\n"
+            + "\n".join(f"- [{e['titulo']}]({e['url']})" for e in enlaces)
+        )
     if evitar:
         partes.append(
             "## Correcciones de notas anteriores\n"
-            "Una persona rechazó notas anteriores por estos motivos. No repitas esos errores:\n"
-            + "\n".join(f"- {m}" for m in evitar)
+            "El equipo marcó estos problemas en notas anteriores (rechazos, calificaciones y ediciones). "
+            "No los repitas:\n" + "\n".join(f"- {m}" for m in evitar)
         )
-    pedido = "Escribí la nota."
-    if tema:
-        pedido = f"Escribí la nota sobre este tema: {tema}."
-    elif categorias:
-        pedido = f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
-    partes.append("## Pedido\n" + pedido)
+    if aciertos:
+        partes.append("## Lo que el equipo valoró en notas anteriores\n" + "\n".join(f"- {m}" for m in aciertos))
+    if plan_nota:
+        partes.append(plan.formatear(plan_nota))
+    partes.append("## Pedido\n" + _pedido(categorias, tema))
     return "\n\n".join(partes)
+
+
+def _pedido(categorias: list[str], tema: str | None) -> str:
+    if tema:
+        return f"Escribí la nota sobre este tema: {tema}."
+    if categorias:
+        return f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
+    return "Escribí la nota."
 
 
 def _consulta(categorias: list[str], tema: str | None, regiones: list[str]) -> str:
@@ -166,6 +203,14 @@ CRITICOS = ("sin_alucinaciones", "sin_paywall", "no_repetitivo", "estructura_cor
 MAX_INTENTOS = 2
 
 
+def parecido_maximo() -> float:
+    """Similitud (coseno) a partir de la cual una nota repite a una reciente."""
+    try:
+        return float(os.getenv("NOTA_PARECIDO_MAX", "0.93"))
+    except ValueError:
+        return 0.93
+
+
 def fallas_criticas(evaluacion: dict | None) -> list[str]:
     """Lineamientos críticos que la evaluación marcó en falso. Sin evaluación: ninguno."""
     lineamientos = (evaluacion or {}).get("lineamientos") or {}
@@ -177,17 +222,19 @@ def puntaje(evaluacion: dict | None) -> int:
     return sum(1 for v in ((evaluacion or {}).get("lineamientos") or {}).values() if v is True)
 
 
-def _pedido_de_correccion(fallas: list[str]) -> str:
-    nombres = {
-        "sin_alucinaciones": "inventaba datos, conceptos o casos que no están en las noticias",
-        "sin_paywall": "incluía frases de suscripción o paywall",
-        "no_repetitivo": "repetía información entre secciones",
-        "estructura_correcta": "no tenía secciones (##) bien definidas",
-    }
-    detalle = "; ".join(nombres.get(f, f) for f in fallas)
+_MOTIVOS_EVALUADOR = {
+    "sin_alucinaciones": "inventaba datos, conceptos o casos que no están en las noticias",
+    "sin_paywall": "incluía frases de suscripción o paywall",
+    "no_repetitivo": "repetía información entre secciones",
+    "estructura_correcta": "no tenía secciones (##) bien definidas",
+}
+
+
+def _pedido_de_correccion(problemas: list[str]) -> str:
     return (
-        "\n\nIMPORTANTE: una versión anterior de esta nota fue rechazada porque "
-        f"{detalle}. Escribila de nuevo corrigiendo eso."
+        "\n\nIMPORTANTE: una versión anterior de esta nota fue rechazada por esto:\n"
+        + "\n".join(f"- {p}" for p in problemas)
+        + "\nEscribila de nuevo corrigiendo todo eso."
     )
 
 
@@ -201,14 +248,99 @@ def _redactar(system: str, user_msg: str, ajustes) -> tuple[str | None, str, str
     return saneo.texto, "", crudo
 
 
-def _correcciones() -> list[str]:
-    """Motivos de rechazo recientes. Si Mongo falla, la nota se escribe igual."""
+def _calibracion(persona: str) -> calibracion.Calibracion:
+    """Lo aprendido de calificaciones, rechazos y ediciones. Si Mongo falla, la nota se escribe igual."""
+    return calibracion.contexto(persona)
+
+
+def _coseno(a, b) -> float:
+    return contexto_noticias._coseno(a, b)
+
+
+def _recientes(limite: int = 15) -> list[dict]:
+    """Las últimas notas: sus títulos van al plan y sus vectores detectan repeticiones."""
     try:
-        from afterdrive.historial import motivos_recientes
-        return motivos_recientes()
+        docs = list(col_notas_fase2.find({}, {"contenido": 1, "embedding": 1, "embedding_modelo": 1})
+                    .sort("generado_en", -1).limit(limite))
     except Exception as e:
-        print(f"  [AVISO] No se pudieron leer las correcciones anteriores: {e}", flush=True)
+        print(f"  [AVISO] No se pudieron leer las notas recientes: {e}", flush=True)
         return []
+    return [{"titulo": calibracion._titulo(d.get("contenido", "")), "embedding": d.get("embedding"),
+             "embedding_modelo": d.get("embedding_modelo")} for d in docs]
+
+
+def _parecida(emb, modelo: str, recientes: list[dict]) -> dict | None:
+    """La nota reciente más parecida, si supera parecido_maximo()."""
+    if not emb:
+        return None
+    mejor = None
+    for r in recientes:
+        if r.get("embedding") and r.get("embedding_modelo") in (modelo, None):
+            sim = _coseno(emb, r["embedding"])
+            if sim >= parecido_maximo() and (mejor is None or sim > mejor["similitud"]):
+                mejor = {"titulo": r["titulo"], "similitud": round(sim, 3)}
+    return mejor
+
+
+@dataclass
+class _Version:
+    """Una versión escrita de la nota y todo lo que se revisó de ella."""
+    texto: str
+    evaluacion: dict | None
+    verificacion: verificacion.Verificacion
+    revision: calidad.Revision
+    enlaces_quitados: list[str]
+    embedding: list | None
+    parecida: dict | None
+    problemas: list[str] = field(default_factory=list)   # graves: justifican reescribir
+    codigos: list[str] = field(default_factory=list)
+
+    @property
+    def orden(self) -> tuple:
+        """Menos problemas graves primero; a igualdad, más lineamientos cumplidos."""
+        return (len(self.codigos), -puntaje(self.evaluacion))
+
+
+def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabra_clave: str,
+             permitidas: tuple, recientes: list[dict], umbral: int | None) -> _Version:
+    from afterdrive.ia.lm_studio import evaluar_lineamientos
+
+    texto, quitados = verificacion.sanear_enlaces(texto, noticias, permitidas, DOMINIOS_PROPIOS)
+    if quitados:
+        print(f"  [AVISO] Se quitaron {len(quitados)} enlace(s) a URLs que no salen de las noticias.", flush=True)
+    print("  Verificando los datos contra las noticias...", flush=True)
+    v = verificacion.verificar(texto, noticias, extra=extra)
+    revision = calidad.revisar(texto, voz, faq=not compacto, palabra_clave=palabra_clave)
+    print("  Evaluando calidad...", flush=True)
+    evaluacion = evaluar_lineamientos(texto)
+    if evaluacion.get("error"):
+        evaluacion = None
+    modelo_emb = llm.modelo_embeddings()
+    emb = llm.embeber([texto])[0]
+    parecida = _parecida(emb, modelo_emb, recientes)
+
+    version = _Version(texto, evaluacion, v, revision, quitados, emb, parecida)
+    for f in fallas_criticas(evaluacion):
+        version.codigos.append(f)
+        version.problemas.append(_MOTIVOS_EVALUADOR.get(f, f))
+    if v.grave:
+        version.codigos.append("datos_sin_respaldo")
+        version.problemas.append(verificacion.pedido_de_correccion(v))
+    for h in revision.graves:
+        version.codigos.append(h.codigo)
+        version.problemas.append(h.detalle)
+    if parecida:
+        version.codigos.append("repetida")
+        version.problemas.append(f"se parecía demasiado a una nota reciente (\"{parecida['titulo']}\"): "
+                                 "elegí otro ángulo y otro hecho central")
+    if umbral is not None and evaluacion is not None and puntaje(evaluacion) < umbral:
+        version.codigos.append("puntaje_bajo")
+        version.problemas.append(f"cumplía {puntaje(evaluacion)} de 9 lineamientos; el equipo pide al menos {umbral}")
+    return version
+
+
+# Dominios a los que una nota siempre puede enlazar (la casa).
+DOMINIOS_PROPIOS = ("alephee.com",)
 
 
 def generar_nota(
@@ -222,6 +354,7 @@ def generar_nota(
     clientes_ids = clientes_ids or []
     regiones = regiones or []
     ajustes = llm.ajustes_redaccion()
+    voz = redaccion.voz(regiones)
 
     clientes_docs = []
     for cid in clientes_ids:
@@ -237,20 +370,43 @@ def generar_nota(
         print("  [WARN] No hay noticias scrapeadas: la nota se escribe sin datos concretos.", flush=True)
 
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
+    enlaces = [{"titulo": e.get("titulo", ""), "url": e["url"]} for e in ejemplos if e.get("url") and e.get("titulo")][:4]
     ejemplos = ejemplos[: ajustes.max_ejemplos]
     print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}", flush=True)
 
+    cal = _calibracion(persona)
+    propios = cal.ejemplos_propios[: max(0, ajustes.max_ejemplos - 1)]
+    if cal.reglas:
+        print(f"  Correcciones del equipo: {len(cal.reglas)}", flush=True)
+    if propios:
+        print(f"  Notas propias bien calificadas como referencia: {len(propios)}", flush=True)
+    if cal.umbral is not None:
+        print(f"  Umbral del evaluador calibrado con las calificaciones: {cal.umbral}/9", flush=True)
+
+    recientes = _recientes()
+    print("  Planificando la nota...", flush=True)
+    estructura = (redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["analitico"])["estructura"]
+    plan_nota = plan.planificar(
+        noticias, _pedido(categorias, tema), estructura,
+        publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
+        contexto=contexto_noticias.formatear(noticias, max_chars=5000),
+    )
+    if plan_nota:
+        print(f"  Plan: {plan_nota['titulo']}", flush=True)
+
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes)
-    evitar = _correcciones()
-    if evitar:
-        print(f"  Correcciones de notas rechazadas: {len(evitar)}", flush=True)
-    user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, evitar)
+    user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
+                                  cal.aciertos, propios, enlaces)
 
-    from afterdrive.ia.lm_studio import evaluar_lineamientos
+    extra = " ".join([_formatear_clientes(clientes_docs), tema or ""])
+    permitidas = tuple(x for x in [puntapie_url, redaccion.alephee_url(), *(e["url"] for e in enlaces)] if x)
+    palabra_clave = (plan_nota or {}).get("palabra_clave", "")
 
-    # Hasta MAX_INTENTOS: si la nota no pasa el saneo o falla un lineamiento
-    # crítico, se reescribe diciéndole al modelo qué estuvo mal. Queda la mejor.
-    mejor = None              # (articulo, evaluacion)
+    # Hasta MAX_INTENTOS: si la nota no pasa el saneo o tiene un problema grave
+    # (datos sin respaldo, lineamiento crítico, falta una sección fija, repite
+    # una nota reciente, no llega al umbral calibrado), se reescribe diciéndole
+    # al modelo qué estuvo mal. Queda la mejor.
+    mejor: _Version | None = None
     motivo, pedido, intentos = "", user_msg, 0
     reescrita_por: list[str] = []
     for intento in range(1, MAX_INTENTOS + 1):
@@ -269,22 +425,28 @@ def generar_nota(
             )
             continue
 
-        print("  Evaluando calidad...", flush=True)
-        evaluacion = evaluar_lineamientos(articulo)
-        if evaluacion.get("error"):
-            evaluacion = None
-        if mejor is None or puntaje(evaluacion) > puntaje(mejor[1]):
-            mejor = (articulo, evaluacion)
-        fallas = fallas_criticas(evaluacion)
-        if not fallas:
+        version = _revisar(articulo, noticias, extra, voz, ajustes.compacto, palabra_clave, permitidas,
+                           recientes, cal.umbral)
+        if mejor is None or version.orden < mejor.orden:
+            mejor = version
+        if not version.codigos:
             break
-        print(f"  [WARN] La nota falló en: {', '.join(fallas)}.", flush=True)
-        reescrita_por = fallas
-        pedido = user_msg + _pedido_de_correccion(fallas)
+        print(f"  [WARN] La nota tiene problemas: {', '.join(version.codigos)}.", flush=True)
+        reescrita_por = version.codigos
+        pedido = user_msg + _pedido_de_correccion(version.problemas)
 
     if mejor is None:
         return {"success": False, "error": f"No se obtuvo una nota publicable: {motivo}"}
-    articulo, evaluacion = mejor
+
+    # Fuentes: las noticias citadas en el texto, las que respaldaron algún dato
+    # y las que el plan asignó a una sección. Sin ninguna señal, todas.
+    citadas = verificacion.urls_citadas(mejor.texto)
+    del_plan = {id(n) for n in plan.noticias_del_plan(plan_nota, noticias)}
+    usadas = [n for i, n in enumerate(noticias)
+              if (n.url and n.url.strip().rstrip("/").lower() in citadas) or i in mejor.verificacion.noticias_citadas
+              or id(n) in del_plan]
+    articulo = verificacion.agregar_fuentes(mejor.texto, usadas or noticias, voz.titulo_fuentes)
+    evaluacion = mejor.evaluacion
 
     doc = {
         "contenido": articulo,
@@ -302,18 +464,24 @@ def generar_nota(
             "fallas_criticas": fallas_criticas(evaluacion),
             "intentos": intentos,
             "reescrita_por": reescrita_por if intentos > 1 else [],
+            "problemas": mejor.codigos,
         },
+        "verificacion": mejor.verificacion.como_dict(),
+        "estilo": mejor.revision.como_dict()["hallazgos"],
+        "seo": mejor.revision.seo,
+        "plan": plan_nota,
+        "parecida_a": mejor.parecida,
+        "enlaces_quitados": mejor.enlaces_quitados,
+        "calibracion_usada": cal.como_dict(),
         "proveedor": llm.proveedor_activo(),
-        "correcciones_usadas": evitar,
+        "correcciones_usadas": cal.reglas,
         "estado": ESTADO_BORRADOR,
         "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 
-    modelo_emb = llm.modelo_embeddings()  # antes de vectorizar: la etiqueta es del modelo que lo calculó
-    emb = llm.embeber([articulo])[0]
-    if emb:
-        doc["embedding"] = emb
-        doc["embedding_modelo"] = modelo_emb
+    if mejor.embedding:
+        doc["embedding"] = mejor.embedding
+        doc["embedding_modelo"] = llm.modelo_embeddings()
 
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)

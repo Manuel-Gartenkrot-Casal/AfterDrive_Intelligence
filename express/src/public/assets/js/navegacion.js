@@ -124,7 +124,10 @@ async function cargarUltimaNota() {
 var PASOS_GENERACION = [
   [/noticias de contexto:\s*(\d+)/i, function(m) { return +m[1] ? 'Leyendo ' + m[1] + ' noticias recientes...' : 'No hay noticias recientes: se escribe sin datos concretos...'; }],
   [/few-shot|ejemplo\(s\) cargado/i, 'Buscando notas de referencia...'],
+  [/planificando la nota/i, 'Armando el plan de la nota...'],
+  [/verificando los datos/i, 'Verificando los datos contra las noticias...'],
   [/evaluando calidad/i, 'Revisando la calidad...'],
+  [/reescribiendo la nota/i, 'Corrigiendo lo que la revisión encontró...'],
   [/generando nota/i, 'Escribiendo la nota...'],
   [/^\s*\[(\d+)s\]/, function(m) {
     var seg = +m[1], min = Math.floor(seg / 60), resto = seg % 60;

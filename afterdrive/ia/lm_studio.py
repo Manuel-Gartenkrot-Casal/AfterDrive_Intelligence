@@ -3,6 +3,7 @@ lm_studio.py — Prompts y tareas de IA del pipeline.
 
 Tareas (todas hablan con el proveedor a través del módulo LLM, llm.py):
   clasificar_articulo   ¿vale la pena guardar este artículo scrapeado?
+  fichar_articulo       resumen, hechos, cifras y empresas de un artículo guardado
   evaluar_lineamientos  checklist de calidad de una nota generada
   generar_articulo      nota a partir de un contexto (lo usa scripts/demo_mode.py)
 
@@ -174,6 +175,59 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
         return {"aprobado": False, "razon": "error: respuesta inválida del modelo"}
     except Exception as e:
         return {"aprobado": True, "razon": f"modo degradado: {e}"}
+
+
+_SYSTEM_FICHA = """\
+Extraés la ficha de una noticia del aftermarket automotor para que otro redactor la use como fuente.
+
+## Reglas
+- Escribí en español, aunque la noticia esté en otro idioma.
+- Solo lo que dice la noticia. No agregues contexto, opiniones ni datos que no estén.
+- Cifras con su unidad y a qué se refieren ("15% de aumento en ventas de pastillas en 2025").
+- Si no hay cifras, empresas o fecha, dejá la lista vacía o null.
+
+## Formato de salida
+Respondé UNICAMENTE con este JSON:
+{"resumen": "2 o 3 oraciones", "hechos": ["..."], "cifras": ["..."], "empresas": ["..."], "fecha": "AAAA-MM-DD o null"}"""
+
+_FICHA_MAX_ITEMS = 8
+_FICHA_MAX_CHARS = 300
+
+
+def _lista(valor) -> list[str]:
+    if not isinstance(valor, list):
+        return []
+    return [" ".join(str(x).split())[:_FICHA_MAX_CHARS] for x in valor if str(x).strip()][:_FICHA_MAX_ITEMS]
+
+
+def fichar_articulo(titulo: str, cuerpo: str) -> dict | None:
+    """Ficha estructurada de una noticia: resumen, hechos, cifras, empresas y fecha.
+
+    La generación la usa como contexto en lugar del cuerpo crudo: más corto (más
+    barato) y con los datos ya separados (menos lugar para inventar). Si el
+    proveedor falla o responde algo que no es una ficha, devuelve None y la
+    noticia se sigue usando con su cuerpo.
+    """
+    if not (cuerpo or "").strip() or not llm.disponible():
+        return None
+    mensaje = f"Título: {titulo}\n\nNoticia:\n{(cuerpo or '')[:6000]}"
+    try:
+        data = _extraer_json(llm.completar(_SYSTEM_FICHA, mensaje, temperature=0.1, max_tokens=900,
+                                           tarea="clasificacion"))
+    except Exception as e:
+        print(f"    [AVISO] No se pudo armar la ficha: {e}", flush=True)
+        return None
+    resumen = " ".join(str(data.get("resumen") or "").split())[:800]
+    if not resumen:
+        return None
+    fecha = str(data.get("fecha") or "").strip()
+    return {
+        "resumen": resumen,
+        "hechos": _lista(data.get("hechos")),
+        "cifras": _lista(data.get("cifras")),
+        "empresas": _lista(data.get("empresas")),
+        "fecha": fecha if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) else None,
+    }
 
 
 def evaluar_lineamientos(articulo: str) -> dict:

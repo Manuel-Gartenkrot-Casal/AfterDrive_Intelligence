@@ -421,6 +421,10 @@
         <h2 class="section-title" id="historial-title">Historial</h2>
         <p class="section-sub">Las notas generadas para revisar, aprobar o publicar, y los artículos que el sistema guardó o descartó.</p>
       </div>
+      <details class="calibracion-panel" id="calibracion-panel">
+        <summary><span class="calibracion-titulo">Cómo aprende la generación</span><span class="calibracion-resumen" id="calibracion-resumen">Cargando…</span></summary>
+        <div class="calibracion-cuerpo" id="calibracion-cuerpo"></div>
+      </details>
       <div class="pestanas" role="tablist" aria-label="Qué mostrar" id="hist-pestanas">
         <button type="button" class="pestana" role="tab" data-hist="generados_aprobados">Notas<span class="cuenta" id="hc-generados_aprobados"></span></button>
         <button type="button" class="pestana" role="tab" data-hist="generados_descartados">Notas descartadas<span class="cuenta" id="hc-generados_descartados"></span></button>
@@ -538,6 +542,7 @@
   <script src="/assets/js/sugerencias.js"></script>
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
+  <script src="/assets/js/revision.js"></script>
   <script src="/assets/js/arranque.js"></script>
 </body>
 </html>

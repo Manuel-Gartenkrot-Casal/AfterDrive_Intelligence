@@ -1731,3 +1731,73 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 @media (max-width: 640px) {
   [data-modo="cliente"] .corridas-bloque { padding: 14px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   REVISIÓN DE UNA NOTA: calificación y lo que se revisó al generarla
+   ═══════════════════════════════════════════════════════════════════════ */
+.calificar {
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding: var(--s3); margin-bottom: var(--s4);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well);
+}
+.calificar h4, .revision-bloque h4 { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
+.calificar-ayuda { font-size: 0.75rem; color: var(--text-lo); }
+.estrellas { display: flex; gap: 2px; }
+.estrella {
+  border: 0; background: transparent; cursor: pointer; padding: 2px 3px;
+  font-size: 1.45rem; line-height: 1; color: var(--border-strong); opacity: 0.45;
+  transition: color var(--t-fast), opacity var(--t-fast), transform var(--t-fast);
+}
+.estrella:hover { transform: scale(1.12); opacity: 0.8; }
+.estrella.on { color: var(--warn); opacity: 1; }
+.estrella:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-radius: 4px; }
+.calificar-etiquetas .chip { font-size: 0.72rem; padding: 5px 10px; }
+.calificar-etiquetas .chip.negativa[aria-pressed="true"] { background: color-mix(in srgb, var(--err) 14%, var(--bg)); color: var(--err); }
+.calificar textarea { resize: vertical; font: inherit; font-size: 0.8rem; min-height: 52px; }
+.calificar-pie { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.calificar-estado { font-size: 0.72rem; color: var(--text-lo); }
+
+.revision-bloque { padding: var(--s3) 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
+.revision-bloque h4 { margin-bottom: 6px; }
+.revision-bloque.con-fallas h4::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: 1px; }
+.revision-ok { color: var(--ok); }
+.revision-mal { color: var(--err); font-weight: 500; }
+.revision-sub { font-size: 0.75rem; color: var(--text-lo); margin-top: 6px; }
+.revision-lista { margin: 4px 0 0 18px; display: flex; flex-direction: column; gap: 3px; color: var(--text-mid); }
+.revision-lista.mal li { color: var(--err); }
+.revision-lista.dudoso li::marker { color: var(--warn); }
+.revision-lista.ok li::marker { color: var(--ok); }
+.revision-lista.seo { list-style: none; margin-left: 0; font-family: var(--mono); font-size: 0.72rem; color: var(--text-lo); }
+.revision-lista small { color: var(--text-lo); }
+.badge-estrellas { font-size: 0.78rem; color: var(--warn); letter-spacing: 1px; white-space: nowrap; }
+
+/* Panel "Cómo aprende la generación" (Historial) */
+.calibracion-panel {
+  margin-bottom: var(--s4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg);
+}
+.calibracion-panel summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3);
+  padding: var(--s3) var(--s4); cursor: pointer;
+}
+.calibracion-titulo { font-weight: 600; color: var(--text-hi); }
+.calibracion-resumen { font-size: 0.8rem; color: var(--text-lo); }
+.calibracion-cuerpo {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s5);
+  padding: 0 var(--s4) var(--s4); font-size: 0.8rem; color: var(--text-mid);
+}
+.calibracion-cuerpo:empty { display: none; }
+.cal-col h4 { font-size: 0.8rem; font-weight: 600; color: var(--text-hi); margin-bottom: 6px; }
+.cal-col p { line-height: 1.5; }
+.cal-barras { display: flex; flex-direction: column; gap: 4px; }
+.cal-barra { display: grid; grid-template-columns: 34px minmax(0, 1fr) 24px; align-items: center; gap: 6px; font-size: 0.72rem; }
+.cal-barra span { color: var(--warn); }
+.cal-barra div { height: 8px; border-radius: var(--r-pill); background: var(--well); overflow: hidden; }
+.cal-barra i { display: block; height: 100%; background: var(--warn); border-radius: var(--r-pill); }
+.cal-barra b { font-weight: 500; text-align: right; font-family: var(--mono); }
+@media (max-width: 900px) {
+  .calibracion-cuerpo { grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+  .modal-sidebar { max-height: 40vh; }
+}
+@media (max-width: 640px) {
+  .modal-sidebar { max-height: 30vh; }
+}
