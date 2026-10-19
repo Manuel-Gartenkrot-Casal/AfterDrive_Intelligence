@@ -234,6 +234,27 @@
           </header>
           <div id="g-gasto" class="gasto-metricas"></div>
         </article>
+        <article class="tablero-card tablero-ancha" aria-labelledby="tc-tokens-t">
+          <header class="tablero-card-head">
+            <h3 id="tc-tokens-t">Tokens de la IA</h3>
+            <p class="tablero-cifra" id="tc-tokens-cifra">—</p>
+          </header>
+          <p class="tablero-nota">Cada llamada usa tokens de <b>entrada</b> (instrucciones y noticias que se le mandan) y de <b>salida</b> (lo que escribe). El límite de salida corta solo la respuesta: si se alcanza, la llamada figura como cortada.</p>
+          <div class="tokens-cuerpo">
+            <div>
+              <ul class="tablero-leyenda" aria-label="Referencias">
+                <li><i class="serie-1"></i>Entrada</li><li><i class="serie-2"></i>Salida</li>
+              </ul>
+              <div class="grafico" id="g-tokens"></div>
+            </div>
+            <div class="tokens-tablas">
+              <h4>Por tarea</h4>
+              <div class="tabla-scroll" id="t-tokens-tareas"></div>
+            </div>
+          </div>
+          <h4>Últimas llamadas</h4>
+          <div class="tabla-scroll" id="t-tokens-recientes"></div>
+        </article>
       </div>
     </section>
 

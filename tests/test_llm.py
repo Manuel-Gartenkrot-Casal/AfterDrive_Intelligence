@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from afterdrive.ia import llm
+from afterdrive.ia import consumo, llm
 
 
 class Resp:
@@ -412,3 +412,52 @@ def test_plan_y_correccion_usan_el_modelo_de_evaluacion(transporte, paga, monkey
     t = transporte([chat("x")])
     llm.completar("s", "u", tarea="correccion")
     assert t.posts[0]["json"]["model"] == "propio"
+
+
+# ── Tokens de cada llamada (todos los proveedores) ─────────────────────────────
+
+
+def test_llamada_de_nvidia_guarda_tokens_sin_costo(transporte, nvidia, consumo_en_memoria, capsys):
+    transporte([Resp(body={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                           "usage": {"prompt_tokens": 120, "completion_tokens": 30}})])
+    llm.completar("s", "u", max_tokens=512, tarea="clasificacion")
+    fila = consumo_en_memoria.find_one()
+    assert fila["proveedor"] == "nvidia" and fila["tarea"] == "clasificacion"
+    assert (fila["tokens_entrada"], fila["tokens_salida"], fila["max_tokens"]) == (120, 30, 512)
+    assert fila["costo_usd"] == 0 and fila["truncado"] is False
+    assert "[TOKENS] clasificacion · nvidia · entrada 120 · salida 30 · total 150 (límite de salida 512)" in capsys.readouterr().out
+    assert consumo.gastado_mes() == 0   # lo gratuito no suma al tope de la API paga
+
+
+def test_respuesta_cortada_por_el_limite(transporte, openrouter, consumo_en_memoria, capsys):
+    transporte([Resp(body={"choices": [{"message": {"content": "a medias"}, "finish_reason": "length"}],
+                           "usage": {"prompt_tokens": 10, "completion_tokens": 256}})])
+    llm.completar("s", "u", max_tokens=256)
+    assert consumo_en_memoria.find_one()["truncado"] is True
+    assert "CORTADA POR EL LÍMITE" in capsys.readouterr().out
+
+
+def test_stream_pide_los_tokens_y_marca_el_corte(transporte, nvidia, consumo_en_memoria):
+    lineas = sse({"choices": [{"delta": {"content": "Hola"}}]},
+                 {"choices": [{"delta": {}, "finish_reason": "length"}]},
+                 {"choices": [], "usage": {"prompt_tokens": 50, "completion_tokens": 4000}})
+    t = transporte([Resp(lineas=lineas)])
+    llm.completar("s", "u", stream=True, max_tokens=4000, tarea="redaccion")
+    assert t.posts[0]["json"]["stream_options"] == {"include_usage": True}
+    fila = consumo_en_memoria.find_one()
+    assert (fila["tokens_salida"], fila["truncado"], fila["estimado"]) == (4000, True, False)
+
+
+def test_si_el_modelo_rechaza_stream_options_se_reintenta_sin(transporte, nvidia, consumo_en_memoria):
+    rechazo = Resp(status=400, body={"error": "Unknown field: stream_options"})
+    t = transporte([rechazo, Resp(lineas=sse({"choices": [{"delta": {"content": "Nota"}}]}))])
+    assert llm.completar("s", "u", stream=True) == "Nota"
+    assert "stream_options" not in t.posts[1]["json"]
+    assert consumo_en_memoria.find_one()["estimado"] is True   # sin usage, se estima
+
+
+def test_embeddings_de_nvidia_tambien_se_registran(transporte, nvidia, consumo_en_memoria):
+    transporte([Resp(body={"data": [{"index": 0, "embedding": [0.1]}], "usage": {"prompt_tokens": 7}})])
+    llm.embeber(["hola"])
+    fila = consumo_en_memoria.find_one()
+    assert fila["tarea"] == "embeddings" and fila["tokens_entrada"] == 7 and fila["costo_usd"] == 0

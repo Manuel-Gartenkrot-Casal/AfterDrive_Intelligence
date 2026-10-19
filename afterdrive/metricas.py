@@ -7,7 +7,7 @@ Todo sale de colecciones que ya existen, sin guardar nada nuevo:
     articulos / articulos_descartados   lo que trajo el scraping, por día y por sitio
     notas_fase2 / notas_descartadas     notas escritas y versiones descartadas
     corridas                            resultado y duración de cada corrida
-    consumo_ia                          gasto de la API paga del mes
+    consumo_ia                          tokens de cada llamada a la IA y gasto de la API paga
 
 Los días se cuentan en hora de Argentina, como la programación. Las fechas
 salen del _id (ObjectId) o del campo de fecha de cada documento, y cada
@@ -29,6 +29,7 @@ ZONA = ZoneInfo("America/Argentina/Buenos_Aires")
 DIAS_MAX = 60
 VENTANA_LARGA = 30   # fuentes, corridas y calidad miran un mes
 TOP_FUENTES = 6
+TOP_RECIENTES = 12
 TIPOS_CORRIDA = {"scraping": "Buscar noticias", "generacion": "Generar nota"}
 ESTADOS_CORRIDA = ("ok", "error", "cancelada", "interrumpida")
 
@@ -166,7 +167,9 @@ def _gasto(b, dias):
     total = 0.0
     desde = _inicio_del_dia(datetime.date.fromisoformat(dias[0])).isoformat()
     filtro = {"$or": [{"mes": hoy.strftime("%Y-%m")}, {"fecha": {"$gte": desde}}]}
-    for doc in b["consumo_ia"].find(filtro, {"fecha": 1, "mes": 1, "tarea": 1, "costo_usd": 1}):
+    for doc in b["consumo_ia"].find(filtro, {"fecha": 1, "mes": 1, "tarea": 1, "costo_usd": 1, "proveedor": 1}):
+        if doc.get("proveedor", "paga") != "paga":
+            continue   # llamadas gratuitas: cuentan tokens, no gasto
         costo = float(doc.get("costo_usd") or 0)
         if doc.get("mes") == hoy.strftime("%Y-%m"):
             total += costo
@@ -179,6 +182,39 @@ def _gasto(b, dias):
         "tope_usd": consumo.tope(),
         "por_tarea": {k: round(v, 4) for k, v in sorted(por_tarea.items(), key=lambda kv: -kv[1])},
         "por_dia": [round(por_dia.get(d, 0.0), 4) for d in dias],
+    }
+
+
+def _tokens(b, desde_corto, dias):
+    """Tokens de cada llamada a la IA en el período, de todos los proveedores."""
+    entrada_dia, salida_dia = defaultdict(int), defaultdict(int)
+    total = {"llamadas": 0, "entrada": 0, "salida": 0, "cortadas": 0, "estimadas": 0}
+    por_tarea: dict[str, dict] = {}
+    recientes = []
+    campos = {"_id": 0, "fecha": 1, "tarea": 1, "proveedor": 1, "modelo": 1, "tokens_entrada": 1,
+              "tokens_salida": 1, "max_tokens": 1, "truncado": 1, "estimado": 1}
+    for doc in b["consumo_ia"].find({"fecha": {"$gte": desde_corto.isoformat()}}, campos):
+        e, s = int(doc.get("tokens_entrada") or 0), int(doc.get("tokens_salida") or 0)
+        dia = _dia(doc.get("fecha"))
+        entrada_dia[dia] += e
+        salida_dia[dia] += s
+        t = por_tarea.setdefault(doc.get("tarea") or "general",
+                                 {"llamadas": 0, "entrada": 0, "salida": 0, "cortadas": 0, "limite": None})
+        for grupo in (total, t):
+            grupo["llamadas"] += 1
+            grupo["entrada"] += e
+            grupo["salida"] += s
+            grupo["cortadas"] += bool(doc.get("truncado"))
+        total["estimadas"] += bool(doc.get("estimado"))
+        t["limite"] = doc.get("max_tokens") or t["limite"]
+        recientes.append(doc)
+    recientes.sort(key=lambda d: d.get("fecha") or "", reverse=True)
+    return {
+        **total,
+        "entrada_por_dia": [entrada_dia.get(d, 0) for d in dias],
+        "salida_por_dia": [salida_dia.get(d, 0) for d in dias],
+        "por_tarea": [{"tarea": k, **v} for k, v in sorted(por_tarea.items(), key=lambda kv: -(kv[1]["entrada"] + kv[1]["salida"]))],
+        "recientes": [{**d, "proveedor": d.get("proveedor", "paga")} for d in recientes[:TOP_RECIENTES]],
     }
 
 
@@ -196,4 +232,5 @@ def resumen(dias: int = 14, base=None) -> dict:
         "notas": _notas(b, desde_corto, desde_largo, serie),
         "corridas": _corridas(b, desde_largo),
         "gasto": _gasto(b, serie),
+        "tokens": _tokens(b, desde_corto, serie),
     }

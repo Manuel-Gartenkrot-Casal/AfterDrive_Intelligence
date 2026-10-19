@@ -12,6 +12,7 @@
 var _tablero = { dias: 14, datos: null, pedido: 0 };
 var _NUM = new Intl.NumberFormat('es-AR');
 var _NUM1 = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
+var _COMPACTO = new Intl.NumberFormat('es-AR', { notation: 'compact', maximumFractionDigits: 1 });
 var _USD = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 
 function _plural(n, uno, varios) { return _NUM.format(n) + ' ' + (n === 1 ? uno : varios); }
@@ -81,7 +82,7 @@ function _columnas(el, dias, series) {
   // Grilla: 0, mitad y tope.
   [0, tope / 2, tope].forEach(function(v) {
     svg += '<line class="grilla" x1="' + izq + '" x2="' + (ancho - der) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>';
-    svg += '<text class="eje" x="' + (izq - 6) + '" y="' + (y(v) + 3.5) + '" text-anchor="end">' + _NUM.format(v) + '</text>';
+    svg += '<text class="eje" x="' + (izq - 6) + '" y="' + (y(v) + 3.5) + '" text-anchor="end">' + (v >= 10000 ? _COMPACTO.format(v) : _NUM.format(v)) + '</text>';
   });
   // Etiquetas de días: todas si entran, si no una de cada k (siempre la última).
   var k = Math.ceil(36 / banda);
@@ -240,6 +241,53 @@ function _pintarGasto(d) {
     }).join('') + '</ul>' : '<p class="tablero-vacio">Este mes todavía no se usó la API paga.</p>');
 }
 
+var _NOMBRE_TAREA = { redaccion: 'Redacción', clasificacion: 'Clasificación', evaluacion: 'Evaluación',
+  planificacion: 'Plan', correccion: 'Corrección', embeddings: 'Embeddings', general: 'Otras' };
+
+// Los modelos de Bedrock son ARNs: se muestra solo el id del final.
+function _modeloCorto(m) { return String(m || '').split('/').pop(); }
+
+function _tabla(columnas, filas, vacio) {
+  if (!filas.length) return '<p class="tablero-vacio">' + vacio + '</p>';
+  return '<table class="tabla-metricas"><thead><tr>' + columnas.map(function(c) {
+    return '<th scope="col"' + (c.num ? ' class="num"' : '') + '>' + c.t + '</th>';
+  }).join('') + '</tr></thead><tbody>' + filas.join('') + '</tbody></table>';
+}
+
+function _pintarTokens(d) {
+  var t = d.tokens;
+  var aprox = t.estimadas ? '≈ ' : '';
+  $('tc-tokens-cifra').innerHTML = '<b>' + _NUM.format(t.llamadas) + '</b> llamadas · ' + aprox + _COMPACTO.format(t.entrada + t.salida) +
+    ' tokens · ' + _plural(t.cortadas, 'cortada', 'cortadas') + ' por el límite';
+  _columnas($('g-tokens'), d.dias, [
+    { nombre: 'Entrada', valores: t.entrada_por_dia, clase: 'serie-1' },
+    { nombre: 'Salida', valores: t.salida_por_dia, clase: 'serie-2' },
+  ]);
+  $('t-tokens-tareas').innerHTML = _tabla(
+    [{ t: 'Tarea' }, { t: 'Llamadas', num: true }, { t: 'Entrada', num: true }, { t: 'Salida', num: true },
+     { t: 'Salida por llamada', num: true }, { t: 'Límite', num: true }, { t: 'Cortadas', num: true }],
+    t.por_tarea.map(function(x) {
+      return '<tr><th scope="row">' + escHtml(_NOMBRE_TAREA[x.tarea] || x.tarea) + '</th>' +
+        '<td class="num">' + _NUM.format(x.llamadas) + '</td><td class="num">' + _NUM.format(x.entrada) + '</td>' +
+        '<td class="num">' + _NUM.format(x.salida) + '</td><td class="num">' + _NUM.format(Math.round(x.salida / x.llamadas)) + '</td>' +
+        '<td class="num">' + (x.limite ? _NUM.format(x.limite) : '—') + '</td>' +
+        '<td class="num' + (x.cortadas ? ' es-cortada' : '') + '">' + _NUM.format(x.cortadas) + '</td></tr>';
+    }), 'Sin llamadas a la IA en este período.');
+  $('t-tokens-recientes').innerHTML = _tabla(
+    [{ t: 'Cuándo' }, { t: 'Tarea' }, { t: 'Proveedor y modelo' }, { t: 'Entrada', num: true }, { t: 'Salida', num: true },
+     { t: 'Límite', num: true }, { t: '' }],
+    t.recientes.map(function(r) {
+      var cuando = new Date(r.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      var marcas = (r.truncado ? '<span class="marca es-cortada">Cortada</span>' : '') +
+                   (r.estimado ? '<span class="marca" title="El proveedor no informó los tokens: se estimaron.">Estimado</span>' : '');
+      var a = r.estimado ? '≈ ' : '';
+      return '<tr><td class="mono">' + cuando + '</td><th scope="row">' + escHtml(_NOMBRE_TAREA[r.tarea] || r.tarea || '—') + '</th>' +
+        '<td class="mono" title="' + escHtml(r.modelo || '') + '">' + escHtml(r.proveedor + ' · ' + _modeloCorto(r.modelo)) + '</td>' +
+        '<td class="num">' + a + _NUM.format(r.tokens_entrada || 0) + '</td><td class="num">' + a + _NUM.format(r.tokens_salida || 0) + '</td>' +
+        '<td class="num">' + (r.max_tokens ? _NUM.format(r.max_tokens) : '—') + '</td><td>' + marcas + '</td></tr>';
+    }), 'Todavía no hay llamadas registradas.');
+}
+
 function _pintarTablero() {
   var d = _tablero.datos;
   if (!d) return;
@@ -249,6 +297,7 @@ function _pintarTablero() {
   _pintarCorridas(d);
   _pintarCalidad(d);
   _pintarGasto(d);
+  _pintarTokens(d);
 }
 
 async function cargarTablero() {

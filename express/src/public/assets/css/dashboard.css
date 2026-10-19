@@ -1920,3 +1920,26 @@ i.serie-2 { background: var(--serie-2); }
   .estados-notas, .gasto-tareas { grid-template-columns: minmax(0, 1fr); }
   .barra-fila { grid-template-columns: minmax(70px, 34%) minmax(0, 1fr) auto; }
 }
+
+/* Tokens de la IA: ocupa el ancho del tablero. */
+.tablero-ancha { grid-column: 1 / -1; }
+.tablero-nota { font-size: 0.78rem; color: var(--text-mid); max-width: 90ch; }
+.tablero-nota b { color: var(--text-hi); font-weight: 600; }
+.tablero-card h4 { font-size: 0.75rem; font-weight: 600; color: var(--text-lo); text-transform: uppercase; letter-spacing: 0.06em; margin: 4px 0 8px; }
+.tokens-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+.tokens-cuerpo > div { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tabla-scroll { overflow-x: auto; }
+.tabla-metricas { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.tabla-metricas th, .tabla-metricas td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tabla-metricas thead th { font-size: 0.68rem; font-weight: 600; color: var(--text-lo); text-transform: uppercase; letter-spacing: 0.04em; }
+.tabla-metricas tbody th { font-weight: 500; color: var(--text-hi); }
+.tabla-metricas td { color: var(--text-mid); }
+.tabla-metricas .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tabla-metricas .mono { font-family: var(--mono); font-size: 0.72rem; }
+.tabla-metricas td.mono[title] { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tabla-metricas .es-cortada { color: var(--err); font-weight: 600; }
+.marca { display: inline-block; margin-right: 4px; padding: 1px 7px; border-radius: var(--r-pill); border: 1px solid var(--border); font-size: 0.68rem; font-weight: 600; color: var(--text-mid); }
+.marca.es-cortada { border-color: currentColor; }
+@media (max-width: 1100px) {
+  .tokens-cuerpo { grid-template-columns: minmax(0, 1fr); }
+}

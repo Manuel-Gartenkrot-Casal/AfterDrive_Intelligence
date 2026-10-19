@@ -268,3 +268,11 @@ def test_entrada_contada_nunca_por_debajo_de_lo_enviado(bedrock, consumo_en_memo
     llm.completar("", "x" * 4000, tarea="clasificacion")  # 4000 chars -> piso de 1000 tokens
     fila = consumo_en_memoria.find_one()
     assert (fila["tokens_entrada"], fila["tokens_salida"]) == (esperado, 50)
+
+
+def test_bedrock_marca_el_corte_por_max_tokens(bedrock, consumo_en_memoria):
+    bedrock([converse("texto cortado", entrada=900, salida=1024, stop="max_tokens")])
+    llm.completar("s", "u", max_tokens=1024, tarea="evaluacion")
+    fila = consumo_en_memoria.find_one()
+    assert fila["proveedor"] == "paga" and fila["truncado"] is True and fila["max_tokens"] == 1024
+    assert fila["costo_usd"] > 0

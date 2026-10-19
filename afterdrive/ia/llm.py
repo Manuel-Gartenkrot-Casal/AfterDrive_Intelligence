@@ -600,7 +600,7 @@ def completar(
     }
     if perfil.enviar_temperatura:
         payload["temperature"] = temperature
-    if perfil.nombre == "paga" and stream:
+    if perfil.nombre != "local" and stream:
         payload["stream_options"] = {"include_usage": True}  # tokens para el registro de consumo
 
     if not stream:
@@ -615,7 +615,8 @@ def completar(
         data = resp.json()
         choices = data.get("choices") or [{}]
         contenido = (choices[0].get("message") or {}).get("content") or ""
-        _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=system + user, salida=contenido)
+        _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=system + user, salida=contenido,
+                       truncado=choices[0].get("finish_reason") == "length", max_tokens=max_tokens)
         if not data.get("choices"):
             raise ErrorLLM(f"{perfil.nombre} respondió sin 'choices': {resp.text[:500]}")
         return contenido.strip()
@@ -652,6 +653,12 @@ def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
         raise ErrorLLM(f"No se pudo contactar a {perfil.nombre}: {e}") from e
     finally:
         stop.set()
+    if resp.status_code == 400 and "stream_options" in payload and "stream_options" in (resp.text or ""):
+        # Un modelo que no acepta pedir los tokens en el stream: sin ese campo
+        # la nota sale igual y el consumo se estima.
+        print(f"  [AVISO] '{modelo}' no acepta stream_options: se pide sin los tokens.", flush=True)
+        sin_opciones = {k: v for k, v in payload.items() if k != "stream_options"}
+        return _completar_stream(perfil, sin_opciones)
     _levantar_si_falla(perfil, resp)
     try:
         info = _leer_stream(perfil, resp)
@@ -661,7 +668,8 @@ def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
         raise
     # Sin usage (stream cortado) se estima con lo que llegó: texto y razonamiento.
     _registrar_uso(perfil, modelo, info.uso, entrada=json.dumps(payload["messages"]),
-                   salida=info.texto, chars_razonamiento=info.razonamiento)
+                   salida=info.texto, chars_razonamiento=info.razonamiento,
+                   truncado=info.fin == "length", max_tokens=payload.get(perfil.campo_max_tokens))
     return info
 
 
@@ -671,14 +679,15 @@ def _tokens_estimados(chars: int) -> int:
 
 
 def _registrar_uso(perfil: Perfil, modelo: str, uso: dict, *, entrada: str = "", salida: str = "",
-                   chars_razonamiento: int = 0) -> None:
-    """Suma la llamada al registro de consumo (solo API paga).
+                   chars_razonamiento: int = 0, truncado: bool = False, max_tokens: int | None = None) -> None:
+    """Suma la llamada al registro de consumo, de cualquier proveedor.
 
-    Sin tokens informados se registra una estimación por lo alto: una llamada
-    paga nunca queda fuera del tope.
+    Solo la API paga tiene costo y cuenta para el tope; del resto se guardan
+    los tokens para ver cuánto consume cada llamada. Sin tokens informados se
+    registra una estimación por lo alto: una llamada paga nunca queda fuera
+    del tope. truncado: la respuesta llegó a max_tokens y se cortó.
     """
-    if perfil.nombre != "paga":
-        return
+    registro = {"proveedor": perfil.nombre, "truncado": truncado, "max_tokens": max_tokens}
     t_entrada = uso.get("prompt_tokens", uso.get("inputTokens", 0)) or 0
     t_salida = uso.get("completion_tokens", uso.get("outputTokens", 0)) or 0
     if t_entrada or t_salida:
@@ -693,11 +702,11 @@ def _registrar_uso(perfil: Perfil, modelo: str, uso: dict, *, entrada: str = "",
         if contada != t_entrada:
             crudo = {k: v for k, v in uso.items() if isinstance(v, int | float)}
             print(f"  [CONSUMO] usage informado {crudo}: se cuentan {contada} tokens de entrada.", flush=True)
-        consumo.registrar(perfil.tarea, modelo, int(contada), int(t_salida))
+        consumo.registrar(perfil.tarea, modelo, int(contada), int(t_salida), **registro)
         return
     print(f"  [CONSUMO] '{modelo}' no informó tokens: se registra una estimación.", flush=True)
     consumo.registrar(perfil.tarea, modelo, _tokens_estimados(len(entrada)),
-                      _tokens_estimados(len(salida) + chars_razonamiento), estimado=True)
+                      _tokens_estimados(len(salida) + chars_razonamiento), estimado=True, **registro)
 
 
 def _registrar_estimado(perfil: Perfil, modelo: str, entrada: str, max_tokens: int) -> None:
@@ -765,8 +774,9 @@ def _completar_converse(perfil: Perfil, system: str, user: str, *, max_tokens: i
     # Solo los bloques de texto: los de "reasoningContent" son el razonamiento.
     texto = "".join(b["text"] for b in bloques if isinstance(b, dict) and isinstance(b.get("text"), str)).strip()
     razono = any(isinstance(b, dict) and "reasoningContent" in b for b in bloques)
-    _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=entrada, salida=json.dumps(bloques))
     corte = data.get("stopReason")
+    _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=entrada, salida=json.dumps(bloques),
+                   truncado=corte == "max_tokens", max_tokens=max_tokens)
     if not texto and (razono or corte == "max_tokens"):
         raise ErrorLLM(f"El modelo de {perfil.variable_modelo} razonó y no escribió la respuesta (stopReason={corte}, "
                        f"presupuesto {max_tokens} tokens). Probá con otro perfil o subí max_tokens.")
@@ -786,7 +796,7 @@ def _post_emb(perfil: Perfil, entrada, tipo: str, timeout: int) -> requests.Resp
     resp = _transporte["post"](
         f"{perfil.base_url}/embeddings", json=payload, headers=perfil.headers, timeout=timeout, stream=False
     )
-    if perfil.nombre == "paga" and resp.status_code == 200:
+    if resp.status_code == 200:
         try:
             uso = resp.json().get("usage") or {}
         except Exception:

@@ -109,3 +109,17 @@ def test_endpoint_metricas(api, monkeypatch):
     assert c.post("/api/login", json={"usuario": "admin", "password": "secreta123"}).status_code == 200
     r = c.get("/api/metricas?dias=7")
     assert r.status_code == 200 and r.json["success"] and len(r.json["dias"]) == 7
+
+
+def test_tokens_de_todas_las_llamadas_y_gasto_solo_pago(base):
+    base.consumo_ia.update_many({}, {"$set": {"tokens_entrada": 1000, "tokens_salida": 500, "max_tokens": 4000}})
+    base.consumo_ia.insert_one({"fecha": _hace(0).isoformat(), "mes": AHORA.strftime("%Y-%m"), "tarea": "clasificacion",
+                                "proveedor": "nvidia", "modelo": "kimi", "tokens_entrada": 300, "tokens_salida": 2048,
+                                "max_tokens": 2048, "truncado": True, "costo_usd": 0.0})
+    r = metricas.resumen(14, base=base)
+    t = r["tokens"]
+    assert t["llamadas"] == 3 and t["entrada"] == 2300 and t["salida"] == 3048 and t["cortadas"] == 1
+    assert t["recientes"][0]["proveedor"] in ("paga", "nvidia") and len(t["recientes"]) == 3
+    clasif = next(x for x in t["por_tarea"] if x["tarea"] == "clasificacion")
+    assert clasif["llamadas"] == 2 and clasif["cortadas"] == 1
+    assert r["gasto"]["mes_usd"] == 0.3     # la llamada de NVIDIA no suma gasto
