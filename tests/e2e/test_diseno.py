@@ -17,6 +17,8 @@ def test_espacio_y_adaptacion(navegador, base_url, ancho):
     try:
         for modo in ["cliente", "dev"]:
             pg.locator(f'button[data-modo="{modo}"]').click()
+            if modo == "dev":                     # cambiar de vista pide confirmación
+                pg.click("#confirmar-si")
             for seccion in SECCIONES:
                 pg.locator(f'.nav-link[data-seccion="{seccion}"]').click()
                 pg.wait_for_url("**/#" + seccion)

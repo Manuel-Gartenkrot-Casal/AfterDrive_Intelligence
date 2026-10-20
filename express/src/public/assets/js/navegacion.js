@@ -93,6 +93,20 @@ function setModo(modo) {
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
 }
 
+// Desde los botones de la barra lateral: pide confirmación antes de cambiar.
+var _TEXTOS_MODO = {
+  dev: { titulo: '¿Pasar a la vista Desarrollador?', accion: 'Pasar a Desarrollador',
+         mensaje: 'Vas a ver la consola, las métricas del pipeline y la elección del proveedor de IA. Desde ahí se pueden cambiar cosas que afectan a todo el sistema.' },
+  cliente: { titulo: '¿Pasar a la vista Cliente?', accion: 'Pasar a Cliente',
+             mensaje: 'Vas a ver solo lo esencial para crear y revisar notas. La consola y las métricas quedan ocultas hasta que vuelvas a Desarrollador.' },
+};
+async function pedirModo(modo) {
+  modo = modo === 'dev' ? 'dev' : 'cliente';
+  if (document.documentElement.getAttribute('data-modo') === modo) return;
+  var t = _TEXTOS_MODO[modo];
+  if (await confirmar({ titulo: t.titulo, mensaje: t.mensaje, accion: t.accion, peligro: false })) setModo(modo);
+}
+
 function toggleMasOpciones() {
   var sec = document.querySelector('.fase2-section');
   var abierto = sec.classList.toggle('mas-abiertas');

@@ -150,8 +150,10 @@ def _perfil(nombre: str) -> Perfil:
             nombre="nvidia",
             base_url=env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
             api_key=env("NVIDIA_API_KEY", ""),
-            modelo=env("NVIDIA_MODEL", "moonshotai/kimi-k3"),
-            modelo_fallback=env("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b"),
+            # kimi-k3 fue dado de baja (410): el default pasa a gpt-oss, que ya
+            # era el respaldo y es el que venía escribiendo las notas.
+            modelo=env("NVIDIA_MODEL", "openai/gpt-oss-20b"),
+            modelo_fallback=env("NVIDIA_FALLBACK_MODEL", ""),
             variable_modelo="NVIDIA_MODEL",
             modelo_emb=env("NVIDIA_EMB_MODEL", "nvidia/nemotron-3-embed-1b"),
             emb_max_chars=1500,
@@ -305,6 +307,7 @@ def _dormir(segundos: float) -> None:
 # responde" cacheado para siempre dejaba el clasificador en modo degradado
 # (aprobando todo) hasta reiniciar el servidor, que en Render vive días.
 _disponible_cache: dict[str, tuple[bool, float]] = {}
+MAX_TOKENS_REINTENTO = 6000   # tope del reintento cuando un modelo solo razonó
 VIGENCIA_OK_S = 600       # si respondió, no se vuelve a preguntar por 10 min
 VIGENCIA_CAIDO_S = 60     # si no respondió, se reintenta al minuto
 _reloj = time.monotonic   # seam para los tests
@@ -419,14 +422,34 @@ def _error_modelo_caido(perfil: Perfil, modelo: str, status: int, variable: str)
     )
 
 
+# (proveedor, modelo) -> cuándo devolvió 404/410. Mientras dure, se va directo
+# al de respaldo: antes cada llamada (ficha, plan, redacción…) gastaba un pedido
+# en el modelo dado de baja antes de probar el otro.
+_modelos_caidos: dict[tuple[str, str], float] = {}
+CAIDO_VIGENCIA_S = 6 * 3600
+
+# Modelos gpt-oss: razonan antes de escribir y el razonamiento sale del mismo
+# presupuesto de tokens. "Reasoning: low" en el system (su formato oficial)
+# acorta ese razonamiento: con 900 tokens la ficha salía vacía.
+_RAZONAMIENTO_BAJO = "Reasoning: low"
+
+
+def _mensajes_para(modelo: str, messages: list[dict]) -> list[dict]:
+    if "gpt-oss" not in modelo:
+        return messages
+    if messages and messages[0].get("role") == "system":
+        return [{**messages[0], "content": f"{_RAZONAMIENTO_BAJO}\n\n{messages[0]['content']}"}, *messages[1:]]
+    return [{"role": "system", "content": _RAZONAMIENTO_BAJO}, *messages]
+
+
 def _post_chat(perfil: Perfil, payload: dict, *, timeout, stream: bool,
                reintentos: int = 5) -> tuple[requests.Response, str]:
     """POST a /chat/completions con fallback de modelo y backoff para 429 (ver _con_respaldo)."""
     url = f"{perfil.base_url}/chat/completions"
 
     def enviar(modelo: str) -> requests.Response:
-        return _transporte["post"](url, json={**payload, "model": modelo}, headers=perfil.headers,
-                                   timeout=timeout, stream=stream)
+        cuerpo = {**payload, "model": modelo, "messages": _mensajes_para(modelo, payload["messages"])}
+        return _transporte["post"](url, json=cuerpo, headers=perfil.headers, timeout=timeout, stream=stream)
 
     return _con_respaldo(perfil, payload["model"], enviar, reintentos)
 
@@ -441,6 +464,9 @@ def _con_respaldo(perfil: Perfil, modelo: str, enviar, reintentos: int = 5) -> t
     - 429: en el primer intento se prueba el fallback; después, backoff.
     """
     fallback = perfil.modelo_fallback if perfil.modelo_fallback != modelo else ""
+    caido = _modelos_caidos.get((perfil.nombre, modelo))
+    if fallback and caido is not None and _reloj() - caido < CAIDO_VIGENCIA_S:
+        modelo, fallback = fallback, ""
 
     def _probar_fallback(motivo: str):
         print(f"[FALLBACK] '{modelo}' {motivo} -> probando {fallback}", flush=True)
@@ -451,6 +477,9 @@ def _con_respaldo(perfil: Perfil, modelo: str, enviar, reintentos: int = 5) -> t
         resp = enviar(modelo)
         if resp.status_code in _MODELO_CAIDO:
             if fallback:
+                _modelos_caidos[(perfil.nombre, modelo)] = _reloj()
+                print(f"[MODELO] '{modelo}' ya no está disponible en {perfil.nombre}: se usa '{fallback}' "
+                      f"directo. Actualizá {perfil.variable_modelo}.", flush=True)
                 resp_fb = _probar_fallback(f"devolvió {resp.status_code} (modelo dado de baja)")
                 if resp_fb.status_code == 200:
                     return resp_fb, fallback
@@ -615,8 +644,16 @@ def completar(
         data = resp.json()
         choices = data.get("choices") or [{}]
         contenido = (choices[0].get("message") or {}).get("content") or ""
+        cortada = choices[0].get("finish_reason") == "length"
         _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=system + user, salida=contenido,
-                       truncado=choices[0].get("finish_reason") == "length", max_tokens=max_tokens)
+                       truncado=cortada, max_tokens=max_tokens)
+        if cortada and not contenido.strip() and max_tokens < MAX_TOKENS_REINTENTO:
+            # Un modelo que razona gastó todo en pensar: la ficha o el plan
+            # salían vacíos ("sin objeto JSON"). Un intento más con margen.
+            mas = min(max_tokens * 4, MAX_TOKENS_REINTENTO)
+            print(f"  [AVISO] '{modelo}' usó los {max_tokens} tokens razonando sin responder: "
+                  f"se reintenta con {mas}.", flush=True)
+            return completar(system, user, temperature=temperature, max_tokens=mas, stream=False, tarea=tarea)
         if not data.get("choices"):
             raise ErrorLLM(f"{perfil.nombre} respondió sin 'choices': {resp.text[:500]}")
         return contenido.strip()

@@ -586,6 +586,12 @@ var _FILAS_TEXTOS = [
   ['Cuando quieras, desde acá repetís este recorrido o abrís la documentación.', 'Quando quiser, daqui você repete este tour ou abre a documentação.', 'Whenever you want, replay this tour or open the documentation from here.'],
   ['Ya conocés todo. Un buen primer paso: andá a Crear nota, elegí una categoría y generá tu primera nota.', 'Agora você já conhece tudo. Um bom primeiro passo: vá em Criar post, escolha uma categoria e gere seu primeiro post.', 'You’ve seen it all. A good first step: go to Create post, pick a category and generate your first post.'],
   // ── Tablero de Desarrollador, pasos de la nota, Fuentes y cancelar ───────
+  ['¿Pasar a la vista Desarrollador?', 'Passar para a visualização Desenvolvedor?', 'Switch to the Developer view?'],
+  ['Pasar a Desarrollador', 'Passar para Desenvolvedor', 'Switch to Developer'],
+  ['Vas a ver la consola, las métricas del pipeline y la elección del proveedor de IA. Desde ahí se pueden cambiar cosas que afectan a todo el sistema.', 'Você vai ver o console, as métricas do pipeline e a escolha do provedor de IA. Ali dá para mudar coisas que afetam todo o sistema.', 'You\'ll see the console, the pipeline metrics and the AI provider choice. From there you can change things that affect the whole system.'],
+  ['¿Pasar a la vista Cliente?', 'Passar para a visualização Cliente?', 'Switch to the Client view?'],
+  ['Pasar a Cliente', 'Passar para Cliente', 'Switch to Client'],
+  ['Vas a ver solo lo esencial para crear y revisar notas. La consola y las métricas quedan ocultas hasta que vuelvas a Desarrollador.', 'Você vai ver só o essencial para criar e revisar posts. O console e as métricas ficam ocultos até você voltar para Desenvolvedor.', 'You\'ll only see what you need to create and review posts. The console and metrics stay hidden until you switch back to Developer.'],
   ['Tu contenido de hoy', 'Seu conteúdo de hoje', 'Today\'s content'],
   ['Cómo viene el pipeline', 'Como está o pipeline', 'How the pipeline is doing'],
   ['Hora de Argentina.', 'Horário da Argentina.', 'Argentina time.'],

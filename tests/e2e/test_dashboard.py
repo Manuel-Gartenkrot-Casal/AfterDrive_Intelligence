@@ -161,6 +161,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
 
     pagina.route("**/api/providers", cambiar)
     pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
     expect(pagina.locator("#confirmar-titulo")).to_contain_text("API paga")
@@ -234,7 +235,14 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
 def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
+    # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
     pagina.click('.modo-switch button[data-modo="dev"]')
+    expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
+    pagina.click("#confirmar-no")
+    assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
+    expect(tablero).to_be_hidden()
+    pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
     expect(pagina.locator("#g-notas svg")).to_be_visible()
