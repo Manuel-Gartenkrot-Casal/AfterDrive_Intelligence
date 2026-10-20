@@ -445,6 +445,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
                   flush=True)
             try:
                 articulo, motivo, crudo = _redactar(system, pedido, ajustes)
+            except llm.Cancelada:
+                raise  # cancelada desde el dashboard: no se guarda ni la mejor versión
             except llm.ErrorLLM as e:
                 if mejor:
                     break
@@ -467,6 +469,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         reescrita_por = version.codigos
         pedido = user_msg + _pedido_de_correccion(version.problemas)
 
+    # La evaluación atrapa sus propios errores: si se canceló mientras
+    # evaluaba, el corte llega acá y la nota no se guarda.
+    llm.verificar_cancelacion()
     if mejor is None:
         return {"success": False, "error": f"No se obtuvo una nota publicable: {motivo}"}
 

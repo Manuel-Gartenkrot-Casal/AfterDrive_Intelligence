@@ -14,7 +14,7 @@ Esta guía explica cada parte de la aplicación. Para un recorrido rápido en pa
 
 ## Inicio
 
-Es tu mesa editorial:
+Es tu contenido de hoy:
 
 - **Notas para revisar**, noticias listas para usar, fuentes activas y cuándo sale la próxima nota automática. Tocá cualquiera para ir directo.
 - **Última nota** generada, con un botón para leerla.
@@ -100,7 +100,7 @@ Lo que el sistema está ejecutando (buscar noticias, generar una nota) y lo que 
 
 ## API paga
 
-El interruptor **API paga** de la barra lateral pone todo el sistema en el proveedor pago durante **24 horas como máximo**: notas de más calidad, pero cada paso cuesta dinero. Pide confirmación, muestra cuánto se gastó en el mes y se apaga solo. Hay un tope de gasto mensual: si se alcanza, el sistema vuelve al proveedor gratuito.
+La **API paga** se elige en la vista Desarrollador, en **Proveedor de IA**, y se distingue del resto por el ícono **$**. Da notas de más calidad, pero cada paso cuesta dinero: al elegirla pide confirmación y muestra cuánto se gastó en el mes. Queda así hasta que elijas otro proveedor. Hay un tope de gasto mensual: si se alcanza, el sistema pasa solo al proveedor gratuito.
 
 ## Vista Cliente y Desarrollador
 

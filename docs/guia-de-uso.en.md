@@ -14,7 +14,7 @@ This guide explains every part of the application. For a quick on-screen tour: *
 
 ## Home
 
-Your editorial desk:
+Today's content:
 
 - **Posts to review**, news ready to use, active sources and when the next automatic post comes out. Tap any of them to jump there.
 - **Latest post** generated, with a button to read it.
@@ -100,7 +100,7 @@ What the system is running (fetching news, generating a post) and what's waiting
 
 ## Paid API
 
-The **Paid API** switch in the sidebar puts the whole system on the paid provider for **up to 24 hours**: higher-quality posts, but every step costs money. It asks for confirmation, shows how much was spent this month and turns itself off. There's a monthly spending cap: if it's reached, the system goes back to the free provider.
+The **Paid API** is chosen in the Developer view, under **AI provider**, and stands out from the others with the **$** icon. It gives higher-quality posts, but every step costs money: choosing it asks for confirmation and shows how much was spent this month. It stays on until you pick another provider. There's a monthly spending cap: if it's reached, the system switches to the free provider on its own.
 
 ## Client and Developer view
 

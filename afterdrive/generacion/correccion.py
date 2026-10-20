@@ -53,6 +53,8 @@ def corregir(nota: str, problemas: list[str], contexto: str = "", max_tokens: in
     try:
         crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.2, max_tokens=max_tokens, stream=True,
                               tarea="correccion")
+    except llm.Cancelada:
+        raise
     except llm.ErrorLLM as e:
         print(f"  [AVISO] No se pudo corregir la nota ({e}).", flush=True)
         return None

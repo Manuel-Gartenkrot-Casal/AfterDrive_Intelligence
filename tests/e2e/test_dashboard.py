@@ -146,40 +146,58 @@ def test_celular_sin_scroll_horizontal(navegador, base_url, modo):
     pg.context.close()
 
 
-def test_modo_api_paga_con_aviso_y_toggle(pagina):
-    btn = pagina.locator("#modo-pago-btn")
-    detalle = pagina.locator("#modo-pago-detalle")
-    pagina.wait_for_selector("#modo-pago-btn:not([disabled])")
-    assert btn.is_visible() and btn.get_attribute("aria-checked") == "false"
-    assert "Apagada" in detalle.inner_text()
+def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
+    # El interruptor de API paga ya no está en la barra lateral: se elige como
+    # proveedor en la vista Desarrollador. El POST se intercepta para no dejar
+    # el servidor compartido de los tests con otro proveedor.
+    assert pagina.locator("#modo-pago-btn").count() == 0
+    pedidos = []
 
-    # Prender pide confirmación; cancelar lo deja apagado.
-    btn.click()
-    dialogo = pagina.locator("#confirmar")
-    dialogo.wait_for(state="visible")
-    assert "24 horas" in pagina.locator("#confirmar-titulo").inner_text()
-    assert "cuesta dinero" in pagina.locator("#confirmar-texto").inner_text()
-    pagina.click("#confirmar-no")
-    dialogo.wait_for(state="hidden")
-    assert btn.get_attribute("aria-checked") == "false"
+    def cambiar(ruta):
+        if ruta.request.method != "POST":
+            return ruta.continue_()
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "provider": "paga", "model": "modelo-e2e"})
 
-    btn.click()
-    pagina.click("#confirmar-si")
-    pagina.wait_for_selector('#modo-pago-btn[aria-checked="true"]')
-    assert "se apaga en" in detalle.inner_text()
-    assert pagina.evaluate("fetch('/api/providers').then(r => r.json())")["provider"] == "paga"
-
-    # Sigue a la vista en otra sección y en la vista Desarrollador.
-    pagina.click('.sidebar a[data-seccion="historial"]')
+    pagina.route("**/api/providers", cambiar)
     pagina.click('.modo-switch button[data-modo="dev"]')
-    assert btn.is_visible()
-    assert "active" in pagina.locator("#prov-paga").get_attribute("class")
+    # Cuesta plata: pide confirmación, y cancelar no cambia nada.
+    pagina.click("#prov-paga")
+    expect(pagina.locator("#confirmar-titulo")).to_contain_text("API paga")
+    pagina.click("#confirmar-no")
+    assert pedidos == [] and "active" not in (pagina.locator("#prov-paga").get_attribute("class") or "")
+    pagina.click("#prov-paga")
+    pagina.click("#confirmar-si")
+    pagina.wait_for_selector("#prov-paga.active")
+    assert pedidos == [{"provider": "paga"}]
+    assert "active" not in (pagina.locator("#prov-local").get_attribute("class") or "")
 
-    # Apagar no pide confirmación.
-    btn.click()
-    pagina.wait_for_selector('#modo-pago-btn[aria-checked="false"]:not([disabled])')
-    assert not pagina.locator("#confirmar").is_visible()
-    assert pagina.evaluate("fetch('/api/providers').then(r => r.json())")["provider"] == "local"
+
+def test_cancelar_la_nota_en_curso(pagina):
+    # Corrida simulada por HTTP: no se genera nada de verdad.
+    estado = {"e": "en_curso"}
+    cancelados = []
+    pagina.route("**/api/corridas/generacion", lambda r: r.fulfill(json={"success": True, "id": "g1", "estado": "pendiente"}))
+    pagina.route("**/api/corridas/g1/log?*", lambda r: r.fulfill(
+        json={"success": True, "lineas": [], "siguiente": 0, "estado": estado["e"]}))
+
+    def cancelar(ruta):
+        cancelados.append(ruta.request.method)
+        estado["e"] = "cancelada"
+        ruta.fulfill(json={"success": True, "estado": "cancelando"})
+
+    pagina.route("**/api/corridas/g1/cancelar", cancelar)
+    pagina.locator('.nav-link[data-seccion="crear"]').click()
+    boton = pagina.locator("#btn-f2-cancelar")
+    expect(boton).to_be_hidden()
+    pagina.locator("#f2-categorias-grid .toggle-item").first.click()
+    pagina.click("#btn-f2-generar")
+    expect(boton).to_be_enabled()
+    boton.click()
+    pagina.click("#confirmar-si")
+    expect(pagina.locator("#f2-status")).to_contain_text("cancelada", timeout=10000)
+    expect(boton).to_be_hidden()
+    assert cancelados == ["POST"]
 
 
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
@@ -211,6 +229,21 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(panel.locator("#calibracion-resumen")).to_contain_text("1 nota calificada")
     panel.locator("summary").click()
     expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")
+
+
+def test_tablero_de_desarrollador(pagina):
+    tablero = pagina.locator(".tablero-dev")
+    expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
+    pagina.click('.modo-switch button[data-modo="dev"]')
+    expect(tablero).to_be_visible()
+    expect(pagina.locator("#g-articulos svg")).to_be_visible()
+    expect(pagina.locator("#g-notas svg")).to_be_visible()
+    expect(pagina.locator("#tc-art-cifra")).to_contain_text("guardados")
+    expect(pagina.locator("#g-corridas .corrida-metrica")).to_have_count(2)
+    # Cambiar el período vuelve a pedir las métricas con esa cantidad de días.
+    with pagina.expect_response(lambda r: "/api/metricas?dias=7" in r.url):
+        pagina.click('#tablero-periodo button[data-dias="7"]')
+    expect(pagina.locator("#tablero-periodo button[data-dias='7']")).to_have_attribute("aria-checked", "true")
 
 
 def test_el_largo_de_la_nota_se_guarda(pagina):

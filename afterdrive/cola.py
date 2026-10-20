@@ -36,6 +36,7 @@ import threading
 import time
 
 from afterdrive import corridas
+from afterdrive.ia import llm
 
 MAX_PENDIENTES = 5
 LINEAS_GUARDADAS = 500
@@ -51,6 +52,11 @@ class ColaLlena(RuntimeError):
 
 class NoCancelable(RuntimeError):
     pass
+
+
+# Cancelar una Corrida levanta corridas._cancelar; la IA lo consulta antes de
+# cada llamada y en cada fragmento de una respuesta por streaming.
+llm.al_cancelar(corridas._cancelar.is_set)
 
 
 _despertar = threading.Event()
@@ -195,8 +201,8 @@ def cancelar(id_: str) -> dict:
             return {"estado": "cancelando"}
         return {"estado": doc["estado"]}
     with _estado:
-        if _tipo_actual == "generacion":
-            raise NoCancelable("La generación en curso no se puede cortar a mitad; termina en unos minutos.")
+        # La generación corre en este proceso: llm la corta en la próxima
+        # llamada o fragmento (ver llm.Cancelada) y la nota no se guarda.
         corridas._cancelar.set()
         if _proc is not None and _proc.poll() is None:
             _proc.kill()

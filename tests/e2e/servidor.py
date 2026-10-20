@@ -20,7 +20,8 @@ pymongo.MongoClient = mongomock.MongoClient
 
 from werkzeug.security import generate_password_hash  # noqa: E402
 
-USUARIO, CLAVE = "admin", "e2e-clave-123"
+from tests.e2e.credenciales import CLAVE, USUARIO  # noqa: E402
+
 os.environ.update(
     ADMIN_USER=USUARIO, ADMIN_PASSWORD_HASH=generate_password_hash(CLAVE), SECRET_KEY="e2e",
     AI_PROVIDER_OVERRIDE="1", AI_PROVIDER="local", MONGO_URI="mongodb://e2e",

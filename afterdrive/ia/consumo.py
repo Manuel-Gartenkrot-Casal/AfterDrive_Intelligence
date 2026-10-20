@@ -1,8 +1,9 @@
 """
-consumo.py — Lo que gasta la API paga: un registro por llamada y el tope mensual.
+consumo.py — Tokens de cada llamada a la IA y lo que gasta la API paga (tope mensual).
 
 Interfaz:
-    registrar(tarea, modelo, tokens_entrada, tokens_salida, estimado=False) -> float (USD)
+    registrar(tarea, modelo, tokens_entrada, tokens_salida, estimado=False,
+              proveedor="paga", truncado=False, max_tokens=None) -> float (USD)
     medir() -> Medicion        context manager: suma lo que se gasta adentro (el costo de una nota)
     precio_de_modelo(modelo) -> (entrada, salida)
     gastado_mes() -> float
@@ -131,35 +132,61 @@ def medir():
         activos.remove(m)
 
 
-def registrar(tarea: str, modelo: str, tokens_entrada: int, tokens_salida: int, estimado: bool = False) -> float:
-    """Guarda una llamada paga y devuelve su costo en USD. Nunca lanza.
+def registrar(tarea: str, modelo: str, tokens_entrada: int, tokens_salida: int, estimado: bool = False, *,
+              proveedor: str = "paga", truncado: bool = False, max_tokens: int | None = None) -> float:
+    """Guarda una llamada a la IA y devuelve su costo en USD. Nunca lanza.
+
+    Se registran las llamadas de todos los proveedores para ver cuántos tokens
+    consume cada una; solo las de la API paga tienen costo y cuentan para el tope.
 
     estimado=True: el proveedor no informó tokens (timeout, stream cortado) y
     se cuenta una estimación por lo alto.
+    truncado=True: la respuesta se cortó al llegar a max_tokens (el límite de
+    salida de esa llamada).
     """
-    entrada, salida = precio_de_modelo(modelo)
-    costo = (tokens_entrada * entrada + tokens_salida * salida) / 1_000_000
+    pago = proveedor == "paga"
+    if pago:
+        entrada, salida = precio_de_modelo(modelo)
+        costo = (tokens_entrada * entrada + tokens_salida * salida) / 1_000_000
+    else:
+        costo = 0.0
     ahora = datetime.datetime.now(datetime.UTC)
+    _imprimir(tarea, proveedor, tokens_entrada, tokens_salida, max_tokens, truncado, estimado, costo if pago else None)
     try:
         _coleccion().insert_one({
             "fecha": ahora.isoformat(), "mes": ahora.strftime("%Y-%m"), "tarea": tarea or "general",
-            "modelo": modelo, "tokens_entrada": tokens_entrada, "tokens_salida": tokens_salida,
-            "costo_usd": costo, "estimado": estimado,
+            "proveedor": proveedor, "modelo": modelo, "tokens_entrada": tokens_entrada, "tokens_salida": tokens_salida,
+            "max_tokens": max_tokens, "truncado": truncado, "costo_usd": costo, "estimado": estimado,
         })
-        if _cache.get("mes") == _mes() and _cache.get("total") is not None:
+        if pago and _cache.get("mes") == _mes() and _cache.get("total") is not None:
             _cache["total"] += costo
     except Exception as e:
+        if not pago:
+            print(f"[CONSUMO] No se pudo registrar el consumo de tokens ({e}).", flush=True)
+            return costo
         # La llamada ya se pagó: si no se puede guardar, se sigue sumando en
         # memoria para que el tope la vea mientras viva este proceso.
         # ponytail: se pierde si el proceso se reinicia antes de que Mongo vuelva.
         _sin_registrar[_mes()] = _sin_registrar.get(_mes(), 0.0) + costo
         print(f"[CONSUMO] No se pudo registrar el consumo ({e}); se suma en memoria.", flush=True)
-    for m in getattr(_medidores, "activos", []):
-        m.sumar(tarea or "general", costo, estimado)
-    marca = " (estimado)" if estimado else ""
-    print(f"  [CONSUMO] {tarea or 'general'}: {tokens_entrada} + {tokens_salida} tokens = USD {costo:.4f}{marca}",
-          flush=True)
+    if pago:
+        for m in getattr(_medidores, "activos", []):
+            m.sumar(tarea or "general", costo, estimado)
     return costo
+
+
+def _imprimir(tarea, proveedor, entrada, salida, max_tokens, truncado, estimado, costo) -> None:
+    """Una línea por llamada en la consola (y en el log de la Corrida)."""
+    aprox = "≈" if estimado else ""
+    linea = (f"  [TOKENS] {tarea or 'general'} · {proveedor} · entrada {aprox}{entrada} · salida {aprox}{salida}"
+             f" · total {aprox}{entrada + salida}")
+    if max_tokens:
+        linea += f" (límite de salida {max_tokens})"
+    if truncado:
+        linea += " · CORTADA POR EL LÍMITE"
+    if costo is not None:
+        linea += f" · USD {costo:.4f}"
+    print(linea, flush=True)
 
 
 def _total_mongo(mes: str) -> float | None:

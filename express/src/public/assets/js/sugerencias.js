@@ -9,7 +9,7 @@ function renderSugerencias(urls) {
   var list = $('sug-list');
   list.innerHTML = '';
   if (!urls.length) {
-    list.innerHTML = '<div class="fuentes-vacio">No hay recomendaciones pendientes. Tocá <strong>Buscar recomendaciones</strong> para encontrar sitios nuevos del sector.</div>';
+    list.innerHTML = '<div class="fuentes-vacio"><span>No hay recomendaciones pendientes. Tocá <strong>Buscar recomendaciones</strong> para encontrar sitios nuevos del sector.</span></div>';
     return;
   }
   urls.forEach(function(u) {
@@ -38,7 +38,7 @@ async function discover() {
   var btn = $('btn-disc');
   btn.disabled = true;
   btn.textContent = 'Buscando...';
-  $('sug-list').innerHTML = '<div class="fuentes-vacio">Buscando sitios del sector...</div>';
+  $('sug-list').innerHTML = '<div class="fuentes-vacio"><span>Buscando sitios del sector...</span></div>';
   log('Buscando fuentes recomendadas...', 'warn');
   try {
     var fin = await correrEnCola('/api/corridas/recomendaciones', null, function(l) { log(l, 'info'); }, function(d) {

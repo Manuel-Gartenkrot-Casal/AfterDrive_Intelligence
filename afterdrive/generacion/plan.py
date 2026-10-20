@@ -93,6 +93,8 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
         crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.4, max_tokens=MAX_TOKENS,
                               tarea="planificacion")
         plan = _normalizar(_extraer_json(crudo), len(noticias))
+    except llm.Cancelada:
+        raise
     except Exception as e:
         print(f"  [AVISO] No se pudo armar el plan ({e}); se escribe sin plan.", flush=True)
         return None

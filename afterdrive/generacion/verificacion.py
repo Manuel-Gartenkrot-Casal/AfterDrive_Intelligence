@@ -163,6 +163,8 @@ def _preguntar_al_modelo(pendientes: list[str], noticias, extra: str) -> dict[st
     user = "## Noticias\n" + "\n\n".join(bloques) + "\n\n## Datos a verificar\n" + "\n".join(f"- {d}" for d in pendientes)
     try:
         data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.0, max_tokens=1500, tarea="evaluacion"))
+    except llm.Cancelada:
+        raise
     except Exception as e:
         print(f"  [AVISO] No se pudo verificar con el modelo ({e}).", flush=True)
         return None

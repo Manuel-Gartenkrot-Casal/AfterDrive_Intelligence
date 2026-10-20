@@ -14,7 +14,7 @@ Este guia explica cada parte da aplicação. Para um tour rápido na tela: **Aju
 
 ## Início
 
-É a sua mesa editorial:
+É o seu conteúdo de hoje:
 
 - **Posts para revisar**, notícias prontas para usar, fontes ativas e quando sai o próximo post automático. Toque em qualquer um para ir direto.
 - **Último post** gerado, com um botão para lê-lo.
@@ -100,7 +100,7 @@ O que o sistema está executando (buscar notícias, gerar um post) e o que aguar
 
 ## API paga
 
-O interruptor **API paga** da barra lateral coloca todo o sistema no provedor pago por **no máximo 24 horas**: posts de mais qualidade, mas cada etapa custa dinheiro. Pede confirmação, mostra quanto foi gasto no mês e desliga sozinho. Há um limite de gasto mensal: se for atingido, o sistema volta ao provedor gratuito.
+A **API paga** é escolhida na visualização Desenvolvedor, em **Provedor de IA**, e se diferencia das demais pelo ícone **$**. Gera posts de mais qualidade, mas cada etapa custa dinheiro: ao escolhê-la, pede confirmação e mostra quanto foi gasto no mês. Fica assim até você escolher outro provedor. Há um limite de gasto mensal: se for atingido, o sistema passa sozinho ao provedor gratuito.
 
 ## Visualização Cliente e Desenvolvedor
 

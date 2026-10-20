@@ -536,6 +536,17 @@ def calibracion_resumen():
         return jsonify({"success": False, "error": f"No se pudo leer la calibración: {e}"}), 500
 
 
+@app.route("/api/metricas", methods=["GET"])
+def metricas_resumen():
+    """Números del pipeline para el tablero de la vista Desarrollador."""
+    from afterdrive import metricas
+
+    try:
+        return jsonify({"success": True, **metricas.resumen(request.args.get("dias", 14, type=int))})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"No se pudieron calcular las métricas: {e}"}), 500
+
+
 @app.route("/api/historial/imagen/generar", methods=["POST"])
 def historial_generar_imagen():
     """Genera la imagen destacada con NVIDIA: {"coleccion", "id", "descripcion" (opcional)}."""

@@ -394,9 +394,14 @@ async function fase2GenerarStream() {
   }
   var btn = $('btn-f2-generar');
   var st = $('f2-status');
+  var cancelar = $('btn-f2-cancelar');
   setBtnLoading(btn, true);
+  _f2Corrida = null;
+  cancelar.hidden = false;
+  cancelar.disabled = true;  // se habilita apenas la cola devuelve el id
   st.className = 'feedback info';
   st.textContent = 'Generando nota...';
+  iniciarPasosNota();
 
   var body = {
     categorias: categorias,
@@ -417,11 +422,16 @@ async function fase2GenerarStream() {
       var type = l.indexOf('[OK]') >= 0 ? 'success' : l.indexOf('[ERROR]') >= 0 ? 'error' : 'info';
       log(l.trim(), type);
       var paso = pasoGeneracion(l);
-      if (paso) st.textContent = paso;
+      if (paso && !_f2Cancelando) st.textContent = paso;
+      marcarPasoNota(l);
     }, function(d) {
       var t = textoEnCola(d);
+      if (_f2Cancelando) return;
       st.textContent = t ? 'Hay otra corrida en curso: tu nota quedó ' + t.toLowerCase().replace('…', '') + '. Se genera apenas termine.'
                          : 'Generando nota...';
+    }, function(id) {
+      _f2Corrida = id;
+      cancelar.disabled = false;
     });
     exito = fin.estado === 'ok' && fullOutput.indexOf('[OK]') >= 0;
 
@@ -432,9 +442,13 @@ async function fase2GenerarStream() {
       st.textContent = 'Nota generada correctamente.';
       showToast('Nota generada', 'success');
       playClick();
+    } else if (fin.estado === 'cancelada') {
+      st.className = 'feedback info';
+      st.textContent = 'Generación cancelada. No se guardó ninguna nota.';
+      showToast('Generación cancelada', 'info');
     } else {
       st.className = 'feedback err';
-      var motivo = fin.estado === 'cancelada' ? 'Se canceló.' : (fullOutput.match(/\[ERROR\]\s*(.+)/) || [])[1];
+      var motivo = (fullOutput.match(/\[ERROR\]\s*(.+)/) || [])[1];
       st.textContent = 'No se pudo generar la nota.' + (motivo ? ' ' + motivo.trim() : ' Revisá la consola en la vista Desarrollador.');
     }
   } catch(e) {
@@ -442,11 +456,45 @@ async function fase2GenerarStream() {
     st.className = 'feedback err';
     st.textContent = e.message;
   } finally {
+    terminarPasosNota(exito);
     setBtnLoading(btn, false);
+    cancelar.hidden = true;
+    _f2Corrida = null;
+    _f2Cancelando = false;
   }
   // Recién ahora se abre la nota: si la evaluación con IA tarda (o el
   // proveedor reintenta), el botón ya está libre para generar otra.
   if (exito) fase2MostrarUltima();
+}
+
+var _f2Corrida = null;      // id de la Corrida de la nota que se está generando
+var _f2Cancelando = false;
+
+/* Corta la nota en curso (o la saca de la cola si todavía no empezó).
+   La IA se detiene en el próximo fragmento o llamada y la nota no se guarda. */
+async function cancelarGeneracion() {
+  if (!_f2Corrida || _f2Cancelando) return;
+  var ok = await confirmar({
+    titulo: '¿Cancelar la nota?',
+    mensaje: 'Se corta la generación y no se guarda nada. Lo que la IA ya procesó igual se cobra si usás la API paga.',
+    accion: 'Cancelar la nota',
+    cancelar: 'Seguir generando'
+  });
+  if (!ok || !_f2Corrida) return;
+  var btn = $('btn-f2-cancelar'), st = $('f2-status');
+  _f2Cancelando = true;
+  btn.disabled = true;
+  st.className = 'feedback info';
+  st.textContent = 'Cancelando… la IA se detiene en unos segundos.';
+  try {
+    await pedir('/api/corridas/' + _f2Corrida + '/cancelar', { method: 'POST' });
+    log('Generación cancelada desde el dashboard.', 'warn');
+  } catch (e) {
+    _f2Cancelando = false;
+    btn.disabled = false;
+    showToast(e.message, 'error');
+  }
+  refrescarCorridas();
 }
 
 async function fase2VerUltima() {
