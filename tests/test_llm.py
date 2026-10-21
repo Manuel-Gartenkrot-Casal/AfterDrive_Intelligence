@@ -462,3 +462,24 @@ def test_embeddings_de_nvidia_tambien_se_registran(transporte, nvidia, consumo_e
     llm.embeber(["hola"])
     fila = consumo_en_memoria.find_one()
     assert fila["tarea"] == "embeddings" and fila["tokens_entrada"] == 7 and fila["costo_usd"] == 0
+
+
+@pytest.mark.parametrize("disponible, completar", [
+    (False, None),                                                      # proveedor caído
+    (True, lambda *a, **k: (_ for _ in ()).throw(RuntimeError("429"))),  # límite del modelo gratis
+])
+def test_sin_ia_el_articulo_queda_pendiente_y_no_se_guarda(monkeypatch, disponible, completar):
+    """Una nota de CNN sobre un dron en Ucrania entró porque la IA falló y se aprobaba por defecto."""
+    from afterdrive.ia import lm_studio
+    from afterdrive.ingesta import ingesta
+    monkeypatch.setattr(lm_studio.llm, "disponible", lambda: disponible)
+    monkeypatch.setattr(lm_studio.llm, "completar", completar)
+    monkeypatch.setattr(ingesta, "clasificar", lm_studio.clasificar_articulo)
+    escrituras = []
+    for col in ("col_articulos", "col_descartados"):
+        monkeypatch.setattr(ingesta, col, type("C", (), {"__getattr__": lambda s, n: lambda *a, **k: escrituras.append(n)})())
+
+    res = ingesta.ingerir([{"url": "https://cnn.com/x", "titulo": "Un dron ruso mata a una niña", "cuerpo": "Ucrania"}])
+
+    assert (res["aprobados"], res["rechazados"], res["pendientes"]) == (0, 0, 1)
+    assert escrituras == []  # ni guardada ni descartada: la próxima corrida la reintenta

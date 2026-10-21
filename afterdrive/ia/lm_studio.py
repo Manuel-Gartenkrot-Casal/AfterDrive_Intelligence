@@ -38,6 +38,7 @@ APROBAR solo si el contenido trata sobre:
 - CATALOGOS de autopartes con precios y especificaciones tecnicas
 
 RECHAZAR si trata sobre:
+- Noticias generales ajenas al sector automotor (politica, guerras, policiales, protestas, deportes, espectaculos)
 - Ventas de vehiculos 0km (concesionarias, agencias, listados de autos nuevos)
 - Seguros automotrices
 - Anecdotas personales de consumidores
@@ -151,15 +152,17 @@ def _extraer_json(texto: str) -> dict:
 def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     """Evalúa si un artículo merece guardarse en la BD.
 
-    Política de fallos: si el proveedor no está o falla la llamada, se aprueba
-    (modo degradado: no perder artículos por una caída ajena al contenido). Si
-    el modelo respondió basura, se rechaza (el juicio existe pero no se lee).
+    Política de fallos: si el proveedor no está o falla la llamada (p. ej. un 429
+    del modelo gratis), el artículo queda pendiente: ni se guarda ni se descarta,
+    así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba
+    cualquier cosa (noticias de guerra de CNN, por ejemplo). Si el modelo
+    respondió basura, se rechaza (el juicio existe pero no se lee).
 
     Returns:
-        {"aprobado": bool, "razon": str}
+        {"aprobado": bool, "razon": str, "pendiente"?: True}
     """
     if not llm.disponible():
-        return {"aprobado": True, "razon": "modo degradado: proveedor de IA no disponible"}
+        return {"aprobado": False, "pendiente": True, "razon": "sin clasificar: proveedor de IA no disponible"}
 
     mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
     try:
@@ -174,7 +177,7 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     except json.JSONDecodeError:
         return {"aprobado": False, "razon": "error: respuesta inválida del modelo"}
     except Exception as e:
-        return {"aprobado": True, "razon": f"modo degradado: {e}"}
+        return {"aprobado": False, "pendiente": True, "razon": f"sin clasificar: {e}"}
 
 
 _SYSTEM_FICHA = """\

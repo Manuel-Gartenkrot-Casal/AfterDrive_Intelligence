@@ -4,7 +4,6 @@
 
 | Problema | Dónde | Impacto |
 |---|---|---|
-| Modo degradado aprueba todo | `ingesta/ingesta.py` | Si el LLM no responde, puede entrar contenido irrelevante a `articulos`. Es intencional; ahora se reintenta al minuto en vez de quedar activo |
 | Una generación empezada en el servidor no se cancela | `cola.py` | Corre dentro del proceso; hay que esperar que termine |
 | Log de la Corrida con ruido | `cola.py` | Mientras corre un scraping o una nota programada en el servidor, lo que imprimen otros threads también entra a su log |
 | Todo en memoria de un proceso | lock, scheduler, login | Obliga a un solo worker. El contador de intentos de login se reinicia en cada deploy |
