@@ -17,7 +17,8 @@ function antesDeSalirDeSeccion(fn) { _guardianes.push(fn); }
 
 function seccionVisible(id) {
   var link = document.querySelector('.nav-link[data-seccion="' + id + '"]');
-  return !!link && link.offsetParent !== null;
+  // El menú móvil plegado no invalida enlaces directos ni acciones del contenido.
+  return !!link && getComputedStyle(link).display !== 'none';
 }
 
 function seccionDelHash() {
@@ -157,3 +158,19 @@ function pasoGeneracion(linea) {
   }
   return null;
 }
+
+function toggleNavegacion() {
+  var b = $('menu-movil'), abierto = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', abierto);
+  document.querySelector('.sidebar').classList.toggle('menu-abierto', abierto);
+}
+document.addEventListener('seccion', function() {
+  $('menu-movil').setAttribute('aria-expanded', 'false');
+  document.querySelector('.sidebar').classList.remove('menu-abierto');
+  if (_seccion === 'inicio') { cargarUltimaNota(); cargarResumenHistorial(); }
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && $('menu-movil').getAttribute('aria-expanded') === 'true') {
+    toggleNavegacion(); $('menu-movil').focus();
+  }
+});

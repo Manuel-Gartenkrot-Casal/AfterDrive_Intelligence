@@ -117,16 +117,30 @@ async function fase2Init() {
   form.tomarBase();
   resumenCrear();
   $('f2-persona').addEventListener('change', resumenCrear);
+  document.addEventListener('idioma', resumenCrear);
   $('f2-largo').addEventListener('change', marcarCrear);
+  var panel = document.querySelector('.fase2-section');
+  panel.inert = false;
+  panel.setAttribute('aria-busy', 'false');
 }
 
+function idiomaNotaElegido() {
+  var regiones = Array.from(_f2RegionesActivas);
+  var extranjera = regiones.find(function(r) { return ['brasil','asia','china'].includes(r); });
+  var cod = extranjera ? {brasil:'pt', asia:'en', china:'zh'}[extranjera]
+    : (!regiones.length || (regiones.length === 1 && regiones[0] === 'argentina') ? 'es' : 'es-neutro');
+  return {es:'Español rioplatense', 'es-neutro':'Español neutro', pt:'Português do Brasil', en:'English', zh:'中文'}[cod];
+}
 function resumenCrear() {
   pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
   pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
   var n = _f2CategoriasActivas.size;
-  $('crear-resumen').textContent = n ? n + (n === 1 ? ' categoría' : ' categorías') + ' · ' + $('f2-persona').selectedOptions[0].textContent
-    + ' · ' + $('f2-largo').selectedOptions[0].textContent.split(' (')[0].toLowerCase() : 'Elegí las categorías de tu nota';
+  $('idioma-nota-valor').textContent = tr(idiomaNotaElegido());
+  var tonos = {comercial:'Comercial', analitico:'Analítico-Técnico', periodistico:'Periodístico', divulgativo:'Divulgativo', ejecutivo:'Ejecutivo'};
+  $('crear-resumen').textContent = (n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') : tr('Elegí las categorías de tu nota'))
+    + ' · ' + tr(tonos[$('f2-persona').value]) + ' · ' + tr(idiomaNotaElegido());
 }
+
 function marcarCrear() { resumenCrear(); if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
 
 function pintarToggles(grid, activos) {
@@ -427,7 +441,7 @@ async function fase2GenerarStream() {
     }, function(d) {
       var t = textoEnCola(d);
       if (_f2Cancelando) return;
-      st.textContent = t ? 'Hay otra corrida en curso: tu nota quedó ' + t.toLowerCase().replace('…', '') + '. Se genera apenas termine.'
+      st.textContent = t ? 'Hay otra tarea en curso: tu nota quedó ' + t.toLowerCase().replace('…', '') + '. Se genera apenas termine.'
                          : 'Generando nota...';
     }, function(id) {
       _f2Corrida = id;
@@ -456,7 +470,7 @@ async function fase2GenerarStream() {
     st.className = 'feedback err';
     st.textContent = e.message;
   } finally {
-    terminarPasosNota(exito);
+    terminarPasosNota(exito, fin && fin.estado === 'cancelada');
     setBtnLoading(btn, false);
     cancelar.hidden = true;
     _f2Corrida = null;
@@ -531,9 +545,7 @@ async function fase2MostrarUltima(id) {
     _notaActual = { coleccion: 'notas_fase2', id: d.nota._id, estado: d.nota.estado || 'borrador',
                     contenido: d.nota.contenido, hubspot: d.nota.hubspot || null };
     pintarAccionesNota();
-    var lugarCalificacion = document.createElement('div');
-    check.appendChild(lugarCalificacion);
-    pintarCalificacion(d.nota, lugarCalificacion);
+    pintarRevisionNota(d.nota, check);
 
     var cal = d.nota.calidad;
     if (cal && cal.puntaje !== null && cal.puntaje !== undefined) {
@@ -547,7 +559,11 @@ async function fase2MostrarUltima(id) {
             ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
       check.appendChild(res);
     }
-    pintarRevisionNota(d.nota, check);
+    var lugarCalificacion = document.createElement('details');
+    lugarCalificacion.className = 'revision-criterios';
+    lugarCalificacion.innerHTML = '<summary>Calificar esta nota</summary>';
+    check.appendChild(lugarCalificacion);
+    pintarCalificacion(d.nota, lugarCalificacion);
 
     if (d.nota.categorias && d.nota.categorias.length) {
       var info = document.createElement('div');

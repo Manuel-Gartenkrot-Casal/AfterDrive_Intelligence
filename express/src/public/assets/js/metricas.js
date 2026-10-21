@@ -224,7 +224,7 @@ function _pintarIndicadores(d) {
       variacion: '<p class="indicador-var var-igual"><span aria-hidden="true">' + (pp > 0 ? '▲' : pp < 0 ? '▼' : '=') + '</span> ' +
         (pp ? _NUM.format(Math.abs(pp)) + ' pts' : 'Igual') + ' <span class="var-contra">vs ' + nd + ' días previos</span></p>',
       spark: 2, pie: _plural(descartados, 'artículo descartado', 'artículos descartados') }),
-    _indicador({ titulo: 'Corridas que terminaron bien', valor: exito === null ? '—' : _NUM.format(Math.round(exito * 100)), unidad: exito === null ? '' : '%',
+    _indicador({ titulo: 'Ejecuciones que terminaron bien', valor: exito === null ? '—' : _NUM.format(Math.round(exito * 100)), unidad: exito === null ? '' : '%',
       pastilla: _pastilla(nvCorr), medidor: exito === null ? 0 : exito * 100, nivel: nvCorr.clase,
       pie: _plural(totalCorr, 'corrida', 'corridas') + ' en ' + d.ventana_larga + ' días' }),
     _indicador({ titulo: 'API paga este mes', valor: _USD.format(g.mes_usd),
@@ -288,7 +288,7 @@ function _pintarFuentes(d) {
 }
 
 function _nivel(exito) {
-  if (exito === null) return { clase: 'nivel-nada', icono: '–', texto: 'sin corridas' };
+  if (exito === null) return { clase: 'nivel-nada', icono: '–', texto: 'sin ejecuciones' };
   if (exito >= 0.9) return { clase: 'nivel-ok', icono: '✓', texto: 'estable' };
   if (exito >= 0.7) return { clase: 'nivel-warn', icono: '!', texto: 'con fallas' };
   return { clase: 'nivel-err', icono: '✕', texto: 'fallando seguido' };

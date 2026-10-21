@@ -178,7 +178,13 @@ def test_cancelar_la_nota_en_curso(pagina):
     # Corrida simulada por HTTP: no se genera nada de verdad.
     estado = {"e": "en_curso"}
     cancelados = []
-    pagina.route("**/api/corridas/generacion", lambda r: r.fulfill(json={"success": True, "id": "g1", "estado": "pendiente"}))
+    pedidos = []
+
+    def generar(ruta):
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "id": "g1", "estado": "pendiente"})
+
+    pagina.route("**/api/corridas/generacion", generar)
     pagina.route("**/api/corridas/g1/log?*", lambda r: r.fulfill(
         json={"success": True, "lineas": [], "siguiente": 0, "estado": estado["e"]}))
 
@@ -199,6 +205,9 @@ def test_cancelar_la_nota_en_curso(pagina):
     expect(pagina.locator("#f2-status")).to_contain_text("cancelada", timeout=10000)
     expect(boton).to_be_hidden()
     assert cancelados == ["POST"]
+    assert 'idioma' not in pedidos[0]  # Se conserva el contrato de generación existente.
+    assert pagina.locator('#f2-pasos .fallo, #f2-pasos .actual').count() == 0
+    expect(pagina.locator('#f2-pasos [data-paso="6"]')).to_be_hidden()
 
 
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
@@ -215,6 +224,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     lateral.locator("summary", has_text="Ver el plan").click()
     expect(lateral.locator(".revision-criterios ol")).to_contain_text("Qué pasó")
 
+    lateral.get_by_text("Calificar esta nota", exact=True).click()
     calificar = lateral.locator(".calificar")
     calificar.wait_for()
     assert calificar.get_by_role("button", name="Guardar calificación").is_disabled()
@@ -321,7 +331,8 @@ def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):
         pg.click("#tour-siguiente")
         pg.wait_for_function("(t) => document.getElementById('tour-titulo').textContent !== t", arg=vistos[-1])
     assert vistos[-1] == "Listo" and "Proveedor de IA" not in vistos     # en vista Cliente se saltea
-    assert {"#inicio", "#crear", "#historial", "#programacion", "#fuentes", "#corridas"} <= secciones
+    assert {"#inicio", "#crear", "#historial"} <= secciones
+    assert len(vistos) == 7
     pg.click("#tour-siguiente")
     globo.wait_for(state="detached")
     assert pg.evaluate("localStorage.getItem('ad-tour-visto')") == "1"

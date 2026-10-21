@@ -22,7 +22,7 @@ function initHistorial() {
     clearTimeout(_hist.timer);
     _hist.timer = setTimeout(function() { _hist.q = $('hist-q').value.trim(); cargarHistorial(1); }, 300);
   });
-  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); } });
+  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') { cargarResumenHistorial(); cargarHistorial(_hist.pagina); cargarCalibracion(); } });
   $('hist-pestanas').addEventListener('keydown', function(ev) {
     var tabs = Array.from(this.querySelectorAll('[role="tab"]')), i = tabs.indexOf(document.activeElement);
     if (i < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(ev.key)) return;
@@ -263,8 +263,7 @@ function bloqueGenerarImagen(d, propia) {
 
 async function generarImagenNota() {
   var n = _notaActual, btn = $('btn-generar-imagen');
-  btn.disabled = true;
-  btn.textContent = 'Generando… (puede tardar un minuto)';
+  setBtnLoading(btn, true);
   try {
     await pedir('/api/historial/imagen/generar', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -274,8 +273,7 @@ async function generarImagenNota() {
     vistaPreviaNota();
   } catch (e) {
     showToast(e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = 'Generar imagen con IA';
+    setBtnLoading(btn, false);
   }
 }
 
@@ -318,6 +316,7 @@ async function guardarEdicionNota() {
     $('modal-titulo').textContent = d.item.titulo;
     cancelarEdicionNota();
     showToast('Texto guardado', 'success');
+    cargarResumenHistorial();
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -337,7 +336,7 @@ async function cargarPendientesInicio() {
     var d = await pedir('/api/historial/generados_aprobados?estado=borrador&por_pagina=4&pagina=1');
     $('inicio-lista').innerHTML = d.items.length ? d.items.map(function(it) {
       return '<button class="inicio-nota" onclick="abrirItemHistorial(\'' + it.seccion + '\',\'' + it.coleccion + '\',\'' + it.id + '\')">'
-        + '<span>' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
+        + '<span translate="no">' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
     }).join('') + (d.total > d.items.length
       ? '<button class="btn btn-sm inicio-mas" onclick="abrirPendientes()">Ver las ' + d.total + ' notas pendientes</button>'
       : '<p class="corridas-vacio inicio-fin">No hay más notas para revisar. Las nuevas aparecen acá apenas se generan.</p>')

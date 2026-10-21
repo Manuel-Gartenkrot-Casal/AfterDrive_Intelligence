@@ -11,20 +11,59 @@ pytestmark = pytest.mark.e2e
 SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "corridas"]
 
 
+def test_idioma_informativo_segun_region(pagina):
+    pagina.click('.nav-link[data-seccion="crear"]')
+    pagina.click('#btn-mas-opciones')
+    pagina.locator('#f2-regiones-grid button[data-slug="brasil"]').click()
+    expect(pagina.locator('#idioma-nota-valor')).to_have_text('Português do Brasil')
+    pagina.locator('.header-right [data-idioma="en"]').click()
+    expect(pagina.locator('#idioma-nota-valor')).to_have_text('Português do Brasil')
+    expect(pagina.locator('#crear-resumen')).to_contain_text('Português do Brasil')
+
+
+def test_menu_movil_con_teclado_y_foco(navegador, base_url):
+    pg = abrir(navegador, base_url, ancho=390, alto=844)
+    try:
+        expect(pg.locator('.sidebar')).to_be_hidden()
+        pg.get_by_role('button', name='Crear una nota', exact=True).click()
+        pg.wait_for_url('**/#crear')
+        pg.reload()
+        pg.wait_for_url('**/#crear')
+        expect(pg.locator('#btn-f2-generar')).to_be_visible()
+        pg.locator('#menu-movil').press('Enter')
+        expect(pg.locator('.sidebar')).to_be_visible()
+        pg.keyboard.press('Escape')
+        expect(pg.locator('.sidebar')).to_be_hidden()
+        expect(pg.locator('#menu-movil')).to_be_focused()
+        pg.locator('#menu-movil').press('Enter')
+        pg.locator('.nav-link[data-seccion="historial"]').press('Enter')
+        expect(pg.locator('.sidebar')).to_be_hidden()
+        expect(pg.locator('#contenido')).to_be_focused()
+        assert pg.errores == []
+    finally:
+        pg.context.close()
+
+
 @pytest.mark.parametrize("ancho", [320, 390, 768, 1024, 1440, 1920])
 def test_espacio_y_adaptacion(navegador, base_url, ancho):
     pg = abrir(navegador, base_url, ancho=ancho, alto=900)
     try:
         for modo in ["cliente", "dev"]:
+            if ancho <= 640 and not pg.locator(".sidebar").is_visible():
+                pg.click("#menu-movil")
             pg.locator(f'button[data-modo="{modo}"]').click()
             if modo == "dev":                     # cambiar de vista pide confirmación
                 pg.click("#confirmar-si")
             for seccion in SECCIONES:
+                if ancho <= 640 and not pg.locator(".sidebar").is_visible():
+                    pg.click("#menu-movil")
                 pg.locator(f'.nav-link[data-seccion="{seccion}"]').click()
                 pg.wait_for_url("**/#" + seccion)
                 assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth"), (ancho, modo, seccion)
         caja = pg.locator(".app-container").bounding_box()
         assert caja["width"] >= ancho - 20
+        if ancho <= 640:
+            pg.click("#menu-movil")
         pg.locator('.nav-link[data-seccion="crear"]').click()
         accion = pg.locator("#btn-f2-generar").bounding_box()
         assert accion["y"] + accion["height"] < 900
@@ -105,6 +144,34 @@ def test_actividad_acompana_sin_abrirse_de_nuevo(pagina):
     expect(dock).not_to_have_attribute("open", "")
     dock.locator("summary").click()
     expect(pagina.locator("#actividad-log")).to_have_text("\n".join(lineas))
+
+
+@pytest.mark.parametrize('ancho', [390, 1440])
+def test_consola_no_tapa_guardar_configuracion(navegador, base_url, ancho):
+    pg = abrir(navegador, base_url, ancho=ancho, alto=900)
+    try:
+        tarea = {'id':'prueba-espacio', 'etiqueta':'Generar nota', 'estado':'en_curso', 'origen':'manual'}
+        pg.route('**/api/corridas', lambda r: r.fulfill(json={'en_curso':tarea,'pendientes':[],'recientes':[]}))
+        pg.route('**/api/corridas/prueba-espacio/log?*', lambda r: r.fulfill(json={'estado':'en_curso','lineas':['Procesando una noticia']*12,'siguiente':12}))
+        if ancho <= 640:
+            pg.click('#menu-movil')
+        pg.click('.nav-link[data-seccion="corridas"]')
+        expect(pg.locator('#actividad-dock')).to_be_visible()
+        if ancho <= 640:
+            pg.click('#menu-movil')
+        pg.click('.nav-link[data-seccion="crear"]')
+        pg.select_option('#f2-largo','largo')
+        barra = pg.locator('#barra-crear')
+        expect(barra).to_be_visible()
+        pg.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        pg.wait_for_timeout(300)
+        a,b=barra.bounding_box(), pg.locator('#actividad-dock').bounding_box()
+        assert a['y']+a['height'] <= b['y']+1
+        barra.locator('[data-accion="descartar"]').click()
+        expect(barra).to_be_hidden()
+        assert pg.errores == []
+    finally:
+        pg.context.close()
 
 
 @pytest.mark.parametrize("ancho", [390, 768, 1024, 1440])

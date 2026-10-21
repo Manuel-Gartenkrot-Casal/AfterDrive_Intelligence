@@ -79,7 +79,8 @@ def abrir(navegador, base_url, modo="cliente", ancho=1366, alto=900):
     pg.fill("#usuario", USUARIO)
     pg.fill("#password", CLAVE)
     pg.keyboard.press("Enter")
-    pg.wait_for_selector(".sidebar")
+    pg.wait_for_selector("#contenido")
+    pg.wait_for_selector('.fase2-section[aria-busy="false"]', state='attached')
     return pg
 
 
