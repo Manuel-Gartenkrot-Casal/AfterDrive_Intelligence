@@ -21,7 +21,7 @@ La imagen (`Dockerfile`) instala Python, Chromium (para Scrapling) y copia `afte
 ## Primer despliegue
 
 1. En [Render](https://render.com): **New → Blueprint** con este repo (usa `render.yaml`).
-2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN`, `HUBSPOT_BLOG_ID` (la app privada con los scopes `content` y `files`), `NVIDIA_IMAGE_MODEL`, `IMAGENES_AUTOMATICAS`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
+2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN` (la app privada con los scopes `content` y `files`), `HUBSPOT_BLOG_PRUEBAS` (solo para mandar todo a un blog de pruebas; el viejo `HUBSPOT_BLOG_ID` ya no se usa), `NVIDIA_IMAGE_MODEL`, `IMAGENES_AUTOMATICAS`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
 3. En Atlas, **Network Access** tiene que permitir `0.0.0.0/0`: Render free no tiene IP fija.
 4. Elegí cómo corren las tareas programadas (abajo).
 

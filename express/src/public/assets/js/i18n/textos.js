@@ -293,6 +293,24 @@ var _FILAS_TEXTOS = [
   ['Despublicar', 'Despublicar', 'Unpublish'],
   ['Actualizar en HubSpot', 'Atualizar no HubSpot', 'Update on HubSpot'],
   ['Actualizar borrador en HubSpot', 'Atualizar rascunho no HubSpot', 'Update draft on HubSpot'],
+  ['Aprobar y subir a HubSpot', 'Aprovar e enviar ao HubSpot', 'Approve and upload to HubSpot'],
+  ['Subir borrador a HubSpot', 'Enviar rascunho ao HubSpot', 'Upload draft to HubSpot'],
+  ['Nota aprobada y subida a HubSpot como borrador', 'Post aprovado e enviado ao HubSpot como rascunho', 'Post approved and uploaded to HubSpot as a draft'],
+  ['La nota quedó aprobada. Reintentá con «Subir borrador a HubSpot».', 'O post ficou aprovado. Tente de novo com «Enviar rascunho ao HubSpot».', 'The post is approved. Try again with “Upload draft to HubSpot”.'],
+  ['Publicación en HubSpot', 'Publicação no HubSpot', 'Publishing on HubSpot'],
+  ['Blog:', 'Blog:', 'Blog:'],
+  ['Etiqueta:', 'Tag:', 'Tag:'],
+  ['Autor', 'Autor', 'Author'],
+  ['Autor por defecto', 'Autor padrão', 'Default author'],
+  ['Sin etiqueta para estas categorías.', 'Sem tag para estas categorias.', 'No tag for these categories.'],
+  ['No se pudieron cargar los autores: se usa el autor por defecto.', 'Não foi possível carregar os autores: usa-se o autor padrão.', 'Couldn’t load the authors: the default author is used.'],
+  ['Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.', 'Ao aprovar, o post é enviado como rascunho. A publicação é feita no HubSpot.', 'When approved, the post is uploaded as a draft. It’s published from HubSpot.'],
+  ['After Drive (español)', 'After Drive (espanhol)', 'After Drive (Spanish)'],
+  ['After Drive (português)', 'After Drive (português)', 'After Drive (Portuguese)'],
+  ['After Drive (English)', 'After Drive (inglês)', 'After Drive (English)'],
+  ['No hay un blog de After Drive en el idioma de esta nota: solo español, portugués e inglés.', 'Não há um blog da After Drive no idioma deste post: só espanhol, português e inglês.', 'There’s no After Drive blog in this post’s language: only Spanish, Portuguese and English.'],
+  ['HubSpot no está configurado: falta HUBSPOT_TOKEN.', 'O HubSpot não está configurado: falta HUBSPOT_TOKEN.', 'HubSpot isn’t set up: HUBSPOT_TOKEN is missing.'],
+  ['Autor inválido.', 'Autor inválido.', 'Invalid author.'],
   ['Ya está subida a HubSpot.', 'Já está no HubSpot.', 'Already on HubSpot.'],
   ['Texto de la nota (Markdown)', 'Texto do post (Markdown)', 'Post text (Markdown)'],
   ['Guardar texto', 'Salvar texto', 'Save text'],
@@ -676,6 +694,7 @@ _MOTIVOS.forEach(function(f) { TEXTOS.pt[f[0]] = f[1]; TEXTOS.en[f[0]] = f[2]; }
 
 var PATRONES = {
   pt: [
+    [/^Blog de pruebas \((\d+)\)$/, 'Blog de testes ($1)'],
     [/^vs (\d+) días previos$/, 'vs $1 dias anteriores'],
     [/^(.+) por día en promedio$/, '$1 por dia em média'],
     [/^(.+)% del tope de (.+)$/, '$1% do limite de $2'],
@@ -747,6 +766,7 @@ var PATRONES = {
     [/^Imagen generada con IA \((.+)\)\.?$/, 'Imagem gerada com IA ($1).']
   ],
   en: [
+    [/^Blog de pruebas \((\d+)\)$/, 'Test blog ($1)'],
     [/^vs (\d+) días previos$/, 'vs previous $1 days'],
     [/^(.+) por día en promedio$/, '$1 per day on average'],
     [/^(.+)% del tope de (.+)$/, '$1% of the $2 cap'],

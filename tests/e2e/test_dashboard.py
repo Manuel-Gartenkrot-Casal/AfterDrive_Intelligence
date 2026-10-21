@@ -112,8 +112,21 @@ def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     pagina.click("#confirmar-no")
     pagina.locator("#confirmar").wait_for(state="hidden")
 
-    acciones.get_by_role("button", name="Aprobar").click()
+    # Con HubSpot configurado, aprobar también sube el borrador, firmado por el autor elegido.
+    autor = pagina.locator("#hubspot-autor")
+    autor.wait_for()
+    assert autor.locator("option:checked").inner_text() == "Gaston Zelerteins"
+    assert "Ana Dias" in autor.inner_text() and autor.locator("option").count() == 2   # solo los del idioma
+    autor.select_option("191488460449")
+    envios = []
+    pagina.on("request", lambda r: envios.append(r) if r.url.endswith("/api/hubspot/enviar") else None)
+    acciones.get_by_role("button", name="Aprobar y subir a HubSpot").dblclick()   # un doble clic no duplica el post
     acciones.locator(".estado-chip.aprobada").wait_for()
+    acciones.get_by_role("button", name="Actualizar borrador en HubSpot").wait_for()
+    id_nota = pagina.evaluate("_notaActual.id")
+    destino = pagina.evaluate("id => fetch('/api/hubspot/destino/notas_fase2/' + id).then(r => r.json())", id_nota)
+    assert destino["autor_id"] == "191488460449"
+    assert len(envios) == 1
 
 
 def test_vista_previa_de_la_nota(pagina):

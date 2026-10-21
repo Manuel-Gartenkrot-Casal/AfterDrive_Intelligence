@@ -89,9 +89,9 @@ La automática no hace nada si no hay categorías guardadas.
 ## Revisión y publicación
 
 ```
-borrador ──Aprobar──► aprobada ──Publicar en HubSpot──► publicado
-   │                     │                                  │
-   └──Rechazar──► rechazada   Borrador en HubSpot        Despublicar → aprobada
+borrador ──Aprobar y subir──► aprobada + borrador en HubSpot ──Publicar en HubSpot──► publicado
+   │                                                                                     │
+   └──Rechazar──► rechazada                                                  Despublicar → aprobada
 ```
 
 Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.

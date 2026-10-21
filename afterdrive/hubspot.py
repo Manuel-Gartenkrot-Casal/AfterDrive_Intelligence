@@ -4,6 +4,8 @@ hubspot.py — Publica Notas aprobadas en el blog de HubSpot.
 Interfaz:
     configurado() -> bool
     enviar(nota, publicar=False) -> dict   {"id", "url", "estado"}
+    destino(nota) -> dict                   blog, idioma, etiquetas y autor que le tocan
+    autores(idioma) -> [{"id", "nombre"}]   autores del blog en ese idioma
     vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
     subir_imagen(contenido, mime, nombre) -> url pública (scope "files")
     preparar(contenido) -> dict             título, cuerpo HTML y meta description
@@ -12,13 +14,15 @@ Interfaz:
 Usa la API de CMS v3 (POST/PATCH /cms/v3/blogs/posts) con el token de una app
 privada de HubSpot con el scope "content". Configuración:
     HUBSPOT_TOKEN      token de la app privada (Configuración > Integraciones > Apps privadas)
-    HUBSPOT_BLOG_ID    id del blog (contentGroupId)
-    HUBSPOT_AUTOR_ID   opcional: blogAuthorId
+    HUBSPOT_BLOG_PRUEBAS  opcional: manda TODO a este blog (para probar en el "Blog test").
+                       El viejo HUBSPOT_BLOG_ID ya no se usa.
     HUBSPOT_IMAGEN_DEFAULT  opcional: imagen destacada para las notas que no tienen una propia
-    HUBSPOT_IDIOMA     opcional: idioma de las etiquetas nuevas (es por defecto)
 
-Las etiquetas del post salen de las categorías de la Nota: se buscan en el blog
-y se crean las que falten. Si eso falla, la nota se publica igual, sin etiquetas.
+El blog sale del idioma de la Nota (sus regiones): español -> After Drive ES,
+portugués -> PT, inglés -> EN. Las etiquetas son las que ya existen en HubSpot
+para cada categoría, en el idioma del blog (ETIQUETAS): nunca se crean nuevas,
+porque son de toda la cuenta. El autor es el elegido al revisar la nota
+(hubspot_autor_id) o, si no, AUTOR_POR_DEFECTO.
 
 Si la Nota ya se envió antes (tiene hubspot.id), se actualiza esa misma entrada
 en lugar de crear otra: reenviar después de editar no duplica posts.
@@ -35,14 +39,44 @@ import markdown
 import requests
 
 API = "https://api.hubapi.com/cms/v3/blogs/posts"
-API_TAGS = "https://api.hubapi.com/cms/v3/blogs/tags"
+API_AUTORES = "https://api.hubapi.com/cms/v3/blogs/authors"
 API_ARCHIVOS = "https://api.hubapi.com/files/v3/files"
 CARPETA_IMAGENES = "/afterdrive-notas"
 TIMEOUT_S = 30
+META_MAX = 155   # lo que el editor de HubSpot marca como límite de la meta description
+
+# Blogs de After Drive en HubSpot, por idioma (GET /cms/blog-settings/.../settings).
+BLOGS = {"es": ("41065736183", "After Drive (español)"),
+         "pt": ("43859303259", "After Drive (português)"),
+         "en": ("43859745706", "After Drive (English)")}
+
+# Gastón Zelerteins: los autores de HubSpot son por idioma, cada uno con su id.
+AUTOR_POR_DEFECTO = {"es": "37798507784", "pt": "192904642075", "en": "194508336788"}
+
+# Etiqueta de HubSpot de cada categoría, en (es, pt, en). Son las que ya usan los
+# posts publicados (GET /cms/v3/blogs/tags). Una categoría que falte acá sale sin etiqueta.
+ETIQUETAS = {
+    "casos-de-exito":     ("191345473040", "193208803411", "194504268663"),
+    "columna-de-opinion": ("191345473109", "192987213672", "194511751685"),
+    "productos":          ("117924633707", "52357766052", "117924633717"),
+    "soluciones":         ("191345473180", "192987119948", "194504268326"),
+    "servicios":          ("191345473198", "192987213618", "194511751446"),
+    "neumaticos":         ("118356603741", "118353313330", "118353313312"),
+    "autopartes":         ("192987213995", "192987214119", "194504268094"),
+    "motopartes":         ("192978989387", "118353313343", "194504268186"),
+    "vehiculos-pesados":  ("191345473426", "192964709492", "194504268214"),
+    "estadisticas":       ("191345473564", "192964709472", "198600176544"),
+    "marketplaces":       ("192245575721", "192964709439", "194508618303"),
+    "catalogacion":       ("191345473652", "192960530996", "194510524238"),
+    "gestion-de-ventas":  ("192488154127", "193192816560", "194502855222"),
+    "logistica":          ("191345473802", "192964709240", "194502855264"),
+    "rentabilidad":       ("191345473831", "192960530855", "194502855332"),
+    "eventos":            ("132665181879", "192964709123", "136907936677"),
+}
+_COLUMNA = {"es": 0, "pt": 1, "en": 2}
 
 _transporte = {"post": requests.post, "patch": requests.patch, "get": requests.get,
                "subir": requests.post}   # seam para los tests
-_tags_cache: dict[str, str] = {}   # nombre en minúsculas -> id de la etiqueta en HubSpot
 
 
 class ErrorHubSpot(RuntimeError):
@@ -50,7 +84,52 @@ class ErrorHubSpot(RuntimeError):
 
 
 def configurado() -> bool:
-    return bool(os.getenv("HUBSPOT_TOKEN") and os.getenv("HUBSPOT_BLOG_ID"))
+    return bool(os.getenv("HUBSPOT_TOKEN"))
+
+
+def idioma(nota: dict) -> str | None:
+    """es, pt o en según la voz de la nota (sus regiones). None si no hay blog en ese idioma."""
+    from afterdrive.ia.redaccion import voz
+
+    nombre = voz(nota.get("regiones")).idioma
+    if nombre.startswith("español"):
+        return "es"
+    return {"portugués": "pt", "inglés": "en"}.get(nombre.split()[0])
+
+
+def destino(nota: dict) -> dict:
+    """Blog, etiquetas y autor que le tocan a la nota en HubSpot. Sin llamar a HubSpot."""
+    cod = idioma(nota)
+    if not cod:
+        raise ErrorHubSpot("No hay un blog de After Drive en el idioma de esta nota: solo español, portugués e inglés.")
+    blog_id, blog = BLOGS[cod]
+    # Otro nombre que el viejo HUBSPOT_BLOG_ID (el blog de producción): uno que
+    # haya quedado cargado en Render no manda todo a un solo blog.
+    forzado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    if forzado:
+        blog_id, blog = forzado, f"Blog de pruebas ({forzado})"
+    categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
+    return {
+        "idioma": cod, "blog_id": blog_id, "blog": blog,
+        "etiquetas": _nombres_etiquetas({"categorias": categorias}),
+        "tag_ids": [ETIQUETAS[c][_COLUMNA[cod]] for c in categorias],
+        "autor_id": str(nota.get("hubspot_autor_id") or AUTOR_POR_DEFECTO[cod]),
+    }
+
+
+def autores(cod: str) -> list[dict]:
+    """Autores del blog en ese idioma, por nombre: para elegir quién firma la nota."""
+    if not configurado():
+        raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
+    try:
+        resp = _transporte["get"](API_AUTORES, params={"limit": 100}, headers=_headers(), timeout=TIMEOUT_S)
+    except requests.RequestException as e:
+        raise ErrorHubSpot(f"No se pudo conectar con HubSpot: {e}") from e
+    if resp.status_code >= 400:
+        raise _error(resp)
+    lista = [{"id": str(a["id"]), "nombre": (a.get("fullName") or a.get("name") or "").strip()}
+             for a in resp.json().get("results", []) if a.get("language") == cod]
+    return sorted(lista, key=lambda a: a["nombre"].lower())
 
 
 def _slug(texto: str, sufijo: str = "") -> str:
@@ -89,11 +168,18 @@ def preparar(contenido: str) -> dict:
     cuerpo = "\n".join(lineas).strip().replace("<", "&lt;")
     if not titulo:
         raise ErrorHubSpot("La nota no tiene título (una línea que empiece con '# ').")
-    return {
-        "titulo": titulo,
-        "html": markdown.markdown(cuerpo, extensions=["extra", "sane_lists"]),
-        "meta": meta[:300],
-    }
+    html = markdown.markdown(cuerpo, extensions=["extra", "sane_lists"])
+    # Los posts del blog usan <h3> para los subtítulos: "## " baja un nivel (y "### " a h4).
+    html = re.sub(r"<(/?)h([2-5])\b", lambda m: f"<{m.group(1)}h{int(m.group(2)) + 1}", html)
+    return {"titulo": titulo, "html": html, "meta": _recortar(meta, META_MAX)}
+
+
+def _recortar(texto: str, maximo: int) -> str:
+    """El texto hasta `maximo` caracteres, sin cortar una palabra al medio."""
+    if len(texto) <= maximo:
+        return texto
+    corte = texto[: maximo - 1].rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return corte + "…"
 
 
 def _headers() -> dict:
@@ -108,7 +194,7 @@ def _error(resp) -> ErrorHubSpot:
     if resp.status_code in (401, 403):
         return ErrorHubSpot("HubSpot rechazó el token: revisá HUBSPOT_TOKEN y que la app privada tenga el scope 'content'.")
     if resp.status_code == 404:
-        return ErrorHubSpot("HubSpot no encontró el blog o el post: revisá HUBSPOT_BLOG_ID.")
+        return ErrorHubSpot("HubSpot no encontró el blog, el post o el autor: revisá HUBSPOT_BLOG_PRUEBAS (si está cargado) y el autor elegido.")
     if resp.status_code == 429:
         return ErrorHubSpot("HubSpot está limitando las llamadas (429): probá de nuevo en un minuto.")
     return ErrorHubSpot(f"HubSpot respondió {resp.status_code}: {detalle}")
@@ -117,7 +203,7 @@ def _error(resp) -> ErrorHubSpot:
 def despublicar(post_id: str) -> None:
     """Vuelve un post de HubSpot a borrador: deja de verse en el blog."""
     if not configurado():
-        raise ErrorHubSpot("HubSpot no está configurado: faltan HUBSPOT_TOKEN y HUBSPOT_BLOG_ID.")
+        raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
     try:
         resp = _transporte["patch"](f"{API}/{post_id}", json={"state": "DRAFT"}, headers=_headers(), timeout=TIMEOUT_S)
     except requests.RequestException as e:
@@ -151,7 +237,7 @@ def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
     Necesita el scope "files" en la app privada, además de "content".
     """
     if not configurado():
-        raise ErrorHubSpot("HubSpot no está configurado: faltan HUBSPOT_TOKEN y HUBSPOT_BLOG_ID.")
+        raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
     opciones = {"access": "PUBLIC_INDEXABLE", "overwrite": False, "duplicateValidationStrategy": "NONE"}
     try:
         resp = _transporte["subir"](
@@ -177,82 +263,53 @@ def vista_previa(nota: dict) -> dict:
     """Lo que se mandaría a HubSpot (título, meta, imagen, etiquetas y cuerpo), sin llamarlo."""
     partes = preparar(nota.get("contenido", ""))
     previo = nota.get("hubspot") or {}
+    try:
+        lugar = destino(nota)
+    except ErrorHubSpot as e:
+        lugar = {"error": str(e), "etiquetas": []}
     return {
         **partes,
         "imagen": _imagen(nota, partes["titulo"], local=True),
-        "etiquetas": _nombres_etiquetas(nota),
+        "etiquetas": lugar["etiquetas"],
+        "destino": {k: v for k, v in lugar.items() if k != "tag_ids"},
         "slug": previo.get("slug") or _slug(partes["titulo"], str(nota.get("_id", ""))[-6:]),
     }
-
-
-def _ids_etiquetas(nombres: list[str]) -> list[str]:
-    """Ids de HubSpot de estas etiquetas, creando las que falten.
-
-    Nunca frena la publicación: si la API de etiquetas falla, se publica sin ellas.
-    """
-    if not nombres:
-        return []
-    try:
-        if not _tags_cache:
-            despues = None
-            while True:
-                params = {"limit": 100, **({"after": despues} if despues else {})}
-                resp = _transporte["get"](API_TAGS, params=params, headers=_headers(), timeout=TIMEOUT_S)
-                if resp.status_code >= 400:
-                    raise _error(resp)
-                data = resp.json()
-                _tags_cache.update({t["name"].strip().lower(): str(t["id"]) for t in data.get("results", [])})
-                despues = ((data.get("paging") or {}).get("next") or {}).get("after")
-                if not despues:
-                    break
-        ids = []
-        for nombre in nombres:
-            clave = nombre.strip().lower()
-            if clave not in _tags_cache:
-                resp = _transporte["post"](API_TAGS, json={"name": nombre, "language": os.getenv("HUBSPOT_IDIOMA", "es")},
-                                           headers=_headers(), timeout=TIMEOUT_S)
-                if resp.status_code >= 400:
-                    raise _error(resp)
-                _tags_cache[clave] = str(resp.json()["id"])
-            ids.append(_tags_cache[clave])
-        return ids
-    except Exception as e:
-        print(f"[HubSpot] No se pudieron preparar las etiquetas ({e}); se publica sin ellas.", flush=True)
-        return []
 
 
 def enviar(nota: dict, publicar: bool = False) -> dict:
     """Crea (o actualiza) el post de la Nota en HubSpot, como borrador o publicado.
 
     nota: documento de Mongo con "_id", "contenido" y opcionalmente "hubspot",
-    "imagen" y "categorias".
+    "imagen", "categorias", "regiones" y "hubspot_autor_id".
     """
     if not configurado():
-        raise ErrorHubSpot("HubSpot no está configurado: faltan HUBSPOT_TOKEN y HUBSPOT_BLOG_ID.")
+        raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
     partes = preparar(nota.get("contenido", ""))
+    lugar = destino(nota)
     cuerpo = {
-        "contentGroupId": os.getenv("HUBSPOT_BLOG_ID"),
         "name": partes["titulo"],
         "htmlTitle": partes["titulo"],
         "postBody": partes["html"],
         "metaDescription": partes["meta"],
         "state": "PUBLISHED" if publicar else "DRAFT",
     }
-    if os.getenv("HUBSPOT_AUTOR_ID"):
-        cuerpo["blogAuthorId"] = os.getenv("HUBSPOT_AUTOR_ID")
+    previo = (nota.get("hubspot") or {}).get("id")
+    # Al actualizar, autor y etiquetas solo si vienen de acá: no pisar lo que el
+    # equipo haya cambiado a mano en HubSpot.
+    if not previo or nota.get("hubspot_autor_id"):
+        cuerpo["blogAuthorId"] = lugar["autor_id"]
+    if lugar["tag_ids"]:
+        cuerpo["tagIds"] = lugar["tag_ids"]
     imagen = _imagen(nota, partes["titulo"])
     if imagen:
         cuerpo.update(useFeaturedImage=True, featuredImage=imagen["url"], featuredImageAltText=imagen["alt"])
-    etiquetas = _ids_etiquetas(_nombres_etiquetas(nota))
-    if etiquetas:
-        cuerpo["tagIds"] = etiquetas
 
-    previo = (nota.get("hubspot") or {}).get("id")
     try:
         if previo:
             resp = _transporte["patch"](f"{API}/{previo}", json=cuerpo, headers=_headers(), timeout=TIMEOUT_S)
         else:
-            # El slug va solo al crear: cambiarlo después rompería links ya compartidos.
+            # Blog y slug van solo al crear: cambiarlos después rompería links ya compartidos.
+            cuerpo["contentGroupId"] = lugar["blog_id"]
             cuerpo["slug"] = _slug(partes["titulo"], str(nota.get("_id", ""))[-6:])
             resp = _transporte["post"](API, json=cuerpo, headers=_headers(), timeout=TIMEOUT_S)
     except requests.RequestException as e:

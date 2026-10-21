@@ -155,7 +155,7 @@ def test_la_vista_previa_muestra_la_generada_desde_el_servidor(base, nota, monke
 @pytest.fixture
 def hubspot_falso(monkeypatch):
     monkeypatch.setenv("HUBSPOT_TOKEN", "pat")
-    monkeypatch.setenv("HUBSPOT_BLOG_ID", "1")
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "1")
     enviados = []
     monkeypatch.setattr(hubspot, "enviar", lambda doc, publicar=False: enviados.append(doc) or
                         {"id": "9", "url": "https://blog/x", "estado": "DRAFT", "slug": "x"})
@@ -189,7 +189,7 @@ def test_si_no_se_puede_subir_la_imagen_se_publica_igual_con_aviso(base, nota, m
 
 def test_subir_imagen_a_hubspot(monkeypatch):
     monkeypatch.setenv("HUBSPOT_TOKEN", "pat")
-    monkeypatch.setenv("HUBSPOT_BLOG_ID", "1")
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "1")
     llamadas = []
     monkeypatch.setitem(hubspot._transporte, "subir", lambda url, **kw: llamadas.append((url, kw)) or
                         Resp(body={"url": "https://f.hubspotusercontent.com/a.jpg"}))

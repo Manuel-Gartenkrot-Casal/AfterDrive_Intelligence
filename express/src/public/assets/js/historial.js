@@ -133,16 +133,19 @@ function pintarAccionesNota() {
     return '<button type="button" class="btn btn-xs' + (primario ? ' btn-primary' : '') + '" onclick="cambiarEstadoNota(\'' + estado + '\')">' + texto + '</button>';
   };
   var html = '<span class="estado-chip ' + e + '">' + NOMBRE_ESTADO_NOTA[e] + '</span>';
-  if (e === 'borrador') html += b('aprobada', 'Aprobar', true) + b('rechazada', 'Rechazar');
+  var subible = _hubspotConfigurado && !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
+  if (e === 'borrador') html += (subible
+      ? '<button type="button" class="btn btn-xs btn-primary" onclick="aprobarYSubir()">Aprobar y subir a HubSpot</button>'
+      : b('aprobada', 'Aprobar', true)) + b('rechazada', 'Rechazar');
   if (e === 'aprobada') html += b('borrador', 'Volver a revisar');
   if (e === 'rechazada') html += b('borrador', 'Volver a revisar');
   if (e === 'publicado') html += b('aprobada', 'Despublicar');
   if (e !== 'publicado') html += '<button type="button" class="btn btn-xs" onclick="editarNota()">Editar</button>';
   html += '<button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Vista previa</button>';
-  if (_hubspotConfigurado && (e === 'aprobada' || e === 'publicado')) {
+  if (subible && (e === 'aprobada' || e === 'publicado')) {
     var yaEnviada = _notaActual.hubspot && _notaActual.hubspot.id;
     if (e === 'aprobada') html += '<button type="button" class="btn btn-xs" onclick="enviarAHubspot(false)">'
-      + (yaEnviada ? 'Actualizar borrador en HubSpot' : 'Borrador en HubSpot') + '</button>';
+      + (yaEnviada ? 'Actualizar borrador en HubSpot' : 'Subir borrador a HubSpot') + '</button>';
     html += '<button type="button" class="btn btn-xs btn-primary" onclick="enviarAHubspot(true)">'
       + (e === 'publicado' && yaEnviada ? 'Actualizar en HubSpot' : 'Publicar en HubSpot') + '</button>';
   }
@@ -157,44 +160,91 @@ async function cargarEstadoHubspot() {
   try { _hubspotConfigurado = (await pedir('/api/hubspot/estado')).configurado; } catch (e) {}
 }
 
-async function enviarAHubspot(publicar) {
+async function enviarAHubspot(publicar, mensajeOk) {
   var n = _notaActual;
   if (publicar && !await confirmar({
     titulo: 'Publicar en el blog',
     mensaje: 'La nota queda publicada en el blog de AfterDrive en HubSpot, visible para cualquiera. Si ya estaba, se actualiza con este texto.',
     accion: 'Publicar', peligro: false
-  })) return;
+  })) return false;
   var botones = document.querySelectorAll('#nota-acciones button');
   botones.forEach(function(b) { b.disabled = true; });
+  var autor = $('hubspot-autor'), ok = false;
   try {
     var d = await pedir('/api/hubspot/enviar', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ coleccion: n.coleccion, id: n.id, publicar: publicar })
+      body: JSON.stringify({ coleccion: n.coleccion, id: n.id, publicar: publicar, autor_id: autor && autor.value ? autor.value : null })
     });
     n.estado = d.item.estado;
     n.hubspot = d.item.hubspot;
-    showToast(publicar ? 'Publicada en HubSpot' : 'Guardada como borrador en HubSpot', 'success');
+    showToast(mensajeOk || (publicar ? 'Publicada en HubSpot' : 'Guardada como borrador en HubSpot'), 'success');
     if (d.item.aviso) showToast(d.item.aviso, 'warn', 8000);
-    cargarResumenHistorial();
-    if (_seccion === 'historial') cargarHistorial(_hist.pagina);
+    ok = true;
   } catch (e) { showToast(e.message, 'error'); }
+  cargarResumenHistorial();
+  if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   pintarAccionesNota();
+  return ok;
 }
 
-async function cambiarEstadoNota(estado) {
+/* Aprobar sube la nota a HubSpot como borrador: el equipo la termina y publica allá.
+   Si la subida falla, la nota queda aprobada y "Subir borrador a HubSpot" reintenta. */
+async function aprobarYSubir() {
+  // Sin esto, un doble clic llega dos veces a /api/hubspot/enviar antes de que
+  // exista el post y crea dos.
+  document.querySelectorAll('#nota-acciones button').forEach(function(b) { b.disabled = true; });
+  if (!await cambiarEstadoNota('aprobada', true)) { pintarAccionesNota(); return; }
+  if (!await enviarAHubspot(false, 'Nota aprobada y subida a HubSpot como borrador')) {
+    showToast('La nota quedó aprobada. Reintentá con «Subir borrador a HubSpot».', 'warn', 8000);
+  }
+}
+
+/* Bloque de la revisión: a qué blog va, con qué etiqueta y quién firma. */
+async function pintarDestinoHubspot(nota, contenedor) {
+  if (!_hubspotConfigurado) return;
+  var bloque = bloqueRevision('Publicación en HubSpot', '<p class="revision-sub">Cargando…</p>');
+  contenedor.appendChild(bloque);
+  var d;
+  try { d = await pedir('/api/hubspot/destino/notas_fase2/' + nota._id); }
+  catch (e) {
+    if (e.status === 422 && _notaActual && _notaActual.id === nota._id) {
+      _notaActual.sinDestino = true;   // sin blog en su idioma: se aprueba sin subir
+      pintarAccionesNota();
+    }
+    bloque.classList.add('con-fallas');
+    bloque.innerHTML = '<h4>' + escHtml(tr('Publicación en HubSpot')) + '</h4><p class="revision-mal">' + escHtml(e.message) + '</p>';
+    return;
+  }
+  var opciones = d.autores.length ? d.autores : [{ id: d.autor_id, nombre: 'Autor por defecto' }];
+  if (!opciones.some(function(a) { return a.id === d.autor_id; })) opciones.unshift({ id: d.autor_id, nombre: 'Autor ' + d.autor_id });
+  var editable = _notaActual && _notaActual.estado !== 'publicado';
+  bloque.innerHTML = '<h4>' + escHtml(tr('Publicación en HubSpot')) + '</h4>'
+    + '<p>' + escHtml('Blog: ' + d.blog) + '</p>'
+    + '<p>' + (d.etiquetas.length ? escHtml('Etiqueta: ' + d.etiquetas.join(', ')) : escHtml('Sin etiqueta para estas categorías.')) + '</p>'
+    + '<label class="control-label" for="hubspot-autor">Autor</label>'
+    + '<select id="hubspot-autor" class="input-field hubspot-autor"' + (editable ? '' : ' disabled') + '>'
+    + opciones.map(function(a) {
+        return '<option value="' + escHtml(a.id) + '"' + (a.id === d.autor_id ? ' selected' : '') + ' translate="no">' + escHtml(a.nombre) + '</option>';
+      }).join('')
+    + '</select>'
+    + (d.autores.length ? '' : '<p class="revision-sub">No se pudieron cargar los autores: se usa el autor por defecto.</p>')
+    + '<p class="revision-sub">Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.</p>';
+}
+
+async function cambiarEstadoNota(estado, sinAviso) {
   var n = _notaActual;
   var motivo = null;
   if (estado === 'aprobada' && n.estado === 'publicado' && n.hubspot && n.hubspot.id && !await confirmar({
     titulo: '¿Despublicar esta nota?', accion: 'Despublicar',
     mensaje: 'Deja de verse en el blog: en HubSpot vuelve a borrador. Acá queda aprobada, lista para publicar de nuevo.'
-  })) return;
+  })) return false;
   if (estado === 'rechazada') {
     motivo = await confirmar({
       titulo: '¿Rechazar esta nota?', accion: 'Rechazar',
       mensaje: 'Queda en el historial como rechazada y no se publica. Las próximas notas van a tener en cuenta el motivo.',
       campo: '¿Qué tiene mal?', placeholder: 'Ej: inventa cifras, suena a folleto, repite la introducción…'
     });
-    if (!motivo) return;
+    if (!motivo) return false;
   }
   try {
     var d = await pedir('/api/historial/estado', {
@@ -203,10 +253,11 @@ async function cambiarEstadoNota(estado) {
     });
     n.estado = d.item.estado;
     pintarAccionesNota();
-    showToast('Nota: ' + NOMBRE_ESTADO_NOTA[n.estado].toLowerCase(), 'success');
+    if (!sinAviso) showToast('Nota: ' + NOMBRE_ESTADO_NOTA[n.estado].toLowerCase(), 'success');
     cargarResumenHistorial();
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);
-  } catch (e) { showToast(e.message, 'error'); }
+    return true;
+  } catch (e) { showToast(e.message, 'error'); return false; }
 }
 
 /* Cómo quedaría el post en el blog: lo mismo que se manda a HubSpot. */

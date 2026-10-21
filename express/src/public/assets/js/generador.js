@@ -547,6 +547,7 @@ async function fase2MostrarUltima(id) {
             ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
       check.appendChild(res);
     }
+    pintarDestinoHubspot(d.nota, check);
     pintarRevisionNota(d.nota, check);
 
     if (d.nota.categorias && d.nota.categorias.length) {

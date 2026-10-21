@@ -137,7 +137,7 @@ Si ya tenés un Chromium instalado, apuntalo con `E2E_CHROMIUM=/ruta/a/chromium`
 | Artículos sin `embedding` | Falta `NVIDIA_API_KEY`. Configurala y corré `python -m afterdrive.ingesta.embeddings` |
 | La nota automática no se genera | No hay categorías guardadas: elegilas en Crear nota y tocá Guardar cambios |
 | Algo quedó "En espera" mucho tiempo | Hay otra Corrida corriendo; miralo en la sección Corridas |
-| No aparecen los botones de HubSpot | Faltan `HUBSPOT_TOKEN` y `HUBSPOT_BLOG_ID`, o la nota no está aprobada |
+| No aparecen los botones de HubSpot | Falta `HUBSPOT_TOKEN`, o la nota no está aprobada |
 
 ## Scripts por línea de comandos
 
