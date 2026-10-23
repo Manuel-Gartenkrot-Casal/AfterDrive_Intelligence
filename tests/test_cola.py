@@ -266,7 +266,9 @@ def test_un_script_que_falla_con_codigo_distinto_de_cero_queda_con_error(col, tm
     p.write_text("import sys\nprint('[ERROR] algo salió mal')\nsys.exit(1)\n")
     id_ = cola.encolar("script", {"modulo": str(p)})["id"]
     cola.procesar_pendientes()
-    assert cola.log(id_)["estado"] == "error"
+    r = cola.log(id_)
+    assert r["estado"] == "error"
+    assert r["error"] == "algo salió mal"   # el motivo, no "terminó con código 1"
 
 
 def test_api_generar_imagen_encola_un_script(client, col):
@@ -285,3 +287,41 @@ def test_api_generar_imagen_valida_coleccion_e_id(client, col):
     assert client.post("/api/historial/imagen/generar",
                        json={"coleccion": "notas_fase2", "id": "no-es-un-id"}).status_code == 400
     assert col.count_documents({}) == 0
+
+
+def test_la_misma_programada_no_se_encola_dos_veces_aunque_ya_haya_arrancado(col):
+    """Dos servidores contra la misma base (Render y un Docker local) disparan la
+    misma programada a la vez: tiene que correr una sola."""
+    cola.crear_indices()
+    a = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-23T11:00")
+    col.update_one({}, {"$set": {"estado": "en_curso"}})   # el otro servidor ya la tomó
+    b = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-23T11:00")
+    assert b["duplicada"] and b["id"] == a["id"]
+    assert col.count_documents({}) == 1
+    c = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-24T11:00")
+    assert not c["duplicada"]
+
+
+def test_si_dos_la_insertan_a_la_vez_el_indice_deja_una(col, monkeypatch):
+    cola.crear_indices()
+    turno = "scraping:2026-10-23T05:30"
+    col.insert_one({"tipo": "scraping", "estado": "en_curso", "turno": turno, "creada": cola._ahora()})
+    real, llamadas = col.find_one, []
+
+    def find_one(f, *a, **k):
+        # Simula la carrera: la primera consulta no la ve, el insert choca con el índice.
+        if "turno" in f and not llamadas:
+            llamadas.append(f)
+            return None
+        return real(f, *a, **k)
+
+    monkeypatch.setattr(col, "find_one", find_one)
+    r = cola.encolar("scraping", origen="cron", turno=turno)
+    assert r["duplicada"]
+    assert col.count_documents({}) == 1
+
+
+def test_la_corrida_dice_en_que_equipo_corre(col, ejecutadas):
+    id_ = cola.encolar("scraping", {"max_articulos": 1})["id"]
+    cola.procesar_pendientes()
+    assert cola.log(id_)["equipo"] == cola.EQUIPO

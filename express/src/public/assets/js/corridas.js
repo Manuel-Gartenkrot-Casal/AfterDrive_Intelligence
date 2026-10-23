@@ -69,7 +69,8 @@ function filaCorrida(c, extra) {
   var origen = c.origen === 'cron' ? 'automática' : 'manual';
   return '<div class="corrida">'
     + '<div class="corrida-info"><div class="corrida-nombre">' + escHtml(c.etiqueta) + '</div>'
-    + '<div class="corrida-meta">' + origen + ' · ' + escHtml(extra || '') + '</div>'
+    + '<div class="corrida-meta">' + origen + ' · ' + escHtml(extra || '')
+    + (c.equipo ? ' · <span title="Servidor que la corrió">' + escHtml(c.equipo) + '</span>' : '') + '</div>'
     + (c.error ? '<div class="corrida-meta" style="color:var(--err)">' + escHtml(c.error) + '</div>' : '')
     + '</div>'
     + '<span class="estado-chip ' + c.estado + '">' + NOMBRE_ESTADO[c.estado] + '</span>'

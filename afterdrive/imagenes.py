@@ -43,11 +43,13 @@ URL_ESTADO = "https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{}"
 ESPERA_S = 2
 MODELO_DEFAULT = "black-forest-labs/flux.1-dev"
 TAMANO_DEFAULT = "1344x768"   # apaisada, para el encabezado del blog
-# NVIDIA sostiene la conexión hasta tener la imagen; con su cola cargada eso
-# pasaba el timeout de lectura. Con NVCF-POLL-SECONDS contesta 202 a los
-# POLL_NVIDIA_S y se consulta el estado hasta ESPERA_TOTAL_S.
-POLL_NVIDIA_S = 20
-TIMEOUT_S = (10, 180)   # (conexión, lectura): holgado por si NVIDIA ignora el header y sostiene la conexión
+# Si FLUX.1-dev está saturado (timeout o 5xx), se prueba una vez con este:
+# 4 pasos en vez de 30, tarda una fracción.
+MODELO_RAPIDO = "black-forest-labs/flux.1-schnell"
+# NVIDIA sostiene la conexión hasta tener la imagen (o responde 202 y se
+# consulta el estado hasta ESPERA_TOTAL_S). No se usa NVCF-POLL-SECONDS: con
+# ese header el gateway respondía 504 en vez de 202.
+TIMEOUT_S = (10, 180)   # (conexión, lectura)
 ESPERA_TOTAL_S = 300
 
 _transporte = {"post": requests.post, "get": requests.get}   # seam para los tests
@@ -102,9 +104,9 @@ def describir(plan: dict | None, categorias: list[str] | None = None, pedido: st
     return f"{escena.rstrip('.')}. {_ESTILO}"[:1500]
 
 
-def _payload(prompt: str, ancho: int, alto: int) -> dict:
+def _payload(prompt: str, ancho: int, alto: int, nombre_modelo: str | None = None) -> dict:
     cuerpo = {"prompt": prompt, "width": ancho, "height": alto, "seed": 0}
-    if "schnell" in modelo():
+    if "schnell" in (nombre_modelo or modelo()):
         cuerpo["steps"] = 4                     # schnell: pocos pasos y sin cfg
     else:
         cuerpo.update(mode="base", cfg_scale=3.5, steps=30)
@@ -153,21 +155,22 @@ def _esperar(resp, headers: dict):
     return resp
 
 
-def generar(prompt: str) -> tuple[bytes, str]:
-    """(bytes, mime) de la imagen. Si el tamaño apaisado no se acepta, reintenta cuadrada."""
-    if not configurado():
-        raise ErrorImagen("Falta NVIDIA_API_KEY: las imágenes se generan con NVIDIA (build.nvidia.com).")
-    headers = {"Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}", "Accept": "application/json",
-               "NVCF-POLL-SECONDS": str(POLL_NVIDIA_S)}
-    url = f"{URL_BASE}/{modelo()}"
+class _Saturado(ErrorImagen):
+    """NVIDIA no respondió a tiempo o devolvió 5xx: vale probar con el modelo rápido."""
+
+
+def _generar_con(nombre_modelo: str, prompt: str) -> tuple[bytes, str]:
+    """(bytes, mime) con un modelo. Si el tamaño apaisado no se acepta, reintenta cuadrada."""
+    headers = {"Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}", "Accept": "application/json"}
+    url = f"{URL_BASE}/{nombre_modelo}"
     ancho, alto = _tamano()
     for intento_ancho, intento_alto in ((ancho, alto), (1024, 1024)):
         try:
-            resp = _transporte["post"](url, json=_payload(prompt, intento_ancho, intento_alto), headers=headers,
-                                       timeout=TIMEOUT_S)
+            resp = _transporte["post"](url, json=_payload(prompt, intento_ancho, intento_alto, nombre_modelo),
+                                       headers=headers, timeout=TIMEOUT_S)
         except requests.Timeout as e:
-            raise ErrorImagen("NVIDIA tardó demasiado en responder (suele ser que está saturado): "
-                              "probá de nuevo en unos minutos.") from e
+            raise _Saturado("NVIDIA tardó demasiado en responder (suele ser que está saturado): "
+                            "probá de nuevo en unos minutos.") from e
         except requests.RequestException as e:
             raise ErrorImagen(f"No se pudo contactar a NVIDIA para la imagen: {e}") from e
         resp = _esperar(resp, headers)
@@ -178,7 +181,9 @@ def generar(prompt: str) -> tuple[bytes, str]:
         if resp.status_code in (401, 403):
             raise ErrorImagen("NVIDIA rechazó la key para generar imágenes: revisá NVIDIA_API_KEY.")
         if resp.status_code == 404:
-            raise ErrorImagen(f"NVIDIA no encontró el modelo de imagen '{modelo()}': revisá NVIDIA_IMAGE_MODEL.")
+            raise ErrorImagen(f"NVIDIA no encontró el modelo de imagen '{nombre_modelo}': revisá NVIDIA_IMAGE_MODEL.")
+        if resp.status_code >= 500:
+            raise _Saturado(f"NVIDIA respondió {resp.status_code} (servicio saturado o caído): probá de nuevo en unos minutos.")
         if resp.status_code >= 400:
             raise ErrorImagen(f"NVIDIA respondió {resp.status_code} al generar la imagen: {resp.text[:300]}")
         try:
@@ -193,6 +198,27 @@ def generar(prompt: str) -> tuple[bytes, str]:
     raise ErrorImagen("NVIDIA no aceptó el tamaño de imagen pedido.")
 
 
+def generar_con_modelo(prompt: str) -> tuple[bytes, str, str]:
+    """(bytes, mime, modelo usado). Si el modelo elegido está saturado (timeout o
+    5xx), prueba una vez con MODELO_RAPIDO, que tarda una fracción."""
+    if not configurado():
+        raise ErrorImagen("Falta NVIDIA_API_KEY: las imágenes se generan con NVIDIA (build.nvidia.com).")
+    principal = modelo()
+    try:
+        return (*_generar_con(principal, prompt), principal)
+    except _Saturado as e:
+        if principal == MODELO_RAPIDO:
+            raise
+        print(f"[Imagen] {principal}: {e} Se prueba con {MODELO_RAPIDO}.", flush=True)
+    return (*_generar_con(MODELO_RAPIDO, prompt), MODELO_RAPIDO)
+
+
+def generar(prompt: str) -> tuple[bytes, str]:
+    """(bytes, mime) de la imagen."""
+    contenido, mime, _ = generar_con_modelo(prompt)
+    return contenido, mime
+
+
 # ── Guardado ──────────────────────────────────────────────────────────────────
 
 
@@ -201,10 +227,10 @@ def _col(base):
     return (base if base is not None else db.db)["imagenes"]
 
 
-def guardar(contenido: bytes, mime: str, prompt: str, base=None) -> str:
+def guardar(contenido: bytes, mime: str, prompt: str, base=None, nombre_modelo: str | None = None) -> str:
     from bson import Binary
     r = _col(base).insert_one({
-        "contenido": Binary(contenido), "mime": mime, "prompt": prompt, "modelo": modelo(),
+        "contenido": Binary(contenido), "mime": mime, "prompt": prompt, "modelo": nombre_modelo or modelo(),
         "creada": datetime.datetime.now(datetime.UTC).isoformat(),
     })
     return str(r.inserted_id)
@@ -235,6 +261,6 @@ def para_nota(plan: dict | None, categorias: list[str] | None, titulo: str, pedi
               base=None) -> dict:
     """Genera y guarda la imagen; devuelve el campo `imagen` de la nota. Lanza ErrorImagen."""
     prompt = describir(plan, categorias, pedido)
-    contenido, mime = generar(prompt)
-    imagen_id = guardar(contenido, mime, prompt, base=base)
-    return {"url": "", "alt": titulo, "generada": {"id": imagen_id, "prompt": prompt, "modelo": modelo()}}
+    contenido, mime, usado = generar_con_modelo(prompt)
+    imagen_id = guardar(contenido, mime, prompt, base=base, nombre_modelo=usado)
+    return {"url": "", "alt": titulo, "generada": {"id": imagen_id, "prompt": prompt, "modelo": usado}}

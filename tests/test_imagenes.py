@@ -85,7 +85,7 @@ def test_si_no_acepta_el_tamano_apaisado_reintenta_cuadrada(nvidia):
     (Resp(500, {"x": 1}), "500"), (_artefacto(fin="CONTENT_FILTERED"), "CONTENT_FILTERED"), (Resp(body={}), "sin imagen"),
 ])
 def test_errores_con_mensaje_claro(nvidia, resp, texto):
-    nvidia(resp)
+    nvidia(resp, resp)   # un 5xx se reintenta una vez con el modelo rápido
     with pytest.raises(imagenes.ErrorImagen, match=texto):
         imagenes.generar("x")
 
@@ -116,7 +116,7 @@ def nota(base):
 def test_generar_imagen_la_guarda_y_regenerar_borra_la_anterior(base, nota, monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "k")
     prompts = []
-    monkeypatch.setattr(imagenes, "generar", lambda p: prompts.append(p) or (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: prompts.append(p) or (JPG, "image/jpeg", imagenes.modelo()))
     item = historial.generar_imagen("notas_fase2", nota, base=base)
     assert item and prompts[0].startswith("Brake pads on a workbench.")
     imagen = base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]
@@ -132,20 +132,20 @@ def test_generar_imagen_la_guarda_y_regenerar_borra_la_anterior(base, nota, monk
 def test_error_de_nvidia_llega_como_error_del_historial(base, nota, monkeypatch):
     def falla(p):
         raise imagenes.ErrorImagen("NVIDIA caído")
-    monkeypatch.setattr(imagenes, "generar", falla)
+    monkeypatch.setattr(imagenes, "generar_con_modelo", falla)
     with pytest.raises(historial.ErrorHistorial, match="NVIDIA caído"):
         historial.generar_imagen("notas_fase2", nota, base=base)
 
 
 def test_quitar_o_reemplazar_por_url_borra_la_generada(base, nota, monkeypatch):
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
     historial.generar_imagen("notas_fase2", nota, base=base)
     historial.cambiar_imagen("notas_fase2", nota, "https://cdn.example.com/a.jpg", base=base)
     assert base.imagenes.count_documents({}) == 0
 
 
 def test_la_vista_previa_muestra_la_generada_desde_el_servidor(base, nota, monkeypatch):
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
     historial.generar_imagen("notas_fase2", nota, base=base)
     imagen_id = base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]["generada"]["id"]
     previa = historial.vista_previa("notas_fase2", nota, base=base)
@@ -163,7 +163,7 @@ def hubspot_falso(monkeypatch):
 
 
 def test_al_enviar_a_hubspot_se_sube_la_imagen_generada(base, nota, monkeypatch, hubspot_falso):
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
     historial.generar_imagen("notas_fase2", nota, base=base)
     subidas = []
     monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, n: subidas.append((c, m, n)) or "https://hs/img.jpg")
@@ -177,7 +177,7 @@ def test_al_enviar_a_hubspot_se_sube_la_imagen_generada(base, nota, monkeypatch,
 
 
 def test_si_no_se_puede_subir_la_imagen_se_publica_igual_con_aviso(base, nota, monkeypatch, hubspot_falso):
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
     historial.generar_imagen("notas_fase2", nota, base=base)
 
     def sin_scope(c, m, n):
@@ -240,8 +240,8 @@ def test_la_nota_nueva_trae_su_imagen_y_un_fallo_no_la_frena(monkeypatch):
     monkeypatch.setattr(llm, "embeber", lambda textos, tipo="passage": [None])
     from afterdrive.ia import lm_studio
     monkeypatch.setattr(lm_studio, "evaluar_lineamientos", lambda t: {"lineamientos": {}})
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
-    monkeypatch.setattr(imagenes, "guardar", lambda c, m, p, base=None: "a" * 24)
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
+    monkeypatch.setattr(imagenes, "guardar", lambda c, m, p, base=None, nombre_modelo=None: "a" * 24)
 
     assert g.generar_nota(["frenos"])["success"]
     assert col.docs[0]["imagen"]["generada"]["id"] == "a" * 24
@@ -249,7 +249,7 @@ def test_la_nota_nueva_trae_su_imagen_y_un_fallo_no_la_frena(monkeypatch):
 
     def falla(p):
         raise imagenes.ErrorImagen("NVIDIA caído")
-    monkeypatch.setattr(imagenes, "generar", falla)
+    monkeypatch.setattr(imagenes, "generar_con_modelo", falla)
     assert g.generar_nota(["frenos"])["success"] and "imagen" not in col.docs[1]
     assert col.docs[1]["imagen_error"] == "NVIDIA caído"
 
@@ -281,7 +281,7 @@ def test_202_sin_id_es_un_error_claro(nvidia):
 
 def test_regenerar_limpia_el_error_anterior(base, nota, monkeypatch):
     base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagen_error": "NVIDIA caído"}})
-    monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
+    monkeypatch.setattr(imagenes, "generar_con_modelo", lambda p: (JPG, "image/jpeg", imagenes.modelo()))
     historial.generar_imagen("notas_fase2", nota, base=base)
     assert "imagen_error" not in base.notas_fase2.find_one({"_id": ObjectId(nota)})
 
@@ -300,12 +300,24 @@ def test_el_script_de_imagen_sale_con_error_si_falla(monkeypatch):
     assert imagen_nota.main(["notas_fase2", "65a1b2c3d4e5f60718293a4b", "a tire shop"]) == 0
 
 
-def test_pide_a_nvidia_que_conteste_en_proceso_en_vez_de_colgarse(nvidia):
-    """Sin NVCF-POLL-SECONDS, NVIDIA sostiene la conexión hasta terminar y con la
-    cola cargada pasaba el timeout de lectura (Read timed out. read timeout=120)."""
+def test_no_pide_nvcf_poll_seconds(nvidia):
+    """Con ese header el gateway de NVIDIA respondía 504 a los 20 s en vez de 202."""
     pedidos = nvidia(_artefacto())
     imagenes.generar("a parts store")
-    assert pedidos[0]["headers"]["NVCF-POLL-SECONDS"] == str(imagenes.POLL_NVIDIA_S)
+    assert "NVCF-POLL-SECONDS" not in pedidos[0]["headers"]
+
+
+def test_si_flux_dev_esta_saturado_prueba_con_schnell(nvidia):
+    pedidos = nvidia(Resp(504, body={}), _artefacto(PNG))
+    contenido, mime, usado = imagenes.generar_con_modelo("x")
+    assert contenido == PNG and usado == imagenes.MODELO_RAPIDO
+    assert pedidos[1]["url"].endswith("flux.1-schnell") and pedidos[1]["json"]["steps"] == 4
+
+
+def test_si_tambien_schnell_falla_el_error_es_claro(nvidia):
+    nvidia(Resp(504, body={}), Resp(503, body={}))
+    with pytest.raises(imagenes.ErrorImagen, match="saturado"):
+        imagenes.generar("x")
 
 
 def test_timeout_de_nvidia_da_un_mensaje_claro(monkeypatch):
@@ -313,7 +325,7 @@ def test_timeout_de_nvidia_da_un_mensaje_claro(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
 
     def post(url, **kw):
-        raise requests.exceptions.ReadTimeout("Read timed out. (read timeout=60)")
+        raise requests.exceptions.ReadTimeout("Read timed out. (read timeout=180)")   # dev y schnell
 
     monkeypatch.setattr(imagenes, "_transporte", {"post": post})
     with pytest.raises(imagenes.ErrorImagen, match="tardó demasiado"):

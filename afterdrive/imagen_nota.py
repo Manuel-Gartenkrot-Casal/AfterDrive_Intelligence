@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("descripcion", nargs="?", default="")
     args = parser.parse_args(argv)
 
-    print(f"[Imagen] Generando con NVIDIA ({imagenes.modelo()})...", flush=True)
+    print(f"[Imagen] Generando con NVIDIA ({imagenes.modelo()}; si está saturado, {imagenes.MODELO_RAPIDO})...", flush=True)
     if args.descripcion:
         print(f"[Imagen] Descripción pedida: {args.descripcion}", flush=True)
     try:

@@ -31,6 +31,8 @@ import contextlib
 import datetime
 import io
 import json
+import os
+import socket
 import sys
 import threading
 import time
@@ -44,6 +46,10 @@ RECIENTES = 20
 TERMINALES = ("ok", "error", "cancelada", "interrumpida")
 
 ETIQUETAS = {"scraping": "Buscar noticias", "generacion": "Generar nota"}
+
+# Qué servidor tomó cada Corrida. Si hay dos contra la misma base (Render y un
+# Docker local, por ejemplo), en Corridas se ve cuál corrió cada una.
+EQUIPO = f"{socket.gethostname()} (pid {os.getpid()})"
 
 
 class ColaLlena(RuntimeError):
@@ -94,18 +100,38 @@ def _publica(doc: dict) -> dict:
         "inicio": doc.get("inicio"),
         "fin": doc.get("fin"),
         "error": (doc.get("resultado") or {}).get("error"),
+        "equipo": doc.get("equipo"),
     }
 
 
 # ── Encolar ───────────────────────────────────────────────────────────────────
 
 
-def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None) -> dict:
-    """Agrega una Corrida a la cola. Si ya hay una idéntica pendiente, devuelve esa."""
+def crear_indices() -> None:
+    """`turno` único: una programada se encola una sola vez aunque la disparen dos servidores."""
+    try:
+        _col().create_index("turno", unique=True, sparse=True)
+    except Exception as e:
+        print(f"[Cola] No se pudo crear el índice de turnos: {e}", flush=True)
+
+
+def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None,
+            turno: str | None = None) -> dict:
+    """Agrega una Corrida a la cola. Si ya hay una idéntica pendiente, devuelve esa.
+
+    `turno` identifica una programada ("generacion:2026-10-23T11:00"): si ya se
+    encoló ese turno, en cualquier estado, no se repite.
+    """
+    from pymongo.errors import DuplicateKeyError
+
     if tipo not in ("scraping", "generacion", "script"):
         raise ValueError(f"Tipo de Corrida desconocido: {tipo}")
     col = _col()
     clave = _clave(tipo, params)
+    if turno:
+        existente = col.find_one({"turno": turno})
+        if existente:
+            return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
     existente = col.find_one({"estado": "pendiente", "clave": clave})
     if existente:
         return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
@@ -120,7 +146,13 @@ def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqu
         "estado": "pendiente",
         "creada": _ahora(),
     }
-    doc["_id"] = col.insert_one(doc).inserted_id
+    if turno:
+        doc["turno"] = turno
+    try:
+        doc["_id"] = col.insert_one(doc).inserted_id
+    except DuplicateKeyError:
+        existente = col.find_one({"turno": turno})   # la insertó otro servidor recién
+        return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
     print(f"[Cola] Encolada '{doc['etiqueta']}' ({origen}).", flush=True)
     _despertar.set()
     return {"id": str(doc["_id"]), "posicion": _posicion(doc), "duplicada": False}
@@ -316,8 +348,12 @@ def _ejecutar(doc: dict) -> dict:
         with _estado:
             _proc = p
 
+    ultimo_error = ""
     for linea in corridas._subproceso(params["modulo"], params.get("argv") or [], al_iniciar=_guardar_proc):
-        _agregar([linea.rstrip("\n")])
+        linea = linea.rstrip("\n")
+        if "[ERROR]" in linea:
+            ultimo_error = linea.split("[ERROR]", 1)[1].strip()
+        _agregar([linea])
     with _estado:
         proc, _proc = _proc, None
     if corridas._cancelar.is_set():
@@ -325,7 +361,7 @@ def _ejecutar(doc: dict) -> dict:
     codigo = proc.returncode if proc is not None else None
     if codigo == 0:
         return {"success": True}
-    return {"success": False, "error": f"El proceso terminó con código {codigo}."}
+    return {"success": False, "error": ultimo_error or f"El proceso terminó con código {codigo}."}
 
 
 def _correr(doc: dict) -> None:
@@ -367,7 +403,7 @@ def _tomar_siguiente():
     from pymongo import ReturnDocument
     return _col().find_one_and_update(
         {"estado": "pendiente"},
-        {"$set": {"estado": "en_curso", "inicio": _ahora(), "ejecutor": "servidor"}},
+        {"$set": {"estado": "en_curso", "inicio": _ahora(), "ejecutor": "servidor", "equipo": EQUIPO}},
         sort=[("creada", 1)],
         return_document=ReturnDocument.AFTER,
     )
@@ -411,7 +447,7 @@ def ejecutar_aca(tipo: str, params: dict | None = None, origen: str = "cron", ej
     doc = {
         "tipo": tipo, "params": params or {}, "clave": _clave(tipo, params),
         "etiqueta": etiqueta or ETIQUETAS.get(tipo, tipo), "origen": origen,
-        "estado": "en_curso", "creada": _ahora(), "inicio": _ahora(), "ejecutor": ejecutor,
+        "estado": "en_curso", "creada": _ahora(), "inicio": _ahora(), "ejecutor": ejecutor, "equipo": EQUIPO,
     }
     doc["_id"] = _col().insert_one(doc).inserted_id
     _correr(doc)
@@ -450,6 +486,7 @@ def iniciar() -> None:
         return
     _iniciada = True
     try:
+        crear_indices()
         recuperar_al_arrancar()
         limpiar_viejas()
     except Exception as e:
