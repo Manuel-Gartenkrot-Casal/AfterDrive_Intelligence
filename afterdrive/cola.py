@@ -15,7 +15,7 @@ Interfaz:
 
 Tipos:
     scraping    in-process, todas las Fuentes activas. Se cancela entre fuente y fuente.
-    generacion  in-process, Nota Fase 2 (sin params usa la config guardada). No se corta a mitad.
+    generacion  in-process, Nota Fase 2 (sin params usa la config guardada). Se corta en la próxima llamada a la IA.
     script      subprocess de un módulo del pipeline ({"modulo", "argv"}). Cancelar lo mata.
                 El módulo lo arma el servidor, nunca viene del cliente.
 
@@ -192,14 +192,15 @@ def cancelar(id_: str) -> dict:
         doc = col.find_one({"_id": doc["_id"]})  # justo arrancó: se trata como en curso
     if doc["estado"] != "en_curso":
         return {"estado": doc["estado"]}
+    # El pedido queda en Mongo siempre: si la Corrida corre en otro proceso
+    # (GitHub Actions, la instancia vieja durante un deploy, otro worker), ese
+    # proceso lo lee en _vigilar y la corta. Antes, fuera de GitHub, se
+    # respondía "en_curso" sin cortar nada y el dashboard decía "cancelada".
+    _col().update_one({"_id": doc["_id"]}, {"$set": {"cancelar_pedido": True}})
     with _estado:
         local = _actual == id_
     if not local:
-        if doc.get("ejecutor") == "github":
-            # Corre en otro proceso: se deja el pedido y el ejecutor lo lee al volcar el log.
-            _col().update_one({"_id": doc["_id"]}, {"$set": {"cancelar_pedido": True}})
-            return {"estado": "cancelando"}
-        return {"estado": doc["estado"]}
+        return {"estado": "cancelando"}
     with _estado:
         # La generación corre en este proceso: llm la corta en la próxima
         # llamada o fragmento (ver llm.Cancelada) y la nota no se guarda.
@@ -266,10 +267,34 @@ def _volcar(id_: str, lineas: list[str]) -> None:
     except Exception:
         return
     if doc and doc.get("cancelar_pedido"):
-        corridas._cancelar.set()
-        with _estado:
-            if _proc is not None and _proc.poll() is None:
-                _proc.kill()
+        _cortar()
+
+
+def _cortar() -> None:
+    """Corta la Corrida en curso de este proceso."""
+    corridas._cancelar.set()
+    with _estado:
+        if _proc is not None and _proc.poll() is None:
+            _proc.kill()
+
+
+VIGILAR_CADA_S = 3
+
+
+def _vigilar(oid, fin: threading.Event) -> None:
+    """Mientras corre, mira cada pocos segundos si pidieron cancelarla.
+
+    _volcar ya lo mira, pero solo cuando hay log nuevo: una llamada larga a la
+    IA no imprime nada y el pedido quedaba sin leer hasta que terminaba.
+    """
+    while not fin.wait(VIGILAR_CADA_S):
+        try:
+            doc = _col().find_one({"_id": oid}, {"cancelar_pedido": 1})
+        except Exception:
+            continue
+        if doc and doc.get("cancelar_pedido") and not fin.is_set():   # si ya terminó, no ensucia la próxima
+            _cortar()
+            return
 
 
 def _ejecutar(doc: dict) -> dict:
@@ -311,11 +336,15 @@ def _correr(doc: dict) -> None:
         with _estado:
             _actual, _tipo_actual = id_, doc["tipo"]
             _lineas.clear()
+        fin = threading.Event()
+        threading.Thread(target=_vigilar, args=(doc["_id"], fin), name="cola-vigilar", daemon=True).start()
         try:
             resultado = _ejecutar(doc)
         except Exception as e:
             _agregar([f"[ERROR] {e}"])
             resultado = {"success": False, "error": str(e)}
+        finally:
+            fin.set()
         cancelada = corridas._cancelar.is_set()
         corridas._cancelar.clear()
         estado = "cancelada" if cancelada else ("ok" if resultado.get("success") else "error")

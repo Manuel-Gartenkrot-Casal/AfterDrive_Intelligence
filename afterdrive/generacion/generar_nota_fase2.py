@@ -556,12 +556,12 @@ def _validar_entorno() -> None:
         sys.exit("[ERROR] MONGO_URI no está configurado.")
 
 
-if __name__ == "__main__":
-    import io
-    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+def main(argv: list[str] | None = None) -> int:
+    """Línea de comandos (la usa la Cola desde el dashboard). Devuelve el código de salida.
 
+    Sale con 1 si la nota no se generó: si no, la Corrida queda como
+    "Terminó bien" aunque no se haya guardado nada.
+    """
     parser = argparse.ArgumentParser(description="Generador de notas Fase 2 — AfterDrive")
     parser.add_argument("--categorias", nargs="+", choices=list(CATEGORIAS.keys()), default=["autopartes"])
     parser.add_argument("--clientes", nargs="+", default=[])
@@ -572,7 +572,7 @@ if __name__ == "__main__":
     parser.add_argument("--largo", choices=list(redaccion.LARGOS), default=redaccion.LARGO_DEFAULT)
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     _validar_entorno()
 
     resultado = generar_nota(
@@ -585,9 +585,18 @@ if __name__ == "__main__":
         largo=args.largo,
     )
 
-    if resultado["success"]:
-        print("\n" + "=" * 60)
-        print(resultado["contenido"][:1500])
-        print("=" * 60)
-    else:
-        print(f"[ERROR] {resultado['error']}")
+    if not resultado.get("success"):
+        print(f"[ERROR] {resultado.get('error')}", flush=True)
+        return 1
+    print("\n" + "=" * 60)
+    print(resultado["contenido"][:1500])
+    print("=" * 60, flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    import io
+    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    sys.exit(main())

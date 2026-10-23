@@ -223,3 +223,47 @@ def test_api_probar_fuente_valida_la_url_y_encola(client, col, monkeypatch):
 def test_api_recomendaciones_encola(client, col):
     assert client.post("/api/corridas/recomendaciones").status_code == 202
     assert col.find_one()["params"]["modulo"] == "afterdrive.ingesta.discover_sources"
+
+
+def test_cancelar_una_que_corre_en_otro_proceso_deja_el_pedido(col):
+    """Si la Corrida corre en otra instancia (un deploy que se solapa, otro worker),
+    cancelar no puede cortarla desde acá: deja el pedido en Mongo para que la vea
+    el proceso que la corre, en vez de decir que la canceló y no hacer nada."""
+    id_ = col.insert_one({"tipo": "script", "estado": "en_curso", "ejecutor": "servidor",
+                          "creada": cola._ahora()}).inserted_id
+    assert cola.cancelar(str(id_)) == {"estado": "cancelando"}
+    assert col.find_one({"_id": id_})["cancelar_pedido"] is True
+
+
+def test_el_pedido_de_cancelar_de_otro_proceso_corta_aunque_no_haya_log(col, monkeypatch):
+    """La Corrida en curso mira el pedido cada pocos segundos, aunque esté callada
+    (una llamada larga a la IA no imprime nada)."""
+    monkeypatch.setattr(cola, "VIGILAR_CADA_S", 0.05)
+    listo = threading.Event()
+
+    def generar(params):
+        listo.set()
+        for _ in range(500):
+            if corridas._cancelar.is_set():
+                break
+            time.sleep(0.01)
+        return {"success": True}
+
+    monkeypatch.setattr(corridas, "_generar", generar)
+    id_ = cola.encolar("generacion")["id"]
+    t = threading.Thread(target=cola.procesar_pendientes)
+    t.start()
+    assert listo.wait(5)
+    from bson import ObjectId
+    col.update_one({"_id": ObjectId(id_)}, {"$set": {"cancelar_pedido": True}})  # lo pidió otro proceso
+    t.join(timeout=5)
+    assert not t.is_alive()
+    assert cola.log(id_)["estado"] == "cancelada"
+
+
+def test_un_script_que_falla_con_codigo_distinto_de_cero_queda_con_error(col, tmp_path):
+    p = tmp_path / "falla.py"
+    p.write_text("import sys\nprint('[ERROR] algo salió mal')\nsys.exit(1)\n")
+    id_ = cola.encolar("script", {"modulo": str(p)})["id"]
+    cola.procesar_pendientes()
+    assert cola.log(id_)["estado"] == "error"

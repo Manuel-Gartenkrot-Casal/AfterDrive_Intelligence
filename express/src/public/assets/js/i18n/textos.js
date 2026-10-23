@@ -503,6 +503,8 @@ var _FILAS_TEXTOS = [
   ['¿Cancelar esta corrida?', 'Cancelar esta execução?', 'Cancel this run?'],
   ['Si todavía no empezó, no va a correr. Si ya está corriendo, se corta y lo que haya llegado a guardar queda guardado.', 'Se ainda não começou, não vai rodar. Se já está rodando, é interrompida e o que já foi salvo continua salvo.', 'If it hasn’t started, it won’t run. If it’s running, it stops and whatever it already saved stays saved.'],
   ['Corrida cancelada', 'Execução cancelada', 'Run canceled'],
+  ['Cancelando… se corta en unos segundos.', 'Cancelando… é interrompida em alguns segundos.', 'Canceling… it stops in a few seconds.'],
+  ['No se pudo cancelar: la corrida ya terminó.', 'Não foi possível cancelar: a execução já terminou.', 'Couldn’t cancel: the run already finished.'],
   ['Corriendo', 'Rodando', 'Running'],
   ['Cancelada', 'Cancelada', 'Canceled'],
   ['Interrumpida', 'Interrompida', 'Interrupted'],

@@ -589,3 +589,16 @@ def test_la_nota_guarda_lo_que_costo(entorno, monkeypatch):
     # Lo que se gasta fuera de la nota no se le suma.
     consumo.registrar("clasificacion", "modelo-x", 1000, 1000)
     assert col.docs[0]["costo"]["llamadas"] == 2
+
+
+def test_el_script_sale_con_error_si_la_nota_no_se_genero(monkeypatch):
+    """Si no, la Corrida del dashboard queda como 'Terminó bien' sin haber guardado nada."""
+    monkeypatch.setattr(g, "_validar_entorno", lambda: None)
+    monkeypatch.setattr(g, "generar_nota", lambda **kw: {"success": False, "error": "sin noticias"})
+    assert g.main(["--categorias", "autopartes"]) == 1
+
+
+def test_el_script_sale_bien_si_la_nota_se_genero(monkeypatch):
+    monkeypatch.setattr(g, "_validar_entorno", lambda: None)
+    monkeypatch.setattr(g, "generar_nota", lambda **kw: {"success": True, "contenido": "# Nota"})
+    assert g.main(["--categorias", "autopartes"]) == 0

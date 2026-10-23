@@ -487,8 +487,12 @@ async function cancelarGeneracion() {
   st.className = 'feedback info';
   st.textContent = 'Cancelando… la IA se detiene en unos segundos.';
   try {
-    await pedir('/api/corridas/' + _f2Corrida + '/cancelar', { method: 'POST' });
-    log('Generación cancelada desde el dashboard.', 'warn');
+    var r = await pedir('/api/corridas/' + _f2Corrida + '/cancelar', { method: 'POST' });
+    if (r.estado === 'cancelada' || r.estado === 'cancelando') {
+      log('Se pidió cancelar la generación desde el dashboard.', 'warn');
+    } else {
+      log('No se pudo cancelar: la generación ya terminó.', 'warn');
+    }
   } catch (e) {
     _f2Cancelando = false;
     btn.disabled = false;

@@ -180,8 +180,11 @@ async function cancelarCorrida(id, btn) {
   if (!ok) return;
   btn.disabled = true;
   try {
-    await pedir('/api/corridas/' + id + '/cancelar', { method: 'POST' });
-    showToast('Corrida cancelada', 'success');
+    var r = await pedir('/api/corridas/' + id + '/cancelar', { method: 'POST' });
+    // "cancelando": se pidió el corte y la fila pasa a "Cancelada" cuando termina de verdad.
+    if (r.estado === 'cancelada') showToast('Corrida cancelada', 'success');
+    else if (r.estado === 'cancelando') showToast('Cancelando… se corta en unos segundos.', 'info');
+    else showToast('No se pudo cancelar: la corrida ya terminó.', 'warn');
   } catch (e) {
     btn.disabled = false;
     showToast(e.message, 'error');

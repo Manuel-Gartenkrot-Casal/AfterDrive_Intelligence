@@ -557,6 +557,8 @@ def historial_generar_imagen():
         item = historial.generar_imagen(body.get("coleccion", ""), body.get("id", ""), body.get("descripcion") or "")
     except historial.ErrorHistorial as e:
         return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
     if item is None:
         return jsonify({"success": False, "error": "Nota no encontrada."}), 404
     return jsonify({"success": True, "item": item})
