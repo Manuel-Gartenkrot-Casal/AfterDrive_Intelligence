@@ -12,7 +12,7 @@ var PASOS_TOUR = [
   { titulo: 'Bienvenido a AfterDrive Intelligence',
     texto: 'El sistema busca noticias del sector autopartes, las filtra con IA y escribe notas para el blog. En un par de minutos te muestro cada parte. Podés salir cuando quieras con Esc o con "Saltar".' },
   { el: '.nav-lista', titulo: 'Las secciones',
-    texto: 'Desde acá vas a Inicio, Crear nota, Historial, Programación, Fuentes y Corridas. Los números en rojo marcan lo que espera tu atención.' },
+    texto: 'Desde acá vas a Inicio, Crear nota, Historial, Programación, Fuentes y Actividad. Los números en rojo marcan lo que espera tu atención.' },
   { seccion: 'inicio', el: '.hero-kpis', titulo: 'Tu contenido de hoy',
     texto: 'Las notas que esperan tu revisión, las noticias listas para usar, las fuentes activas y cuándo sale la próxima nota automática. Tocá cualquiera para ir directo.' },
   { seccion: 'inicio', el: '.inicio-trabajo', titulo: 'Para revisar y actividad',
@@ -35,7 +35,7 @@ var PASOS_TOUR = [
     texto: 'A qué hora y cada cuántos días se buscan noticias y se escribe la nota automática. Los cambios se aplican al guardar.' },
   { seccion: 'fuentes', el: '#fuentes-grupo', titulo: 'Fuentes de noticias',
     texto: 'Los sitios que se revisan. Podés pausarlos, agregar uno directo, probarlo antes de sumarlo o pedir recomendaciones de sitios del sector.' },
-  { seccion: 'corridas', el: '.corridas-seccion', titulo: 'Corridas',
+  { seccion: 'corridas', el: '.corridas-seccion', titulo: 'Actividad',
     texto: 'Lo que el sistema está ejecutando y lo que espera su turno, con el registro de cada paso. Corre una cosa a la vez: lo que pidas mientras tanto queda en cola.' },
   { el: '.sidebar-pie .modo-switch', titulo: 'Vista Cliente o Desarrollador',
     texto: 'Cliente muestra lo esencial. Desarrollador suma la consola, las estadísticas y la elección del proveedor de IA.' },
@@ -71,14 +71,16 @@ function _elementoDe(paso) {
   return null;
 }
 
-function iniciarTour() {
+function iniciarTour(recorrido) {
   cerrarMenuAyuda();
   if (_tour.activo) return;
   _tour.activo = true;
   _tour.previo = document.activeElement;
   // Los pasos de la vista Desarrollador no cuentan en la vista Cliente (ni en el "Paso N de M").
   var dev = document.documentElement.getAttribute('data-modo') === 'dev';
-  _tour.pasos = PASOS_TOUR.filter(function(p) { return dev || !p.soloDev; });
+  var rutas = {crear:[0,4,5,6,7,9,18], revisar:[0,8,9,10,18], programar:[0,11,12,13,18]};
+  var indices = rutas[recorrido || 'crear'];
+  _tour.pasos = PASOS_TOUR.filter(function(p, i) { return (!indices || indices.includes(i)) && (dev || !p.soloDev); });
   var capa = document.createElement('div');
   capa.className = 'tour-capa';
   var foco = document.createElement('div');
@@ -201,7 +203,7 @@ function terminarTour() {
 
 /* La primera vez, el recorrido arranca solo (después de que cargue el dashboard). */
 function tourSiEsLaPrimeraVez() {
-  if (!tourVisto()) setTimeout(iniciarTour, 600);
+  if (!tourVisto()) setTimeout(function() { iniciarTour('crear'); }, 600);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

@@ -17,7 +17,8 @@ function antesDeSalirDeSeccion(fn) { _guardianes.push(fn); }
 
 function seccionVisible(id) {
   var link = document.querySelector('.nav-link[data-seccion="' + id + '"]');
-  return !!link && link.offsetParent !== null;
+  // El menú móvil plegado no invalida enlaces directos ni acciones del contenido.
+  return !!link && getComputedStyle(link).display !== 'none';
 }
 
 function seccionDelHash() {
@@ -93,6 +94,20 @@ function setModo(modo) {
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
 }
 
+// Desde los botones de la barra lateral: pide confirmación antes de cambiar.
+var _TEXTOS_MODO = {
+  dev: { titulo: '¿Pasar a la vista Desarrollador?', accion: 'Pasar a Desarrollador',
+         mensaje: 'Vas a ver la consola, las métricas del pipeline y la elección del proveedor de IA. Desde ahí se pueden cambiar cosas que afectan a todo el sistema.' },
+  cliente: { titulo: '¿Pasar a la vista Cliente?', accion: 'Pasar a Cliente',
+             mensaje: 'Vas a ver solo lo esencial para crear y revisar notas. La consola y las métricas quedan ocultas hasta que vuelvas a Desarrollador.' },
+};
+async function pedirModo(modo) {
+  modo = modo === 'dev' ? 'dev' : 'cliente';
+  if (document.documentElement.getAttribute('data-modo') === modo) return;
+  var t = _TEXTOS_MODO[modo];
+  if (await confirmar({ titulo: t.titulo, mensaje: t.mensaje, accion: t.accion, peligro: false })) setModo(modo);
+}
+
 function toggleMasOpciones() {
   var sec = document.querySelector('.fase2-section');
   var abierto = sec.classList.toggle('mas-abiertas');
@@ -143,3 +158,19 @@ function pasoGeneracion(linea) {
   }
   return null;
 }
+
+function toggleNavegacion() {
+  var b = $('menu-movil'), abierto = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', abierto);
+  document.querySelector('.sidebar').classList.toggle('menu-abierto', abierto);
+}
+document.addEventListener('seccion', function() {
+  $('menu-movil').setAttribute('aria-expanded', 'false');
+  document.querySelector('.sidebar').classList.remove('menu-abierto');
+  if (_seccion === 'inicio') { cargarUltimaNota(); cargarResumenHistorial(); }
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && $('menu-movil').getAttribute('aria-expanded') === 'true') {
+    toggleNavegacion(); $('menu-movil').focus();
+  }
+});

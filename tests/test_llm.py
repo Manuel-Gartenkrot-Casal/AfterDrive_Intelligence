@@ -62,6 +62,7 @@ def transporte(monkeypatch):
 
     monkeypatch.setattr(llm, "_dormir", lambda s: None)
     monkeypatch.setattr(llm, "_disponible_cache", {})
+    monkeypatch.setattr(llm, "_modelos_caidos", {})
     return instalar
 
 
@@ -462,6 +463,27 @@ def test_embeddings_de_nvidia_tambien_se_registran(transporte, nvidia, consumo_e
     llm.embeber(["hola"])
     fila = consumo_en_memoria.find_one()
     assert fila["tarea"] == "embeddings" and fila["tokens_entrada"] == 7 and fila["costo_usd"] == 0
+
+
+def test_modelo_dado_de_baja_se_recuerda_y_va_directo_al_respaldo(transporte, nvidia):
+    t = transporte([Resp(410), chat("uno"), chat("dos")])
+    assert llm.completar("s", "u") == "uno"
+    assert llm.completar("s", "u") == "dos"
+    assert [p["json"]["model"] for p in t.posts] == ["kimi", "gpt-oss", "gpt-oss"]
+
+
+def test_gpt_oss_pide_razonamiento_bajo(transporte, nvidia, monkeypatch):
+    monkeypatch.setenv("NVIDIA_MODEL", "openai/gpt-oss-20b")
+    t = transporte([chat("ok")])
+    llm.completar("sys", "u")
+    assert t.posts[0]["json"]["messages"][0] == {"role": "system", "content": "Reasoning: low\n\nsys"}
+
+
+def test_sin_stream_si_solo_razono_reintenta_con_mas_tokens(transporte, nvidia):
+    vacia = Resp(body={"choices": [{"message": {"content": "", "reasoning_content": "pienso"}, "finish_reason": "length"}]})
+    t = transporte([vacia, chat('{"ok": true}')])
+    assert llm.completar("s", "u", max_tokens=900, tarea="clasificacion") == '{"ok": true}'
+    assert [p["json"]["max_tokens"] for p in t.posts] == [900, 3600]
 
 
 @pytest.mark.parametrize("disponible, completar", [

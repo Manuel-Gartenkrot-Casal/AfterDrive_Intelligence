@@ -133,8 +133,6 @@ function pintarImagen(nota, contenedor) {
 }
 
 function pintarRevisionNota(nota, contenedor) {
-  pintarImagen(nota, contenedor);
-  pintarCosto(nota, contenedor);
   var v = nota.verificacion;
   if (v && v.total !== undefined) {
     var ok = (v.respaldados || []).length, html;
@@ -165,6 +163,8 @@ function pintarRevisionNota(nota, contenedor) {
       + (filas.length ? lista(filas, 'seo') : '');
     contenedor.appendChild(bloqueRevision('Estilo y SEO', html2, estilo.some(function(h) { return h.grave; }) ? 'con-fallas' : ''));
   }
+  pintarImagen(nota, contenedor);
+  pintarCosto(nota, contenedor);
   if (nota.plan) {
     var p = nota.plan, det = document.createElement('details');
     det.className = 'revision-criterios';

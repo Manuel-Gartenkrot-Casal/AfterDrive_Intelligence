@@ -219,10 +219,13 @@ function setBtnLoading(btn, loading) {
   if (!btn) return;
   if (loading) {
     btn.dataset.origText = btn.innerHTML;
+    btn.textContent = tr(btn.id === 'btn-f2-generar' ? 'Generando nota…' : 'Procesando…');
+    btn.setAttribute('aria-busy', 'true');
     btn.classList.add('loading');
     btn.disabled = true;
   } else {
     btn.classList.remove('loading');
+    btn.removeAttribute('aria-busy');
     btn.disabled = false;
     if (btn.dataset.origText) btn.innerHTML = btn.dataset.origText;
   }

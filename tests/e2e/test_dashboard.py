@@ -174,6 +174,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
 
     pagina.route("**/api/providers", cambiar)
     pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
     expect(pagina.locator("#confirmar-titulo")).to_contain_text("API paga")
@@ -190,7 +191,13 @@ def test_cancelar_la_nota_en_curso(pagina):
     # Corrida simulada por HTTP: no se genera nada de verdad.
     estado = {"e": "en_curso"}
     cancelados = []
-    pagina.route("**/api/corridas/generacion", lambda r: r.fulfill(json={"success": True, "id": "g1", "estado": "pendiente"}))
+    pedidos = []
+
+    def generar(ruta):
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "id": "g1", "estado": "pendiente"})
+
+    pagina.route("**/api/corridas/generacion", generar)
     pagina.route("**/api/corridas/g1/log?*", lambda r: r.fulfill(
         json={"success": True, "lineas": [], "siguiente": 0, "estado": estado["e"]}))
 
@@ -211,6 +218,9 @@ def test_cancelar_la_nota_en_curso(pagina):
     expect(pagina.locator("#f2-status")).to_contain_text("cancelada", timeout=10000)
     expect(boton).to_be_hidden()
     assert cancelados == ["POST"]
+    assert 'idioma' not in pedidos[0]  # Se conserva el contrato de generación existente.
+    assert pagina.locator('#f2-pasos .fallo, #f2-pasos .actual').count() == 0
+    expect(pagina.locator('#f2-pasos [data-paso="6"]')).to_be_hidden()
 
 
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
@@ -227,6 +237,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     lateral.locator("summary", has_text="Ver el plan").click()
     expect(lateral.locator(".revision-criterios ol")).to_contain_text("Qué pasó")
 
+    lateral.get_by_text("Calificar esta nota", exact=True).click()
     calificar = lateral.locator(".calificar")
     calificar.wait_for()
     assert calificar.get_by_role("button", name="Guardar calificación").is_disabled()
@@ -247,7 +258,14 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
 def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
+    # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
     pagina.click('.modo-switch button[data-modo="dev"]')
+    expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
+    pagina.click("#confirmar-no")
+    assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
+    expect(tablero).to_be_hidden()
+    pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
     expect(pagina.locator("#g-notas svg")).to_be_visible()
@@ -327,7 +345,8 @@ def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):
         pg.click("#tour-siguiente")
         pg.wait_for_function("(t) => document.getElementById('tour-titulo').textContent !== t", arg=vistos[-1])
     assert vistos[-1] == "Listo" and "Proveedor de IA" not in vistos     # en vista Cliente se saltea
-    assert {"#inicio", "#crear", "#historial", "#programacion", "#fuentes", "#corridas"} <= secciones
+    assert {"#inicio", "#crear", "#historial"} <= secciones
+    assert len(vistos) == 7
     pg.click("#tour-siguiente")
     globo.wait_for(state="detached")
     assert pg.evaluate("localStorage.getItem('ad-tour-visto')") == "1"
@@ -404,3 +423,16 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     expect(pg.locator(".ayuda-cabecera")).to_contain_text("Volver al dashboard")
     assert pg.errores == []
     ctx.close()
+
+
+def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, base_url):
+    # El botón de HubSpot está en todas las notas. Sin token, el bloque de la revisión lo dice.
+    pg = abrir(navegador, base_url)
+    pg.context.route("**/api/hubspot/estado", lambda r: r.fulfill(json={"success": True, "configurado": False}))
+    pg.reload()
+    pg.wait_for_selector(".sidebar")
+    _abrir_nota(pg, "Frenos")
+    expect(pg.locator("#nota-acciones button", has_text="HubSpot").first).to_be_visible()
+    expect(pg.locator(".revision-bloque", has_text="Publicación en HubSpot")).to_contain_text("falta HUBSPOT_TOKEN")
+    assert pg.errores == []
+    pg.context.close()

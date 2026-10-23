@@ -1,4 +1,4 @@
-/* corridas.js — Cola de Corridas y botones que encolan.
+/* corridas.js — Cola de Actividad y botones que encolan.
    Parte del dashboard (index.html): scripts clásicos que comparten el ámbito
    global y se cargan en orden; ver el final de index.html. */
 
@@ -173,9 +173,9 @@ async function actualizarCorridas() {
 
 async function cancelarCorrida(id, btn) {
   var ok = await confirmar({
-    titulo: '¿Cancelar esta corrida?',
+    titulo: '¿Cancelar esta tarea?',
     mensaje: 'Si todavía no empezó, no va a correr. Si ya está corriendo, se corta y lo que haya llegado a guardar queda guardado.',
-    accion: 'Cancelar corrida',
+    accion: 'Cancelar tarea',
     cancelar: 'Volver'
   });
   if (!ok) return;
@@ -183,9 +183,9 @@ async function cancelarCorrida(id, btn) {
   try {
     var r = await pedir('/api/corridas/' + id + '/cancelar', { method: 'POST' });
     // "cancelando": se pidió el corte y la fila pasa a "Cancelada" cuando termina de verdad.
-    if (r.estado === 'cancelada') showToast('Corrida cancelada', 'success');
+    if (r.estado === 'cancelada') showToast('Tarea cancelada', 'success');
     else if (r.estado === 'cancelando') showToast('Cancelando… se corta en unos segundos.', 'info');
-    else showToast('No se pudo cancelar: la corrida ya terminó.', 'warn');
+    else showToast('No se pudo cancelar: la tarea ya terminó.', 'warn');
   } catch (e) {
     btn.disabled = false;
     showToast(e.message, 'error');
@@ -194,6 +194,12 @@ async function cancelarCorrida(id, btn) {
 }
 
 function initCorridas() {
+  // La consola puede crecer al recibir líneas: reservar su altura real para
+  // que nunca tape Guardar/Descartar, incluso con traducciones o en móvil.
+  var dock = $('actividad-dock');
+  new ResizeObserver(function() {
+    document.body.style.setProperty('--dock-height', Math.ceil(dock.getBoundingClientRect().height) + 'px');
+  }).observe(dock);
   var tick = 0;
   document.addEventListener('seccion', function(ev) { if (ev.detail === 'corridas') refrescarCorridas(); });
   setInterval(function() {
@@ -228,7 +234,7 @@ async function runNowStream() {
     }, function(d) {
       var t = textoEnCola(d);
       botones.forEach(function(b) { b.textContent = t || 'Scrapeando...'; });
-      if (t) log('Hay otra corrida en curso: el scraping quedó en cola (#' + d.posicion + ').', 'warn');
+      if (t) log('Hay otra tarea en curso: el scraping quedó en cola (#' + d.posicion + ').', 'warn');
     });
 
     var estado, msg;
