@@ -1666,11 +1666,15 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
   background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 18px no-repeat;
   border: 1px solid var(--border);
 }
-[data-modo="cliente"] .corridas-bloque > div > .corridas-vacio { background: var(--bg); }
+/* En Actividad el vacío va en una tarjeta completa, igual que las filas de la cola. */
+[data-modo="cliente"] :is(#corrida-actual, #corridas-pendientes, #corridas-recientes) > .corridas-vacio {
+  align-items: center; min-height: 0; padding: 14px 16px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+}
 [data-modo="cliente"] #inicio-lista > .inicio-fin::before { display: none; }
 [data-modo="cliente"] #inicio-lista > .inicio-fin { margin-top: 8px; padding-top: 14px; min-height: 0; font-size: .8rem; }
 [data-modo="cliente"] :is(#inicio-lista, #inicio-recientes, .corridas-bloque > div) > .corridas-vacio.corridas-reposo {
-  flex-direction: column; padding: 24px; gap: 16px;
+  flex-direction: column; align-items: flex-start; padding: 24px; gap: 16px;
 }
 [data-modo="cliente"] .corridas-bloque > div > .corridas-reposo::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23878D9B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") !important;
