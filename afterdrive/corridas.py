@@ -78,6 +78,22 @@ def scraping(max_articulos: int | None = None) -> dict:
 
 
 def _scrapear_fuentes(max_articulos: int | None) -> dict:
+    """Scrapea e ingiere; al final dice cuánto gastó la corrida en la API paga."""
+    from afterdrive.ia import consumo
+
+    with consumo.medir() as costo:
+        resultado = _scrapear(max_articulos)
+    if costo.llamadas:
+        detalle = ", ".join(f"{k} {v:.4f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
+        aprox = " (aproximado)" if costo.estimado else ""
+        print(f"[COSTO] Esta corrida: USD {costo.total:.4f}{aprox} en {costo.llamadas} llamadas ({detalle})",
+              flush=True)
+    else:
+        print("[COSTO] Esta corrida: USD 0 (no usó la API paga)", flush=True)
+    return resultado
+
+
+def _scrapear(max_articulos: int | None) -> dict:
     from afterdrive import config_store
     from afterdrive.db import col_trusted_urls
     from afterdrive.ingesta.ingesta import ingerir

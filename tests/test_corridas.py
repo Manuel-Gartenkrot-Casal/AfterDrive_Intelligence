@@ -84,3 +84,25 @@ def test_generacion_que_explota_libera_el_lock(monkeypatch):
     r = corridas.generacion({"categorias": ["x"]})
     assert not r["success"] and "boom" in r["error"]
     assert corridas.en_curso() is None
+
+
+def test_el_scraping_dice_cuanto_gasto_de_la_api_paga(monkeypatch, capsys):
+    from afterdrive.ia import consumo
+
+    gastos = []
+
+    def scrapear(max_articulos):
+        gastos.append(consumo.registrar("clasificacion", "m", 1_000_000, 0, proveedor="paga"))
+        gastos.append(consumo.registrar("embeddings", "m", 1000, 0, proveedor="paga"))
+        consumo.registrar("clasificacion", "m", 1_000_000, 0, proveedor="local")   # gratis: no suma
+        return {"success": True, "aprobados": 1}
+    monkeypatch.setattr(corridas, "_scrapear", scrapear)
+    assert corridas._scrapear_fuentes(None) == {"success": True, "aprobados": 1}
+    assert f"[COSTO] Esta corrida: USD {sum(gastos):.4f} en 2 llamadas" in capsys.readouterr().out
+    assert sum(gastos) > 0
+
+
+def test_el_scraping_sin_api_paga_dice_que_no_gasto(monkeypatch, capsys):
+    monkeypatch.setattr(corridas, "_scrapear", lambda m: {"success": True})
+    corridas._scrapear_fuentes(None)
+    assert "[COSTO] Esta corrida: USD 0 (no usó la API paga)" in capsys.readouterr().out
