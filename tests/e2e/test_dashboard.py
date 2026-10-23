@@ -422,3 +422,26 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     expect(pg.locator(".ayuda-cabecera")).to_contain_text("Volver al dashboard")
     assert pg.errores == []
     ctx.close()
+
+
+def test_aprobar_y_subir_aparece_aunque_el_estado_de_hubspot_falle_al_cargar(navegador, base_url):
+    # El estado de HubSpot se pide al cargar; si ese pedido falla, la revisión lo vuelve a pedir.
+    fallas = []
+
+    def estado(ruta):
+        if not fallas:
+            fallas.append(1)
+            return ruta.abort()
+        return ruta.continue_()
+
+    pg = abrir(navegador, base_url)
+    pg.context.route("**/api/hubspot/estado", estado)
+    pg.reload()
+    pg.wait_for_selector(".sidebar")
+    pg.wait_for_function("_estadoHubspot === null")      # el primer pedido falló
+    _abrir_nota(pg, "Frenos")
+    # Según el estado de la nota: "Aprobar y subir…" o, si otro test ya la aprobó, "Actualizar borrador…".
+    expect(pg.locator("#nota-acciones button", has_text="HubSpot").first).to_be_visible()
+    expect(pg.locator("#hubspot-autor")).to_be_visible()
+    assert fallas == [1] and pg.errores == []
+    pg.context.close()

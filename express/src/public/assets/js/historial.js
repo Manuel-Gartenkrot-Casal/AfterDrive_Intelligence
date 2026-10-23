@@ -155,10 +155,17 @@ function pintarAccionesNota() {
   cont.innerHTML = html;
 }
 
-var _hubspotConfigurado = false;
-async function cargarEstadoHubspot() {
-  try { _hubspotConfigurado = (await pedir('/api/hubspot/estado')).configurado; } catch (e) {}
+var _hubspotConfigurado = false, _estadoHubspot = null;
+/* Si la nota se abre antes de que llegue el estado, o el pedido falló, la
+   revisión lo espera (y lo vuelve a pedir): si no, "Aprobar y subir a HubSpot"
+   no aparecía aunque HubSpot estuviera configurado. */
+function cargarEstadoHubspot() {
+  _estadoHubspot = pedir('/api/hubspot/estado')
+    .then(function(d) { _hubspotConfigurado = !!d.configurado; return _hubspotConfigurado; })
+    .catch(function() { _estadoHubspot = null; return false; });
+  return _estadoHubspot;
 }
+function hubspotConfigurado() { return _estadoHubspot || cargarEstadoHubspot(); }
 
 async function enviarAHubspot(publicar, mensajeOk) {
   var n = _notaActual;
@@ -201,7 +208,8 @@ async function aprobarYSubir() {
 
 /* Bloque de la revisión: a qué blog va, con qué etiqueta y quién firma. */
 async function pintarDestinoHubspot(nota, contenedor) {
-  if (!_hubspotConfigurado) return;
+  if (!await hubspotConfigurado()) return;
+  if (_notaActual && _notaActual.id === nota._id) pintarAccionesNota();   // el botón de HubSpot, si recién se supo
   var bloque = bloqueRevision('Publicación en HubSpot', '<p class="revision-sub">Cargando…</p>');
   contenedor.appendChild(bloque);
   var d;
