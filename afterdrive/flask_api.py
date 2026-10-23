@@ -200,13 +200,17 @@ def _listas(body: dict, *claves: str):
 
 def _url_publica_o_400(body: dict):
     """(url, None), o (None, respuesta 400) si no es una URL http(s) pública."""
-    from afterdrive.ingesta.scraper import url_publica
+    from afterdrive.ingesta.scraper import _direcciones, url_publica
 
     url = body.get("url")
     url = url.strip() if isinstance(url, str) else ""
     if not url:
         return None, (jsonify({"success": False, "error": "Se requiere la URL."}), 400)
     if not url_publica(url):
+        if _direcciones(url) == []:
+            # Dirección válida, pero el dominio no resuelve (no existe o su DNS está caído).
+            return None, (jsonify({"success": False, "error": "No se encontró el sitio: el dominio no responde. "
+                                   "Revisá la dirección o probá más tarde."}), 400)
         return None, (jsonify({"success": False, "error": "La URL debe ser http(s) y pública."}), 400)
     return url, None
 

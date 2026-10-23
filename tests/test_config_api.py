@@ -142,6 +142,16 @@ def test_alta_de_url_interna_o_rara_es_400(client, monkeypatch, ruta, url):
     assert client[0].post(ruta, json={"url": url}).status_code == 400
 
 
+@pytest.mark.parametrize("ruta", ["/api/trusted-urls", "/api/corridas/probar-fuente"])
+def test_alta_de_un_dominio_que_no_resuelve_lo_dice_claro(client, monkeypatch, ruta):
+    from afterdrive.ingesta import scraper
+    _sin_corridas(monkeypatch)
+    monkeypatch.setattr(scraper, "url_publica", lambda u: False)
+    monkeypatch.setattr(scraper, "_direcciones", lambda u: [])   # DNS sin respuesta
+    r = client[0].post(ruta, json={"url": "https://mundoaftermarket.com/"})
+    assert r.status_code == 400 and "No se encontró el sitio" in r.json["error"]
+
+
 def test_alta_de_url_publica_sigue_andando(client, monkeypatch):
     from afterdrive import cola, db
     from afterdrive.ingesta import scraper
