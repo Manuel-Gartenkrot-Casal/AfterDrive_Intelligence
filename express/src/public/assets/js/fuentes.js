@@ -115,7 +115,7 @@ async function addUrl() {
       log(l, l.indexOf('[OK]') >= 0 ? 'success' : /\[(FAIL|ERROR)\]/.test(l) ? 'error' : 'info');
     }, function(d) {
       var t = textoEnCola(d);
-      if (t) el.textContent = 'Hay otra corrida en curso: la prueba quedó ' + t.toLowerCase().replace('…', '') + '.';
+      if (t) el.textContent = 'Hay otra tarea en curso: la prueba quedó ' + t.toLowerCase().replace('…', '') + '.';
       else el.textContent = 'Probando la fuente: se leen sus artículos y la IA decide si son del rubro...';
     });
     if (agregada) {

@@ -22,7 +22,7 @@ function initHistorial() {
     clearTimeout(_hist.timer);
     _hist.timer = setTimeout(function() { _hist.q = $('hist-q').value.trim(); cargarHistorial(1); }, 300);
   });
-  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); } });
+  document.addEventListener('seccion', function(ev) { if (ev.detail === 'historial') { cargarResumenHistorial(); cargarHistorial(_hist.pagina); cargarCalibracion(); } });
   $('hist-pestanas').addEventListener('keydown', function(ev) {
     var tabs = Array.from(this.querySelectorAll('[role="tab"]')), i = tabs.indexOf(document.activeElement);
     if (i < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(ev.key)) return;
@@ -133,7 +133,9 @@ function pintarAccionesNota() {
     return '<button type="button" class="btn btn-xs' + (primario ? ' btn-primary' : '') + '" onclick="cambiarEstadoNota(\'' + estado + '\')">' + texto + '</button>';
   };
   var html = '<span class="estado-chip ' + e + '">' + NOMBRE_ESTADO_NOTA[e] + '</span>';
-  var subible = _hubspotConfigurado && !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
+  // En todas las notas, esté o no configurado HubSpot en este servidor: si falta el
+  // token, el bloque de la revisión lo dice y la subida devuelve el motivo.
+  var subible = !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
   if (e === 'borrador') html += (subible
       ? '<button type="button" class="btn btn-xs btn-primary" onclick="aprobarYSubir()">Aprobar y subir a HubSpot</button>'
       : b('aprobada', 'Aprobar', true)) + b('rechazada', 'Rechazar');
@@ -155,10 +157,16 @@ function pintarAccionesNota() {
   cont.innerHTML = html;
 }
 
-var _hubspotConfigurado = false;
-async function cargarEstadoHubspot() {
-  try { _hubspotConfigurado = (await pedir('/api/hubspot/estado')).configurado; } catch (e) {}
+var _estadoHubspot = null;
+/* Si HubSpot tiene token en este servidor. Si la nota se abre antes de que
+   llegue, o el pedido falló, la revisión lo espera (y lo vuelve a pedir). */
+function cargarEstadoHubspot() {
+  _estadoHubspot = pedir('/api/hubspot/estado')
+    .then(function(d) { return !!d.configurado; })
+    .catch(function() { _estadoHubspot = null; return false; });
+  return _estadoHubspot;
 }
+function hubspotConfigurado() { return _estadoHubspot || cargarEstadoHubspot(); }
 
 async function enviarAHubspot(publicar, mensajeOk) {
   var n = _notaActual;
@@ -201,9 +209,9 @@ async function aprobarYSubir() {
 
 /* Bloque de la revisión: a qué blog va, con qué etiqueta y quién firma. */
 async function pintarDestinoHubspot(nota, contenedor) {
-  if (!_hubspotConfigurado) return;
   var bloque = bloqueRevision('Publicación en HubSpot', '<p class="revision-sub">Cargando…</p>');
   contenedor.appendChild(bloque);
+  var configurado = await hubspotConfigurado();
   var d;
   try { d = await pedir('/api/hubspot/destino/notas_fase2/' + nota._id); }
   catch (e) {
@@ -227,8 +235,11 @@ async function pintarDestinoHubspot(nota, contenedor) {
         return '<option value="' + escHtml(a.id) + '"' + (a.id === d.autor_id ? ' selected' : '') + ' translate="no">' + escHtml(a.nombre) + '</option>';
       }).join('')
     + '</select>'
-    + (d.autores.length ? '' : '<p class="revision-sub">No se pudieron cargar los autores: se usa el autor por defecto.</p>')
-    + '<p class="revision-sub">Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.</p>';
+    + (d.autores.length || !configurado ? '' : '<p class="revision-sub">No se pudieron cargar los autores: se usa el autor por defecto.</p>')
+    + (configurado
+      ? '<p class="revision-sub">Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.</p>'
+      : '<p class="revision-mal">HubSpot no está configurado en este servidor: falta HUBSPOT_TOKEN. Al aprobar, la nota queda aprobada pero no se sube.</p>');
+  if (!configurado) bloque.classList.add('con-fallas');
 }
 
 async function cambiarEstadoNota(estado, sinAviso) {
@@ -316,9 +327,8 @@ function bloqueGenerarImagen(d, propia) {
    cancelar desde ahí. Si hay otra corrida en curso, espera su turno. */
 async function generarImagenNota() {
   var n = _notaActual, btn = $('btn-generar-imagen');
-  var restaurar = function() { btn.disabled = false; btn.textContent = 'Generar imagen con IA'; };
-  btn.disabled = true;
-  btn.textContent = 'Generando… (puede tardar un minuto)';
+  var restaurar = function() { setBtnLoading(btn, false); };
+  setBtnLoading(btn, true);
   var errores = [];
   try {
     var fin = await correrEnCola('/api/historial/imagen/generar',
@@ -329,7 +339,7 @@ async function generarImagenNota() {
         log(l, m ? 'error' : l.indexOf('[OK]') >= 0 ? 'success' : 'info');
       },
       function(d) {
-        btn.textContent = textoEnCola(d) || 'Generando… (puede tardar un minuto)';
+        btn.textContent = textoEnCola(d) || tr('Generando imagen…');
       });
     if (fin.estado === 'ok') {
       showToast('Imagen generada', 'success');
@@ -339,7 +349,7 @@ async function generarImagenNota() {
       showToast('Se canceló la imagen.', 'info');
       restaurar();
     } else {
-      showToast(errores[errores.length - 1] || fin.error || 'No se pudo generar la imagen. Mirá el registro en Corridas.', 'error');
+      showToast(errores[errores.length - 1] || fin.error || 'No se pudo generar la imagen. Mirá el registro en Actividad.', 'error');
       restaurar();
     }
   } catch (e) {
@@ -387,6 +397,7 @@ async function guardarEdicionNota() {
     $('modal-titulo').textContent = d.item.titulo;
     cancelarEdicionNota();
     showToast('Texto guardado', 'success');
+    cargarResumenHistorial();
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -406,7 +417,7 @@ async function cargarPendientesInicio() {
     var d = await pedir('/api/historial/generados_aprobados?estado=borrador&por_pagina=4&pagina=1');
     $('inicio-lista').innerHTML = d.items.length ? d.items.map(function(it) {
       return '<button class="inicio-nota" onclick="abrirItemHistorial(\'' + it.seccion + '\',\'' + it.coleccion + '\',\'' + it.id + '\')">'
-        + '<span>' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
+        + '<span translate="no">' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
     }).join('') + (d.total > d.items.length
       ? '<button class="btn btn-sm inicio-mas" onclick="abrirPendientes()">Ver las ' + d.total + ' notas pendientes</button>'
       : '<p class="corridas-vacio inicio-fin">No hay más notas para revisar. Las nuevas aparecen acá apenas se generan.</p>')
