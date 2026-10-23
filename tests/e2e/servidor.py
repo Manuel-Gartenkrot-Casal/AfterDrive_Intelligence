@@ -109,6 +109,31 @@ def nvidia_falso() -> None:
     imagenes._transporte = {"post": lambda url, **kw: _RespImagen()}
 
 
+def imagen_en_este_proceso() -> None:
+    """La imagen se genera como script de la Cola (afterdrive.imagen_nota). Un
+    subprocess no ve la base en memoria de este servidor: acá corre en el mismo
+    proceso, con la misma salida y el mismo código de retorno."""
+    import contextlib
+    import io
+
+    from afterdrive import imagen_nota
+
+    real = corridas._subproceso
+
+    def correr(nombre, argv=None, al_iniciar=None):
+        if nombre != "afterdrive.imagen_nota":
+            yield from real(nombre, argv, al_iniciar)
+            return
+        salida = io.StringIO()
+        with contextlib.redirect_stdout(salida):
+            codigo = imagen_nota.main(list(argv or []))
+        if al_iniciar:
+            al_iniciar(type("Proceso", (), {"returncode": codigo, "poll": lambda self: codigo, "kill": lambda self: None})())
+        yield from (linea + "\n" for linea in salida.getvalue().splitlines())
+
+    corridas._subproceso = correr
+
+
 AUTORES_E2E = [{"id": "37798507784", "fullName": "Gaston Zelerteins", "language": "es"},
                {"id": "191488460449", "fullName": "Ana Dias", "language": "es"},
                {"id": "192900528951", "fullName": "Ana Dias", "language": "pt"}]
@@ -132,6 +157,7 @@ if __name__ == "__main__":
     corridas._scrapear_fuentes = scraping_falso
     hubspot_falso()
     nvidia_falso()
+    imagen_en_este_proceso()
     from afterdrive import flask_api, scheduler
     scheduler.iniciar()
     flask_api.app.run(host="127.0.0.1", port=int(sys.argv[1]), threaded=True)

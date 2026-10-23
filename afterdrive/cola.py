@@ -15,7 +15,7 @@ Interfaz:
 
 Tipos:
     scraping    in-process, todas las Fuentes activas. Se cancela entre fuente y fuente.
-    generacion  in-process, Nota Fase 2 (sin params usa la config guardada). No se corta a mitad.
+    generacion  in-process, Nota Fase 2 (sin params usa la config guardada). Se corta en la próxima llamada a la IA.
     script      subprocess de un módulo del pipeline ({"modulo", "argv"}). Cancelar lo mata.
                 El módulo lo arma el servidor, nunca viene del cliente.
 
@@ -29,8 +29,12 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import hashlib
 import io
 import json
+import os
+import re
+import socket
 import sys
 import threading
 import time
@@ -44,6 +48,36 @@ RECIENTES = 20
 TERMINALES = ("ok", "error", "cancelada", "interrumpida")
 
 ETIQUETAS = {"scraping": "Buscar noticias", "generacion": "Generar nota"}
+
+# Qué servidor tomó cada Corrida. Si hay dos contra la misma base (Render y un
+# Docker local, por ejemplo), en Corridas se ve cuál corrió cada una. Nunca el
+# hostname crudo: en Render es el ID del servicio (srv-...). Solo el tipo y un
+# código corto que distingue un proceso de otro.
+_ETIQUETAS_EQUIPO = ("Render", "GitHub Actions", "Local")
+
+
+def _codigo(texto: str) -> str:
+    return hashlib.sha256(texto.encode()).hexdigest()[:4]
+
+
+def _equipo() -> str:
+    if os.getenv("RENDER"):
+        tipo = "Render"
+    elif os.getenv("GITHUB_ACTIONS"):
+        tipo = "GitHub Actions"
+    else:
+        tipo = "Local"
+    return f"{tipo} · {_codigo(f'{socket.gethostname()}:{os.getpid()}')}"
+
+
+def _equipo_visible(valor: str | None) -> str | None:
+    """Las Corridas viejas guardaron el hostname crudo: se muestran con el código."""
+    if not valor or valor.startswith(_ETIQUETAS_EQUIPO):
+        return valor
+    return f"Servidor · {_codigo(valor)}"
+
+
+EQUIPO = _equipo()
 
 
 class ColaLlena(RuntimeError):
@@ -74,6 +108,34 @@ def _col():
     return db["corridas"]
 
 
+# ── Censura del registro ──────────────────────────────────────────────────────
+# Lo que se ve en Corridas pasa por acá: claves de API, tokens y la dirección
+# de la base no se muestran. El stdout real (logs de Render) no cambia.
+
+_PATRONES_SECRETOS = [
+    (re.compile(r"mongodb(\+srv)?://\S+"), "mongodb://***"),
+    (re.compile(r"[\w.-]+\.mongodb\.net"), "***.mongodb.net"),
+    (re.compile(r"(?i)(bearer\s+)\S+"), r"\1***"),
+    (re.compile(r"\bsrv-[a-z0-9]{10,}[\w-]*"), "srv-***"),   # ID del servicio de Render
+    (re.compile(r"\bnvapi-[\w-]+"), "nvapi-***"),
+    (re.compile(r"\bsk-[\w-]{8,}"), "sk-***"),
+    (re.compile(r"\bAIza[\w-]{10,}"), "***"),
+    (re.compile(r"(?i)\b((?:api[_-]?)?key|token|secret|password)=([^&\s'\"]+)"), r"\1=***"),
+]
+_VARIABLE_SECRETA = re.compile(r"(?i)(KEY|TOKEN|SECRET|PASSWORD|HASH|URI)")
+
+
+def _censurar(texto: str) -> str:
+    if not texto:
+        return texto
+    for nombre, valor in os.environ.items():
+        if len(valor) >= 8 and _VARIABLE_SECRETA.search(nombre) and valor in texto:
+            texto = texto.replace(valor, "***")
+    for patron, reemplazo in _PATRONES_SECRETOS:
+        texto = patron.sub(reemplazo, texto)
+    return texto
+
+
 def _ahora() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -93,19 +155,39 @@ def _publica(doc: dict) -> dict:
         "creada": doc.get("creada"),
         "inicio": doc.get("inicio"),
         "fin": doc.get("fin"),
-        "error": (doc.get("resultado") or {}).get("error"),
+        "error": _censurar((doc.get("resultado") or {}).get("error")),
+        "equipo": _equipo_visible(doc.get("equipo")),
     }
 
 
 # ── Encolar ───────────────────────────────────────────────────────────────────
 
 
-def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None) -> dict:
-    """Agrega una Corrida a la cola. Si ya hay una idéntica pendiente, devuelve esa."""
+def crear_indices() -> None:
+    """`turno` único: una programada se encola una sola vez aunque la disparen dos servidores."""
+    try:
+        _col().create_index("turno", unique=True, sparse=True)
+    except Exception as e:
+        print(f"[Cola] No se pudo crear el índice de turnos: {e}", flush=True)
+
+
+def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None,
+            turno: str | None = None) -> dict:
+    """Agrega una Corrida a la cola. Si ya hay una idéntica pendiente, devuelve esa.
+
+    `turno` identifica una programada ("generacion:2026-10-23T11:00"): si ya se
+    encoló ese turno, en cualquier estado, no se repite.
+    """
+    from pymongo.errors import DuplicateKeyError
+
     if tipo not in ("scraping", "generacion", "script"):
         raise ValueError(f"Tipo de Corrida desconocido: {tipo}")
     col = _col()
     clave = _clave(tipo, params)
+    if turno:
+        existente = col.find_one({"turno": turno})
+        if existente:
+            return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
     existente = col.find_one({"estado": "pendiente", "clave": clave})
     if existente:
         return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
@@ -120,7 +202,13 @@ def encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqu
         "estado": "pendiente",
         "creada": _ahora(),
     }
-    doc["_id"] = col.insert_one(doc).inserted_id
+    if turno:
+        doc["turno"] = turno
+    try:
+        doc["_id"] = col.insert_one(doc).inserted_id
+    except DuplicateKeyError:
+        existente = col.find_one({"turno": turno})   # la insertó otro servidor recién
+        return {"id": str(existente["_id"]), "posicion": _posicion(existente), "duplicada": True}
     print(f"[Cola] Encolada '{doc['etiqueta']}' ({origen}).", flush=True)
     _despertar.set()
     return {"id": str(doc["_id"]), "posicion": _posicion(doc), "duplicada": False}
@@ -165,9 +253,9 @@ def log(id_: str, desde: int = 0) -> dict | None:
     desde = max(0, desde)
     respuesta = {
         **_publica(doc),
-        "lineas": lineas[desde:],
+        "lineas": [_censurar(ln) for ln in lineas[desde:]],   # también las guardadas antes de censurar
         "siguiente": max(desde, len(lineas)),
-        "resultado": doc.get("resultado"),
+        "resultado": {k: _censurar(v) if isinstance(v, str) else v for k, v in (doc.get("resultado") or {}).items()},
     }
     if doc["estado"] == "pendiente":
         respuesta["posicion"] = _posicion(doc)
@@ -192,14 +280,15 @@ def cancelar(id_: str) -> dict:
         doc = col.find_one({"_id": doc["_id"]})  # justo arrancó: se trata como en curso
     if doc["estado"] != "en_curso":
         return {"estado": doc["estado"]}
+    # El pedido queda en Mongo siempre: si la Corrida corre en otro proceso
+    # (GitHub Actions, la instancia vieja durante un deploy, otro worker), ese
+    # proceso lo lee en _vigilar y la corta. Antes, fuera de GitHub, se
+    # respondía "en_curso" sin cortar nada y el dashboard decía "cancelada".
+    _col().update_one({"_id": doc["_id"]}, {"$set": {"cancelar_pedido": True}})
     with _estado:
         local = _actual == id_
     if not local:
-        if doc.get("ejecutor") == "github":
-            # Corre en otro proceso: se deja el pedido y el ejecutor lo lee al volcar el log.
-            _col().update_one({"_id": doc["_id"]}, {"$set": {"cancelar_pedido": True}})
-            return {"estado": "cancelando"}
-        return {"estado": doc["estado"]}
+        return {"estado": "cancelando"}
     with _estado:
         # La generación corre en este proceso: llm la corta en la próxima
         # llamada o fragmento (ver llm.Cancelada) y la nota no se guarda.
@@ -245,7 +334,7 @@ class _Tee(io.TextIOBase):
 def _agregar(lineas: list[str]) -> None:
     global _volcado
     with _estado:
-        _lineas.extend(ln.rstrip("\r") for ln in lineas)
+        _lineas.extend(_censurar(ln.rstrip("\r")) for ln in lineas)
         if time.monotonic() - _volcado < VOLCAR_CADA_S or _actual is None:
             return
         _volcado = time.monotonic()
@@ -266,10 +355,34 @@ def _volcar(id_: str, lineas: list[str]) -> None:
     except Exception:
         return
     if doc and doc.get("cancelar_pedido"):
-        corridas._cancelar.set()
-        with _estado:
-            if _proc is not None and _proc.poll() is None:
-                _proc.kill()
+        _cortar()
+
+
+def _cortar() -> None:
+    """Corta la Corrida en curso de este proceso."""
+    corridas._cancelar.set()
+    with _estado:
+        if _proc is not None and _proc.poll() is None:
+            _proc.kill()
+
+
+VIGILAR_CADA_S = 3
+
+
+def _vigilar(oid, fin: threading.Event) -> None:
+    """Mientras corre, mira cada pocos segundos si pidieron cancelarla.
+
+    _volcar ya lo mira, pero solo cuando hay log nuevo: una llamada larga a la
+    IA no imprime nada y el pedido quedaba sin leer hasta que terminaba.
+    """
+    while not fin.wait(VIGILAR_CADA_S):
+        try:
+            doc = _col().find_one({"_id": oid}, {"cancelar_pedido": 1})
+        except Exception:
+            continue
+        if doc and doc.get("cancelar_pedido") and not fin.is_set():   # si ya terminó, no ensucia la próxima
+            _cortar()
+            return
 
 
 def _ejecutar(doc: dict) -> dict:
@@ -291,8 +404,12 @@ def _ejecutar(doc: dict) -> dict:
         with _estado:
             _proc = p
 
+    ultimo_error = ""
     for linea in corridas._subproceso(params["modulo"], params.get("argv") or [], al_iniciar=_guardar_proc):
-        _agregar([linea.rstrip("\n")])
+        linea = linea.rstrip("\n")
+        if "[ERROR]" in linea:
+            ultimo_error = linea.split("[ERROR]", 1)[1].strip()
+        _agregar([linea])
     with _estado:
         proc, _proc = _proc, None
     if corridas._cancelar.is_set():
@@ -300,7 +417,7 @@ def _ejecutar(doc: dict) -> dict:
     codigo = proc.returncode if proc is not None else None
     if codigo == 0:
         return {"success": True}
-    return {"success": False, "error": f"El proceso terminó con código {codigo}."}
+    return {"success": False, "error": ultimo_error or f"El proceso terminó con código {codigo}."}
 
 
 def _correr(doc: dict) -> None:
@@ -311,11 +428,15 @@ def _correr(doc: dict) -> None:
         with _estado:
             _actual, _tipo_actual = id_, doc["tipo"]
             _lineas.clear()
+        fin = threading.Event()
+        threading.Thread(target=_vigilar, args=(doc["_id"], fin), name="cola-vigilar", daemon=True).start()
         try:
             resultado = _ejecutar(doc)
         except Exception as e:
             _agregar([f"[ERROR] {e}"])
             resultado = {"success": False, "error": str(e)}
+        finally:
+            fin.set()
         cancelada = corridas._cancelar.is_set()
         corridas._cancelar.clear()
         estado = "cancelada" if cancelada else ("ok" if resultado.get("success") else "error")
@@ -324,7 +445,8 @@ def _correr(doc: dict) -> None:
         _col().update_one({"_id": doc["_id"]}, {"$set": {
             "estado": estado,
             "fin": _ahora(),
-            "resultado": {k: v for k, v in resultado.items() if isinstance(v, (str, int, float, bool, type(None)))},
+            "resultado": {k: _censurar(v) if isinstance(v, str) else v for k, v in resultado.items()
+                          if isinstance(v, (str, int, float, bool, type(None)))},
             "log": lineas[-LINEAS_GUARDADAS:],
         }})
         with _estado:
@@ -338,7 +460,7 @@ def _tomar_siguiente():
     from pymongo import ReturnDocument
     return _col().find_one_and_update(
         {"estado": "pendiente"},
-        {"$set": {"estado": "en_curso", "inicio": _ahora(), "ejecutor": "servidor"}},
+        {"$set": {"estado": "en_curso", "inicio": _ahora(), "ejecutor": "servidor", "equipo": EQUIPO}},
         sort=[("creada", 1)],
         return_document=ReturnDocument.AFTER,
     )
@@ -382,7 +504,7 @@ def ejecutar_aca(tipo: str, params: dict | None = None, origen: str = "cron", ej
     doc = {
         "tipo": tipo, "params": params or {}, "clave": _clave(tipo, params),
         "etiqueta": etiqueta or ETIQUETAS.get(tipo, tipo), "origen": origen,
-        "estado": "en_curso", "creada": _ahora(), "inicio": _ahora(), "ejecutor": ejecutor,
+        "estado": "en_curso", "creada": _ahora(), "inicio": _ahora(), "ejecutor": ejecutor, "equipo": EQUIPO,
     }
     doc["_id"] = _col().insert_one(doc).inserted_id
     _correr(doc)
@@ -421,6 +543,7 @@ def iniciar() -> None:
         return
     _iniciada = True
     try:
+        crear_indices()
         recuperar_al_arrancar()
         limpiar_viejas()
     except Exception as e:

@@ -69,7 +69,8 @@ function filaCorrida(c, extra) {
   var origen = c.origen === 'cron' ? 'automática' : 'manual';
   return '<div class="corrida">'
     + '<div class="corrida-info"><div class="corrida-nombre">' + escHtml(c.etiqueta) + '</div>'
-    + '<div class="corrida-meta">' + origen + ' · ' + escHtml(extra || '') + '</div>'
+    + '<div class="corrida-meta">' + origen + ' · ' + escHtml(extra || '')
+    + (c.equipo ? ' · <span title="Servidor que la corrió">' + escHtml(c.equipo) + '</span>' : '') + '</div>'
     + (c.error ? '<div class="corrida-meta" style="color:var(--err)">' + escHtml(c.error) + '</div>' : '')
     + '</div>'
     + '<span class="estado-chip ' + c.estado + '">' + NOMBRE_ESTADO[c.estado] + '</span>'
@@ -180,8 +181,11 @@ async function cancelarCorrida(id, btn) {
   if (!ok) return;
   btn.disabled = true;
   try {
-    await pedir('/api/corridas/' + id + '/cancelar', { method: 'POST' });
-    showToast('Corrida cancelada', 'success');
+    var r = await pedir('/api/corridas/' + id + '/cancelar', { method: 'POST' });
+    // "cancelando": se pidió el corte y la fila pasa a "Cancelada" cuando termina de verdad.
+    if (r.estado === 'cancelada') showToast('Tarea cancelada', 'success');
+    else if (r.estado === 'cancelando') showToast('Cancelando… se corta en unos segundos.', 'info');
+    else showToast('No se pudo cancelar: la tarea ya terminó.', 'warn');
   } catch (e) {
     btn.disabled = false;
     showToast(e.message, 'error');

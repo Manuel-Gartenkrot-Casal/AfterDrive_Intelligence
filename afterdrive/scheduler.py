@@ -33,15 +33,21 @@ _JOBS = {
     # id: (lector de config, hora por defecto, qué correr)
     "scraping": (
         lambda: config_store.get_scraping_config(), config_store.DEFAULT_SCRAPING["hora"],
-        lambda: cola.encolar("scraping", origen="cron"),
+        lambda: cola.encolar("scraping", origen="cron", turno=_turno("scraping")),
     ),
     "generacion": (
         lambda: config_store.get_generacion_config(), config_store.DEFAULT_GENERACION["hora"],
-        lambda: cola.encolar("generacion", origen="cron"),
+        lambda: cola.encolar("generacion", origen="cron", turno=_turno("generacion")),
     ),
 }
 
 _scheduler = BackgroundScheduler()
+
+
+def _turno(tipo: str) -> str:
+    """Identifica la programada que se dispara ahora (al minuto): si otro servidor
+    contra la misma base la dispara a la vez, la Cola la encola una sola vez."""
+    return f"{tipo}:{datetime.datetime.now(zoneinfo.ZoneInfo(ZONA)):%Y-%m-%dT%H:%M}"
 
 # "Cada N días" se cuenta desde esta fecha fija, así el ritmo no cambia con
 # cada reinicio del servidor. Antes era CronTrigger(day="*/N"), que cuenta días

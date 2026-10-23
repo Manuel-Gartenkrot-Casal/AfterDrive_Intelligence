@@ -223,3 +223,149 @@ def test_api_probar_fuente_valida_la_url_y_encola(client, col, monkeypatch):
 def test_api_recomendaciones_encola(client, col):
     assert client.post("/api/corridas/recomendaciones").status_code == 202
     assert col.find_one()["params"]["modulo"] == "afterdrive.ingesta.discover_sources"
+
+
+def test_cancelar_una_que_corre_en_otro_proceso_deja_el_pedido(col):
+    """Si la Corrida corre en otra instancia (un deploy que se solapa, otro worker),
+    cancelar no puede cortarla desde acá: deja el pedido en Mongo para que la vea
+    el proceso que la corre, en vez de decir que la canceló y no hacer nada."""
+    id_ = col.insert_one({"tipo": "script", "estado": "en_curso", "ejecutor": "servidor",
+                          "creada": cola._ahora()}).inserted_id
+    assert cola.cancelar(str(id_)) == {"estado": "cancelando"}
+    assert col.find_one({"_id": id_})["cancelar_pedido"] is True
+
+
+def test_el_pedido_de_cancelar_de_otro_proceso_corta_aunque_no_haya_log(col, monkeypatch):
+    """La Corrida en curso mira el pedido cada pocos segundos, aunque esté callada
+    (una llamada larga a la IA no imprime nada)."""
+    monkeypatch.setattr(cola, "VIGILAR_CADA_S", 0.05)
+    listo = threading.Event()
+
+    def generar(params):
+        listo.set()
+        for _ in range(500):
+            if corridas._cancelar.is_set():
+                break
+            time.sleep(0.01)
+        return {"success": True}
+
+    monkeypatch.setattr(corridas, "_generar", generar)
+    id_ = cola.encolar("generacion")["id"]
+    t = threading.Thread(target=cola.procesar_pendientes)
+    t.start()
+    assert listo.wait(5)
+    from bson import ObjectId
+    col.update_one({"_id": ObjectId(id_)}, {"$set": {"cancelar_pedido": True}})  # lo pidió otro proceso
+    t.join(timeout=5)
+    assert not t.is_alive()
+    assert cola.log(id_)["estado"] == "cancelada"
+
+
+def test_un_script_que_falla_con_codigo_distinto_de_cero_queda_con_error(col, tmp_path):
+    p = tmp_path / "falla.py"
+    p.write_text("import sys\nprint('[ERROR] algo salió mal')\nsys.exit(1)\n")
+    id_ = cola.encolar("script", {"modulo": str(p)})["id"]
+    cola.procesar_pendientes()
+    r = cola.log(id_)
+    assert r["estado"] == "error"
+    assert r["error"] == "algo salió mal"   # el motivo, no "terminó con código 1"
+
+
+def test_api_generar_imagen_encola_un_script(client, col):
+    nota = "65a1b2c3d4e5f60718293a4b"
+    r = client.post("/api/historial/imagen/generar",
+                    json={"coleccion": "notas_fase2", "id": nota, "descripcion": "  a tire   shop "})
+    assert r.status_code == 202
+    doc = col.find_one({"estado": "pendiente"})
+    assert doc["etiqueta"] == "Generar imagen"
+    assert doc["params"] == {"modulo": "afterdrive.imagen_nota", "argv": ["notas_fase2", nota, "a tire shop"]}
+
+
+def test_api_generar_imagen_valida_coleccion_e_id(client, col):
+    assert client.post("/api/historial/imagen/generar",
+                       json={"coleccion": "articulos", "id": "65a1b2c3d4e5f60718293a4b"}).status_code == 400
+    assert client.post("/api/historial/imagen/generar",
+                       json={"coleccion": "notas_fase2", "id": "no-es-un-id"}).status_code == 400
+    assert col.count_documents({}) == 0
+
+
+def test_la_misma_programada_no_se_encola_dos_veces_aunque_ya_haya_arrancado(col):
+    """Dos servidores contra la misma base (Render y un Docker local) disparan la
+    misma programada a la vez: tiene que correr una sola."""
+    cola.crear_indices()
+    a = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-23T11:00")
+    col.update_one({}, {"$set": {"estado": "en_curso"}})   # el otro servidor ya la tomó
+    b = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-23T11:00")
+    assert b["duplicada"] and b["id"] == a["id"]
+    assert col.count_documents({}) == 1
+    c = cola.encolar("generacion", origen="cron", turno="generacion:2026-10-24T11:00")
+    assert not c["duplicada"]
+
+
+def test_si_dos_la_insertan_a_la_vez_el_indice_deja_una(col, monkeypatch):
+    cola.crear_indices()
+    turno = "scraping:2026-10-23T05:30"
+    col.insert_one({"tipo": "scraping", "estado": "en_curso", "turno": turno, "creada": cola._ahora()})
+    real, llamadas = col.find_one, []
+
+    def find_one(f, *a, **k):
+        # Simula la carrera: la primera consulta no la ve, el insert choca con el índice.
+        if "turno" in f and not llamadas:
+            llamadas.append(f)
+            return None
+        return real(f, *a, **k)
+
+    monkeypatch.setattr(col, "find_one", find_one)
+    r = cola.encolar("scraping", origen="cron", turno=turno)
+    assert r["duplicada"]
+    assert col.count_documents({}) == 1
+
+
+def test_la_corrida_dice_en_que_equipo_corre(col, ejecutadas):
+    id_ = cola.encolar("scraping", {"max_articulos": 1})["id"]
+    cola.procesar_pendientes()
+    assert cola.log(id_)["equipo"] == cola.EQUIPO
+
+
+def test_el_registro_no_muestra_claves_ni_la_base(col, monkeypatch):
+    monkeypatch.setenv("PAGA_API_KEY", "clave-super-secreta-123")
+    monkeypatch.setenv("MONGO_URI", "mongodb+srv://u:p@pruebascrapling.uo6x74d.mongodb.net/?x=1")
+
+    def scrapear(max_articulos):
+        print("[DB] Conectando a MongoDB: mongodb+srv://***@pruebascrapling.uo6x74d.mongodb.net")
+        print("Authorization: Bearer nvapi-AbC123def456ghi789")
+        print("fallo en https://api.x.com/v1?key=AIzaSyXXXXXXXXXXXXXXXX&q=1 con sk-or-v1-abcdef0123456789")
+        print("la paga respondió con clave-super-secreta-123 en el texto")
+        print("corriendo en srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d")
+        raise RuntimeError("no conecta a pruebascrapling.uo6x74d.mongodb.net con clave-super-secreta-123")
+
+    monkeypatch.setattr(corridas, "_scrapear_fuentes", scrapear)
+    id_ = cola.encolar("scraping")["id"]
+    cola.procesar_pendientes()
+    r = cola.log(id_)
+    texto = "\n".join(r["lineas"]) + (r["error"] or "") + str(col.find_one()["resultado"])
+    for secreto in ("pruebascrapling", "uo6x74d", "nvapi-AbC123", "AIzaSy", "sk-or-v1-abc", "clave-super-secreta", "dafbmo0u"):
+        assert secreto not in texto, secreto
+    assert "Conectando a MongoDB" in texto   # el resto de la línea se conserva
+
+
+def test_las_corridas_viejas_tambien_se_leen_censuradas(col):
+    id_ = col.insert_one({"tipo": "script", "estado": "error", "creada": cola._ahora(), "fin": cola._ahora(),
+                          "log": ["[DB] Conectando a MongoDB: mongodb+srv://***@pruebascrapling.uo6x74d.mongodb.net"],
+                          "resultado": {"success": False, "error": "falló pruebascrapling.uo6x74d.mongodb.net"}}).inserted_id
+    r = cola.log(str(id_))
+    assert "pruebascrapling" not in str(r)
+    assert "pruebascrapling" not in str(cola.listar())
+
+
+def test_el_equipo_no_muestra_el_hostname(col, monkeypatch):
+    """En Render el hostname es el ID del servicio (srv-...): no se expone."""
+    import socket
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(socket, "gethostname", lambda: "srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d")
+    equipo = cola._equipo()
+    assert equipo.startswith("Render · ") and "srv-" not in equipo
+    viejo = col.insert_one({"tipo": "script", "estado": "ok", "creada": cola._ahora(), "fin": cola._ahora(),
+                            "equipo": "srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d (pid 26)"}).inserted_id
+    assert "srv-" not in cola.log(str(viejo))["equipo"]
+    assert "srv-" not in str(cola.listar())

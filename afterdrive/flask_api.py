@@ -549,17 +549,24 @@ def metricas_resumen():
 
 @app.route("/api/historial/imagen/generar", methods=["POST"])
 def historial_generar_imagen():
-    """Genera la imagen destacada con NVIDIA: {"coleccion", "id", "descripcion" (opcional)}."""
+    """Encola la imagen destacada con NVIDIA: {"coleccion", "id", "descripcion" (opcional)}.
+
+    Corre por la Cola (aparece en Corridas y se puede cancelar): 202 con el id.
+    """
+    from bson import ObjectId
+
     from afterdrive import historial
 
     body = request.get_json(silent=True) or {}
-    try:
-        item = historial.generar_imagen(body.get("coleccion", ""), body.get("id", ""), body.get("descripcion") or "")
-    except historial.ErrorHistorial as e:
-        return jsonify({"success": False, "error": str(e)}), 400
-    if item is None:
-        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
-    return jsonify({"success": True, "item": item})
+    coleccion, item_id = body.get("coleccion", ""), body.get("id", "")
+    descripcion = body.get("descripcion") or ""
+    if coleccion not in historial.COLECCIONES_CON_ESTADO:
+        return jsonify({"success": False, "error": "Solo las notas generadas tienen imagen destacada."}), 400
+    if not isinstance(item_id, str) or not ObjectId.is_valid(item_id):
+        return jsonify({"success": False, "error": "Identificador inválido."}), 400
+    descripcion = " ".join(descripcion.split())[:600] if isinstance(descripcion, str) else ""
+    argv = [coleccion, item_id] + ([descripcion] if descripcion else [])
+    return _encolar("script", {"modulo": "afterdrive.imagen_nota", "argv": argv}, etiqueta="Generar imagen")
 
 
 @app.route("/api/imagenes/<imagen_id>", methods=["GET"])
