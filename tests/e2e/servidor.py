@@ -29,6 +29,8 @@ os.environ.update(
     # API paga configurada (a una URL falsa) para poder prender el modo pago.
     PAGA_API_KEY="pg-e2e", PAGA_BASE_URL="http://127.0.0.1:9/v1", PAGA_MODEL="modelo-e2e",
     NVIDIA_API_KEY="nvapi-e2e",
+    # Las traducciones correrían en un subprocess que no ve la base en memoria.
+    HUBSPOT_TRADUCCIONES="0",
 )
 
 from afterdrive import corridas, hubspot  # noqa: E402
@@ -51,12 +53,24 @@ def sembrar() -> None:
          "evaluacion": {"lineamientos": {"estructura_correcta": True}, "comentarios": "Bien"}},
         {"contenido": "# Marketplaces y catálogo\n\n" + CUERPO, "generado_en": "2026-10-16T14:00:00+00:00",
          "estado": "aprobada", "categorias": ["marketplaces"],
-         "fuentes": [{"titulo": "Mercado Libre suma catálogo", "url": "https://s.com/ml", "imagen": FOTO_E2E},
+         "fuentes": [{"titulo": "Mercado Libre suma catálogo", "url": "https://s.com/ml", "imagen": FOTO_E2E,
+                      "imagen_apta": True, "imagen_motivo": "Un depósito de repuestos."},
+                     {"titulo": "Banner de una feria", "url": "https://s.com/feria", "imagen": "https://s.com/fotos/banner.jpg",
+                      "imagen_apta": False, "imagen_motivo": "Es un banner publicitario."},
                      {"titulo": "Sin foto", "url": "https://s.com/sin"}],
          "evaluacion": {"lineamientos": {}, "comentarios": "Evaluación de prueba"}},
         {"contenido": "# Rotación de stock en el mostrador\n\n" + CUERPO + "\n*La rotación manda.*",
          "generado_en": "2026-10-15T14:00:00+00:00", "estado": "aprobada", "categorias": ["autopartes"],
          "persona": "comercial", "proveedor": "openrouter",
+         "hubspot": {"id": "555", "url": "https://blog.e2e/nota", "estado": "DRAFT"},
+         "notas_blog_sugeridas": [{"titulo": "Catálogo y fitment", "url": "https://afterdrive.alephee.com/es/blog/catalogo",
+                                   "origen": "blog"}],
+         "notas_blog_citadas": [{"titulo": "Catálogo y fitment", "url": "https://afterdrive.alephee.com/es/blog/catalogo",
+                                 "origen": "blog"}],
+         "imagen_eleccion": {"metodo": "ia", "motivo": "La IA descartó todas las fotos. Es un logo."},
+         "traducciones": {"pt": {"contenido": "# Giro de estoque no balcão\n\nTexto em português.", "huella": "x"}},
+         "hubspot_traducciones": {"pt": {"id": "556", "url": "https://blog.e2e/pt/nota", "estado": "DRAFT", "vinculada": True},
+                                  "en": {"error": "la traducción al inglés vino cortada"}},
          "calidad": {"puntaje": 7, "fallas_criticas": [], "intentos": 2, "reescrita_por": ["datos_sin_respaldo"],
                      "problemas": ["datos_sin_respaldo"], "segundo_intento": "correccion"},
          "costo": {"total_usd": 0.231, "por_tarea": {"redaccion": 0.18, "correccion": 0.02, "planificacion": 0.031},
@@ -101,7 +115,7 @@ PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADh
 def descarga_de_imagenes_falsa() -> None:
     import base64
 
-    from afterdrive import historial
+    from afterdrive import imagen_web
     from afterdrive.ingesta import scraper
 
     class _RespImagen:
@@ -112,7 +126,7 @@ def descarga_de_imagenes_falsa() -> None:
             yield base64.b64decode(PNG_1X1)
 
     scraper.url_publica = lambda url: True
-    historial._TRANSPORTE_IMAGEN["get"] = lambda url, **kw: _RespImagen()
+    imagen_web._transporte["get"] = lambda url, **kw: _RespImagen()
 
 
 AUTORES_E2E = [{"id": "37798507784", "fullName": "Gaston Zelerteins", "language": "es"},

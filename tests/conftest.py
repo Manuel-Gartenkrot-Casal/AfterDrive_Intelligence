@@ -30,6 +30,13 @@ def sin_buscar_imagenes(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_notas_del_blog(monkeypatch):
+    """La generación no lee la base real para buscar notas del blog que citar."""
+    from afterdrive.generacion import notas_blog
+    monkeypatch.setattr(notas_blog, "relacionadas", lambda *a, **k: [])
+
+
+@pytest.fixture(autouse=True)
 def sin_modo_pago(monkeypatch):
     """El modo pago se prende escribiendo os.environ directo: no debe pasar de un test a otro."""
     monkeypatch.delenv("MODO_PAGO_HASTA", raising=False)

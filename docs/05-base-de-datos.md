@@ -18,7 +18,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt`, `origen`: la noticia de la que sale la foto, y `hubspot_url`: la copia en los archivos de HubSpot), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
+| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt`, `origen`: la noticia de la que sale la foto, y `hubspot_url`: la copia en los archivos de HubSpot), `imagen_eleccion` (`metodo`: ia, primera o ninguna, y `motivo`), `notas_blog_sugeridas` y `notas_blog_citadas` (notas de AfterDrive que se le pasaron para citar y las que citó), `traducciones` (por idioma: `contenido`, `huella` del original, `traducido_en`), `hubspot_traducciones` (por idioma: `id`, `url`, `estado`, `slug`, `vinculada`, `aviso` o `error`), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
 | `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
 | `articulos_generados` | Notas del generador viejo (Fase 1, ya borrado). Solo se leen en el Historial | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
 
@@ -28,7 +28,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 **`hubspot`**: `{id, url, estado (DRAFT / PUBLISHED), enviado_en}`, solo si se envió.
 
-**`imagen`**: la imagen destacada (https pública): la foto de una noticia de la nota (con `origen`) o una pegada a mano. Al enviar a HubSpot se copia a sus archivos (`hubspot_url`). Sin ella se usa `HUBSPOT_IMAGEN_DEFAULT`. Las fotos de las noticias de la nota están en `fuentes[].imagen`.
+**`imagen`**: la imagen destacada (https pública): la foto de una noticia de la nota (con `origen`) o una pegada a mano. Al enviar a HubSpot se copia a sus archivos (`hubspot_url`). Sin ella se usa `HUBSPOT_IMAGEN_DEFAULT`. Las fotos de las noticias de la nota están en `fuentes[].imagen`, con `imagen_apta` e `imagen_motivo` si las miró la IA.
 
 ## Operación
 

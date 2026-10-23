@@ -16,6 +16,7 @@ function renderSugerencias(urls) {
     var item = document.createElement('div');
     item.className = 'suggestion-item';
     var titulo = u.titulo ? '<div class="suggestion-title">' + escHtml(u.titulo) + '</div>' : '';
+    if (u.origen === 'ia') titulo += '<div class="suggestion-title">Sugerida por la IA (sitio verificado)</div>';
     item.innerHTML =
       '<div class="suggestion-info"><div class="suggestion-url">' + escHtml(u.dominio || u.url) + '</div>' + titulo + '</div>' +
       '<div class="suggestion-actions">' +
@@ -46,6 +47,7 @@ async function discover() {
       btn.textContent = t || 'Buscando...';
     });
     if (fin.estado !== 'ok') log('La búsqueda terminó: ' + NOMBRE_ESTADO[fin.estado].toLowerCase() + '.', 'warn');
+    if (fin.estado === 'error') showToast(fin.error || 'No se pudo buscar. Mirá el registro en Actividad.', 'error');
     var r2 = await fetch('/api/suggested-urls');
     var d2 = await r2.json();
     var urls = d2.success ? d2.urls : [];

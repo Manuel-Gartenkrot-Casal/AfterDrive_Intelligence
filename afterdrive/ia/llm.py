@@ -2,7 +2,8 @@
 llm.py — Módulo LLM: el único lugar que sabe hablar con un proveedor de IA.
 
 Interfaz:
-    completar(system, user, temperature=..., max_tokens=..., stream=False, tarea="") -> str
+    completar(system, user, temperature=..., max_tokens=..., stream=False, tarea="", imagenes=None) -> str
+    ve_imagenes() -> bool
     embeber(textos, tipo="passage") -> list[vector | None]
     modelo_embeddings() -> str
     usa_api_paga() -> bool
@@ -26,6 +27,7 @@ también a los subprocesos (que heredan os.environ).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
@@ -45,12 +47,16 @@ PROVEEDORES = ("local", "nvidia", "openrouter", "paga")
 
 # Tareas del pipeline que llaman al chat. Solo la API paga las separa en
 # modelos distintos (PAGA_MODEL_<TAREA>); el resto usa un modelo para todo.
-TAREAS = ("clasificacion", "planificacion", "redaccion", "correccion", "evaluacion")
+TAREAS = ("clasificacion", "planificacion", "redaccion", "correccion", "evaluacion", "traduccion")
 
 # Tareas que, sin modelo propio, usan el de otra tarea en lugar de PAGA_MODEL.
 # El plan y la corrección escriben poco o retocan texto: no necesitan el modelo
 # caro de la redacción, alcanza con el de evaluación.
-RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion"}
+# La traducción reescribe un texto ya revisado: alcanza con el de evaluación.
+RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion", "traduccion": "evaluacion"}
+
+# Formatos de imagen que aceptan Bedrock Converse y Chat Completions.
+_FORMATOS_IMAGEN = {"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
 
 
 def paga_configurada(*extra: str) -> bool:
@@ -213,6 +219,16 @@ def _perfil(nombre: str) -> Perfil:
         # temperatura, porque con prompts largos pierden instrucciones.
         redaccion=Redaccion(temperatura=0.45, compacto=True, max_ejemplos=2, chars_ejemplo=700),
     )
+
+
+def ve_imagenes() -> bool:
+    """True si se le pueden mandar imágenes al modelo: solo con la API paga en uso.
+
+    Los modelos pagos configurados (GPT-6 Luna, GPT-5.6 Luna y Kimi K3 en
+    Bedrock) aceptan imágenes; los gratuitos de NVIDIA y LM Studio no
+    necesariamente. IMAGENES_CON_IA=0 lo apaga.
+    """
+    return usa_api_paga() and os.getenv("IMAGENES_CON_IA", "1").strip() != "0"
 
 
 def proveedor_base() -> str:
@@ -595,8 +611,12 @@ def completar(
     max_tokens: int = 2048,
     stream: bool = False,
     tarea: str = "",
+    imagenes: list[tuple[bytes, str]] | None = None,
 ) -> str:
     """Envía un system + user prompt al proveedor activo y devuelve el texto.
+
+    imagenes: [(bytes, mime)] que acompañan al pedido (ver ve_imagenes()). Van
+    antes del texto: Kimi K3 responde mejor así y a los demás les da igual.
 
     tarea (ver TAREAS) elige el modelo cuando el proveedor separa modelos por
     tarea (API paga): PAGA_MODEL_<TAREA>; si no está, el de RESPALDO_TAREA; si
@@ -616,10 +636,17 @@ def completar(
         if t and perfil.modelos_tarea.get(t):
             perfil = replace(perfil, modelo=perfil.modelos_tarea[t], variable_modelo=f"PAGA_MODEL_{t.upper()}")
             break
+    imagenes = [(b, m) for b, m in imagenes or [] if m in _FORMATOS_IMAGEN]
     if perfil.api == "converse":
-        return _completar_converse(perfil, system, user, max_tokens=max_tokens, stream=stream)
+        return _completar_converse(perfil, system, user, max_tokens=max_tokens, stream=stream, imagenes=imagenes)
     messages = [{"role": "system", "content": system}] if system else []
-    messages.append({"role": "user", "content": user})
+    if imagenes:
+        stream = False   # la respuesta es corta y así el registro de consumo no mide el base64
+        contenido_user = [{"type": "image_url", "image_url": {"url": f"data:{m};base64,{base64.b64encode(b).decode()}"}}
+                          for b, m in imagenes] + [{"type": "text", "text": user}]
+        messages.append({"role": "user", "content": contenido_user})
+    else:
+        messages.append({"role": "user", "content": user})
     payload = {
         "model": perfil.modelo,
         "messages": messages,
@@ -653,7 +680,8 @@ def completar(
             mas = min(max_tokens * 4, MAX_TOKENS_REINTENTO)
             print(f"  [AVISO] '{modelo}' usó los {max_tokens} tokens razonando sin responder: "
                   f"se reintenta con {mas}.", flush=True)
-            return completar(system, user, temperature=temperature, max_tokens=mas, stream=False, tarea=tarea)
+            return completar(system, user, temperature=temperature, max_tokens=mas, stream=False, tarea=tarea,
+                             imagenes=imagenes)
         if not data.get("choices"):
             raise ErrorLLM(f"{perfil.nombre} respondió sin 'choices': {resp.text[:500]}")
         return contenido.strip()
@@ -767,7 +795,8 @@ def _converse_timeout() -> int:
     return int(os.getenv("CONVERSE_TIMEOUT", "600"))
 
 
-def _completar_converse(perfil: Perfil, system: str, user: str, *, max_tokens: int, stream: bool) -> str:
+def _completar_converse(perfil: Perfil, system: str, user: str, *, max_tokens: int, stream: bool,
+                        imagenes: list[tuple[bytes, str]] | None = None) -> str:
     """Una llamada a la API Converse de Bedrock.
 
     POST {base}/model/{modelo URL-encoded}/converse. El modelo puede ser un ARN
@@ -776,8 +805,11 @@ def _completar_converse(perfil: Perfil, system: str, user: str, *, max_tokens: i
     """
     # ponytail: sin streaming (ConverseStream usa el formato binario de AWS, no
     # SSE). Para stream=True se mantiene el heartbeat mientras se espera.
+    # Las imágenes van como bytes en base64 (la API REST de Converse no acepta URLs).
+    bloques_imagen = [{"image": {"format": _FORMATOS_IMAGEN[m], "source": {"bytes": base64.b64encode(b).decode()}}}
+                      for b, m in imagenes or []]
     cuerpo = {
-        "messages": [{"role": "user", "content": [{"text": user}]}],
+        "messages": [{"role": "user", "content": [*bloques_imagen, {"text": user}]}],
         "inferenceConfig": {"maxTokens": max_tokens},
     }
     if system:

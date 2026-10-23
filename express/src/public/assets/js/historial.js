@@ -187,12 +187,22 @@ async function enviarAHubspot(publicar, mensajeOk) {
     n.hubspot = d.item.hubspot;
     showToast(mensajeOk || (publicar ? 'Publicada en HubSpot' : 'Guardada como borrador en HubSpot'), 'success');
     if (d.item.aviso) showToast(d.item.aviso, 'warn', 8000);
+    avisarTraducciones(d.traducciones);
     ok = true;
   } catch (e) { showToast(e.message, 'error'); }
   cargarResumenHistorial();
   if (_seccion === 'historial') cargarHistorial(_hist.pagina);
   pintarAccionesNota();
   return ok;
+}
+
+/* Las versiones en los otros idiomas se traducen y suben en la Cola: se avisa y se sigue en Actividad. */
+function avisarTraducciones(t) {
+  if (!t) return;
+  var nombres = { es: 'español', pt: 'portugués', en: 'inglés' };
+  var idiomas = (t.idiomas || []).map(function(c) { return nombres[c] || c; }).join(' y ');
+  if (t.error) { showToast('No se pudieron encolar las traducciones: ' + t.error, 'warn', 8000); return; }
+  showToast('Las versiones en ' + idiomas + ' se traducen y suben como borrador en segundo plano. Seguilas en Actividad.', 'info', 8000);
 }
 
 /* Aprobar sube la nota a HubSpot como borrador: el equipo la termina y publica allá.
@@ -318,9 +328,12 @@ function bloqueImagenesNoticias(d, propia) {
   }
   return html + '<p class="previa-ayuda">Elegí la foto de una de sus noticias:</p><div class="previa-fotos">'
     + _fotosNoticias.map(function(f, i) {
-        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + '"'
-          + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(f.titulo) + '" aria-label="' + escHtml(f.titulo) + '">'
-          + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer"></button>';
+        var descartada = f.apta === false;
+        var detalle = f.titulo + (f.motivo ? ' — ' + (descartada ? 'La IA la descartó: ' : 'IA: ') + f.motivo : '');
+        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada ? ' descartada' : '') + '"'
+          + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(detalle) + '" aria-label="' + escHtml(f.titulo) + '">'
+          + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+          + (descartada ? '<span class="previa-foto-marca">IA: no apta</span>' : '') + '</button>';
       }).join('')
     + '</div></div>';
 }

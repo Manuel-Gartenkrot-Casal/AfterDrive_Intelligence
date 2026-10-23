@@ -233,7 +233,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     assert "US$ 80 millones" in lateral.locator(".revision-lista.mal").inner_text()
     assert "Palabra clave: rotación de stock" in lateral.inner_text()
     assert "Se corrigió porque falló en" in lateral.inner_text()
-    assert "Sin imagen: ninguna noticia de la nota tenía foto" in lateral.inner_text()
+    assert "Sin imagen: la IA descartó las fotos de las noticias." in lateral.inner_text()
     costo = lateral.locator(".revision-bloque", has_text="Costo de esta nota")
     assert "USD 0,231" in costo.inner_text() and "redacción: USD 0,18" in costo.inner_text()
     lateral.locator("summary", has_text="Ver el plan").click()
@@ -318,6 +318,31 @@ def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
     pagina.locator(".previa").wait_for()
     pagina.get_by_role("button", name="Quitar imagen").click()
     pagina.locator(".previa-sin-imagen").wait_for()
+
+
+def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina):
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral = pagina.locator(".modal-sidebar")
+    expect(lateral).to_contain_text("Sin imagen: la IA descartó las fotos de las noticias.")
+    expect(lateral).to_contain_text("Cita 1 nota(s) de AfterDrive by Alephee:")
+    expect(lateral.get_by_role("link", name="Catálogo y fitment")).to_have_attribute(
+        "href", "https://afterdrive.alephee.com/es/blog/catalogo")
+    otros = lateral.locator(".revision-bloque", has_text="Otros idiomas")
+    expect(otros).to_contain_text("borrador en HubSpot, vinculado al original")
+    expect(otros).to_contain_text("la traducción al inglés vino cortada")
+    otros.get_by_text("Ver la traducción").click()
+    expect(otros.locator(".revision-traduccion-texto")).to_contain_text("Texto em português")
+    expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
+
+
+def test_la_vista_previa_marca_las_fotos_que_la_ia_descarto(pagina):
+    _abrir_nota(pagina, "Marketplaces")
+    pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
+    pagina.locator(".previa").wait_for()
+    descartada = pagina.locator(".previa-foto.descartada")
+    expect(descartada).to_have_count(1)
+    expect(descartada).to_contain_text("IA: no apta")
+    assert "Es un banner publicitario." in descartada.get_attribute("title")
 
 
 def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):

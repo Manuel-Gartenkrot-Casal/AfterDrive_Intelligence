@@ -7,7 +7,7 @@ Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive 
 1. **Historial → Notas → Para revisar**: abrí la nota, revisala y, si hace falta, editala.
 2. En el bloque **Publicación en HubSpot** se ve a qué blog va y con qué etiqueta. Ahí se elige el **autor** (por defecto, Gastón Zelerteins).
 3. **Vista previa** (opcional): cómo va a salir en el blog. Ahí se elige la imagen destacada.
-4. **Aprobar y subir a HubSpot**: queda aprobada acá y como borrador allá.
+4. **Aprobar y subir a HubSpot**: queda aprobada acá y como borrador allá. Además se encola la traducción a los otros dos idiomas: cada versión queda como borrador en su blog (ver [Otros idiomas](#otros-idiomas)).
 
 - Si la subida falla, la nota igual queda aprobada. **Subir borrador a HubSpot** la reintenta.
 - Reenviar una nota ya enviada (**Actualizar borrador en HubSpot**) **actualiza el mismo post**, no crea otro. No cambian ni el slug ni el blog, así no se rompen links.
@@ -28,6 +28,8 @@ Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive 
 
 > **Migración:** `HUBSPOT_BLOG_ID` ya no se usa (antes era el blog de producción). Borrala del Environment de Render: el blog ahora sale del idioma de cada nota.
 | `HUBSPOT_IMAGEN_DEFAULT` | No | URL https de la imagen destacada para las notas que no tienen una propia |
+| `HUBSPOT_TRADUCCIONES` | No | `0` apaga las versiones en los otros idiomas |
+| `HUBSPOT_LENGUAJES` | No | Código de idioma de cada blog si no es `es`, `pt-br`, `en`. Ej.: `es=es-ar,pt=pt-br,en=en` |
 
 Para probar la API a mano hay una colección de Postman en [hubspot-postman/](hubspot-postman/README.md).
 
@@ -63,6 +65,21 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias, copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
+
+## Otros idiomas
+
+Cada nota se escribe en un idioma (el de sus regiones). Al subirla, una corrida de la Cola (`afterdrive/traducciones.py`, aparece en Actividad) la traduce a los otros dos idiomas del blog con la voz de cada uno (español rioplatense, portugués de Brasil, inglés) y sube cada versión **como borrador**. Nunca se publica sola.
+
+1. **Variación de idioma** (`POST /cms/v3/blogs/posts/multi-language/create-language-variation`): HubSpot clona el post original como su traducción, en el blog de ese idioma, y después se le carga el texto traducido, la meta, las etiquetas y el autor de ese idioma. Así quedan vinculadas (selector de idioma y hreflang).
+2. Si HubSpot no la crea (por ejemplo, porque los tres blogs no están configurados como versiones de un mismo blog multilenguaje, o porque el código de idioma no coincide), se crea un **borrador normal** en el blog del idioma y se intenta vincularlo con `attach-to-lang-group`.
+3. Si tampoco se puede vincular, queda como **borrador suelto**, con un aviso en la nota.
+
+- La traducción queda guardada con la huella del texto original: reenviar sin editar la nota **no vuelve a pagar** la traducción, solo actualiza el borrador. Si la editaste, se traduce de nuevo.
+- La traducción mantiene el Markdown, las cifras, los nombres y los enlaces del original (un enlace nuevo se quita). Si sale cortada o sin título, esa versión no se sube y el error se ve al abrir la nota.
+- Con `HUBSPOT_BLOG_PRUEBAS`, las versiones van a ese blog sin vincular.
+- Al abrir la nota, el bloque **Otros idiomas** muestra cada versión, su link y el texto traducido. **Volver a subir las traducciones** reintenta.
+- Los enlaces a notas de AfterDrive dentro de la traducción siguen apuntando a la nota original (en su idioma).
+- **Pendiente de confirmar en la cuenta**: que los blogs ES, PT y EN estén configurados como versiones de un mismo blog multilenguaje y sus códigos de idioma. Probalo primero con una nota.
 
 ## Errores
 

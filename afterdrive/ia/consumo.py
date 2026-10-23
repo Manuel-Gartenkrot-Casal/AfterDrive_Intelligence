@@ -48,6 +48,7 @@ _VARIABLES = {
     "redaccion": "PAGA_MODEL_REDACCION",
     "planificacion": "PAGA_MODEL_PLANIFICACION",
     "correccion": "PAGA_MODEL_CORRECCION",
+    "traduccion": "PAGA_MODEL_TRADUCCION",
     "general": "PAGA_MODEL",
     "fallback": "PAGA_FALLBACK_MODEL",
     "embeddings": "PAGA_EMB_MODEL",

@@ -5,9 +5,10 @@ Recorrido de una nota:
   1. Noticias de contexto: las noticias scrapeadas más útiles para el pedido
      (contexto_noticias), con su ficha. Son la única fuente de cifras,
      empresas y casos. Las usadas hace poco quedan para el final.
-  2. Referencias de estilo: notas reales del blog (afterdrive_ejemplos), que
-     también son los enlaces internos sugeridos, y notas propias que el equipo
-     calificó alto.
+  2. Referencias de estilo: notas reales del blog (afterdrive_ejemplos) y
+     notas propias que el equipo calificó alto. Aparte, las notas de AfterDrive
+     by Alephee más parecidas al tema (notas_blog.py), para que la nota las
+     cite como propias y las enlace donde encajen.
   3. Calibración (calibracion.py): correcciones de rechazos, calificaciones y
      ediciones; aciertos; umbral del evaluador.
   4. Plan (plan.py): ángulo, título, palabra clave y secciones, sin repetir el
@@ -22,8 +23,8 @@ Recorrido de una nota:
      Queda la mejor versión.
   7. El largo (corto, medio, largo) se elige en Crear nota.
   8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
-     destacada es la foto de una de las noticias usadas (la guardó el
-     scraper); sin ninguna, la nota queda sin imagen.
+     destacada es una foto de las noticias usadas (la guardó el scraper),
+     elegida con IA si la API paga está en uso (imagen_destacada.py).
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -43,7 +44,15 @@ from dataclasses import dataclass, field
 
 from afterdrive import calibracion
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
-from afterdrive.generacion import calidad, contexto_noticias, correccion, plan, verificacion
+from afterdrive.generacion import (
+    calidad,
+    contexto_noticias,
+    correccion,
+    imagen_destacada,
+    notas_blog,
+    plan,
+    verificacion,
+)
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
 from afterdrive.generacion.scraper_afterdrive import CATEGORIAS, get_ejemplos_por_tags
 from afterdrive.ia import consumo, llm, redaccion
@@ -140,7 +149,7 @@ def _build_user_prompt(
     plan_nota: dict | None = None,
     aciertos: list[str] | None = None,
     propios: list[dict] | None = None,
-    enlaces: list[dict] | None = None,
+    blog: list | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -169,12 +178,8 @@ def _build_user_prompt(
             + _formatear_ejemplos([{"titulo": p["titulo"], "cuerpo": p["cuerpo"]} for p in propios],
                                   ajustes.chars_ejemplo)
         )
-    if enlaces and not ajustes.compacto:
-        partes.append(
-            "## Notas del blog para enlazar\n"
-            "Enlazá una o dos donde aporten, con un texto de enlace descriptivo.\n"
-            + "\n".join(f"- [{e['titulo']}]({e['url']})" for e in enlaces)
-        )
+    if blog:
+        partes.append(notas_blog.formatear(blog, compacto=ajustes.compacto))
     if evitar:
         partes.append(
             "## Correcciones de notas anteriores\n"
@@ -388,8 +393,13 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print("  [WARN] No hay noticias scrapeadas: la nota se escribe sin datos concretos.", flush=True)
 
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
-    enlaces = [{"titulo": e.get("titulo", ""), "url": e["url"]} for e in ejemplos if e.get("url") and e.get("titulo")][:4]
     ejemplos = ejemplos[: ajustes.max_ejemplos]
+    # Notas de AfterDrive by Alephee para citar y enlazar, en el idioma de la nota.
+    from afterdrive import hubspot
+    blog = notas_blog.relacionadas(_consulta(categorias, tema, regiones), categorias,
+                                   hubspot.idioma({"regiones": regiones}), limite=3 if ajustes.compacto else 4)
+    if blog:
+        print(f"  Notas del blog para citar si encajan: {len(blog)}", flush=True)
     print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}", flush=True)
 
     cal = _calibracion(persona)
@@ -408,16 +418,18 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         noticias, _pedido(categorias, tema), estructura,
         publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
         contexto=contexto_noticias.formatear(noticias, max_chars=5000), idioma=voz.idioma,
+        notas_blog=[f"{n.titulo}: {n.resumen}" if n.resumen else n.titulo for n in blog],
     )
     if plan_nota:
         print(f"  Plan: {plan_nota['titulo']}", flush=True)
 
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
-                                  cal.aciertos, propios, enlaces)
+                                  cal.aciertos, propios, blog)
 
-    extra = " ".join([_formatear_clientes(clientes_docs), tema or ""])
-    permitidas = tuple(x for x in [puntapie_url, redaccion.alephee_url(), *(e["url"] for e in enlaces)] if x)
+    # Lo que dicen los resúmenes de las notas del blog también respalda datos (al citarlas).
+    extra = " ".join([_formatear_clientes(clientes_docs), tema or "", *(n.resumen for n in blog)])
+    permitidas = tuple(x for x in [puntapie_url, redaccion.alephee_url(), *(n.url for n in blog)] if x)
     palabra_clave = (plan_nota or {}).get("palabra_clave", "")
 
     # Hasta MAX_INTENTOS: si la nota no pasa el saneo o tiene un problema grave
@@ -496,6 +508,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "tema": tema,
         "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],   # la imagen se suma abajo
         "ejemplos_usados": [e.get("url") for e in ejemplos],
+        "notas_blog_sugeridas": [n.como_dict() for n in blog],
+        "notas_blog_citadas": [n.como_dict() for n in notas_blog.citadas(articulo, blog)],
         "evaluacion": evaluacion,
         "calidad": {
             "puntaje": puntaje(evaluacion) if evaluacion else None,
@@ -523,17 +537,29 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         doc["embedding"] = mejor.embedding
         doc["embedding_modelo"] = llm.modelo_embeddings()
 
-    # Imagen destacada: la foto de una noticia usada (primero las que respaldan
-    # la nota). Las fotos de las demás quedan en `fuentes` para elegir otra al revisarla.
+    # Imagen destacada: una foto de las noticias (primero las que respaldan la
+    # nota), elegida con IA si la API paga está en uso. Las fotos de todas
+    # quedan en `fuentes` (con lo que opinó la IA) para elegir otra al revisarla.
     usadas_ids = {id(n) for n in usadas}
-    imagen = contexto_noticias.imagen_para_nota(usadas + [n for n in noticias if id(n) not in usadas_ids])
-    if imagen:
-        doc["imagen"] = {**imagen, "alt": calidad.partes(articulo).titulo or imagen["alt"]}
-        print(f"  Imagen destacada: la de '{imagen['origen']['titulo'][:60]}'", flush=True)
+    titulo = calidad.partes(articulo).titulo
+    eleccion = imagen_destacada.elegir(usadas + [n for n in noticias if id(n) not in usadas_ids], titulo,
+                                       (plan_nota or {}).get("angulo", ""))
+    if eleccion.imagen:
+        doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
+        print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
     else:
-        print("  [AVISO] Ninguna noticia tiene imagen: la nota se guarda sin imagen destacada.", flush=True)
-    doc["fuentes"] = [{"titulo": n.titulo, "url": n.url, **({"imagen": n.imagen["url"]} if n.imagen else {})}
-                      for n in noticias]
+        print(f"  [AVISO] La nota se guarda sin imagen destacada: {eleccion.motivo}", flush=True)
+    doc["imagen_eleccion"] = eleccion.como_dict()
+
+    def _fuente(n) -> dict:
+        f = {"titulo": n.titulo, "url": n.url}
+        if n.imagen:
+            f["imagen"] = n.imagen["url"]
+            veredicto = eleccion.veredictos.get(n.imagen["url"])
+            if veredicto:
+                f["imagen_apta"], f["imagen_motivo"] = veredicto["apta"], veredicto["motivo"]
+        return f
+    doc["fuentes"] = [_fuente(n) for n in noticias]
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)

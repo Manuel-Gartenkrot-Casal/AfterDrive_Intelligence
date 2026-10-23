@@ -625,3 +625,41 @@ def test_sin_fotos_la_nota_se_guarda_sin_imagen(entorno):
     _, col, _ = entorno
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     assert "imagen" not in col.docs[0] and "imagen_error" not in col.docs[0]
+
+
+def test_lo_que_opino_la_ia_de_cada_foto_queda_en_las_fuentes(entorno, monkeypatch):
+    _, col, _ = entorno
+    from afterdrive.generacion import imagen_destacada
+    noticias = [Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió.", url="https://n/1",
+                        imagen={"url": "https://n/1.jpg", "alt": ""}, imagen_buscada=True)]
+    monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
+    monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="": imagen_destacada.Eleccion(
+        None, "ia", {"https://n/1.jpg": {"apta": False, "motivo": "Es un logo."}}, motivo="La IA descartó todas las fotos."))
+    assert g.generar_nota(["autopartes"], persona="comercial")["success"]
+    guardada = col.docs[0]
+    assert "imagen" not in guardada and guardada["imagen_eleccion"]["metodo"] == "ia"
+    assert guardada["fuentes"][0] == {"titulo": "Frasle amplía su planta", "url": "https://n/1", "imagen": "https://n/1.jpg",
+                                      "imagen_apta": False, "imagen_motivo": "Es un logo."}
+
+
+def test_la_nota_puede_citar_y_enlazar_notas_de_afterdrive(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    from afterdrive.generacion import notas_blog
+    blog = [notas_blog.NotaBlog("Catálogo y fitment", "https://afterdrive.alephee.com/es/blog/catalogo",
+                                "El fitment incompleto explica 3 de cada 10 devoluciones.", "blog")]
+    pedidos = {}
+    monkeypatch.setattr(notas_blog, "relacionadas", lambda consulta, cats, idioma, limite=4: pedidos.update(idioma=idioma) or blog)
+    con_cita = NOTA.replace("Con más oferta local", "Como analizamos en AfterDrive by Alephee, "
+                            "[el fitment incompleto explica 3 de cada 10 devoluciones](https://afterdrive.alephee.com/es/blog/catalogo). "
+                            "Con más oferta local")
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: (llamadas.update(plan_user=user) or PLAN)
+                        if system.startswith("Sos el editor") else (llamadas.update(user=user) or con_cita))
+    assert g.generar_nota(["autopartes"], regiones=["argentina"])["success"]
+    assert pedidos["idioma"] == "es"
+    assert "[B1] Catálogo y fitment" in llamadas["user"] and "AfterDrive by Alephee" in llamadas["user"]
+    assert "Catálogo y fitment: El fitment incompleto" in llamadas["plan_user"]
+    guardada = col.docs[0]
+    assert "](https://afterdrive.alephee.com/es/blog/catalogo)" in guardada["contenido"]   # no se quita
+    assert guardada["notas_blog_citadas"] == [{"titulo": "Catálogo y fitment",
+                                               "url": "https://afterdrive.alephee.com/es/blog/catalogo", "origen": "blog"}]
+    assert "3 de cada 10" not in guardada["verificacion"]["sin_respaldo"]   # el resumen respalda el dato

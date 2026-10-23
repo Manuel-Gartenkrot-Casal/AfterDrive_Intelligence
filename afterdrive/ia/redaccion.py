@@ -4,6 +4,7 @@ redaccion.py — System prompts de redacción de notas.
 Interfaz:
     system_prompt(persona, region=None, compacto=False, extension=None, directiva="") -> str
     voz(regiones) -> Voz
+    voz_de_idioma(cod) -> Voz          es, pt o en (los blogs de HubSpot)
     extension(largo) -> str          "corto" | "medio" | "largo" -> rango de palabras
     alephee_url() -> str
     PERSONAS
@@ -61,6 +62,15 @@ _VOCES = {
 }
 
 
+# Voz de cada blog de AfterDrive en HubSpot: la que usan las traducciones.
+_VOZ_DE_BLOG = {"es": "argentina", "pt": "brasil", "en": "asia"}
+
+
+def voz_de_idioma(cod: str) -> Voz:
+    """Voz de una traducción al idioma de un blog (es, pt, en)."""
+    return _VOCES[_VOZ_DE_BLOG[cod]]
+
+
 def alephee_url() -> str:
     """A dónde lleva el CTA cuando la nota no tiene un puntapié propio."""
     return os.getenv("ALEPHEE_URL", "https://alephee.com").strip() or "https://alephee.com"
@@ -107,7 +117,11 @@ tipo "cada X km" o "un Y%".
 - La primera vez que uses un dato de una noticia, enlazala en el texto: \
 "según [el medio o la noticia](url de esa noticia)". Solo URLs que aparecen en las noticias \
 de contexto o en los enlaces sugeridos del pedido: nunca inventes una URL.
-- No escribas una sección de fuentes al final: se agrega sola."""
+- No escribas una sección de fuentes al final: se agrega sola.
+- Las notas de AfterDrive by Alephee que trae el pedido son análisis propios del blog: si una \
+encaja con lo que estás contando, citala como fuente propia ("como analizamos en AfterDrive by \
+Alephee, [texto descriptivo](url de esa nota)"), solo con lo que dice su resumen. Una o dos como \
+mucho, y ninguna si no encajan."""
 
 _REGLAS_OFICIO = """\
 ## Oficio del sector
@@ -139,8 +153,8 @@ _SEO = """\
 - Título de 60 caracteres como máximo, concreto, sin signos de exclamación.
 - Si el pedido trae una palabra clave, usala en el título, en el primer párrafo, en un título \
 de sección y en la meta description, sin forzarla.
-- Si el pedido trae notas del blog para enlazar, enlazá una o dos donde aporten, con un texto \
-de enlace descriptivo (nunca "click acá")."""
+- Los enlaces a notas de AfterDrive by Alephee llevan un texto de enlace descriptivo (nunca \
+"click acá" ni la URL sola) y van donde el lector quiera profundizar, no amontonados al final."""
 
 
 def _secciones_fijas(v: Voz, compacto: bool) -> str:
@@ -300,6 +314,7 @@ def system_prompt(
             "- Neumático (goma) no es llanta (aro). Motor no es transmisión.\n"
             "- Markdown: título con \"# \", secciones con \"## \". Negrita en cifras y empresas.\n"
             "- Título de 60 caracteres como máximo. No inventes URLs.\n"
+            "- Si una nota de AfterDrive by Alephee del pedido encaja, citala como propia y enlazala; si no, no.\n"
             f"- Extensión: {extension}. Sin repetir ideas.",
             _secciones_fijas(v, compacto=True),
             _cierre(v, puntapie_url),

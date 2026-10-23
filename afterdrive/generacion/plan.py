@@ -2,7 +2,8 @@
 plan.py — El plan de una Nota, antes de escribirla.
 
 Interfaz:
-    planificar(noticias, pedido, estructura, publicadas=(), reglas=()) -> dict | None
+    planificar(noticias, pedido, estructura, publicadas=(), reglas=(), contexto="", idioma="",
+               notas_blog=()) -> dict | None
     formatear(plan, noticias) -> str      bloque para el prompt de redacción
     noticias_del_plan(plan, noticias) -> list
 
@@ -35,16 +36,23 @@ Antes de que un redactor escriba, armás el plan de la nota.
 - Cada sección indica qué noticias usa, por número. Una sección sin noticias es de análisis y no lleva cifras.
 - La palabra clave es lo que un repuestero o un distribuidor buscaría en Google: de 2 a 4 palabras, en minúscula.
 - Título de 60 caracteres como máximo, que incluya la palabra clave.
+- Si una nota de AfterDrive by Alephee de la lista trata lo mismo que una sección, poné su número en "blog" de
+  esa sección: la nota la va a citar como análisis propio y enlazarla. Solo si encaja de verdad; si ninguna
+  encaja, "blog" queda vacío en todas. Como mucho dos en toda la nota.
 - Las implicancias son acciones concretas para un distribuidor, repuestero o taller (precios, stock, canales, catálogo).
 
 ## Formato de salida
 Respondé solo con este JSON:
 {"angulo": "una oración", "titulo": "...", "palabra_clave": "...",
- "secciones": [{"titulo": "...", "idea": "una oración", "noticias": [1, 2]}],
+ "secciones": [{"titulo": "...", "idea": "una oración", "noticias": [1, 2], "blog": []}],
  "implicancias": ["...", "..."]}"""
 
 
-def _normalizar(data: dict, n_noticias: int) -> dict | None:
+def _indices(valores, maximo: int) -> list[int]:
+    return sorted({int(i) for i in (valores or []) if isinstance(i, int | float) and 1 <= int(i) <= maximo})
+
+
+def _normalizar(data: dict, n_noticias: int, n_blog: int = 0) -> dict | None:
     if not isinstance(data, dict):
         return None
     titulo = " ".join(str(data.get("titulo") or "").split())
@@ -52,10 +60,10 @@ def _normalizar(data: dict, n_noticias: int) -> dict | None:
     for s in data.get("secciones") or []:
         if not isinstance(s, dict) or not str(s.get("titulo") or "").strip():
             continue
-        idx = [int(i) for i in (s.get("noticias") or []) if isinstance(i, int | float) and 1 <= int(i) <= n_noticias]
         secciones.append({"titulo": " ".join(str(s["titulo"]).split())[:120],
                           "idea": " ".join(str(s.get("idea") or "").split())[:300],
-                          "noticias": sorted(set(idx))})
+                          "noticias": _indices(s.get("noticias"), n_noticias),
+                          "blog": _indices(s.get("blog") if isinstance(s.get("blog"), list) else [], n_blog)})
     if not titulo or len(secciones) < 2:
         return None
     return {
@@ -68,7 +76,8 @@ def _normalizar(data: dict, n_noticias: int) -> dict | None:
 
 
 def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: list[str] = (),
-               reglas: list[str] = (), contexto: str = "", idioma: str = "") -> dict | None:
+               reglas: list[str] = (), contexto: str = "", idioma: str = "",
+               notas_blog: list[str] = ()) -> dict | None:
     """Plan de la nota, o None si el modelo no devolvió uno válido. Nunca lanza."""
     from afterdrive.ia.lm_studio import _extraer_json
 
@@ -77,6 +86,9 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
         partes.append("## Estructura que pide el estilo de la nota\n" + "\n".join(f"- {e}" for e in estructura))
     if publicadas:
         partes.append("## Notas ya publicadas (no repitas su ángulo)\n" + "\n".join(f"- {t}" for t in publicadas))
+    if notas_blog:
+        partes.append("## Notas de AfterDrive by Alephee que se pueden citar (solo si encajan)\n"
+                      + "\n".join(f"{i}. {t}" for i, t in enumerate(notas_blog, 1)))
     if reglas:
         partes.append("## Correcciones del equipo\n" + "\n".join(f"- {r}" for r in reglas))
     if idioma:
@@ -88,7 +100,7 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
     try:
         crudo = llm.completar(_SYSTEM, "\n\n".join(partes), temperature=0.4, max_tokens=MAX_TOKENS,
                               tarea="planificacion")
-        plan = _normalizar(_extraer_json(crudo), len(noticias))
+        plan = _normalizar(_extraer_json(crudo), len(noticias), len(notas_blog))
     except llm.Cancelada:
         raise
     except Exception as e:
@@ -109,7 +121,9 @@ def formatear(plan: dict) -> str:
     lineas.append("Secciones:")
     for i, s in enumerate(plan["secciones"], 1):
         fuentes = f" (noticias {', '.join(f'[{n}]' for n in s['noticias'])})" if s["noticias"] else " (análisis, sin cifras)"
-        lineas.append(f"{i}. {s['titulo']}: {s['idea']}{fuentes}")
+        citar = (f" Citá la nota de AfterDrive by Alephee {', '.join(f'[B{b}]' for b in s['blog'])}."
+                 if s.get("blog") else "")
+        lineas.append(f"{i}. {s['titulo']}: {s['idea']}{fuentes}{citar}")
     if plan.get("implicancias"):
         lineas.append("Implicancias para la sección del negocio:")
         lineas += [f"- {x}" for x in plan["implicancias"]]

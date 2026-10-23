@@ -46,6 +46,10 @@ _Avoid_: status
 **Nota descartada**:
 Respuesta del modelo que el Saneo rechazó; se guarda con el motivo, nunca se publica.
 
+**Traducción**:
+Versión de una Nota en otro idioma del blog (español, portugués o inglés), que se sube a HubSpot como borrador vinculado al post original.
+_Avoid_: variante, copia
+
 **Ejemplo**:
 Nota real publicada en el blog de AfterDrive, usada como referencia de tono y estructura.
 

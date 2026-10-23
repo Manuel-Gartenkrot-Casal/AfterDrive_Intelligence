@@ -4,6 +4,8 @@ hubspot.py — Publica Notas aprobadas en el blog de HubSpot.
 Interfaz:
     configurado() -> bool
     enviar(nota, publicar=False) -> dict   {"id", "url", "estado"}
+    enviar_traduccion(nota, cod, contenido, primario_id, previo=None) -> dict
+                                            la versión en otro idioma, como borrador vinculado al post original
     destino(nota) -> dict                   blog, idioma, etiquetas y autor que le tocan
     autores(idioma) -> [{"id", "nombre"}]   autores del blog en ese idioma
     vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
@@ -26,6 +28,15 @@ porque son de toda la cuenta. El autor es el elegido al revisar la nota
 
 Si la Nota ya se envió antes (tiene hubspot.id), se actualiza esa misma entrada
 en lugar de crear otra: reenviar después de editar no duplica posts.
+
+Traducciones (ver traducciones.py): cada versión en otro idioma se crea como
+"variación de idioma" del post original (create-language-variation), así
+HubSpot las muestra como traducciones entre sí (selector de idioma, hreflang).
+Si eso falla (por ejemplo, si los tres blogs no están configurados como
+versiones de un mismo blog multilenguaje), se crea un borrador normal en el
+blog de ese idioma y se intenta vincularlo (attach-to-lang-group). Si tampoco
+se puede, queda como borrador suelto, con un aviso. Siempre como borrador.
+Los códigos de idioma de HubSpot salen de LENGUAJES (HUBSPOT_LENGUAJES los cambia).
 """
 
 from __future__ import annotations
@@ -74,6 +85,12 @@ ETIQUETAS = {
     "eventos":            ("132665181879", "192964709123", "136907936677"),
 }
 _COLUMNA = {"es": 0, "pt": 1, "en": 2}
+
+# Código de idioma de cada blog en HubSpot. HUBSPOT_LENGUAJES="es=es-ar,pt=pt-br,en=en" los cambia
+# (deben coincidir con el idioma configurado en cada blog).
+LENGUAJES = {"es": "es", "pt": "pt-br", "en": "en"}
+API_VARIACION = f"{API}/multi-language/create-language-variation"
+API_VINCULAR = f"{API}/multi-language/attach-to-lang-group"
 
 _transporte = {"post": requests.post, "patch": requests.patch, "get": requests.get,
                "subir": requests.post}   # seam para los tests
@@ -320,3 +337,106 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
         "estado": data.get("state") or cuerpo["state"],
         "slug": data.get("slug") or cuerpo.get("slug") or (nota.get("hubspot") or {}).get("slug") or "",
     }
+
+
+class ErrorHubSpotParcial(ErrorHubSpot):
+    """El post se creó pero no se pudo completar: `post_id` permite actualizarlo en el próximo intento."""
+
+    def __init__(self, mensaje: str, post_id: str):
+        super().__init__(mensaje)
+        self.post_id = post_id
+
+
+def lenguaje(cod: str) -> str:
+    """Código de idioma de HubSpot para es, pt o en."""
+    for par in os.getenv("HUBSPOT_LENGUAJES", "").split(","):
+        clave, _, valor = par.partition("=")
+        if clave.strip() == cod and valor.strip():
+            return valor.strip().lower()
+    return LENGUAJES[cod]
+
+
+def _llamar(metodo: str, url: str, cuerpo: dict):
+    try:
+        resp = _transporte[metodo](url, json=cuerpo, headers=_headers(), timeout=TIMEOUT_S)
+    except requests.RequestException as e:
+        raise ErrorHubSpot(f"No se pudo conectar con HubSpot: {e}") from e
+    return resp
+
+
+def _resultado(data: dict, cuerpo: dict, previo: dict | None = None) -> dict:
+    previo = previo or {}
+    return {
+        "id": str(previo.get("id") or data.get("id") or ""),   # el post que se actualizó manda
+        "url": data.get("url") or previo.get("url") or "",
+        "estado": data.get("state") or cuerpo.get("state") or "DRAFT",
+        "slug": data.get("slug") or cuerpo.get("slug") or previo.get("slug") or "",
+    }
+
+
+def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, previo: dict | None = None) -> dict:
+    """Crea (o actualiza) la versión de la Nota en el idioma `cod`, como borrador.
+
+    contenido: la nota traducida (Markdown). primario_id: el post original en
+    HubSpot. previo: lo que se guardó de un envío anterior de esta traducción.
+    Devuelve {"id", "url", "estado", "slug", "vinculada", "aviso"}.
+    """
+    if not configurado():
+        raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
+    origen = idioma(nota)
+    if cod not in BLOGS or not origen or cod == origen:
+        raise ErrorHubSpot(f"No hay a qué idioma traducir: {cod}.")
+    partes = preparar(contenido)
+    categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
+    cuerpo = {
+        "name": partes["titulo"], "htmlTitle": partes["titulo"], "postBody": partes["html"],
+        "metaDescription": partes["meta"], "state": "DRAFT",
+    }
+    imagen = _imagen(nota, partes["titulo"])
+    if imagen:
+        cuerpo.update(useFeaturedImage=True, featuredImage=imagen["url"], featuredImageAltText=imagen["alt"])
+    previo = previo or {}
+    if previo.get("id"):
+        # Ya existe: solo el contenido. Autor y etiquetas no se pisan (se pueden haber cambiado a mano).
+        resp = _llamar("patch", f"{API}/{previo['id']}", cuerpo)
+        if resp.status_code >= 400:
+            raise _error(resp)
+        return {**_resultado(resp.json(), cuerpo, previo), "vinculada": previo.get("vinculada", False), "aviso": ""}
+
+    cuerpo["blogAuthorId"] = AUTOR_POR_DEFECTO[cod]
+    if categorias:
+        cuerpo["tagIds"] = [ETIQUETAS[c][_COLUMNA[cod]] for c in categorias]
+    cuerpo["slug"] = _slug(partes["titulo"], f"{str(nota.get('_id', ''))[-6:]}-{cod}")
+    forzado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    if forzado:
+        # Blog de pruebas: todo al mismo blog, sin vincular (no es multilenguaje).
+        resp = _llamar("post", API, {**cuerpo, "contentGroupId": forzado})
+        if resp.status_code >= 400:
+            raise _error(resp)
+        return {**_resultado(resp.json(), cuerpo), "vinculada": False,
+                "aviso": "Blog de pruebas: la traducción se sube suelta, sin vincular al post original."}
+
+    # 1) Variación de idioma del post original: HubSpot la crea en el blog de ese idioma, ya vinculada.
+    resp = _llamar("post", API_VARIACION, {"id": str(primario_id), "language": lenguaje(cod),
+                                           "primaryLanguage": lenguaje(origen)})
+    if resp.status_code < 400 and (resp.json() or {}).get("id"):
+        nuevo = str(resp.json()["id"])
+        actualizado = _llamar("patch", f"{API}/{nuevo}", cuerpo)
+        if actualizado.status_code >= 400:
+            raise ErrorHubSpotParcial(str(_error(actualizado)), nuevo)
+        return {**_resultado(actualizado.json(), cuerpo, {"id": nuevo}), "vinculada": True, "aviso": ""}
+    motivo_variacion = str(_error(resp))
+
+    # 2) Borrador normal en el blog de ese idioma, y vincularlo al original.
+    resp = _llamar("post", API, {**cuerpo, "contentGroupId": BLOGS[cod][0]})
+    if resp.status_code >= 400:
+        raise _error(resp)
+    creado = _resultado(resp.json(), cuerpo)
+    vinculo = _llamar("post", API_VINCULAR, {"id": creado["id"], "language": lenguaje(cod),
+                                             "primaryId": str(primario_id), "primaryLanguage": lenguaje(origen)})
+    if vinculo.status_code < 400:
+        return {**creado, "vinculada": True, "aviso": ""}
+    return {**creado, "vinculada": False,
+            "aviso": (f"Se subió como borrador suelto en {BLOGS[cod][1]}: HubSpot no dejó vincularla como traducción "
+                      f"({motivo_variacion}). Revisá que los blogs estén configurados como versiones de un mismo "
+                      "blog multilenguaje y el idioma de cada uno (HUBSPOT_LENGUAJES).")}

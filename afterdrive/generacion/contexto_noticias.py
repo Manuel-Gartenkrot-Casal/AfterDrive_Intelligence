@@ -5,7 +5,8 @@ Interfaz:
     seleccionar(consulta, limite=5) -> list[Noticia]
     formatear(noticias, max_chars=7000) -> str
     marcar_usadas(noticias) -> None
-    imagen_para_nota(noticias, max_busquedas=3) -> {"url", "alt", "origen"} | None
+    con_foto(noticias, max_busquedas=3, limite=4) -> list[Noticia]   las que tienen foto
+    imagen_de(noticia) -> {"url", "alt", "origen"}
 
 Antes la generación de notas no leía las noticias scrapeadas: el modelo
 escribía solo con las categorías y los ejemplos de estilo, y los prompts le
@@ -283,22 +284,28 @@ def marcar_usadas(noticias: list[Noticia]) -> None:
         )
 
 
-def imagen_para_nota(noticias: list[Noticia], max_busquedas: int = 3) -> dict | None:
-    """La foto de la primera noticia que tenga una, en el orden recibido.
+def con_foto(noticias: list[Noticia], max_busquedas: int = 3, limite: int = 4) -> list[Noticia]:
+    """Las noticias que tienen foto, en el orden recibido (hasta `limite`).
 
     Los artículos scrapeados antes de que se guardara la imagen no la tienen:
     a esos se les descarga la página una vez (hasta `max_busquedas` por nota)
     y lo encontrado queda guardado, aunque sea "no tiene".
     """
-    busquedas = 0
+    busquedas, resultado = 0, []
     for n in noticias:
+        if len(resultado) >= limite:
+            break
         if not n.imagen and not n.imagen_buscada and n.url and busquedas < max_busquedas:
             busquedas += 1
             n.imagen = _buscar_imagen(n)
         if n.imagen:
-            return {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""),
-                    "origen": {"titulo": n.titulo, "url": n.url}}
-    return None
+            resultado.append(n)
+    return resultado
+
+
+def imagen_de(n: Noticia) -> dict:
+    """El campo `imagen` de una nota con la foto de esta noticia."""
+    return {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""), "origen": {"titulo": n.titulo, "url": n.url}}
 
 
 def _buscar_imagen(n: Noticia) -> dict | None:

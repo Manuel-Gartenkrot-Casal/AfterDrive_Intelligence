@@ -34,7 +34,6 @@ rechazada) y la edición del texto de una Nota.
 import datetime
 import re
 
-import requests
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -397,53 +396,17 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
     url = imagen.get("url") or ""
     if not url or imagen.get("hubspot_url"):
         return ""
+    from afterdrive import imagen_web
+
     try:
-        contenido, mime = _descargar_imagen(url)
+        contenido, mime = imagen_web.descargar(url)
         extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
         copia = hubspot.subir_imagen(contenido, mime, f"nota-{doc['_id']}.{extension}")
-    except (ErrorHistorial, hubspot.ErrorHubSpot) as e:
+    except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
         return f"No se pudo copiar la imagen a HubSpot ({e}). Se usa el link original."
     col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
     doc["imagen"] = {**imagen, "hubspot_url": copia}
     return ""
-
-
-IMAGEN_MAX_BYTES = 10 * 1024 * 1024
-_TRANSPORTE_IMAGEN = {"get": requests.get}   # seam para los tests
-
-
-def _descargar_imagen(url: str) -> tuple[bytes, str]:
-    """(bytes, mime) de una imagen pública. Cada salto de redirección se valida contra la red interna."""
-    from afterdrive.ingesta.scraper import url_publica
-
-    for _ in range(4):
-        if not _url_imagen_valida(url) or not url_publica(url):
-            raise ErrorHistorial("la imagen no está en una URL https pública")
-        try:
-            resp = _TRANSPORTE_IMAGEN["get"](url, timeout=(5, 20), stream=True, allow_redirects=False,
-                                             headers={"User-Agent": "Mozilla/5.0 (AfterDrive)", "Accept": "image/*"})
-        except requests.RequestException as e:
-            raise ErrorHistorial(f"no se pudo descargar: {e}") from e
-        if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("Location"):
-            from urllib.parse import urljoin
-            url = urljoin(url, resp.headers["Location"])
-            continue
-        break
-    else:
-        raise ErrorHistorial("demasiadas redirecciones")
-    if resp.status_code >= 400:
-        raise ErrorHistorial(f"el sitio respondió {resp.status_code}")
-    mime = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-    if not mime.startswith("image/") or mime == "image/svg+xml":
-        raise ErrorHistorial(f"no es una imagen ({mime or 'sin tipo'})")
-    contenido = b""
-    for parte in resp.iter_content(64 * 1024):
-        contenido += parte
-        if len(contenido) > IMAGEN_MAX_BYTES:
-            raise ErrorHistorial("la imagen pesa más de 10 MB")
-    if not contenido:
-        raise ErrorHistorial("la imagen vino vacía")
-    return contenido, mime
 
 
 def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
@@ -469,28 +432,14 @@ def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
     return resultado[:limite]
 
 
-def _url_imagen_valida(url: str) -> bool:
-    """https con un nombre de dominio (no una IP).
-
-    Al subir la nota el servidor descarga la imagen para copiarla a HubSpot:
-    ahí además se valida que el host resuelva solo a IPs públicas (scraper.url_publica).
-    """
-    from urllib.parse import urlparse
-    try:
-        p = urlparse(url)
-    except ValueError:
-        return False
-    host = p.hostname or ""
-    return p.scheme == "https" and "." in host and not re.fullmatch(r"[\d.]+|\[?[0-9a-f:]+\]?", host)
-
-
 def cambiar_imagen(coleccion: str, item_id: str, url: str, alt: str = "", base=None) -> dict | None:
     """Imagen destacada de una Nota para HubSpot. url vacía la saca."""
     if coleccion not in COLECCIONES_CON_ESTADO:
         raise ErrorHistorial("Solo las notas generadas tienen imagen destacada.")
     url = url.strip() if isinstance(url, str) else ""
     alt = " ".join(alt.split())[:200] if isinstance(alt, str) else ""
-    if url and not _url_imagen_valida(url):
+    from afterdrive.imagen_web import url_valida
+    if url and not url_valida(url):
         raise ErrorHistorial("La imagen tiene que ser una URL https pública.")
     col = _base(base)[coleccion]
     doc = col.find_one({"_id": _oid(item_id)}, {"fuentes": 1})
@@ -515,8 +464,9 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
     doc = _base(base)[coleccion].find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING)
     if not doc:
         return None
-    # Fotos de las noticias de la nota, para elegir otra destacada.
-    de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", "")}
+    # Fotos de las noticias de la nota, para elegir otra destacada (con lo que opinó la IA, si las miró).
+    de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", ""),
+                    **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", "")} if "imagen_apta" in f else {})}
                    for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
         return {**hubspot.vista_previa(doc), "imagen_propia": doc.get("imagen") or None,

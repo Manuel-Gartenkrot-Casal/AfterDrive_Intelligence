@@ -53,6 +53,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/calibracion` | Lo que la generación aprendió: calificaciones, promedios por persona y proveedor, reglas activas, aciertos, notas propias de referencia y umbral del evaluador |
 | `GET /ayuda` | Página de documentación (sin sesión, redirige al login) |
 | `GET /api/docs` · `GET /api/docs/<slug>` | Lista de documentos de Ayuda y el Markdown de uno (solo los de `DOCUMENTOS`) |
+| `POST /api/hubspot/traducciones` | `{coleccion, id}`: encola la traducción a los otros idiomas y su subida a HubSpot como borradores (la nota tiene que estar subida en su idioma). 202 con el id de la corrida. `POST /api/hubspot/enviar` también la encola y lo devuelve en `traducciones` |
 | `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |
 | `GET /api/historial/vista-previa/<coleccion>/<id>` | Cómo saldría en el blog: `titulo`, `meta`, `slug`, `etiquetas`, `imagen`, `html`, `imagenes_noticias` (fotos de las noticias de la nota, para elegir otra) |
 | `GET /api/hubspot/estado` | `{configurado}` |

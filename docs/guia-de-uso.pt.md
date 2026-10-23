@@ -79,7 +79,13 @@ Em **Histórico → Como a geração aprende** você vê tudo o que o sistema ap
 
 ### Imagem de destaque
 
-Cada post novo sai com a foto de uma das notícias que usou. Na **Pré-visualização** você pode escolher a foto de outra das suas notícias, colar a URL de uma imagem própria ou removê-la. Ao publicar, a imagem é copiada ao HubSpot. Atenção: são fotos de outros veículos; confira se podem ser usadas antes de publicar.
+Cada post novo sai com a foto de uma das notícias que usou. Com a API paga, a IA olha as fotos e escolhe a mais adequada (descarta logos, banners ou gráficos); se nenhuma servir, o post fica sem imagem e ela diz por quê. Na **Pré-visualização** você pode escolher a foto de outra das suas notícias, colar a URL de uma imagem própria ou removê-la. Ao publicar, a imagem é copiada ao HubSpot. Na pré-visualização, as fotos que a IA descartou aparecem marcadas. Atenção: são fotos de outros veículos; confira se podem ser usadas antes de publicar.
+
+### Outros idiomas e citações
+
+Ao aprovar e enviar um post, o sistema o traduz para os outros dois idiomas do blog (espanhol, português e inglês) e envia cada versão ao HubSpot como rascunho, vinculada à original. Você acompanha em **Atividade** e, ao abrir o post, no bloco **Outros idiomas**, com um link para cada rascunho e o texto traduzido. Se uma falhar, **Reenviar as traduções** tenta de novo.
+
+Quando combina com o tema, o post cita posts anteriores do AfterDrive by Alephee e os linka. O bloco **Citações ao AfterDrive** mostra quais.
 
 ## Agendamento
 
@@ -92,7 +98,7 @@ Os sites verificados para buscar notícias.
 - **Adicionar** inclui a fonte direto.
 - **Testar e adicionar** verifica primeiro e só adiciona se encontrar artigos do setor.
 - **Pausar** deixa de verificá-la sem excluí-la.
-- **Buscar recomendações** sugere sites novos do setor.
+- **Buscar recomendações** sugere sites novos do setor: busca na internet e também pede ideias à IA (cada site é verificado antes de ser sugerido).
 
 ## Execuções
 

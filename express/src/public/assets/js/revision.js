@@ -142,7 +142,7 @@ function lista(items, clase) {
 }
 
 var NOMBRE_TAREA = { redaccion: 'redacción', correccion: 'corrección', planificacion: 'plan', evaluacion: 'evaluación',
-                     clasificacion: 'fichas', embeddings: 'vectores', general: 'otras' };
+                     clasificacion: 'fichas y fotos', embeddings: 'vectores', traduccion: 'traducción', general: 'otras' };
 
 function pintarCosto(nota, contenedor) {
   var c = nota.costo;
@@ -158,15 +158,80 @@ function pintarCosto(nota, contenedor) {
 
 function pintarImagen(nota, contenedor) {
   var im = nota.imagen || {}, html;
+  var eleccion = nota.imagen_eleccion || {};
   if (im.url) {
     html = '<img class="revision-imagen" src="' + urlSegura(im.url) + '" alt="' + escHtml(im.alt || '') + '" referrerpolicy="no-referrer">'
       + (im.origen ? '<p class="revision-sub">Foto de la noticia: <a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener">'
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
+      + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
       + '<p class="revision-sub">Para cambiarla: Vista previa.</p>';
+  } else if (eleccion.metodo === 'ia') {
+    html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
+      + (eleccion.motivo ? '<p class="revision-sub">' + escHtml(eleccion.motivo) + '</p>' : '')
+      + '<p class="revision-sub">Podés elegir una igual o pegar otra desde Vista previa.</p>';
   } else {
     html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto. Podés poner una desde Vista previa.</p>';
   }
   contenedor.appendChild(bloqueRevision('Imagen destacada', html));
+}
+
+/* Notas de AfterDrive by Alephee que la nota cita y enlaza (solo las que encajaban). */
+function pintarCitasBlog(nota, contenedor) {
+  var sugeridas = nota.notas_blog_sugeridas || [], citadas = nota.notas_blog_citadas || [];
+  if (!sugeridas.length && !citadas.length) return;
+  var html = citadas.length
+    ? '<p class="revision-ok">Cita ' + citadas.length + ' nota(s) de AfterDrive by Alephee:</p><ul class="revision-lista">'
+      + citadas.map(function(n) {
+          return '<li><a href="' + urlSegura(n.url) + '" target="_blank" rel="noopener" translate="no">' + escHtml(n.titulo) + '</a></li>';
+        }).join('') + '</ul>'
+    : '<p class="revision-sub">No cita notas de AfterDrive by Alephee: ninguna de las relacionadas encajaba con el texto.</p>';
+  contenedor.appendChild(bloqueRevision('Citas a AfterDrive', html));
+}
+
+var NOMBRE_IDIOMA = { es: 'Español', pt: 'Portugués', en: 'Inglés' };
+
+/* Versiones en los otros idiomas del blog: estado en HubSpot y el texto traducido. */
+function pintarTraducciones(nota, contenedor) {
+  var hs = nota.hubspot_traducciones || {}, tr_ = nota.traducciones || {};
+  var codigos = Object.keys(NOMBRE_IDIOMA).filter(function(c) { return hs[c] || tr_[c]; });
+  var subida = nota.hubspot && nota.hubspot.id;
+  if (!codigos.length && !subida) return;
+  var html = codigos.length ? '' : '<p class="revision-sub">Todavía no se subieron las versiones en los otros idiomas.</p>';
+  codigos.forEach(function(c) {
+    var h = hs[c] || {}, t = tr_[c];
+    var estado = h.error ? '<span class="revision-mal">' + escHtml(h.error) + '</span>'
+      : h.id ? '<span>' + (h.vinculada ? 'borrador en HubSpot, vinculado al original' : 'borrador en HubSpot, sin vincular') + '</span>'
+               + (h.url ? ' <a href="' + urlSegura(h.url) + '" target="_blank" rel="noopener">ver</a>' : '')
+      : '<span>traducida, sin subir</span>';
+    html += '<div class="revision-traduccion"><p><strong>' + escHtml(NOMBRE_IDIOMA[c]) + ':</strong> ' + estado + '</p>'
+      + (h.aviso ? '<p class="revision-sub">' + escHtml(h.aviso) + '</p>' : '')
+      + (t && t.contenido ? '<details><summary>Ver la traducción</summary><div class="revision-traduccion-texto" translate="no">'
+                            + DOMPurify.sanitize(marked.parse(t.contenido)) + '</div></details>' : '')
+      + '</div>';
+  });
+  if (subida) {
+    html += '<button type="button" class="btn btn-xs" id="btn-traducciones" onclick="subirTraducciones(\'' + escHtml(nota._id) + '\')">'
+      + (codigos.length ? 'Volver a subir las traducciones' : 'Traducir y subir') + '</button>';
+  }
+  var conError = codigos.some(function(c) { return (hs[c] || {}).error; });
+  contenedor.appendChild(bloqueRevision('Otros idiomas', html, conError ? 'con-fallas' : ''));
+}
+
+/* Traduce (si cambió el texto) y sube las versiones en la Cola; al terminar, recarga la nota. */
+async function subirTraducciones(id) {
+  var btn = $('btn-traducciones');
+  if (btn) setBtnLoading(btn, true);
+  var errores = [];
+  try {
+    var fin = await correrEnCola('/api/hubspot/traducciones', { coleccion: 'notas_fase2', id: id }, function(l) {
+      var m = l.match(/\[ERROR\]\s*(.+)/);
+      if (m) errores.push(m[1].trim());
+      log(l, m ? 'error' : l.indexOf('[OK]') >= 0 ? 'success' : 'info');
+    }, function(d) { if (btn) btn.textContent = textoEnCola(d) || tr('Procesando…'); });
+    if (fin.estado === 'ok') showToast('Traducciones subidas a HubSpot como borrador', 'success');
+    else showToast(errores[errores.length - 1] || fin.error || 'No se pudieron subir las traducciones. Mirá el registro en Actividad.', 'error');
+  } catch (e) { showToast(e.message, 'error'); }
+  if (_notaActual && _notaActual.id === id) fase2MostrarUltima(id);
 }
 
 function pintarRevisionNota(nota, contenedor) {
@@ -201,6 +266,8 @@ function pintarRevisionNota(nota, contenedor) {
     contenedor.appendChild(bloqueRevision('Estilo y SEO', html2, estilo.some(function(h) { return h.grave; }) ? 'con-fallas' : ''));
   }
   pintarImagen(nota, contenedor);
+  pintarCitasBlog(nota, contenedor);
+  pintarTraducciones(nota, contenedor);
   pintarCosto(nota, contenedor);
   if (nota.plan) {
     var p = nota.plan, det = document.createElement('details');

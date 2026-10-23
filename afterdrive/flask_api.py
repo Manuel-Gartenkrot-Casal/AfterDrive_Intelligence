@@ -616,7 +616,49 @@ def hubspot_enviar():
         return _error_interno(e)
     if item is None:
         return jsonify({"success": False, "error": "Nota no encontrada."}), 404
-    return jsonify({"success": True, "item": item})
+    # Las versiones en los otros idiomas se traducen y suben en la Cola (tardan).
+    return jsonify({"success": True, "item": item,
+                    "traducciones": _encolar_traducciones(body.get("coleccion", ""), body.get("id", ""))})
+
+
+def _encolar_traducciones(coleccion: str, item_id: str) -> dict | None:
+    """{"id", "idiomas"} de la Corrida que traduce y sube las otras versiones, o None si no corresponde."""
+    from afterdrive import historial, traducciones
+    from afterdrive.db import db as base
+
+    if not traducciones.activas() or coleccion not in historial.COLECCIONES_CON_ESTADO:
+        return None
+    from bson import ObjectId
+    doc = base[coleccion].find_one({"_id": ObjectId(item_id)}, {"regiones": 1, "hubspot": 1})
+    idiomas = traducciones.idiomas_destino(doc or {})
+    if not doc or not (doc.get("hubspot") or {}).get("id") or not idiomas:
+        return None
+    nombres = " y ".join(traducciones.NOMBRE[c] for c in idiomas)
+    try:
+        r = cola.encolar("script", {"modulo": "afterdrive.traducciones", "argv": [coleccion, item_id]},
+                         etiqueta=f"Traducir al {nombres} y subir a HubSpot")
+    except cola.ColaLlena as e:
+        return {"error": str(e), "idiomas": idiomas}
+    return {"id": r.get("id"), "idiomas": idiomas}
+
+
+@app.route("/api/hubspot/traducciones", methods=["POST"])
+def hubspot_traducciones():
+    """Vuelve a traducir y subir las otras versiones de una nota ya subida: {"coleccion", "id"}."""
+    from bson import ObjectId
+
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    coleccion, item_id = body.get("coleccion", ""), body.get("id", "")
+    if coleccion not in historial.COLECCIONES_CON_ESTADO or not isinstance(item_id, str) or not ObjectId.is_valid(item_id):
+        return jsonify({"success": False, "error": "Nota inválida."}), 400
+    r = _encolar_traducciones(coleccion, item_id)
+    if r is None:
+        return jsonify({"success": False, "error": "Esta nota no tiene versiones para subir: subila primero a "
+                                                   "HubSpot en su idioma."}), 400
+    if r.get("error"):
+        return jsonify({"success": False, "error": r["error"]}), 429
+    return jsonify({"success": True, **r}), 202
 
 
 # ── Cola de Corridas ──────────────────────────────────────────────────────────

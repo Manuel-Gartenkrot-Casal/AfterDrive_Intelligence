@@ -276,3 +276,39 @@ def test_bedrock_marca_el_corte_por_max_tokens(bedrock, consumo_en_memoria):
     fila = consumo_en_memoria.find_one()
     assert fila["proveedor"] == "paga" and fila["truncado"] is True and fila["max_tokens"] == 1024
     assert fila["costo_usd"] > 0
+
+
+def test_converse_manda_las_imagenes_antes_del_texto(bedrock):
+    posts = bedrock([converse('{"fotos": []}')])
+    llm.completar("s", "mirá estas fotos", tarea="clasificacion",
+                  imagenes=[(b"\xff\xd8jpg", "image/jpeg"), (b"<svg/>", "image/svg+xml"), (b"PNG", "image/png")])
+    contenido = posts[0]["json"]["messages"][0]["content"]
+    assert [list(b)[0] for b in contenido] == ["image", "image", "text"]   # el SVG no se manda
+    assert contenido[0]["image"] == {"format": "jpeg", "source": {"bytes": "/9hqcGc="}}
+    assert contenido[1]["image"]["format"] == "png" and contenido[2] == {"text": "mirá estas fotos"}
+
+
+def test_chat_completions_manda_las_imagenes_como_data_url(monkeypatch, consumo_en_memoria):
+    monkeypatch.setenv("AI_PROVIDER", "paga")
+    monkeypatch.delenv("PAGA_API", raising=False)
+    monkeypatch.setenv("PAGA_API_KEY", "k")
+    monkeypatch.setenv("PAGA_BASE_URL", "https://api.paga.test/v1")
+    monkeypatch.setenv("PAGA_MODEL", "m")
+    enviados = []
+    body = {"model": "m", "choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 900, "completion_tokens": 5}}
+    monkeypatch.setattr(llm, "_transporte", {"post": lambda url, **k: enviados.append(k["json"]) or Resp(body=body),
+                                             "get": lambda *a, **k: Resp()})
+    assert llm.completar("s", "u", stream=True, imagenes=[(b"PNG", "image/png")]) == "ok"
+    payload = enviados[0]
+    assert payload["stream"] is False   # con imágenes, sin streaming
+    assert payload["messages"][1]["content"] == [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,UE5H"}}, {"type": "text", "text": "u"}]
+
+
+def test_las_imagenes_solo_van_con_la_api_paga(monkeypatch):
+    monkeypatch.setattr(llm, "usa_api_paga", lambda: False)
+    assert not llm.ve_imagenes()
+    monkeypatch.setattr(llm, "usa_api_paga", lambda: True)
+    assert llm.ve_imagenes()
+    monkeypatch.setenv("IMAGENES_CON_IA", "0")
+    assert not llm.ve_imagenes()

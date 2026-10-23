@@ -79,7 +79,13 @@ En **Historial → Cómo aprende la generación** ves todo lo que el sistema apr
 
 ### Imagen destacada
 
-Cada nota nueva sale con la foto de una de las noticias que usó. En **Vista previa** podés elegir la foto de otra de sus noticias, pegar la URL de una imagen propia o quitarla. Al publicar, la imagen se copia a HubSpot. Ojo: son fotos de otros medios; revisá que se puedan usar antes de publicar.
+Cada nota nueva sale con la foto de una de las noticias que usó. Con la API paga, la IA mira las fotos y elige la más apta (descarta logos, banners o gráficos); si no le sirve ninguna, la nota queda sin imagen y te dice por qué. En **Vista previa** podés elegir la foto de otra de sus noticias, pegar la URL de una imagen propia o quitarla. Al publicar, la imagen se copia a HubSpot. En la vista previa, las fotos que la IA descartó aparecen marcadas. Ojo: son fotos de otros medios; revisá que se puedan usar antes de publicar.
+
+### Otros idiomas y citas
+
+Al aprobar y subir una nota, el sistema la traduce a los otros dos idiomas del blog (español, portugués e inglés) y sube cada versión a HubSpot como borrador, vinculada a la original. Lo ves en **Actividad** y, al abrir la nota, en el bloque **Otros idiomas**, con un link a cada borrador y el texto traducido. Si una falla, **Volver a subir las traducciones** reintenta.
+
+Cuando encaja con el tema, la nota cita notas anteriores de AfterDrive by Alephee y las enlaza. El bloque **Citas a AfterDrive** muestra cuáles.
 
 ## Programación
 
@@ -92,7 +98,7 @@ Los sitios que se revisan para buscar noticias.
 - **Agregar** suma la fuente directo.
 - **Probar y agregar** la revisa primero y solo la suma si encuentra artículos del sector.
 - **Pausar** deja de revisarla sin borrarla.
-- **Buscar recomendaciones** sugiere sitios nuevos del sector.
+- **Buscar recomendaciones** sugiere sitios nuevos del sector: los busca en internet y también le pide ideas a la IA (cada sitio se verifica antes de sugerirlo).
 
 ## Corridas
 

@@ -79,7 +79,13 @@ In **History → How generation learns** you see everything the system learned.
 
 ### Featured image
 
-Every new post comes with the photo of one of the news stories it used. In **Preview** you can pick the photo of another of its stories, paste the URL of your own image or remove it. When publishing, the image is copied to HubSpot. Note: these are photos from other outlets; check they can be used before publishing.
+Every new post comes with the photo of one of the news stories it used. With the paid API, the AI looks at the photos and picks the most suitable one (it skips logos, banners or charts); if none works, the post has no image and it tells you why. In **Preview** you can pick the photo of another of its stories, paste the URL of your own image or remove it. When publishing, the image is copied to HubSpot. In Preview, the photos the AI rejected are marked. Note: these are photos from other outlets; check they can be used before publishing.
+
+### Other languages and citations
+
+When you approve and upload a post, the system translates it into the blog's other two languages (Spanish, Portuguese and English) and uploads each version to HubSpot as a draft, linked to the original. You see it in **Activity** and, when you open the post, in the **Other languages** block, with a link to each draft and the translated text. If one fails, **Upload the translations again** retries.
+
+When it fits the topic, the post cites earlier AfterDrive by Alephee posts and links to them. The **AfterDrive citations** block shows which.
 
 ## Schedule
 
@@ -92,7 +98,7 @@ The sites checked for news.
 - **Add** adds the source directly.
 - **Test and add** checks it first and only adds it if it finds industry articles.
 - **Pause** stops checking it without deleting it.
-- **Find recommendations** suggests new industry sites.
+- **Find recommendations** suggests new industry sites: it searches the web and also asks the AI for ideas (each site is checked before it's suggested).
 
 ## Runs
 
