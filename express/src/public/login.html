@@ -231,6 +231,8 @@
     input:focus { border-color: var(--marca); background: var(--campo-foco); box-shadow: 0 0 0 3px rgba(var(--marca-rgb), 0.2); }
     input:focus-visible { outline: none; }
     .campo-clave input { padding-right: 56px; }
+    /* Edge agrega su propio ojo al campo de contraseña; usamos solo el nuestro. */
+    .campo-clave input::-ms-reveal, .campo-clave input::-ms-clear { display: none; }
 
     .ojo {
       position: absolute; top: 50%; right: 8px;
