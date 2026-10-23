@@ -133,7 +133,9 @@ function pintarAccionesNota() {
     return '<button type="button" class="btn btn-xs' + (primario ? ' btn-primary' : '') + '" onclick="cambiarEstadoNota(\'' + estado + '\')">' + texto + '</button>';
   };
   var html = '<span class="estado-chip ' + e + '">' + NOMBRE_ESTADO_NOTA[e] + '</span>';
-  var subible = _hubspotConfigurado && !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
+  // En todas las notas, esté o no configurado HubSpot en este servidor: si falta el
+  // token, el bloque de la revisión lo dice y la subida devuelve el motivo.
+  var subible = !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
   if (e === 'borrador') html += (subible
       ? '<button type="button" class="btn btn-xs btn-primary" onclick="aprobarYSubir()">Aprobar y subir a HubSpot</button>'
       : b('aprobada', 'Aprobar', true)) + b('rechazada', 'Rechazar');
@@ -155,13 +157,12 @@ function pintarAccionesNota() {
   cont.innerHTML = html;
 }
 
-var _hubspotConfigurado = false, _estadoHubspot = null;
-/* Si la nota se abre antes de que llegue el estado, o el pedido falló, la
-   revisión lo espera (y lo vuelve a pedir): si no, "Aprobar y subir a HubSpot"
-   no aparecía aunque HubSpot estuviera configurado. */
+var _estadoHubspot = null;
+/* Si HubSpot tiene token en este servidor. Si la nota se abre antes de que
+   llegue, o el pedido falló, la revisión lo espera (y lo vuelve a pedir). */
 function cargarEstadoHubspot() {
   _estadoHubspot = pedir('/api/hubspot/estado')
-    .then(function(d) { _hubspotConfigurado = !!d.configurado; return _hubspotConfigurado; })
+    .then(function(d) { return !!d.configurado; })
     .catch(function() { _estadoHubspot = null; return false; });
   return _estadoHubspot;
 }
@@ -208,10 +209,9 @@ async function aprobarYSubir() {
 
 /* Bloque de la revisión: a qué blog va, con qué etiqueta y quién firma. */
 async function pintarDestinoHubspot(nota, contenedor) {
-  if (!await hubspotConfigurado()) return;
-  if (_notaActual && _notaActual.id === nota._id) pintarAccionesNota();   // el botón de HubSpot, si recién se supo
   var bloque = bloqueRevision('Publicación en HubSpot', '<p class="revision-sub">Cargando…</p>');
   contenedor.appendChild(bloque);
+  var configurado = await hubspotConfigurado();
   var d;
   try { d = await pedir('/api/hubspot/destino/notas_fase2/' + nota._id); }
   catch (e) {
@@ -235,8 +235,11 @@ async function pintarDestinoHubspot(nota, contenedor) {
         return '<option value="' + escHtml(a.id) + '"' + (a.id === d.autor_id ? ' selected' : '') + ' translate="no">' + escHtml(a.nombre) + '</option>';
       }).join('')
     + '</select>'
-    + (d.autores.length ? '' : '<p class="revision-sub">No se pudieron cargar los autores: se usa el autor por defecto.</p>')
-    + '<p class="revision-sub">Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.</p>';
+    + (d.autores.length || !configurado ? '' : '<p class="revision-sub">No se pudieron cargar los autores: se usa el autor por defecto.</p>')
+    + (configurado
+      ? '<p class="revision-sub">Al aprobar, la nota se sube como borrador. Se publica desde HubSpot.</p>'
+      : '<p class="revision-mal">HubSpot no está configurado en este servidor: falta HUBSPOT_TOKEN. Al aprobar, la nota queda aprobada pero no se sube.</p>');
+  if (!configurado) bloque.classList.add('con-fallas');
 }
 
 async function cambiarEstadoNota(estado, sinAviso) {
