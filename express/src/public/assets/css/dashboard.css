@@ -1781,9 +1781,34 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 .estrella:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-radius: 4px; }
 .calificar-etiquetas .chip { font-size: 0.72rem; padding: 5px 10px; }
 .calificar-etiquetas .chip.negativa[aria-pressed="true"] { background: color-mix(in srgb, var(--err) 14%, var(--bg)); color: var(--err); }
-.calificar textarea { resize: vertical; font: inherit; font-size: 0.8rem; min-height: 52px; }
+.calificar textarea {
+  resize: none; overflow-y: auto; font: inherit; font-size: 0.8rem; line-height: 1.45;
+  min-height: 52px; max-height: 180px;
+  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text-lo) 50%, transparent) transparent;
+}
+.calificar textarea::-webkit-scrollbar { width: 6px; }
+.calificar textarea::-webkit-scrollbar-track { background: transparent; }
+.calificar textarea::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-lo) 50%, transparent); border-radius: 3px; }
+.calificar textarea::-webkit-scrollbar-button { display: none; height: 0; }
 .calificar-pie { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .calificar-estado { font-size: 0.72rem; color: var(--text-lo); }
+/* Guardado con éxito: el botón pasa a verde con tilde y el recuadro destella. */
+.calificar { transition: border-color var(--t-fast); }
+.calificar.exito { border-color: var(--ok); animation: calificarExito 1.2s ease-out; }
+.calificar.exito .calificar-estado { color: var(--ok); }
+@keyframes calificarExito {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 45%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--ok) 0%, transparent); }
+}
+.calificar .btn-primary.guardado,
+.calificar .btn-primary.guardado:disabled {
+  background: color-mix(in srgb, var(--ok) 16%, var(--bg)); color: var(--ok);
+  box-shadow: inset 0 0 0 1px var(--ok); opacity: 1; cursor: default;
+  animation: guardadoPop 0.35s ease-out;
+}
+.calificar .btn-primary.guardado::before { content: '✓'; display: inline-block; margin-right: 6px; font-weight: 700; animation: tildeEntra 0.4s ease-out; }
+@keyframes guardadoPop { 40% { transform: scale(1.06); } }
+@keyframes tildeEntra { from { transform: scale(0) rotate(-45deg); opacity: 0; } to { transform: none; opacity: 1; } }
 
 .revision-bloque { padding: var(--s3) 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
 .revision-bloque h4 { margin-bottom: 6px; }

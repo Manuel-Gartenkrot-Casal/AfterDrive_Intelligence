@@ -44,7 +44,10 @@ async function pintarCalificacion(nota, contenedor) {
     + '<div class="calificar-pie"><button type="button" class="btn btn-xs btn-primary" id="calificar-guardar">Guardar calificación</button>'
     + '<span class="calificar-estado" id="calificar-estado" aria-live="polite"></span></div>';
   contenedor.appendChild(caja);
-  $('calificar-comentario').value = previa.comentario || '';
+  var comentario = $('calificar-comentario');
+  comentario.value = previa.comentario || '';
+  comentario.oninput = function() { ajustarAlto(comentario); };
+  ajustarAlto(comentario);
   caja.querySelectorAll('.estrella').forEach(function(b) {
     b.onclick = function() { _cal.puntaje = +b.dataset.n; marcarCalificacion(); };
   });
@@ -73,8 +76,40 @@ function marcarCalificacion() {
   if (g) g.disabled = !_cal.puntaje;
 }
 
+// El comentario crece con el texto en vez de mostrar barra de scroll.
+function ajustarAlto(area) {
+  area.style.height = 'auto';
+  area.style.height = area.scrollHeight + 'px';
+}
+
+// Deja el formulario vacío, listo para otra calificación.
+function vaciarCalificacion() {
+  _cal.puntaje = 0;
+  _cal.etiquetas = [];
+  var comentario = $('calificar-comentario');
+  if (comentario) { comentario.value = ''; ajustarAlto(comentario); }
+  marcarCalificacion();
+}
+
+// Confirmación visual: el botón pasa a verde con un tilde y el recuadro destella.
+function marcarGuardado() {
+  var caja = document.querySelector('.calificar'), btn = $('calificar-guardar');
+  if (!caja || !btn) return;
+  caja.classList.remove('exito'); void caja.offsetWidth;   // reinicia la animación
+  caja.classList.add('exito');
+  btn.classList.add('guardado');
+  btn.textContent = 'Guardada';
+  clearTimeout(marcarGuardado._t);
+  marcarGuardado._t = setTimeout(function() {
+    caja.classList.remove('exito');
+    btn.classList.remove('guardado');
+    btn.textContent = 'Guardar calificación';
+  }, 2200);
+}
+
 async function guardarCalificacion(nota) {
-  var est = $('calificar-estado');
+  var est = $('calificar-estado'), btn = $('calificar-guardar');
+  btn.disabled = true;
   try {
     var d = await pedir('/api/historial/calificacion', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -84,8 +119,10 @@ async function guardarCalificacion(nota) {
     nota.calificacion = d.calificacion;
     est.textContent = 'Guardada. La próxima nota la tiene en cuenta.';
     showToast('Calificación guardada', 'success');
+    vaciarCalificacion();
+    marcarGuardado();
     if (_seccion === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); }
-  } catch (e) { est.textContent = ''; showToast(e.message, 'error'); }
+  } catch (e) { est.textContent = ''; marcarCalificacion(); showToast(e.message, 'error'); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

@@ -377,6 +377,7 @@ var _FILAS_TEXTOS = [
   ['Comentario (opcional): qué cambiarías o qué estuvo bien', 'Comentário (opcional): o que você mudaria ou o que ficou bom', 'Comment (optional): what you’d change or what worked well'],
   ['Guardar calificación', 'Salvar avaliação', 'Save rating'],
   ['Calificación guardada', 'Avaliação salva', 'Rating saved'],
+  ['Guardada', 'Salva', 'Saved'],
   ['Guardada. La próxima nota la tiene en cuenta.', 'Salva. O próximo post vai levá-la em conta.', 'Saved. The next post will take it into account.'],
   ['Suena a IA', 'Parece IA', 'Sounds like AI'],
   ['Muy larga o repetitiva', 'Muito longo ou repetitivo', 'Too long or repetitive'],

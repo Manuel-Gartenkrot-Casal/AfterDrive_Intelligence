@@ -10,6 +10,8 @@ El servidor comparte datos entre tests (una sola base en memoria), así que
 cada test usa datos distintos de la semilla de tests/e2e/servidor.py.
 """
 
+import re
+
 import pytest
 from playwright.sync_api import expect
 
@@ -246,6 +248,11 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     pagina.fill("#calificar-comentario", "El cierre repite la introducción")
     calificar.get_by_role("button", name="Guardar calificación").click()
     pagina.locator("#calificar-estado", has_text="Guardada").wait_for()
+    # Guardada: el formulario queda vacío y el recuadro marca el éxito.
+    expect(calificar).to_have_class(re.compile(r"\bexito\b"))
+    expect(pagina.locator("#calificar-comentario")).to_have_value("")
+    expect(calificar.locator(".estrella.on")).to_have_count(0)
+    expect(calificar.locator('[data-etiqueta][aria-pressed="true"]')).to_have_count(0)
 
     pagina.keyboard.press("Escape")
     pagina.locator(".hist-item", has_text="Rotación de stock").locator(".badge-estrellas").wait_for()
