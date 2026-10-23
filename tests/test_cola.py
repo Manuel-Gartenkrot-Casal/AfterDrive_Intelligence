@@ -263,7 +263,7 @@ def test_el_pedido_de_cancelar_de_otro_proceso_corta_aunque_no_haya_log(col, mon
 
 def test_un_script_que_falla_con_codigo_distinto_de_cero_queda_con_error(col, tmp_path):
     p = tmp_path / "falla.py"
-    p.write_text("import sys\nprint('[ERROR] algo salió mal')\nsys.exit(1)\n")
+    p.write_text("import sys\nprint('[ERROR] algo salió mal')\nsys.exit(1)\n", encoding="utf-8")
     id_ = cola.encolar("script", {"modulo": str(p)})["id"]
     cola.procesar_pendientes()
     r = cola.log(id_)
