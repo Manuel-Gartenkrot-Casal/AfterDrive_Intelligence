@@ -43,7 +43,12 @@ URL_ESTADO = "https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{}"
 ESPERA_S = 2
 MODELO_DEFAULT = "black-forest-labs/flux.1-dev"
 TAMANO_DEFAULT = "1344x768"   # apaisada, para el encabezado del blog
-TIMEOUT_S = 120
+# NVIDIA sostiene la conexión hasta tener la imagen; con su cola cargada eso
+# pasaba el timeout de lectura. Con NVCF-POLL-SECONDS contesta 202 a los
+# POLL_NVIDIA_S y se consulta el estado hasta ESPERA_TOTAL_S.
+POLL_NVIDIA_S = 20
+TIMEOUT_S = (10, 180)   # (conexión, lectura): holgado por si NVIDIA ignora el header y sostiene la conexión
+ESPERA_TOTAL_S = 300
 
 _transporte = {"post": requests.post, "get": requests.get}   # seam para los tests
 _dormir = time.sleep
@@ -130,17 +135,19 @@ def _mime(contenido: bytes) -> str:
 
 def _esperar(resp, headers: dict):
     """Mientras NVIDIA responda 202 (en proceso), consulta el estado hasta que termine."""
-    limite = time.monotonic() + TIMEOUT_S
+    limite = time.monotonic() + ESPERA_TOTAL_S
     while resp.status_code == 202:
         req_id = (getattr(resp, "headers", None) or {}).get("NVCF-REQID") or \
             (getattr(resp, "headers", None) or {}).get("nvcf-reqid")
         if not req_id:
             raise ErrorImagen("NVIDIA dejó la imagen en proceso sin decir cómo consultarla (falta NVCF-REQID).")
         if time.monotonic() > limite:
-            raise ErrorImagen(f"NVIDIA no terminó la imagen en {TIMEOUT_S} s: probá de nuevo.")
+            raise ErrorImagen(f"NVIDIA no terminó la imagen en {ESPERA_TOTAL_S // 60} minutos: probá de nuevo más tarde.")
         _dormir(ESPERA_S)
         try:
             resp = _transporte["get"](URL_ESTADO.format(req_id), headers=headers, timeout=TIMEOUT_S)
+        except requests.Timeout:
+            continue   # se vuelve a consultar hasta el límite
         except requests.RequestException as e:
             raise ErrorImagen(f"No se pudo consultar el estado de la imagen en NVIDIA: {e}") from e
     return resp
@@ -150,13 +157,17 @@ def generar(prompt: str) -> tuple[bytes, str]:
     """(bytes, mime) de la imagen. Si el tamaño apaisado no se acepta, reintenta cuadrada."""
     if not configurado():
         raise ErrorImagen("Falta NVIDIA_API_KEY: las imágenes se generan con NVIDIA (build.nvidia.com).")
-    headers = {"Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}", "Accept": "application/json"}
+    headers = {"Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}", "Accept": "application/json",
+               "NVCF-POLL-SECONDS": str(POLL_NVIDIA_S)}
     url = f"{URL_BASE}/{modelo()}"
     ancho, alto = _tamano()
     for intento_ancho, intento_alto in ((ancho, alto), (1024, 1024)):
         try:
             resp = _transporte["post"](url, json=_payload(prompt, intento_ancho, intento_alto), headers=headers,
                                        timeout=TIMEOUT_S)
+        except requests.Timeout as e:
+            raise ErrorImagen("NVIDIA tardó demasiado en responder (suele ser que está saturado): "
+                              "probá de nuevo en unos minutos.") from e
         except requests.RequestException as e:
             raise ErrorImagen(f"No se pudo contactar a NVIDIA para la imagen: {e}") from e
         resp = _esperar(resp, headers)

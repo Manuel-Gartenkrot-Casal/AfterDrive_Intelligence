@@ -284,3 +284,37 @@ def test_regenerar_limpia_el_error_anterior(base, nota, monkeypatch):
     monkeypatch.setattr(imagenes, "generar", lambda p: (JPG, "image/jpeg"))
     historial.generar_imagen("notas_fase2", nota, base=base)
     assert "imagen_error" not in base.notas_fase2.find_one({"_id": ObjectId(nota)})
+
+
+def test_el_script_de_imagen_sale_con_error_si_falla(monkeypatch):
+    from afterdrive import imagen_nota
+
+    def falla(*a, **k):
+        raise historial.ErrorHistorial("NVIDIA está limitando las llamadas (429)")
+
+    monkeypatch.setattr(historial, "generar_imagen", falla)
+    assert imagen_nota.main(["notas_fase2", "65a1b2c3d4e5f60718293a4b"]) == 1
+    monkeypatch.setattr(historial, "generar_imagen", lambda *a, **k: None)
+    assert imagen_nota.main(["notas_fase2", "65a1b2c3d4e5f60718293a4b"]) == 1
+    monkeypatch.setattr(historial, "generar_imagen", lambda *a, **k: {"id": "x"})
+    assert imagen_nota.main(["notas_fase2", "65a1b2c3d4e5f60718293a4b", "a tire shop"]) == 0
+
+
+def test_pide_a_nvidia_que_conteste_en_proceso_en_vez_de_colgarse(nvidia):
+    """Sin NVCF-POLL-SECONDS, NVIDIA sostiene la conexión hasta terminar y con la
+    cola cargada pasaba el timeout de lectura (Read timed out. read timeout=120)."""
+    pedidos = nvidia(_artefacto())
+    imagenes.generar("a parts store")
+    assert pedidos[0]["headers"]["NVCF-POLL-SECONDS"] == str(imagenes.POLL_NVIDIA_S)
+
+
+def test_timeout_de_nvidia_da_un_mensaje_claro(monkeypatch):
+    import requests
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+
+    def post(url, **kw):
+        raise requests.exceptions.ReadTimeout("Read timed out. (read timeout=60)")
+
+    monkeypatch.setattr(imagenes, "_transporte", {"post": post})
+    with pytest.raises(imagenes.ErrorImagen, match="tardó demasiado"):
+        imagenes.generar("a parts store")

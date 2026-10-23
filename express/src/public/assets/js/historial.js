@@ -312,21 +312,39 @@ function bloqueGenerarImagen(d, propia) {
     + '</div>';
 }
 
+/* La imagen va por la Cola: aparece en Corridas con su registro y se puede
+   cancelar desde ahí. Si hay otra corrida en curso, espera su turno. */
 async function generarImagenNota() {
   var n = _notaActual, btn = $('btn-generar-imagen');
+  var restaurar = function() { btn.disabled = false; btn.textContent = 'Generar imagen con IA'; };
   btn.disabled = true;
   btn.textContent = 'Generando… (puede tardar un minuto)';
+  var errores = [];
   try {
-    await pedir('/api/historial/imagen/generar', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ coleccion: n.coleccion, id: n.id, descripcion: $('previa-img-desc').value.trim() })
-    });
-    showToast('Imagen generada', 'success');
-    vistaPreviaNota();
+    var fin = await correrEnCola('/api/historial/imagen/generar',
+      { coleccion: n.coleccion, id: n.id, descripcion: $('previa-img-desc').value.trim() },
+      function(l) {
+        var m = l.match(/\[ERROR\]\s*(.+)/);
+        if (m) errores.push(m[1].trim());
+        log(l, m ? 'error' : l.indexOf('[OK]') >= 0 ? 'success' : 'info');
+      },
+      function(d) {
+        btn.textContent = textoEnCola(d) || 'Generando… (puede tardar un minuto)';
+      });
+    if (fin.estado === 'ok') {
+      showToast('Imagen generada', 'success');
+      if (_notaActual === n) vistaPreviaNota();
+      else restaurar();
+    } else if (fin.estado === 'cancelada') {
+      showToast('Se canceló la imagen.', 'info');
+      restaurar();
+    } else {
+      showToast(errores[errores.length - 1] || fin.error || 'No se pudo generar la imagen. Mirá el registro en Corridas.', 'error');
+      restaurar();
+    }
   } catch (e) {
     showToast(e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = 'Generar imagen con IA';
+    restaurar();
   }
 }
 

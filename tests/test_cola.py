@@ -267,3 +267,21 @@ def test_un_script_que_falla_con_codigo_distinto_de_cero_queda_con_error(col, tm
     id_ = cola.encolar("script", {"modulo": str(p)})["id"]
     cola.procesar_pendientes()
     assert cola.log(id_)["estado"] == "error"
+
+
+def test_api_generar_imagen_encola_un_script(client, col):
+    nota = "65a1b2c3d4e5f60718293a4b"
+    r = client.post("/api/historial/imagen/generar",
+                    json={"coleccion": "notas_fase2", "id": nota, "descripcion": "  a tire   shop "})
+    assert r.status_code == 202
+    doc = col.find_one({"estado": "pendiente"})
+    assert doc["etiqueta"] == "Generar imagen"
+    assert doc["params"] == {"modulo": "afterdrive.imagen_nota", "argv": ["notas_fase2", nota, "a tire shop"]}
+
+
+def test_api_generar_imagen_valida_coleccion_e_id(client, col):
+    assert client.post("/api/historial/imagen/generar",
+                       json={"coleccion": "articulos", "id": "65a1b2c3d4e5f60718293a4b"}).status_code == 400
+    assert client.post("/api/historial/imagen/generar",
+                       json={"coleccion": "notas_fase2", "id": "no-es-un-id"}).status_code == 400
+    assert col.count_documents({}) == 0
