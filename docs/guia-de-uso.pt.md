@@ -9,7 +9,7 @@ Este guia explica cada parte da aplicação. Para um tour rápido na tela: **Aju
 ## Como funciona, em três passos
 
 1. **Juntar notícias.** Todos os dias, no horário que você agendar, o sistema verifica suas fontes, salva as notícias novas do setor e descarta as que não são (por exemplo, venda de carros 0 km ou seguros). De cada notícia salva uma ficha com os dados principais.
-2. **Escrever o post.** Com as notícias mais úteis e recentes, o sistema monta um plano, escreve o post, verifica que cada número e cada empresa venham das notícias, revisa estilo e SEO e, se encontrar um problema, corrige. Também gera uma imagem de destaque.
+2. **Escrever o post.** Com as notícias mais úteis e recentes, o sistema monta um plano, escreve o post, verifica que cada número e cada empresa venham das notícias, revisa estilo e SEO e, se encontrar um problema, corrige. Como imagem de destaque usa a foto de uma dessas notícias.
 3. **Revisar e publicar.** O post fica no **Histórico** como "Para revisar". Você lê, avalia, edita se quiser, aprova e publica no blog.
 
 ## Início
@@ -79,7 +79,7 @@ Em **Histórico → Como a geração aprende** você vê tudo o que o sistema ap
 
 ### Imagem de destaque
 
-Cada post novo sai com uma imagem gerada com IA (NVIDIA, sem custo). Na **Pré-visualização** você pode gerar outra, descrever o que quer que ela mostre (de preferência em inglês), colar a URL de uma imagem própria ou removê-la. Ao publicar, a imagem é enviada ao HubSpot.
+Cada post novo sai com a foto de uma das notícias que usou. Na **Pré-visualização** você pode escolher a foto de outra das suas notícias, colar a URL de uma imagem própria ou removê-la. Ao publicar, a imagem é copiada ao HubSpot. Atenção: são fotos de outros veículos; confira se podem ser usadas antes de publicar.
 
 ## Agendamento
 
@@ -116,7 +116,7 @@ Porque o Brasil estava entre as regiões. Desmarque em Criar post → Mais opç�
 Procure nas notícias do post (estão ao lado). Se não estiver, edite o post e remova ou altere.
 
 **O post não tem imagem.**
-Ao abri-lo, o bloco "Imagem de destaque" diz por quê. Gere uma pela Pré-visualização.
+Nenhuma das suas notícias tinha foto. Cole a URL de uma imagem pela Pré-visualização.
 
 **Como faço para os posts melhorarem?**
 Avalie, conte no comentário o que você mudaria e, ao rejeitar um, escreva o motivo. O sistema usa isso nos próximos.

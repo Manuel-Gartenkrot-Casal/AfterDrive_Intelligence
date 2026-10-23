@@ -22,7 +22,8 @@ Recorrido de una nota:
      Queda la mejor versión.
   7. El largo (corto, medio, largo) se elige en Crear nota.
   8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
-     destacada se genera con NVIDIA (imagenes.py), siempre gratis.
+     destacada es la foto de una de las noticias usadas (la guardó el
+     scraper); sin ninguna, la nota queda sin imagen.
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -40,7 +41,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from afterdrive import calibracion, imagenes
+from afterdrive import calibracion
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
 from afterdrive.generacion import calidad, contexto_noticias, correccion, plan, verificacion
 from afterdrive.generacion.regiones import REGION_SLUGS, REGIONES
@@ -493,7 +494,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "puntapie_url": puntapie_url,
         "persona": persona,
         "tema": tema,
-        "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],
+        "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],   # la imagen se suma abajo
         "ejemplos_usados": [e.get("url") for e in ejemplos],
         "evaluacion": evaluacion,
         "calidad": {
@@ -522,14 +523,17 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         doc["embedding"] = mejor.embedding
         doc["embedding_modelo"] = llm.modelo_embeddings()
 
-    if imagenes.automaticas():
-        # Siempre con NVIDIA (gratis), sin importar el proveedor de la redacción.
-        print("  Generando la imagen destacada...", flush=True)
-        try:
-            doc["imagen"] = imagenes.para_nota(plan_nota, categorias, calidad.partes(articulo).titulo)
-        except imagenes.ErrorImagen as e:
-            print(f"  [AVISO] La nota se guarda sin imagen: {e}", flush=True)
-            doc["imagen_error"] = str(e)   # se muestra al revisar la nota
+    # Imagen destacada: la foto de una noticia usada (primero las que respaldan
+    # la nota). Las fotos de las demás quedan en `fuentes` para elegir otra al revisarla.
+    usadas_ids = {id(n) for n in usadas}
+    imagen = contexto_noticias.imagen_para_nota(usadas + [n for n in noticias if id(n) not in usadas_ids])
+    if imagen:
+        doc["imagen"] = {**imagen, "alt": calidad.partes(articulo).titulo or imagen["alt"]}
+        print(f"  Imagen destacada: la de '{imagen['origen']['titulo'][:60]}'", flush=True)
+    else:
+        print("  [AVISO] Ninguna noticia tiene imagen: la nota se guarda sin imagen destacada.", flush=True)
+    doc["fuentes"] = [{"titulo": n.titulo, "url": n.url, **({"imagen": n.imagen["url"]} if n.imagen else {})}
+                      for n in noticias]
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     contexto_noticias.marcar_usadas(noticias)

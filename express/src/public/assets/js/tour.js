@@ -28,7 +28,7 @@ var PASOS_TOUR = [
   { seccion: 'historial', el: '#hist-pestanas', titulo: 'Historial',
     texto: 'Las notas generadas y las descartadas, y las noticias que el sistema guardó o descartó, cada una con su motivo.' },
   { seccion: 'historial', el: '#hist-lista', titulo: 'Revisar una nota',
-    texto: 'Abrí una nota para leerla y ver qué datos están respaldados por las noticias, cuánto costó y su imagen. Desde ahí la calificás, la editás, la aprobás o la rechazás, generás su imagen y la publicás en HubSpot.' },
+    texto: 'Abrí una nota para leerla y ver qué datos están respaldados por las noticias, cuánto costó y su imagen. Desde ahí la calificás, la editás, la aprobás o la rechazás, elegís su imagen entre las fotos de sus noticias y la publicás en HubSpot.' },
   { seccion: 'historial', el: '#calibracion-panel', titulo: 'Cómo aprende la generación',
     texto: 'Cuando calificás, rechazás o editás una nota, las próximas lo tienen en cuenta. Acá ves qué aprendió el sistema y cómo te va por tono y por proveedor.' },
   { seccion: 'programacion', el: '.agenda-grid', titulo: 'Programación',

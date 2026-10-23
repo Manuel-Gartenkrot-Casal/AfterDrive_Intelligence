@@ -28,12 +28,13 @@ os.environ.update(
     HUBSPOT_TOKEN="pat-e2e", HUBSPOT_BLOG_PRUEBAS="123",
     # API paga configurada (a una URL falsa) para poder prender el modo pago.
     PAGA_API_KEY="pg-e2e", PAGA_BASE_URL="http://127.0.0.1:9/v1", PAGA_MODEL="modelo-e2e",
-    NVIDIA_API_KEY="nvapi-e2e", IMAGENES_AUTOMATICAS="0",
+    NVIDIA_API_KEY="nvapi-e2e",
 )
 
 from afterdrive import corridas, hubspot  # noqa: E402
 from afterdrive import db as dbm  # noqa: E402
 
+FOTO_E2E = "https://s.com/fotos/catalogo.jpg"
 CUERPO = "## Qué pasó\n\n" + "El mercado de repuestos crece y los distribuidores ajustan su stock. " * 8
 
 
@@ -50,13 +51,14 @@ def sembrar() -> None:
          "evaluacion": {"lineamientos": {"estructura_correcta": True}, "comentarios": "Bien"}},
         {"contenido": "# Marketplaces y catálogo\n\n" + CUERPO, "generado_en": "2026-10-16T14:00:00+00:00",
          "estado": "aprobada", "categorias": ["marketplaces"],
+         "fuentes": [{"titulo": "Mercado Libre suma catálogo", "url": "https://s.com/ml", "imagen": FOTO_E2E},
+                     {"titulo": "Sin foto", "url": "https://s.com/sin"}],
          "evaluacion": {"lineamientos": {}, "comentarios": "Evaluación de prueba"}},
         {"contenido": "# Rotación de stock en el mostrador\n\n" + CUERPO + "\n*La rotación manda.*",
          "generado_en": "2026-10-15T14:00:00+00:00", "estado": "aprobada", "categorias": ["autopartes"],
          "persona": "comercial", "proveedor": "openrouter",
          "calidad": {"puntaje": 7, "fallas_criticas": [], "intentos": 2, "reescrita_por": ["datos_sin_respaldo"],
                      "problemas": ["datos_sin_respaldo"], "segundo_intento": "correccion"},
-         "imagen_error": "NVIDIA respondió 500 al generar la imagen",
          "costo": {"total_usd": 0.231, "por_tarea": {"redaccion": 0.18, "correccion": 0.02, "planificacion": 0.031},
                    "llamadas": 6, "estimado": False},
          "verificacion": {"total": 3, "respaldados": ["Frasle", "15%"], "sin_respaldo": ["US$ 80 millones"],
@@ -92,26 +94,37 @@ class _Resp:
         return {"id": "555", "url": "https://blog.e2e/nota", "state": self._estado, "results": []}
 
 
-# PNG de 1x1: NVIDIA falso para generar imágenes sin salir a internet.
+# PNG de 1x1: la "foto de la noticia" que se copia a HubSpot, sin salir a internet.
 PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 
-def nvidia_falso() -> None:
-    from afterdrive import imagenes
+def descarga_de_imagenes_falsa() -> None:
+    import base64
+
+    from afterdrive import historial
+    from afterdrive.ingesta import scraper
 
     class _RespImagen:
         status_code = 200
-        text = ""
+        headers = {"Content-Type": "image/png"}
 
-        def json(self):
-            return {"artifacts": [{"base64": PNG_1X1, "finishReason": "SUCCESS"}]}
+        def iter_content(self, n):
+            yield base64.b64decode(PNG_1X1)
 
-    imagenes._transporte = {"post": lambda url, **kw: _RespImagen()}
+    scraper.url_publica = lambda url: True
+    historial._TRANSPORTE_IMAGEN["get"] = lambda url, **kw: _RespImagen()
 
 
 AUTORES_E2E = [{"id": "37798507784", "fullName": "Gaston Zelerteins", "language": "es"},
                {"id": "191488460449", "fullName": "Ana Dias", "language": "es"},
                {"id": "192900528951", "fullName": "Ana Dias", "language": "pt"}]
+
+
+class _RespArchivo:
+    status_code = 200
+
+    def json(self):
+        return {"url": "https://f.hubspot.e2e/nota.png"}
 
 
 def hubspot_falso() -> None:
@@ -124,14 +137,15 @@ def hubspot_falso() -> None:
 
     def get(url, **kw):
         return _RespAutores("DRAFT") if url == hubspot.API_AUTORES else post(url)
-    hubspot._transporte = {"post": post, "patch": post, "get": get}
+    hubspot._transporte = {"post": post, "patch": post, "get": get,
+                           "subir": lambda url, **kw: _RespArchivo()}
 
 
 if __name__ == "__main__":
     sembrar()
     corridas._scrapear_fuentes = scraping_falso
     hubspot_falso()
-    nvidia_falso()
+    descarga_de_imagenes_falsa()
     from afterdrive import flask_api, scheduler
     scheduler.iniciar()
     flask_api.app.run(host="127.0.0.1", port=int(sys.argv[1]), threaded=True)

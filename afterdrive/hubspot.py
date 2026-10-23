@@ -217,17 +217,14 @@ def _nombres_etiquetas(nota: dict) -> list[str]:
     return [CATEGORIAS.get(c, c) for c in nota.get("categorias") or []]
 
 
-def _imagen(nota: dict, titulo: str, local: bool = False) -> dict:
+def _imagen(nota: dict, titulo: str) -> dict:
     """{url, alt} de la imagen destacada: la de la nota o la de por defecto.
 
-    Una imagen generada que todavía no se subió a HubSpot no tiene URL pública:
-    con local=True (vista previa en el dashboard) se usa la del servidor.
+    La de la nota es la foto de una de sus noticias; al subirla se copia a los
+    archivos de HubSpot (hubspot_url) y se usa esa copia.
     """
     propia = nota.get("imagen") or {}
-    url = propia.get("url")
-    if not url and local and (propia.get("generada") or {}).get("id"):
-        url = f"/api/imagenes/{propia['generada']['id']}"
-    url = url or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
+    url = propia.get("hubspot_url") or propia.get("url") or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
 
 
@@ -269,7 +266,7 @@ def vista_previa(nota: dict) -> dict:
         lugar = {"error": str(e), "etiquetas": []}
     return {
         **partes,
-        "imagen": _imagen(nota, partes["titulo"], local=True),
+        "imagen": _imagen(nota, partes["titulo"]),
         "etiquetas": lugar["etiquetas"],
         "destino": {k: v for k, v in lugar.items() if k != "tag_ids"},
         "slug": previo.get("slug") or _slug(partes["titulo"], str(nota.get("_id", ""))[-6:]),

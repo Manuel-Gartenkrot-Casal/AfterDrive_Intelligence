@@ -268,7 +268,7 @@ async function vistaPreviaNota() {
   var propia = d.imagen_propia || {};
   $('art-body').innerHTML =
     '<div class="previa">'
-    + (d.imagen.url ? '<img class="previa-imagen" src="' + srcImagen(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '">'
+    + (d.imagen.url ? '<img class="previa-imagen" src="' + urlSegura(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '" referrerpolicy="no-referrer">'
                     : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
     + '<h1 translate="no">' + escHtml(d.titulo) + '</h1>'
     + (d.meta ? '<p class="previa-meta" translate="no">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
@@ -277,13 +277,13 @@ async function vistaPreviaNota() {
     + '<div class="previa-cuerpo" translate="no">' + DOMPurify.sanitize(d.html) + '</div>'
     + '</div>'
     + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
-    + bloqueGenerarImagen(d, propia)
+    + bloqueImagenesNoticias(d, propia)
     + '<label class="control-label" for="previa-img-url">O pegá la URL de una imagen (https)</label>'
     + '<input id="previa-img-url" class="input-field" type="url" placeholder="https://…/imagen.jpg">'
     + '<label class="control-label" for="previa-img-alt">Texto alternativo</label>'
     + '<input id="previa-img-alt" class="input-field" type="text" maxlength="200" placeholder="Qué muestra la imagen">'
     + '<div class="previa-acciones"><button type="button" class="btn btn-xs btn-primary" onclick="guardarImagenNota()">Guardar imagen</button>'
-    + (propia.url || propia.generada ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
+    + (propia.url ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
     + '</div></fieldset>';
   $('previa-img-url').value = propia.url || '';
   $('previa-img-alt').value = propia.alt || '';
@@ -291,61 +291,34 @@ async function vistaPreviaNota() {
   $('art-body').scrollTop = 0;
 }
 
-/* Una imagen generada se sirve desde /api/imagenes/<id> hasta que se sube a HubSpot. */
-function srcImagen(u) {
-  return /^\/api\/imagenes\/[0-9a-f]{24}$/.test(u || '') ? u : urlSegura(u);
+/* Fotos de las noticias de la nota: elegir una la deja como destacada. */
+var _fotosNoticias = [];
+
+function bloqueImagenesNoticias(d, propia) {
+  _fotosNoticias = d.imagenes_noticias || [];
+  var html = '<div class="previa-fotos-bloque">';
+  if (propia.origen) {
+    html += '<p class="previa-ayuda">Foto de la noticia: <a href="' + urlSegura(propia.origen.url) + '" target="_blank" rel="noopener">'
+      + escHtml(propia.origen.titulo || propia.origen.url) + '</a></p>'
+      + '<p class="previa-ayuda">' + (propia.hubspot_url ? 'Ya está copiada en HubSpot.' : 'Se copia a HubSpot al subir la nota.') + '</p>';
+  }
+  if (!_fotosNoticias.length) {
+    return html + '<p class="previa-ayuda">Las noticias de esta nota no tienen fotos guardadas.</p></div>';
+  }
+  return html + '<p class="previa-ayuda">Elegí la foto de una de sus noticias:</p><div class="previa-fotos">'
+    + _fotosNoticias.map(function(f, i) {
+        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + '"'
+          + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(f.titulo) + '" aria-label="' + escHtml(f.titulo) + '">'
+          + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer"></button>';
+      }).join('')
+    + '</div></div>';
 }
 
-function bloqueGenerarImagen(d, propia) {
-  if (!d.imagenes_disponibles) {
-    return '<p class="previa-ayuda">Para generar imágenes con IA falta configurar NVIDIA_API_KEY en el servidor.</p>';
-  }
-  var gen = propia.generada;
-  return '<div class="previa-generar">'
-    + (gen ? '<p class="previa-ayuda">Imagen generada con IA (' + escHtml(gen.modelo || '') + ').'
-             + (propia.url ? ' Ya está subida a HubSpot.' : ' Se sube a HubSpot al enviar la nota.') + '</p>'
-           : '<p class="previa-ayuda">Generá una imagen con IA (NVIDIA, sin costo). Sin descripción usa la que propuso el plan de la nota.</p>')
-    + '<label class="control-label" for="previa-img-desc">Qué querés que muestre (opcional, mejor en inglés)</label>'
-    + '<textarea id="previa-img-desc" class="input-field" rows="2" maxlength="600" placeholder="Ej: a parts store counter with brake pads on display"></textarea>'
-    + '<button type="button" class="btn btn-xs btn-primary" id="btn-generar-imagen" onclick="generarImagenNota()">'
-    + (gen ? 'Generar otra imagen' : 'Generar imagen con IA') + '</button>'
-    + '</div>';
-}
-
-/* La imagen va por la Cola: aparece en Corridas con su registro y se puede
-   cancelar desde ahí. Si hay otra corrida en curso, espera su turno. */
-async function generarImagenNota() {
-  var n = _notaActual, btn = $('btn-generar-imagen');
-  var restaurar = function() { btn.disabled = false; btn.textContent = 'Generar imagen con IA'; };
-  btn.disabled = true;
-  btn.textContent = 'Generando… (puede tardar un minuto)';
-  var errores = [];
-  try {
-    var fin = await correrEnCola('/api/historial/imagen/generar',
-      { coleccion: n.coleccion, id: n.id, descripcion: $('previa-img-desc').value.trim() },
-      function(l) {
-        var m = l.match(/\[ERROR\]\s*(.+)/);
-        if (m) errores.push(m[1].trim());
-        log(l, m ? 'error' : l.indexOf('[OK]') >= 0 ? 'success' : 'info');
-      },
-      function(d) {
-        btn.textContent = textoEnCola(d) || 'Generando… (puede tardar un minuto)';
-      });
-    if (fin.estado === 'ok') {
-      showToast('Imagen generada', 'success');
-      if (_notaActual === n) vistaPreviaNota();
-      else restaurar();
-    } else if (fin.estado === 'cancelada') {
-      showToast('Se canceló la imagen.', 'info');
-      restaurar();
-    } else {
-      showToast(errores[errores.length - 1] || fin.error || 'No se pudo generar la imagen. Mirá el registro en Corridas.', 'error');
-      restaurar();
-    }
-  } catch (e) {
-    showToast(e.message, 'error');
-    restaurar();
-  }
+function elegirImagenNoticia(i) {
+  var f = _fotosNoticias[i];
+  if (!f) return;
+  $('previa-img-url').value = f.url;
+  guardarImagenNota();
 }
 
 async function guardarImagenNota(quitar) {

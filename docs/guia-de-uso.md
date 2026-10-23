@@ -9,7 +9,7 @@ Esta guía explica cada parte de la aplicación. Para un recorrido rápido en pa
 ## Cómo funciona, en tres pasos
 
 1. **Juntar noticias.** Todos los días, a la hora que programes, el sistema revisa tus fuentes, guarda las noticias nuevas que son del rubro y descarta las que no (por ejemplo, venta de autos 0 km o seguros). De cada noticia guarda una ficha con sus datos principales.
-2. **Escribir la nota.** Con las noticias más útiles y recientes, el sistema arma un plan, escribe la nota, verifica que cada cifra y cada empresa salgan de las noticias, revisa estilo y SEO y, si encuentra un problema, lo corrige. También genera una imagen destacada.
+2. **Escribir la nota.** Con las noticias más útiles y recientes, el sistema arma un plan, escribe la nota, verifica que cada cifra y cada empresa salgan de las noticias, revisa estilo y SEO y, si encuentra un problema, lo corrige. Como imagen destacada usa la foto de una de esas noticias.
 3. **Revisar y publicar.** La nota queda en **Historial** como "Para revisar". La leés, la calificás, la editás si querés, la aprobás y la publicás en el blog.
 
 ## Inicio
@@ -79,7 +79,7 @@ En **Historial → Cómo aprende la generación** ves todo lo que el sistema apr
 
 ### Imagen destacada
 
-Cada nota nueva sale con una imagen generada con IA (NVIDIA, sin costo). En **Vista previa** podés generar otra, describir lo que querés que muestre (mejor en inglés), pegar la URL de una imagen propia o quitarla. Al publicar, la imagen se sube a HubSpot.
+Cada nota nueva sale con la foto de una de las noticias que usó. En **Vista previa** podés elegir la foto de otra de sus noticias, pegar la URL de una imagen propia o quitarla. Al publicar, la imagen se copia a HubSpot. Ojo: son fotos de otros medios; revisá que se puedan usar antes de publicar.
 
 ## Programación
 
@@ -116,7 +116,7 @@ Porque entre las regiones estaba Brasil. Destildala en Crear nota → Más opcio
 Buscalo en las noticias de la nota (están al costado). Si no está, editá la nota y sacalo o cambialo.
 
 **La nota no tiene imagen.**
-Al abrirla, el bloque "Imagen destacada" dice por qué. Generala desde Vista previa.
+Ninguna de sus noticias tenía foto. Pegá la URL de una imagen desde Vista previa.
 
 **¿Cómo hago para que las notas mejoren?**
 Calificalas, contá en el comentario qué cambiarías y, cuando rechaces una, escribí el motivo. El sistema lo usa en las siguientes.

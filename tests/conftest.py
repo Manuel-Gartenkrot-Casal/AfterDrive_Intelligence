@@ -23,9 +23,10 @@ def consumo_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def sin_imagenes_automaticas(monkeypatch):
-    """Una key de NVIDIA en el .env no debe hacer que los tests generen imágenes de verdad."""
-    monkeypatch.setenv("IMAGENES_AUTOMATICAS", "0")
+def sin_buscar_imagenes(monkeypatch):
+    """Los tests no descargan páginas de noticias para buscarles la imagen."""
+    from afterdrive.generacion import contexto_noticias
+    monkeypatch.setattr(contexto_noticias, "_buscar_imagen", lambda n: None)
 
 
 @pytest.fixture(autouse=True)

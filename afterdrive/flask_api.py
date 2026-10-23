@@ -547,41 +547,6 @@ def metricas_resumen():
         return jsonify({"success": False, "error": f"No se pudieron calcular las métricas: {e}"}), 500
 
 
-@app.route("/api/historial/imagen/generar", methods=["POST"])
-def historial_generar_imagen():
-    """Encola la imagen destacada con NVIDIA: {"coleccion", "id", "descripcion" (opcional)}.
-
-    Corre por la Cola (aparece en Corridas y se puede cancelar): 202 con el id.
-    """
-    from bson import ObjectId
-
-    from afterdrive import historial
-
-    body = request.get_json(silent=True) or {}
-    coleccion, item_id = body.get("coleccion", ""), body.get("id", "")
-    descripcion = body.get("descripcion") or ""
-    if coleccion not in historial.COLECCIONES_CON_ESTADO:
-        return jsonify({"success": False, "error": "Solo las notas generadas tienen imagen destacada."}), 400
-    if not isinstance(item_id, str) or not ObjectId.is_valid(item_id):
-        return jsonify({"success": False, "error": "Identificador inválido."}), 400
-    descripcion = " ".join(descripcion.split())[:600] if isinstance(descripcion, str) else ""
-    argv = [coleccion, item_id] + ([descripcion] if descripcion else [])
-    return _encolar("script", {"modulo": "afterdrive.imagen_nota", "argv": argv}, etiqueta="Generar imagen")
-
-
-@app.route("/api/imagenes/<imagen_id>", methods=["GET"])
-def ver_imagen(imagen_id: str):
-    """Una imagen generada, para el dashboard (HubSpot recibe la suya subida a sus archivos)."""
-    from flask import Response
-
-    from afterdrive import imagenes
-    datos = imagenes.leer(imagen_id)
-    if not datos:
-        return jsonify({"success": False, "error": "Imagen no encontrada."}), 404
-    contenido, mime = datos
-    return Response(contenido, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
-
-
 @app.route("/api/historial/imagen", methods=["PATCH"])
 def historial_imagen():
     """{coleccion, id, url, alt}: imagen destacada de una nota (url vacía la saca)."""

@@ -221,7 +221,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     assert "US$ 80 millones" in lateral.locator(".revision-lista.mal").inner_text()
     assert "Palabra clave: rotación de stock" in lateral.inner_text()
     assert "Se corrigió porque falló en" in lateral.inner_text()
-    assert "No se pudo generar: NVIDIA respondió 500" in lateral.inner_text()
+    assert "Sin imagen: ninguna noticia de la nota tenía foto" in lateral.inner_text()
     costo = lateral.locator(".revision-bloque", has_text="Costo de esta nota")
     assert "USD 0,231" in costo.inner_text() and "redacción: USD 0,18" in costo.inner_text()
     lateral.locator("summary", has_text="Ver el plan").click()
@@ -273,21 +273,22 @@ def test_el_largo_de_la_nota_se_guarda(pagina):
     pagina.locator("#barra-crear").locator('[data-accion="guardar"]').click()
 
 
-def test_generar_la_imagen_destacada_con_ia(pagina):
+def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
+    from tests.e2e.servidor import FOTO_E2E
     _abrir_nota(pagina, "Marketplaces")
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
     pagina.locator(".previa").wait_for()
-    pagina.fill("#previa-img-desc", "a parts store counter")
-    pagina.get_by_role("button", name="Generar imagen con IA").click()
+    expect(pagina.locator(".previa-sin-imagen")).to_be_visible()
+    pagina.get_by_role("button", name="Mercado Libre suma catálogo").click()
     imagen = pagina.locator("img.previa-imagen")
     imagen.wait_for()
-    assert imagen.get_attribute("src").startswith("/api/imagenes/")
-    pagina.wait_for_function("() => document.querySelector('img.previa-imagen').naturalWidth > 0")
-    expect(pagina.locator(".previa-generar")).to_contain_text("Imagen generada con IA")
-    # También se ve en el panel lateral al abrir la nota.
+    assert imagen.get_attribute("src") == FOTO_E2E
+    expect(pagina.locator(".previa-foto.elegida")).to_have_count(1)
+    expect(pagina.locator(".previa-fotos-bloque")).to_contain_text("Mercado Libre suma catálogo")
+    # También se ve en el panel lateral al abrir la nota, con la noticia de donde sale.
     pagina.keyboard.press("Escape")
     _abrir_nota(pagina, "Marketplaces")
-    pagina.wait_for_function("() => (document.querySelector('.revision-imagen') || {}).naturalWidth > 0")
+    expect(pagina.locator(".revision-imagen")).to_have_attribute("src", FOTO_E2E)
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
     pagina.locator(".previa").wait_for()
     pagina.get_by_role("button", name="Quitar imagen").click()

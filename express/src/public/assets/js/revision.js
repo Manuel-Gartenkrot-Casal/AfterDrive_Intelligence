@@ -121,17 +121,15 @@ function pintarCosto(nota, contenedor) {
 
 function pintarImagen(nota, contenedor) {
   var im = nota.imagen || {}, html;
-  var src = im.url || (im.generada && im.generada.id ? '/api/imagenes/' + im.generada.id : '');
-  if (src) {
-    html = '<img class="revision-imagen" src="' + srcImagen(src) + '" alt="' + escHtml(im.alt || '') + '">'
-      + (im.generada ? '<p class="revision-sub">Generada con IA. Para cambiarla: Vista previa.</p>' : '');
-  } else if (nota.imagen_error) {
-    html = '<p class="revision-mal">No se pudo generar: ' + escHtml(nota.imagen_error) + '</p>'
-      + '<p class="revision-sub">Podés generarla desde Vista previa.</p>';
+  if (im.url) {
+    html = '<img class="revision-imagen" src="' + urlSegura(im.url) + '" alt="' + escHtml(im.alt || '') + '" referrerpolicy="no-referrer">'
+      + (im.origen ? '<p class="revision-sub">Foto de la noticia: <a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener">'
+                     + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
+      + '<p class="revision-sub">Para cambiarla: Vista previa.</p>';
   } else {
-    html = '<p class="revision-sub">Sin imagen. Generala desde Vista previa.</p>';
+    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto. Podés poner una desde Vista previa.</p>';
   }
-  contenedor.appendChild(bloqueRevision('Imagen destacada', html, nota.imagen_error && !src ? 'con-fallas' : ''));
+  contenedor.appendChild(bloqueRevision('Imagen destacada', html));
 }
 
 function pintarRevisionNota(nota, contenedor) {

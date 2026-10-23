@@ -181,7 +181,6 @@ var _FILAS_TEXTOS = [
   ['¿Eliminar este cliente?', 'Excluir este cliente?', 'Delete this client?'],
   ['No se pudo eliminar el cliente:', 'Não foi possível excluir o cliente:', 'Couldn’t delete the client:'],
   ['Generar nota', 'Gerar post', 'Generate post'],
-  ['Generar imagen', 'Gerar imagem', 'Generate image'],
   ['Generar Nota', 'Gerar post', 'Generate post'],
   ['Generando nota...', 'Gerando post...', 'Generating post...'],
   ['Nota generada correctamente.', 'Post gerado com sucesso.', 'Post generated successfully.'],
@@ -354,25 +353,20 @@ var _FILAS_TEXTOS = [
   ['Ver el plan de la nota', 'Ver o plano do post', 'See the post plan'],
   ['Imagen destacada', 'Imagem de destaque', 'Featured image'],
   ['Sin imagen destacada', 'Sem imagem de destaque', 'No featured image'],
-  ['Sin imagen. Generala desde Vista previa.', 'Sem imagem. Gere-a pela pré-visualização.', 'No image. Generate one from Preview.'],
-  ['Podés generarla desde Vista previa.', 'Você pode gerá-la pela pré-visualização.', 'You can generate it from Preview.'],
-  ['Generada con IA. Para cambiarla: Vista previa.', 'Gerada com IA. Para trocá-la: pré-visualização.', 'AI-generated. To change it: Preview.'],
-  ['Se sube a HubSpot al enviar la nota.', 'É enviada ao HubSpot junto com o post.', 'It’s uploaded to HubSpot when the post is sent.'],
-  ['Imagen generada', 'Imagem gerada', 'Generated image'],
-  ['Generar imagen con IA', 'Gerar imagem com IA', 'Generate image with AI'],
-  ['Generar otra imagen', 'Gerar outra imagem', 'Generate another image'],
-  ['Generando… (puede tardar un minuto)', 'Gerando… (pode levar um minuto)', 'Generating… (may take a minute)'],
-  ['Generá una imagen con IA (NVIDIA, sin costo). Sin descripción usa la que propuso el plan de la nota.', 'Gere uma imagem com IA (NVIDIA, sem custo). Sem descrição, usa a que o plano do post propôs.', 'Generate an image with AI (NVIDIA, free). Without a description it uses the one from the post plan.'],
+  ['Foto de la noticia:', 'Foto da notícia:', 'Photo from the news story:'],
+  ['Para cambiarla: Vista previa.', 'Para trocá-la: pré-visualização.', 'To change it: Preview.'],
+  ['Sin imagen: ninguna noticia de la nota tenía foto. Podés poner una desde Vista previa.', 'Sem imagem: nenhuma notícia do post tinha foto. Você pode colocar uma pela pré-visualização.', 'No image: none of the post’s news stories had a photo. You can add one from Preview.'],
+  ['Ya está copiada en HubSpot.', 'Já está copiada no HubSpot.', 'Already copied to HubSpot.'],
+  ['Se copia a HubSpot al subir la nota.', 'É copiada ao HubSpot quando o post é enviado.', 'It’s copied to HubSpot when the post is uploaded.'],
+  ['Las noticias de esta nota no tienen fotos guardadas.', 'As notícias deste post não têm fotos salvas.', 'This post’s news stories have no saved photos.'],
+  ['Elegí la foto de una de sus noticias:', 'Escolha a foto de uma das suas notícias:', 'Pick the photo from one of its news stories:'],
   ['Qué muestra la imagen', 'O que a imagem mostra', 'What the image shows'],
-  ['Qué querés que muestre (opcional, mejor en inglés)', 'O que deve mostrar (opcional, de preferência em inglês)', 'What it should show (optional, ideally in English)'],
   ['O pegá la URL de una imagen (https)', 'Ou cole a URL de uma imagem (https)', 'Or paste an image URL (https)'],
   ['Texto alternativo', 'Texto alternativo', 'Alt text'],
   ['Guardar imagen', 'Salvar imagem', 'Save image'],
   ['Imagen guardada', 'Imagem salva', 'Image saved'],
   ['Quitar imagen', 'Remover imagem', 'Remove image'],
   ['Imagen quitada', 'Imagem removida', 'Image removed'],
-  ['Para generar imágenes con IA falta configurar NVIDIA_API_KEY en el servidor.', 'Para gerar imagens com IA falta configurar NVIDIA_API_KEY no servidor.', 'To generate AI images, NVIDIA_API_KEY must be set on the server.'],
-  ['No se pudo generar:', 'Não foi possível gerar:', 'Couldn’t generate:'],
   ['No se pudo guardar:', 'Não foi possível salvar:', 'Couldn’t save:'],
 
   // ── Calificación y calibración ────────────────────────────────────────────
@@ -504,8 +498,6 @@ var _FILAS_TEXTOS = [
   ['¿Cancelar esta corrida?', 'Cancelar esta execução?', 'Cancel this run?'],
   ['Si todavía no empezó, no va a correr. Si ya está corriendo, se corta y lo que haya llegado a guardar queda guardado.', 'Se ainda não começou, não vai rodar. Se já está rodando, é interrompida e o que já foi salvo continua salvo.', 'If it hasn’t started, it won’t run. If it’s running, it stops and whatever it already saved stays saved.'],
   ['Corrida cancelada', 'Execução cancelada', 'Run canceled'],
-  ['Se canceló la imagen.', 'A imagem foi cancelada.', 'Image canceled.'],
-  ['No se pudo generar la imagen. Mirá el registro en Corridas.', 'Não foi possível gerar a imagem. Veja o registro em Execuções.', 'Couldn’t generate the image. Check the log in Runs.'],
   ['Cancelando… se corta en unos segundos.', 'Cancelando… é interrompida em alguns segundos.', 'Canceling… it stops in a few seconds.'],
   ['No se pudo cancelar: la corrida ya terminó.', 'Não foi possível cancelar: a execução já terminou.', 'Couldn’t cancel: the run already finished.'],
   ['Corriendo', 'Rodando', 'Running'],
@@ -594,7 +586,7 @@ var _FILAS_TEXTOS = [
   ['La nota se planifica, se escribe, se verifican sus datos contra las noticias y se revisan estilo y SEO; si algo falla, se corrige sola. Tarda unos minutos y queda en Historial para revisar. "Guardar cambios" deja esta configuración para la nota automática.', 'O post é planejado, escrito, seus dados são verificados com as notícias e o estilo e o SEO são revisados; se algo falhar, ele se corrige sozinho. Leva alguns minutos e fica no Histórico para revisão. "Salvar alterações" deixa esta configuração para o post automático.', 'The post is planned, written, its facts checked against the news and its style and SEO reviewed; if something fails, it fixes itself. It takes a few minutes and lands in History for review. "Save changes" keeps these settings for the automatic post.'],
   ['Las notas generadas y las descartadas, y las noticias que el sistema guardó o descartó, cada una con su motivo.', 'Os posts gerados e os descartados, e as notícias que o sistema salvou ou descartou, cada um com seu motivo.', 'Generated and discarded posts, and the news the system kept or discarded, each with its reason.'],
   ['Revisar una nota', 'Revisar um post', 'Review a post'],
-  ['Abrí una nota para leerla y ver qué datos están respaldados por las noticias, cuánto costó y su imagen. Desde ahí la calificás, la editás, la aprobás o la rechazás, generás su imagen y la publicás en HubSpot.', 'Abra um post para lê-lo e ver quais dados têm respaldo nas notícias, quanto custou e sua imagem. Dali você o avalia, edita, aprova ou rejeita, gera a imagem e publica no HubSpot.', 'Open a post to read it and see which facts are backed by the news, what it cost and its image. From there you rate, edit, approve or reject it, generate its image and publish it on HubSpot.'],
+  ['Abrí una nota para leerla y ver qué datos están respaldados por las noticias, cuánto costó y su imagen. Desde ahí la calificás, la editás, la aprobás o la rechazás, elegís su imagen entre las fotos de sus noticias y la publicás en HubSpot.', 'Abra um post para lê-lo e ver quais dados têm respaldo nas notícias, quanto custou e sua imagem. Dali você o avalia, edita, aprova ou rejeita, escolhe a imagem entre as fotos das notícias e publica no HubSpot.', 'Open a post to read it and see which facts are backed by the news, what it cost and its image. From there you rate, edit, approve or reject it, pick its image from its news photos and publish it on HubSpot.'],
   ['Cuando calificás, rechazás o editás una nota, las próximas lo tienen en cuenta. Acá ves qué aprendió el sistema y cómo te va por tono y por proveedor.', 'Quando você avalia, rejeita ou edita um post, os próximos levam isso em conta. Aqui você vê o que o sistema aprendeu e como vai cada tom e cada provedor.', 'When you rate, reject or edit a post, the next ones take it into account. Here you see what the system learned and how each tone and provider is doing.'],
   ['A qué hora y cada cuántos días se buscan noticias y se escribe la nota automática. Los cambios se aplican al guardar.', 'A que horas e a cada quantos dias se buscam notícias e se escreve o post automático. As alterações valem ao salvar.', 'When and how often news is fetched and the automatic post is written. Changes apply when you save.'],
   ['Fuentes de noticias', 'Fontes de notícias', 'News sources'],
@@ -767,8 +759,7 @@ var PATRONES = {
     [/^API paga apagada\. Se vuelve a usar (.+)\.$/, function(m, p) { return 'API paga desligada. Voltando a usar ' + tr(p, 'pt') + '.'; }],
     [/^Falta la hora de (scraping|generación)\.$/, function(m, x) { return 'Falta o horário de ' + (x === 'scraping' ? 'scraping' : 'geração') + '.'; }],
     [/^No hay recomendaciones pendientes\. Tocá$/, 'Não há recomendações pendentes. Toque em'],
-    [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.'],
-    [/^Imagen generada con IA \((.+)\)\.?$/, 'Imagem gerada com IA ($1).']
+    [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
     [/^Blog de pruebas \((\d+)\)$/, 'Test blog ($1)'],
@@ -839,8 +830,7 @@ var PATRONES = {
     [/^API paga apagada\. Se vuelve a usar (.+)\.$/, function(m, p) { return 'Paid API off. Back to ' + tr(p, 'en') + '.'; }],
     [/^Falta la hora de (scraping|generación)\.$/, function(m, x) { return (x === 'scraping' ? 'Scraping' : 'Generation') + ' time is missing.'; }],
     [/^No hay recomendaciones pendientes\. Tocá$/, 'No pending recommendations. Tap'],
-    [/^para encontrar sitios nuevos del sector\.$/, 'to find new industry sites.'],
-    [/^Imagen generada con IA \((.+)\)\.?$/, 'AI-generated image ($1).']
+    [/^para encontrar sitios nuevos del sector\.$/, 'to find new industry sites.']
   ]
 };
 

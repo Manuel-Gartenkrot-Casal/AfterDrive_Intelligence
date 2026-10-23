@@ -8,7 +8,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 |---|---|---|
 | `trusted_urls` | Fuentes de noticias | `url`, `nombre_fuente`, `estado` (`activo` / `inactivo`), `fecha_agregado`, `ultima_ejecucion` |
 | `suggested_urls` | Sitios recomendados, uno por dominio | `url`, `dominio`, `titulo`, `snippet`, `fecha_sugerida` |
-| `articulos` | **Noticias que la IA aprobó** | `url` (clave), `titulo`, `cuerpo`, `fecha` (publicación), `fuente`, `embedding`, `usado_para_articulo`, `usado_en` (cuándo alimentó una nota), `ficha` (resumen, hechos, cifras, empresas, fecha) |
+| `articulos` | **Noticias que la IA aprobó** | `url` (clave), `titulo`, `cuerpo`, `fecha` (publicación), `fuente`, `embedding`, `usado_para_articulo`, `usado_en` (cuándo alimentó una nota), `ficha` (resumen, hechos, cifras, empresas, fecha), `imagen` (`{url, alt}` de la foto del artículo; `null` si se buscó y no tenía) |
 | `articulos_descartados` | Noticias que la IA rechazó | `url`, `titulo`, `cuerpo` (hasta 5000 caracteres), `fuente`, `fecha`, `razon`, `fecha_descarte`. Las viejas solo tienen `url` |
 | `afterdrive_ejemplos` | **Notas reales del blog** (referencia de estilo) | `url`, `titulo`, `cuerpo`, `categoria`, `regiones`, `region_principal` |
 | `clientes` | Empresas que se pueden mencionar en las notas | `slug`, `nombre`, `descripcion`, `productos`, `sector`, `url` |
@@ -18,7 +18,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt` y, si se generó con IA, `generada`: id, prompt y modelo), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
+| `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `fuentes`, `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt`, `origen`: la noticia de la que sale la foto, y `hubspot_url`: la copia en los archivos de HubSpot), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion` |
 | `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
 | `articulos_generados` | Notas del generador viejo (Fase 1, ya borrado). Solo se leen en el Historial | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
 
@@ -28,14 +28,14 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 **`hubspot`**: `{id, url, estado (DRAFT / PUBLISHED), enviado_en}`, solo si se envió.
 
-**`imagen`**: `{url, alt}`, la imagen destacada elegida a mano (https pública). Sin ella se usa `HUBSPOT_IMAGEN_DEFAULT`.
+**`imagen`**: la imagen destacada (https pública): la foto de una noticia de la nota (con `origen`) o una pegada a mano. Al enviar a HubSpot se copia a sus archivos (`hubspot_url`). Sin ella se usa `HUBSPOT_IMAGEN_DEFAULT`. Las fotos de las noticias de la nota están en `fuentes[].imagen`.
 
 ## Operación
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
 | `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`), `value` |
-| `imagenes` | Imágenes destacadas generadas con NVIDIA | `contenido` (binario), `mime`, `prompt`, `modelo`, `creada`. Al regenerar o quitar la imagen de una nota se borra la anterior |
+| `imagenes` | **En desuso**: imágenes que se generaban con NVIDIA. Ya nada la lee; se puede borrar | |
 | `corridas` | **La cola y el historial de Corridas** (30 días) | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `ejecutor` (`servidor` / `github`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas), `cancelar_pedido` |
 
 Estados de una Corrida: `pendiente → en_curso → ok | error | cancelada | interrumpida`.

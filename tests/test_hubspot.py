@@ -325,7 +325,7 @@ def test_endpoint_destino_lista_los_autores_del_idioma(hs, api, monkeypatch, bas
 def test_nota_sin_blog_en_su_idioma_no_llama_a_hubspot_ni_sube_la_imagen(hs, base):
     llamadas, _ = hs
     oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada", "regiones": ["china"],
-                                       "imagen": {"generada": {"id": "0" * 24}}}).inserted_id
+                                       "imagen": {"url": "https://img.com/a.jpg"}}).inserted_id
     with pytest.raises(hubspot.ErrorHubSpot, match="idioma"):
         historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
     assert llamadas == [] and "hubspot" not in base.notas_fase2.find_one({"_id": oid})

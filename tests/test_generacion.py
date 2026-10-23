@@ -602,3 +602,26 @@ def test_el_script_sale_bien_si_la_nota_se_genero(monkeypatch):
     monkeypatch.setattr(g, "_validar_entorno", lambda: None)
     monkeypatch.setattr(g, "generar_nota", lambda **kw: {"success": True, "contenido": "# Nota"})
     assert g.main(["--categorias", "autopartes"]) == 0
+
+
+def test_la_imagen_destacada_es_la_foto_de_una_noticia_usada(entorno, monkeypatch):
+    _, col, _ = entorno
+    noticias = [
+        Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió en su planta de Caxias.", url="https://n/1",
+                imagen={"url": "https://n/1.jpg", "alt": "Planta"}, imagen_buscada=True),
+        Noticia(id=2, titulo="Automechanika abre acreditaciones", cuerpo="La feria vuelve a La Rural.", url="https://n/2",
+                imagen={"url": "https://n/2.jpg", "alt": ""}, imagen_buscada=True),
+    ]
+    monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
+    assert g.generar_nota(["autopartes"], persona="comercial")["success"]
+    guardada = col.docs[0]
+    # La 1 la asigna el plan a una sección: va primero.
+    assert guardada["imagen"] == {"url": "https://n/1.jpg", "alt": "El catálogo digital llega al mostrador",
+                                  "origen": {"titulo": "Frasle amplía su planta", "url": "https://n/1"}}
+    assert [f.get("imagen") for f in guardada["fuentes"]] == ["https://n/1.jpg", "https://n/2.jpg"]
+
+
+def test_sin_fotos_la_nota_se_guarda_sin_imagen(entorno):
+    _, col, _ = entorno
+    assert g.generar_nota(["autopartes"], persona="comercial")["success"]
+    assert "imagen" not in col.docs[0] and "imagen_error" not in col.docs[0]

@@ -9,7 +9,7 @@ This guide explains every part of the application. For a quick on-screen tour: *
 ## How it works, in three steps
 
 1. **Collect news.** Every day, at the time you schedule, the system checks your sources, keeps the new industry news and discards the rest (for example, new car sales or insurance). For each news item it saves a card with its key facts.
-2. **Write the post.** With the most useful and recent news, the system makes a plan, writes the post, checks that every figure and every company comes from the news, reviews style and SEO and, if it finds a problem, fixes it. It also generates a featured image.
+2. **Write the post.** With the most useful and recent news, the system makes a plan, writes the post, checks that every figure and every company comes from the news, reviews style and SEO and, if it finds a problem, fixes it. For the featured image it uses the photo of one of those news stories.
 3. **Review and publish.** The post lands in **History** as "To review". You read it, rate it, edit it if you want, approve it and publish it on the blog.
 
 ## Home
@@ -79,7 +79,7 @@ In **History → How generation learns** you see everything the system learned.
 
 ### Featured image
 
-Every new post comes with an AI-generated image (NVIDIA, free). In **Preview** you can generate another one, describe what you want it to show (ideally in English), paste the URL of your own image or remove it. When publishing, the image is uploaded to HubSpot.
+Every new post comes with the photo of one of the news stories it used. In **Preview** you can pick the photo of another of its stories, paste the URL of your own image or remove it. When publishing, the image is copied to HubSpot. Note: these are photos from other outlets; check they can be used before publishing.
 
 ## Schedule
 
@@ -116,7 +116,7 @@ Because Brazil was among the regions. Uncheck it in Create post → More options
 Look for it in the post's news (they're on the side). If it isn't there, edit the post and remove or change it.
 
 **The post has no image.**
-When you open it, the "Featured image" block says why. Generate one from Preview.
+None of its news stories had a photo. Paste an image URL from Preview.
 
 **How do I make the posts better?**
 Rate them, say in the comment what you'd change and, when you reject one, write the reason. The system uses it in the next ones.

@@ -21,7 +21,7 @@ La imagen (`Dockerfile`) instala Python, Chromium (para Scrapling) y copia `afte
 ## Primer despliegue
 
 1. En [Render](https://render.com): **New → Blueprint** con este repo (usa `render.yaml`).
-2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN` (la app privada con los scopes `content` y `files`), `HUBSPOT_BLOG_PRUEBAS` (solo para mandar todo a un blog de pruebas; el viejo `HUBSPOT_BLOG_ID` ya no se usa), `NVIDIA_IMAGE_MODEL`, `IMAGENES_AUTOMATICAS`, `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
+2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN` (la app privada con los scopes `content` y `files`), `HUBSPOT_BLOG_PRUEBAS` (solo para mandar todo a un blog de pruebas; el viejo `HUBSPOT_BLOG_ID` ya no se usa), `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
 3. En Atlas, **Network Access** tiene que permitir `0.0.0.0/0`: Render free no tiene IP fija.
 4. Elegí cómo corren las tareas programadas (abajo).
 
@@ -46,7 +46,7 @@ Para activarlo:
 0. **El workflow tiene que estar en la rama por defecto del repo** (hoy `main`): GitHub solo dispara los `schedule` desde ahí, y corre el código de esa rama. Mergeá `Render_Testing` en `main`, o cambiá la rama por defecto a `Render_Testing` (**Settings → General → Default branch**).
 1. GitHub → **Settings → Secrets and variables → Actions**:
    - **Secrets**: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY` (y `PAGA_API_KEY` para la API paga).
-   - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `NVIDIA_IMAGE_MODEL`, `IMAGENES_AUTOMATICAS`, `ATLAS_VECTOR_INDEX` y, para la API paga, `PAGA_BASE_URL`, `PAGA_MODEL`, `PAGA_MODEL_CLASIFICACION`, `PAGA_MODEL_EVALUACION`, `PAGA_MODEL_REDACCION`, `PAGA_EMB_MODEL` (y, si hace falta, `PAGA_FALLBACK_MODEL`, `PAGA_CAMPO_MAX_TOKENS`, `PAGA_TEMPERATURA`).
+   - **Variables**: `CORRIDAS_EN_GITHUB` = `true`. Opcionales: `AI_PROVIDER`, `EMBEDDINGS_PROVIDER`, `OPENROUTER_MODEL`, `NVIDIA_MODEL`, `NVIDIA_EMB_MODEL`, `ATLAS_VECTOR_INDEX` y, para la API paga, `PAGA_BASE_URL`, `PAGA_MODEL`, `PAGA_MODEL_CLASIFICACION`, `PAGA_MODEL_EVALUACION`, `PAGA_MODEL_REDACCION`, `PAGA_EMB_MODEL` (y, si hace falta, `PAGA_FALLBACK_MODEL`, `PAGA_CAMPO_MAX_TOKENS`, `PAGA_TEMPERATURA`).
 2. En Render: `CORRIDAS_EXTERNAS=github`. Sin esto, se corren dos veces.
 3. Probalo a mano: **Actions → Corridas → Run workflow** (elegí `scraping`).
 

@@ -5,6 +5,7 @@ Interfaz:
     seleccionar(consulta, limite=5) -> list[Noticia]
     formatear(noticias, max_chars=7000) -> str
     marcar_usadas(noticias) -> None
+    imagen_para_nota(noticias, max_busquedas=3) -> {"url", "alt", "origen"} | None
 
 Antes la generación de notas no leía las noticias scrapeadas: el modelo
 escribía solo con las categorías y los ejemplos de estilo, y los prompts le
@@ -48,6 +49,8 @@ class Noticia:
     ficha: dict | None = field(default=None, repr=False)
     embedding: list[float] | None = field(default=None, repr=False)
     puntaje: float = 0.0
+    imagen: dict | None = None     # {"url", "alt"}: la foto del artículo (imagen_articulo.extraer)
+    imagen_buscada: bool = False   # ya se intentó sacarla (aunque no tuviera): no se vuelve a descargar
 
 
 def _coseno(a, b) -> float:
@@ -159,11 +162,13 @@ def _desde_doc(d: dict) -> Noticia:
         usada_reciente=_usada_reciente(d),
         ficha=d.get("ficha") if isinstance(d.get("ficha"), dict) else None,
         embedding=d.get("embedding"),
+        imagen=d.get("imagen") if isinstance(d.get("imagen"), dict) and d["imagen"].get("url") else None,
+        imagen_buscada="imagen" in d,
     )
 
 
 _CAMPOS = {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
-           "embedding_modelo": 1, "usado_para_articulo": 1, "usado_en": 1, "ficha": 1}
+           "embedding_modelo": 1, "usado_para_articulo": 1, "usado_en": 1, "ficha": 1, "imagen": 1}
 
 
 def _parecidas_en_atlas(col, vec: list[float] | None, modelo: str) -> list[dict]:
@@ -276,3 +281,42 @@ def marcar_usadas(noticias: list[Noticia]) -> None:
             {"_id": {"$in": [n.id for n in noticias]}},
             {"$set": {"usado_para_articulo": True, "usado_en": datetime.datetime.now(datetime.UTC).isoformat()}},
         )
+
+
+def imagen_para_nota(noticias: list[Noticia], max_busquedas: int = 3) -> dict | None:
+    """La foto de la primera noticia que tenga una, en el orden recibido.
+
+    Los artículos scrapeados antes de que se guardara la imagen no la tienen:
+    a esos se les descarga la página una vez (hasta `max_busquedas` por nota)
+    y lo encontrado queda guardado, aunque sea "no tiene".
+    """
+    busquedas = 0
+    for n in noticias:
+        if not n.imagen and not n.imagen_buscada and n.url and busquedas < max_busquedas:
+            busquedas += 1
+            n.imagen = _buscar_imagen(n)
+        if n.imagen:
+            return {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""),
+                    "origen": {"titulo": n.titulo, "url": n.url}}
+    return None
+
+
+def _buscar_imagen(n: Noticia) -> dict | None:
+    from afterdrive.db import col_articulos
+    from afterdrive.ingesta import imagen_articulo, scraper
+
+    print(f"  Buscando la imagen de '{n.titulo[:60]}'...", flush=True)
+    try:
+        html = scraper.descargar(n.url)
+    except Exception as e:
+        html = None
+        print(f"  [AVISO] No se pudo leer la página de la noticia: {e}", flush=True)
+    if not html:
+        return None   # sin marcar como buscada: la próxima nota lo reintenta
+    imagen = imagen_articulo.extraer(html, n.url)
+    n.imagen_buscada = True
+    try:
+        col_articulos.update_one({"_id": n.id}, {"$set": {"imagen": imagen}})
+    except Exception as e:
+        print(f"  [AVISO] No se pudo guardar la imagen de la noticia: {e}", flush=True)
+    return imagen

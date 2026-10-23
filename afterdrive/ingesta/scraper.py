@@ -11,6 +11,7 @@ import trafilatura
 from bs4 import BeautifulSoup
 from urllib3.util import parse_url
 
+from afterdrive.ingesta import imagen_articulo
 from afterdrive.ingesta.resource_detector import (
     PERFIL_ALTO,
     PERFIL_MEDIO,
@@ -226,6 +227,11 @@ def _fetch(url: str) -> str | None:
     return _wayback_get(url)
 
 
+def descargar(url: str) -> str | None:
+    """HTML de una página con la misma estrategia que el scraping (origen, navegador o Wayback)."""
+    return _fetch(url)
+
+
 def _extraer_titulo(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     og = soup.find("meta", property="og:title") or soup.find("meta", attrs={"name": "twitter:title"})
@@ -252,7 +258,9 @@ def _extraer_articulo(html: str, url: str) -> dict | None:
             cuerpo = data.get("text") or ""
             fecha = data.get("date") or ""
             if titulo and cuerpo and len(cuerpo) > 100:
-                return {"titulo": titulo, "cuerpo": cuerpo, "fecha": fecha, "url": url, "fuente": "custom"}
+                # La foto del artículo: la usa la nota que salga de esta noticia (None si no tiene).
+                return {"titulo": titulo, "cuerpo": cuerpo, "fecha": fecha, "url": url, "fuente": "custom",
+                        "imagen": imagen_articulo.extraer(html, url)}
     except Exception:
         pass
     return None

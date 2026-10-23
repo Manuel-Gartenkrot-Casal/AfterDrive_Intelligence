@@ -6,7 +6,7 @@ Interfaz:
     listar(seccion, pagina=1, por_pagina=20, q="", estado="todos", base=None) -> página
     detalle(seccion, coleccion, item_id, base=None) -> ítem con el contenido completo
     cambiar_estado(coleccion, item_id, estado, base=None) -> ítem actualizado
-    generar_imagen(coleccion, item_id, descripcion="", base=None) -> ítem con la imagen nueva (NVIDIA)
+    cambiar_imagen(coleccion, item_id, url, alt="", base=None) -> ítem con la imagen destacada elegida
     editar(coleccion, item_id, contenido, base=None) -> ítem actualizado
                             (la primera edición guarda la versión generada en contenido_original)
 
@@ -34,6 +34,7 @@ rechazada) y la edición del texto de una Nota.
 import datetime
 import re
 
+import requests
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -370,7 +371,7 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
         doc["hubspot_autor_id"] = str(autor_id)
 
     hubspot.destino(doc)   # sin blog para su idioma: falla antes de subir la imagen
-    aviso = _subir_imagen_generada(col, doc, base)
+    aviso = _copiar_imagen_a_hubspot(col, doc)
     r = hubspot.enviar(doc, publicar=publicar)   # ErrorHubSpot sube tal cual
     ahora = datetime.datetime.now(datetime.UTC).isoformat()
     cambios = {"hubspot": {**r, "enviado_en": ahora}}
@@ -383,51 +384,66 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
     return item
 
 
-def _subir_imagen_generada(col, doc: dict, base=None) -> str:
-    """Sube a HubSpot la imagen generada que todavía no tiene URL pública. Devuelve un aviso si no pudo.
+def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
+    """Copia la imagen destacada (la foto de la noticia) a los archivos de HubSpot. Devuelve un aviso si no pudo.
 
-    Si falla, la nota se publica igual (con la imagen por defecto, si hay): una
-    imagen no debería frenar una publicación.
+    Así el blog no depende de que el sitio de la noticia la siga sirviendo ni
+    de que acepte que otro sitio la muestre. Si la copia falla, la nota se
+    sube igual con el link original: una imagen no debería frenar una publicación.
     """
-    from afterdrive import hubspot, imagenes
+    from afterdrive import hubspot
 
     imagen = doc.get("imagen") or {}
-    generada = imagen.get("generada") or {}
-    if imagen.get("url") or not generada.get("id"):
+    url = imagen.get("url") or ""
+    if not url or imagen.get("hubspot_url"):
         return ""
-    datos = imagenes.leer(generada["id"], base=base)
-    if not datos:
-        return "La imagen generada ya no está guardada: se publica sin ella."
-    contenido, mime = datos
-    extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
     try:
-        url = hubspot.subir_imagen(contenido, mime, f"nota-{doc['_id']}.{extension}")
-    except hubspot.ErrorHubSpot as e:
-        return f"No se pudo subir la imagen ({e}). Se publicó sin ella."
-    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.url": url}})
-    doc["imagen"] = {**imagen, "url": url}
+        contenido, mime = _descargar_imagen(url)
+        extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
+        copia = hubspot.subir_imagen(contenido, mime, f"nota-{doc['_id']}.{extension}")
+    except (ErrorHistorial, hubspot.ErrorHubSpot) as e:
+        return f"No se pudo copiar la imagen a HubSpot ({e}). Se usa el link original."
+    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
+    doc["imagen"] = {**imagen, "hubspot_url": copia}
     return ""
 
 
-def generar_imagen(coleccion: str, item_id: str, descripcion: str = "", base=None) -> dict | None:
-    """Genera (o regenera) la imagen destacada con NVIDIA. `descripcion` manda sobre la del plan."""
-    from afterdrive import imagenes
+IMAGEN_MAX_BYTES = 10 * 1024 * 1024
+_TRANSPORTE_IMAGEN = {"get": requests.get}   # seam para los tests
 
-    if coleccion not in COLECCIONES_CON_ESTADO:
-        raise ErrorHistorial("Solo las notas generadas tienen imagen destacada.")
-    descripcion = " ".join(descripcion.split())[:600] if isinstance(descripcion, str) else ""
-    col = _base(base)[coleccion]
-    doc = col.find_one({"_id": _oid(item_id)}, {"contenido": 1, "plan": 1, "categorias": 1, "imagen": 1})
-    if not doc:
-        return None
-    try:
-        nueva = imagenes.para_nota(doc.get("plan"), doc.get("categorias"), _titulo_de_nota(doc.get("contenido", "")),
-                                   pedido=descripcion, base=base)
-    except imagenes.ErrorImagen as e:
-        raise ErrorHistorial(str(e)) from e
-    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}, "$unset": {"imagen_error": ""}})
-    imagenes.borrar(((doc.get("imagen") or {}).get("generada") or {}).get("id"), base=base)
-    return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
+
+def _descargar_imagen(url: str) -> tuple[bytes, str]:
+    """(bytes, mime) de una imagen pública. Cada salto de redirección se valida contra la red interna."""
+    from afterdrive.ingesta.scraper import url_publica
+
+    for _ in range(4):
+        if not _url_imagen_valida(url) or not url_publica(url):
+            raise ErrorHistorial("la imagen no está en una URL https pública")
+        try:
+            resp = _TRANSPORTE_IMAGEN["get"](url, timeout=(5, 20), stream=True, allow_redirects=False,
+                                             headers={"User-Agent": "Mozilla/5.0 (AfterDrive)", "Accept": "image/*"})
+        except requests.RequestException as e:
+            raise ErrorHistorial(f"no se pudo descargar: {e}") from e
+        if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("Location"):
+            from urllib.parse import urljoin
+            url = urljoin(url, resp.headers["Location"])
+            continue
+        break
+    else:
+        raise ErrorHistorial("demasiadas redirecciones")
+    if resp.status_code >= 400:
+        raise ErrorHistorial(f"el sitio respondió {resp.status_code}")
+    mime = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    if not mime.startswith("image/") or mime == "image/svg+xml":
+        raise ErrorHistorial(f"no es una imagen ({mime or 'sin tipo'})")
+    contenido = b""
+    for parte in resp.iter_content(64 * 1024):
+        contenido += parte
+        if len(contenido) > IMAGEN_MAX_BYTES:
+            raise ErrorHistorial("la imagen pesa más de 10 MB")
+    if not contenido:
+        raise ErrorHistorial("la imagen vino vacía")
+    return contenido, mime
 
 
 def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
@@ -456,8 +472,8 @@ def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
 def _url_imagen_valida(url: str) -> bool:
     """https con un nombre de dominio (no una IP).
 
-    No hace falta el chequeo anti-SSRF del scraper: este servidor nunca
-    descarga la imagen, la piden HubSpot y el navegador.
+    Al subir la nota el servidor descarga la imagen para copiarla a HubSpot:
+    ahí además se valida que el host resuelva solo a IPs públicas (scraper.url_publica).
     """
     from urllib.parse import urlparse
     try:
@@ -477,12 +493,16 @@ def cambiar_imagen(coleccion: str, item_id: str, url: str, alt: str = "", base=N
     if url and not _url_imagen_valida(url):
         raise ErrorHistorial("La imagen tiene que ser una URL https pública.")
     col = _base(base)[coleccion]
-    previa = (col.find_one({"_id": _oid(item_id)}, {"imagen": 1}) or {}).get("imagen") or {}
-    cambio = {"$set": {"imagen": {"url": url, "alt": alt}}} if url else {"$unset": {"imagen": ""}}
-    if not col.update_one({"_id": _oid(item_id)}, cambio).matched_count:
+    doc = col.find_one({"_id": _oid(item_id)}, {"fuentes": 1})
+    if not doc:
         return None
-    from afterdrive import imagenes
-    imagenes.borrar((previa.get("generada") or {}).get("id"), base=base)   # la generada que se reemplaza
+    nueva = {"url": url, "alt": alt}
+    # Si es la foto de una de sus noticias, se recuerda de cuál (se muestra al revisarla).
+    origen = next(({"titulo": f.get("titulo", ""), "url": f.get("url", "")}
+                   for f in doc.get("fuentes") or [] if url and f.get("imagen") == url), None)
+    if origen:
+        nueva["origen"] = origen
+    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}} if url else {"$unset": {"imagen": ""}})
     return _normalizar(col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
 
 
@@ -495,9 +515,11 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
     doc = _base(base)[coleccion].find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING)
     if not doc:
         return None
-    from afterdrive import imagenes
+    # Fotos de las noticias de la nota, para elegir otra destacada.
+    de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", "")}
+                   for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
         return {**hubspot.vista_previa(doc), "imagen_propia": doc.get("imagen") or None,
-                "imagenes_disponibles": imagenes.configurado()}
+                "imagenes_noticias": de_noticias}
     except hubspot.ErrorHubSpot as e:
         raise ErrorHistorial(str(e)) from e

@@ -60,7 +60,7 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `tagIds` | Las etiquetas de las categorías, en el idioma del blog |
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
 | `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
-| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la generada se sube primero a los archivos de HubSpot) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
+| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias, copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 
@@ -69,7 +69,7 @@ En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_au
 | Mensaje | Qué hacer |
 |---|---|
 | "HubSpot rechazó el token" (401/403) | Revisá `HUBSPOT_TOKEN` y que la app tenga el scope `content` |
-| "No se pudo subir la imagen… scope 'files'" | Agregá el scope `files` a la app privada. Mientras tanto, la nota se sube sin la imagen generada |
+| "No se pudo copiar la imagen a HubSpot… scope 'files'" | Agregá el scope `files` a la app privada. Mientras tanto, la nota se sube con el link original de la foto |
 | "No encontró el blog, el post o el autor" (404) | Revisá `HUBSPOT_BLOG_PRUEBAS` (si está cargado) y el autor elegido |
 | "No hay un blog de After Drive en el idioma de esta nota" | La nota es en chino: no hay blog para ese idioma |
 | "Está limitando las llamadas" (429) | Esperá un minuto |
