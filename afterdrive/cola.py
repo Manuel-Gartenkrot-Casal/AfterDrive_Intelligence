@@ -32,6 +32,7 @@ import datetime
 import io
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -80,6 +81,33 @@ def _col():
     return db["corridas"]
 
 
+# ── Censura del registro ──────────────────────────────────────────────────────
+# Lo que se ve en Corridas pasa por acá: claves de API, tokens y la dirección
+# de la base no se muestran. El stdout real (logs de Render) no cambia.
+
+_PATRONES_SECRETOS = [
+    (re.compile(r"mongodb(\+srv)?://\S+"), "mongodb://***"),
+    (re.compile(r"[\w.-]+\.mongodb\.net"), "***.mongodb.net"),
+    (re.compile(r"(?i)(bearer\s+)\S+"), r"\1***"),
+    (re.compile(r"\bnvapi-[\w-]+"), "nvapi-***"),
+    (re.compile(r"\bsk-[\w-]{8,}"), "sk-***"),
+    (re.compile(r"\bAIza[\w-]{10,}"), "***"),
+    (re.compile(r"(?i)\b((?:api[_-]?)?key|token|secret|password)=([^&\s'\"]+)"), r"\1=***"),
+]
+_VARIABLE_SECRETA = re.compile(r"(?i)(KEY|TOKEN|SECRET|PASSWORD|HASH|URI)")
+
+
+def _censurar(texto: str) -> str:
+    if not texto:
+        return texto
+    for nombre, valor in os.environ.items():
+        if len(valor) >= 8 and _VARIABLE_SECRETA.search(nombre) and valor in texto:
+            texto = texto.replace(valor, "***")
+    for patron, reemplazo in _PATRONES_SECRETOS:
+        texto = patron.sub(reemplazo, texto)
+    return texto
+
+
 def _ahora() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -99,7 +127,7 @@ def _publica(doc: dict) -> dict:
         "creada": doc.get("creada"),
         "inicio": doc.get("inicio"),
         "fin": doc.get("fin"),
-        "error": (doc.get("resultado") or {}).get("error"),
+        "error": _censurar((doc.get("resultado") or {}).get("error")),
         "equipo": doc.get("equipo"),
     }
 
@@ -197,9 +225,9 @@ def log(id_: str, desde: int = 0) -> dict | None:
     desde = max(0, desde)
     respuesta = {
         **_publica(doc),
-        "lineas": lineas[desde:],
+        "lineas": [_censurar(ln) for ln in lineas[desde:]],   # también las guardadas antes de censurar
         "siguiente": max(desde, len(lineas)),
-        "resultado": doc.get("resultado"),
+        "resultado": {k: _censurar(v) if isinstance(v, str) else v for k, v in (doc.get("resultado") or {}).items()},
     }
     if doc["estado"] == "pendiente":
         respuesta["posicion"] = _posicion(doc)
@@ -278,7 +306,7 @@ class _Tee(io.TextIOBase):
 def _agregar(lineas: list[str]) -> None:
     global _volcado
     with _estado:
-        _lineas.extend(ln.rstrip("\r") for ln in lineas)
+        _lineas.extend(_censurar(ln.rstrip("\r")) for ln in lineas)
         if time.monotonic() - _volcado < VOLCAR_CADA_S or _actual is None:
             return
         _volcado = time.monotonic()
@@ -389,7 +417,8 @@ def _correr(doc: dict) -> None:
         _col().update_one({"_id": doc["_id"]}, {"$set": {
             "estado": estado,
             "fin": _ahora(),
-            "resultado": {k: v for k, v in resultado.items() if isinstance(v, (str, int, float, bool, type(None)))},
+            "resultado": {k: _censurar(v) if isinstance(v, str) else v for k, v in resultado.items()
+                          if isinstance(v, (str, int, float, bool, type(None)))},
             "log": lineas[-LINEAS_GUARDADAS:],
         }})
         with _estado:

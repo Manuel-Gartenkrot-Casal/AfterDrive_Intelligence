@@ -325,3 +325,33 @@ def test_la_corrida_dice_en_que_equipo_corre(col, ejecutadas):
     id_ = cola.encolar("scraping", {"max_articulos": 1})["id"]
     cola.procesar_pendientes()
     assert cola.log(id_)["equipo"] == cola.EQUIPO
+
+
+def test_el_registro_no_muestra_claves_ni_la_base(col, monkeypatch):
+    monkeypatch.setenv("PAGA_API_KEY", "clave-super-secreta-123")
+    monkeypatch.setenv("MONGO_URI", "mongodb+srv://u:p@pruebascrapling.uo6x74d.mongodb.net/?x=1")
+
+    def scrapear(max_articulos):
+        print("[DB] Conectando a MongoDB: mongodb+srv://***@pruebascrapling.uo6x74d.mongodb.net")
+        print("Authorization: Bearer nvapi-AbC123def456ghi789")
+        print("fallo en https://api.x.com/v1?key=AIzaSyXXXXXXXXXXXXXXXX&q=1 con sk-or-v1-abcdef0123456789")
+        print("la paga respondió con clave-super-secreta-123 en el texto")
+        raise RuntimeError("no conecta a pruebascrapling.uo6x74d.mongodb.net con clave-super-secreta-123")
+
+    monkeypatch.setattr(corridas, "_scrapear_fuentes", scrapear)
+    id_ = cola.encolar("scraping")["id"]
+    cola.procesar_pendientes()
+    r = cola.log(id_)
+    texto = "\n".join(r["lineas"]) + (r["error"] or "") + str(col.find_one()["resultado"])
+    for secreto in ("pruebascrapling", "uo6x74d", "nvapi-AbC123", "AIzaSy", "sk-or-v1-abc", "clave-super-secreta"):
+        assert secreto not in texto, secreto
+    assert "Conectando a MongoDB" in texto   # el resto de la línea se conserva
+
+
+def test_las_corridas_viejas_tambien_se_leen_censuradas(col):
+    id_ = col.insert_one({"tipo": "script", "estado": "error", "creada": cola._ahora(), "fin": cola._ahora(),
+                          "log": ["[DB] Conectando a MongoDB: mongodb+srv://***@pruebascrapling.uo6x74d.mongodb.net"],
+                          "resultado": {"success": False, "error": "falló pruebascrapling.uo6x74d.mongodb.net"}}).inserted_id
+    r = cola.log(str(id_))
+    assert "pruebascrapling" not in str(r)
+    assert "pruebascrapling" not in str(cola.listar())
