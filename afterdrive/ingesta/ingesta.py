@@ -2,13 +2,13 @@
 ingesta.py — Artículos scrapeados -> Artículos guardados (o descartados).
 
 Interfaz:
-    ingerir(items) -> {"total", "aprobados", "rechazados", "detalles"}
+    ingerir(items) -> {"total", "aprobados", "rechazados", "pendientes", "detalles"}
     clasificar(titulo, cuerpo) -> {"aprobado": bool, "razon": str}
 
 Acá vive el orden completo de la ingesta (clasificar, fichar, vectorizar,
 guardar) y la cadena de clasificadores: Jev primero; si no está configurado o
 falla, el clasificador LLM. Con la API paga en uso se saltea Jev y clasifica
-ella. La política de modo degradado del clasificador LLM está documentada en
+ella. Qué pasa cuando la IA no responde (el artículo queda pendiente) está en
 lm_studio.clasificar_articulo.
 
 La ficha (lm_studio.fichar_articulo) es el resumen estructurado que después
@@ -58,6 +58,11 @@ def ingerir(items: list[dict]) -> dict:
         print(f"  Clasificando [{i}/{total}]: {titulo[:70]}", flush=True)
 
         veredicto = clasificar(titulo, cuerpo)
+        if veredicto.get("pendiente"):
+            # Sin juicio de la IA: no se guarda ni se descarta, la próxima corrida lo reintenta.
+            print(f"    -> Pendiente: {veredicto.get('razon', '')[:80]}", flush=True)
+            detalles.append({"titulo": titulo, "estado": "pendiente", "razon": veredicto.get("razon", "")})
+            continue
         if veredicto["aprobado"]:
             print("    -> Aprobado", flush=True)
             aprobados.append(item)
@@ -106,6 +111,7 @@ def ingerir(items: list[dict]) -> dict:
     return {
         "total": total,
         "aprobados": len(aprobados),
-        "rechazados": total - len(aprobados),
+        "rechazados": sum(d["estado"] == "rechazado" for d in detalles),
+        "pendientes": sum(d["estado"] == "pendiente" for d in detalles),
         "detalles": detalles,
     }

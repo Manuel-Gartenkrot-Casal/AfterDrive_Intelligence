@@ -61,10 +61,10 @@ Actions:
 
 | Button | What it does |
 |---|---|
-| **Approve** / **Reject** | Rejecting asks for a reason, which upcoming posts take into account |
+| **Approve and upload to HubSpot** / **Reject** | Approving uploads the post as a draft to the blog in its language, signed by the author chosen in the **Publishing on HubSpot** block (default: Gastón Zelerteins). Rejecting asks for a reason, which upcoming posts take into account |
 | **Edit** | Changes the text. The first edit keeps the original version, and upcoming posts learn from your changes |
 | **Preview** | How it will look on the blog: title, meta description, tags, image and body. The image can also be changed there |
-| **Draft on HubSpot** / **Publish on HubSpot** | Only for approved posts |
+| **Upload draft to HubSpot** / **Publish on HubSpot** | Only for approved posts. "Upload draft" retries if the upload failed when approving |
 
 ### Rating posts
 

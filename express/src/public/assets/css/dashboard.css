@@ -1019,6 +1019,7 @@ body.modal-abierto { overflow: hidden; }
 .sidebar {
   position: sticky;
   top: 20px;
+  z-index: 20;   /* el menú de Ayuda sale por la derecha, sobre el contenido */
   min-height: calc(100dvh - 224px);
   display: flex;
   flex-direction: column;
@@ -1786,6 +1787,7 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 
 .revision-bloque { padding: var(--s3) 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
 .revision-bloque h4 { margin-bottom: 6px; }
+.revision-bloque .hubspot-autor { width: 100%; max-width: 100%; margin-top: 4px; }
 .revision-bloque.con-fallas h4::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: 1px; }
 .revision-ok { color: var(--ok); }
 .revision-mal { color: var(--err); font-weight: 500; }
@@ -2149,7 +2151,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 @media (max-width: 760px) { .indicadores { grid-template-columns: repeat(2, minmax(0, 1fr)); } .indicador-valor { font-size: 1.5rem; } }
 @media (max-width: 400px) { .indicadores { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .tablero-grid.animar .spark-linea, .tablero-grid.animar .spark-area, .tablero-grid.animar .spark-punto { animation: none; } }
-/* AYUDA (pie de la barra lateral) Y RECORRIDO GUIADO
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AYUDA (pie de la barra lateral) Y RECORRIDO GUIADO
    ═══════════════════════════════════════════════════════════════════════ */
 .sidebar-ayuda { position: relative; padding-top: var(--s3); border-top: 1px solid var(--border); }
 .ayuda-btn {
@@ -2161,7 +2165,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .ayuda-btn:hover, .ayuda-btn[aria-expanded="true"] { background: var(--well); color: var(--text-hi); }
 .ayuda-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .ayuda-menu {
-  position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 60;
+  position: absolute; left: calc(100% + 18px); bottom: 0; min-width: 210px; z-index: 60;
   display: flex; flex-direction: column; padding: 6px; max-height: min(380px, 60dvh); overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-float);
 }

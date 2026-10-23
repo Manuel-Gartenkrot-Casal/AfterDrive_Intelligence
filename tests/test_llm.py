@@ -484,3 +484,24 @@ def test_sin_stream_si_solo_razono_reintenta_con_mas_tokens(transporte, nvidia):
     t = transporte([vacia, chat('{"ok": true}')])
     assert llm.completar("s", "u", max_tokens=900, tarea="clasificacion") == '{"ok": true}'
     assert [p["json"]["max_tokens"] for p in t.posts] == [900, 3600]
+
+
+@pytest.mark.parametrize("disponible, completar", [
+    (False, None),                                                      # proveedor caído
+    (True, lambda *a, **k: (_ for _ in ()).throw(RuntimeError("429"))),  # límite del modelo gratis
+])
+def test_sin_ia_el_articulo_queda_pendiente_y_no_se_guarda(monkeypatch, disponible, completar):
+    """Una nota de CNN sobre un dron en Ucrania entró porque la IA falló y se aprobaba por defecto."""
+    from afterdrive.ia import lm_studio
+    from afterdrive.ingesta import ingesta
+    monkeypatch.setattr(lm_studio.llm, "disponible", lambda: disponible)
+    monkeypatch.setattr(lm_studio.llm, "completar", completar)
+    monkeypatch.setattr(ingesta, "clasificar", lm_studio.clasificar_articulo)
+    escrituras = []
+    for col in ("col_articulos", "col_descartados"):
+        monkeypatch.setattr(ingesta, col, type("C", (), {"__getattr__": lambda s, n: lambda *a, **k: escrituras.append(n)})())
+
+    res = ingesta.ingerir([{"url": "https://cnn.com/x", "titulo": "Un dron ruso mata a una niña", "cuerpo": "Ucrania"}])
+
+    assert (res["aprobados"], res["rechazados"], res["pendientes"]) == (0, 0, 1)
+    assert escrituras == []  # ni guardada ni descartada: la próxima corrida la reintenta

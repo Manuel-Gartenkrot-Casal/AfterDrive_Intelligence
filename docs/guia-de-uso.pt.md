@@ -61,10 +61,10 @@ Ações:
 
 | Botão | O que faz |
 |---|---|
-| **Aprovar** / **Rejeitar** | Rejeitar pede um motivo, que os próximos posts levam em conta |
+| **Aprovar e enviar ao HubSpot** / **Rejeitar** | Aprovar envia o post como rascunho ao blog do seu idioma, assinado pelo autor escolhido no bloco **Publicação no HubSpot** (padrão: Gastón Zelerteins). Rejeitar pede um motivo, que os próximos posts levam em conta |
 | **Editar** | Altera o texto. A primeira edição guarda a versão original, e os próximos posts aprendem com suas alterações |
 | **Pré-visualização** | Como vai ficar no blog: título, meta description, etiquetas, imagem e corpo. Ali também se troca a imagem |
-| **Rascunho no HubSpot** / **Publicar no HubSpot** | Só com o post aprovado |
+| **Enviar rascunho ao HubSpot** / **Publicar no HubSpot** | Só com o post aprovado. "Enviar rascunho" tenta de novo se o envio falhou ao aprovar |
 
 ### Avaliar posts
 

@@ -25,7 +25,7 @@ ingesta.py   el LLM decide si es del rubro
 - Máximo de artículos por fuente: `max_articulos` (10 por defecto, se cambia en Programación).
 - **No se vuelve a procesar lo ya visto**: antes de descargar se consultan `articulos` y `articulos_descartados` (`corridas.ya_procesadas`). El contador de "nuevos" es real.
 - Se descartan cuerpos de menos de 100 caracteres.
-- **Modo degradado**: si el LLM no responde, el artículo se aprueba igual para no perderlo. La disponibilidad del proveedor se vuelve a chequear al minuto, así que una caída no deja el modo degradado activo para siempre.
+- **Pendientes**: si el LLM no responde (caído o con límite de uso), el artículo no se guarda ni se descarta, así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba contenido fuera de tema. La disponibilidad del proveedor se vuelve a chequear al minuto.
 - Cómo baja cada página depende de la RAM (`ingesta/resource_detector.py`). Con menos de 600 MB (Render free) nunca usa Chromium: `requests` y, si falla, Wayback. En GitHub Actions (~7 GB) usa Chromium. Se fuerza con `FORCE_PROFILE=alto|medio|bajo`.
 - Los dominios que no respondieron van directo a Wayback **solo durante esa corrida**.
 - Las fuentes **pausadas** (`estado: "inactivo"`) no se scrapean.
@@ -89,9 +89,9 @@ La automática no hace nada si no hay categorías guardadas.
 ## Revisión y publicación
 
 ```
-borrador ──Aprobar──► aprobada ──Publicar en HubSpot──► publicado
-   │                     │                                  │
-   └──Rechazar──► rechazada   Borrador en HubSpot        Despublicar → aprobada
+borrador ──Aprobar y subir──► aprobada + borrador en HubSpot ──Publicar en HubSpot──► publicado
+   │                                                                                     │
+   └──Rechazar──► rechazada                                                  Despublicar → aprobada
 ```
 
 Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.

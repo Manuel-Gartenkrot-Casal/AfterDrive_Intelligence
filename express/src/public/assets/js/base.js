@@ -184,7 +184,11 @@ async function pedir(url, opciones) {
   var r = await fetch(url, opciones);
   var d = {};
   try { d = await r.json(); } catch (e) {}
-  if (!r.ok || d.success === false) throw new Error(d.error || ('Error ' + r.status));
+  if (!r.ok || d.success === false) {
+    var error = new Error(d.error || ('Error ' + r.status));
+    error.status = r.status;
+    throw error;
+  }
   return d;
 }
 

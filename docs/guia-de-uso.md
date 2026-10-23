@@ -61,10 +61,10 @@ Acciones:
 
 | Botón | Qué hace |
 |---|---|
-| **Aprobar** / **Rechazar** | Rechazar pide un motivo, que las próximas notas tienen en cuenta |
+| **Aprobar y subir a HubSpot** / **Rechazar** | Aprobar sube la nota como borrador al blog de su idioma, firmada por el autor elegido en el bloque **Publicación en HubSpot** (por defecto, Gastón Zelerteins). Rechazar pide un motivo, que las próximas notas tienen en cuenta |
 | **Editar** | Cambia el texto. La primera edición guarda la versión original, y las próximas notas aprenden de tus cambios |
 | **Vista previa** | Cómo va a salir en el blog: título, meta description, etiquetas, imagen y cuerpo. Desde ahí también se cambia la imagen |
-| **Borrador en HubSpot** / **Publicar en HubSpot** | Solo con la nota aprobada |
+| **Subir borrador a HubSpot** / **Publicar en HubSpot** | Solo con la nota aprobada. "Subir borrador" reintenta si la subida falló al aprobar |
 
 ### Calificar notas
 

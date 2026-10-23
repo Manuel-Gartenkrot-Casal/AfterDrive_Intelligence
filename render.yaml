@@ -67,11 +67,13 @@ services:
         sync: false
       - key: ADMIN_PASSWORD_HASH
         sync: false
-      # Publicación en HubSpot (opcional): token de app privada con scope
-      # "content" e id del blog. Sin ellos el botón de HubSpot no aparece.
+      # Publicación en HubSpot (opcional): token de app privada con scopes
+      # "content" y "files". Sin él, aprobar no sube nada. HUBSPOT_BLOG_PRUEBAS es
+      # opcional: fuerza todas las notas a un blog (para pruebas).
+      # El viejo HUBSPOT_BLOG_ID ya no se usa: borralo del Environment.
       - key: HUBSPOT_TOKEN
         sync: false
-      - key: HUBSPOT_BLOG_ID
+      - key: HUBSPOT_BLOG_PRUEBAS
         sync: false
       - key: SECRET_KEY
         generateValue: true

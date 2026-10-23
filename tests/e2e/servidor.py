@@ -25,7 +25,7 @@ from tests.e2e.credenciales import CLAVE, USUARIO  # noqa: E402
 os.environ.update(
     ADMIN_USER=USUARIO, ADMIN_PASSWORD_HASH=generate_password_hash(CLAVE), SECRET_KEY="e2e",
     AI_PROVIDER_OVERRIDE="1", AI_PROVIDER="local", MONGO_URI="mongodb://e2e",
-    HUBSPOT_TOKEN="pat-e2e", HUBSPOT_BLOG_ID="123",
+    HUBSPOT_TOKEN="pat-e2e", HUBSPOT_BLOG_PRUEBAS="123",
     # API paga configurada (a una URL falsa) para poder prender el modo pago.
     PAGA_API_KEY="pg-e2e", PAGA_BASE_URL="http://127.0.0.1:9/v1", PAGA_MODEL="modelo-e2e",
     NVIDIA_API_KEY="nvapi-e2e", IMAGENES_AUTOMATICAS="0",
@@ -109,10 +109,22 @@ def nvidia_falso() -> None:
     imagenes._transporte = {"post": lambda url, **kw: _RespImagen()}
 
 
+AUTORES_E2E = [{"id": "37798507784", "fullName": "Gaston Zelerteins", "language": "es"},
+               {"id": "191488460449", "fullName": "Ana Dias", "language": "es"},
+               {"id": "192900528951", "fullName": "Ana Dias", "language": "pt"}]
+
+
 def hubspot_falso() -> None:
+    class _RespAutores(_Resp):
+        def json(self):
+            return {"results": AUTORES_E2E}
+
     def post(url, json=None, headers=None, timeout=None, params=None):
         return _Resp(json.get("state", "DRAFT") if json else "DRAFT")
-    hubspot._transporte = {"post": post, "patch": post, "get": post}
+
+    def get(url, **kw):
+        return _RespAutores("DRAFT") if url == hubspot.API_AUTORES else post(url)
+    hubspot._transporte = {"post": post, "patch": post, "get": get}
 
 
 if __name__ == "__main__":

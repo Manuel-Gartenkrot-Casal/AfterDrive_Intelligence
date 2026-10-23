@@ -32,7 +32,7 @@ class Resp:
 def hs(monkeypatch):
     """HubSpot falso: anota cada llamada y responde lo que se le cargue."""
     monkeypatch.setenv("HUBSPOT_TOKEN", "pat-test")
-    monkeypatch.setenv("HUBSPOT_BLOG_ID", "123")
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "123")
     llamadas = []
     respuesta = {"status": 200, "body": {"id": "999", "url": "https://blog/frenos", "state": "DRAFT"}}
 
@@ -43,7 +43,6 @@ def hs(monkeypatch):
         return f
 
     monkeypatch.setattr(hubspot, "_transporte", {"post": fake("post"), "patch": fake("patch"), "get": fake("get")})
-    monkeypatch.setattr(hubspot, "_tags_cache", {})
     return llamadas, respuesta
 
 
@@ -51,7 +50,7 @@ def test_preparar_separa_titulo_meta_y_pasa_a_html():
     p = hubspot.preparar(NOTA)
     assert p["titulo"] == "Frenos: la demanda sube en Argentina"
     assert p["meta"].startswith("La demanda de frenos crece")
-    assert "<h1>" not in p["html"] and "<h2>Qué pasó</h2>" in p["html"]
+    assert "<h1>" not in p["html"] and "<h3>Qué pasó</h3>" in p["html"]
     assert "<strong>pastillas de freno</strong>" in p["html"] and "<li>Más reposición</li>" in p["html"]
     assert "La demanda de frenos crece" not in p["html"]
 
@@ -85,7 +84,7 @@ def test_reenviar_actualiza_el_mismo_post_sin_cambiar_el_slug(hs):
     assert c["json"]["state"] == "PUBLISHED" and "slug" not in c["json"]
 
 
-@pytest.mark.parametrize("status, texto", [(401, "token"), (404, "HUBSPOT_BLOG_ID"), (429, "limitando"), (500, "500")])
+@pytest.mark.parametrize("status, texto", [(401, "token"), (404, "HUBSPOT_BLOG_PRUEBAS"), (429, "limitando"), (500, "500")])
 def test_errores_de_hubspot_se_explican(hs, status, texto):
     _, respuesta = hs
     respuesta.update(status=status, body={"message": "x"})
@@ -193,52 +192,6 @@ def test_sin_imagen_no_se_manda_el_campo(hs, monkeypatch):
     assert "featuredImage" not in llamadas[-1]["json"]
 
 
-@pytest.fixture
-def hs_tags(monkeypatch):
-    """HubSpot falso con una etiqueta existente ('Autopartes') y creación de nuevas."""
-    monkeypatch.setenv("HUBSPOT_TOKEN", "pat-test")
-    monkeypatch.setenv("HUBSPOT_BLOG_ID", "123")
-    monkeypatch.setattr(hubspot, "_tags_cache", {})
-    llamadas = []
-
-    def get(url, params=None, headers=None, timeout=None):
-        llamadas.append(("get", url, None))
-        return Resp(200, {"results": [{"id": 11, "name": "Autopartes"}]})
-
-    def post(url, json=None, headers=None, timeout=None):
-        llamadas.append(("post", url, json))
-        if url == hubspot.API_TAGS:
-            return Resp(200, {"id": 22, "name": json["name"]})
-        return Resp(200, {"id": "1", "state": json["state"]})
-
-    monkeypatch.setattr(hubspot, "_transporte", {"get": get, "post": post, "patch": post})
-    return llamadas
-
-
-def test_etiquetas_de_las_categorias_usa_las_existentes_y_crea_las_que_faltan(hs_tags):
-    nota = {"_id": ObjectId(), "contenido": NOTA, "categorias": ["autopartes", "marketplaces"]}
-    hubspot.enviar(nota)
-    creadas = [j for m, u, j in hs_tags if m == "post" and u == hubspot.API_TAGS]
-    assert creadas == [{"name": "Marketplaces", "language": "es"}]
-    post = [j for m, u, j in hs_tags if m == "post" and u == hubspot.API][0]
-    assert post["tagIds"] == ["11", "22"]
-    # La segunda vez ya están en caché: no se vuelven a listar ni a crear.
-    hs_tags.clear()
-    hubspot.enviar(nota)
-    assert [m for m, u, _ in hs_tags if u == hubspot.API_TAGS] == []
-
-
-def test_si_las_etiquetas_fallan_se_publica_igual(hs_tags, monkeypatch):
-    def get_roto(url, params=None, headers=None, timeout=None):
-        return Resp(500, {"message": "x"})
-
-    monkeypatch.setitem(hubspot._transporte, "get", get_roto)
-    r = hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "categorias": ["autopartes"]})
-    assert r["id"] == "1"
-    post = [j for m, u, j in hs_tags if u == hubspot.API][0]
-    assert "tagIds" not in post
-
-
 def test_vista_previa_no_llama_a_hubspot(monkeypatch, base):
     monkeypatch.delenv("HUBSPOT_TOKEN", raising=False)
     monkeypatch.setattr(hubspot, "_transporte", {})
@@ -246,7 +199,7 @@ def test_vista_previa_no_llama_a_hubspot(monkeypatch, base):
                                        "imagen": {"url": "https://img/a.jpg", "alt": "x"}}).inserted_id
     p = historial.vista_previa("notas_fase2", str(oid), base=base)
     assert p["titulo"].startswith("Frenos") and p["etiquetas"] == ["Autopartes"]
-    assert p["imagen"]["url"] == "https://img/a.jpg" and p["meta"] and "<h2>" in p["html"]
+    assert p["imagen"]["url"] == "https://img/a.jpg" and p["meta"] and "<h3>" in p["html"]
 
 
 def test_cambiar_imagen_valida_la_url(base):
@@ -278,3 +231,108 @@ def test_preparar_arregla_el_formato_de_notas_viejas():
     p = hubspot.preparar("# Sube **15%** la venta\nTexto:\n- a\n- b\n\n*Meta con **negrita**.*")
     assert p["titulo"] == "Sube 15% la venta" and p["meta"] == "Meta con negrita."
     assert "<ul>\n<li>a</li>" in p["html"]
+
+
+# ── Destino: blog, etiquetas y autor según la nota ────────────────────────────
+
+
+@pytest.fixture
+def sin_forzar(monkeypatch):
+    monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS", raising=False)
+
+
+@pytest.mark.parametrize("regiones, blog, autor", [
+    ([], "41065736183", "37798507784"),
+    (["argentina"], "41065736183", "37798507784"),
+    (["mexico", "europa"], "41065736183", "37798507784"),
+    (["brasil"], "43859303259", "192904642075"),
+    (["asia"], "43859745706", "194508336788"),
+])
+def test_el_blog_y_el_autor_salen_del_idioma(sin_forzar, regiones, blog, autor):
+    d = hubspot.destino({"regiones": regiones})
+    assert d["blog_id"] == blog and d["autor_id"] == autor
+
+
+def test_sin_blog_en_ese_idioma_no_se_sube(sin_forzar):
+    with pytest.raises(hubspot.ErrorHubSpot, match="idioma"):
+        hubspot.destino({"regiones": ["china"]})
+
+
+def test_hubspot_blog_pruebas_fuerza_el_blog_y_el_viejo_blog_id_no(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_BLOG_ID", "41065736183")   # heredado: no debe forzar nada
+    monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS", raising=False)
+    assert hubspot.destino({"regiones": ["brasil"]})["blog_id"] == "43859303259"
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "114283349257")
+    assert hubspot.destino({"regiones": ["brasil"]})["blog_id"] == "114283349257"
+
+
+def test_etiquetas_existentes_en_el_idioma_del_blog_sin_crear_nuevas(hs, sin_forzar):
+    llamadas, _ = hs
+    nota = {"_id": ObjectId(), "contenido": NOTA, "regiones": ["brasil"],
+            "categorias": ["autopartes", "marketplaces", "inventada"]}
+    hubspot.enviar(nota)
+    assert [c["metodo"] for c in llamadas] == ["post"] and llamadas[0]["url"] == hubspot.API
+    c = llamadas[0]["json"]
+    assert c["tagIds"] == ["192987214119", "192964709439"]   # Autopeças y Marketplaces (pt)
+    assert c["contentGroupId"] == "43859303259" and c["blogAuthorId"] == "192904642075"
+
+
+def test_cada_categoria_tiene_su_etiqueta_en_los_tres_idiomas():
+    from afterdrive.generacion.scraper_afterdrive import CATEGORIAS
+    assert set(CATEGORIAS) == set(hubspot.ETIQUETAS)
+    assert all(len(ids) == 3 and all(i.isdigit() for i in ids) for ids in hubspot.ETIQUETAS.values())
+
+
+def test_el_autor_elegido_manda_y_el_reenvio_no_cambia_el_blog(hs, sin_forzar):
+    llamadas, _ = hs
+    hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "hubspot_autor_id": "555", "hubspot": {"id": "999"}})
+    c = llamadas[0]["json"]
+    assert c["blogAuthorId"] == "555" and "contentGroupId" not in c and "slug" not in c
+
+
+def test_meta_larga_se_recorta_sin_cortar_palabras():
+    meta = "palabra " * 25   # 200 caracteres: más que META_MAX, menos que el tope de 300 de preparar
+    p = hubspot.preparar(f"# Título\n\nCuerpo.\n\n*{meta.strip()}*")
+    assert len(p["meta"]) <= hubspot.META_MAX and p["meta"].endswith("palabra…")
+
+
+def test_enviar_guarda_el_autor_elegido(hs, base):
+    llamadas, _ = hs
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada"}).inserted_id
+    historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base, autor_id="555")
+    assert base.notas_fase2.find_one({"_id": oid})["hubspot_autor_id"] == "555"
+    assert llamadas[-1]["json"]["blogAuthorId"] == "555"
+    with pytest.raises(historial.ErrorHistorial, match="Autor"):
+        historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base, autor_id="1; drop")
+
+
+def test_endpoint_destino_lista_los_autores_del_idioma(hs, api, monkeypatch, base, sin_forzar):
+    flask_api, _ = api
+    monkeypatch.setattr(db_module, "db", base)
+    hs[1]["body"] = {"results": [{"id": 2, "fullName": "Zoe", "language": "pt"},
+                                 {"id": 1, "fullName": "Ana", "language": "pt"},
+                                 {"id": 3, "fullName": "Bob", "language": "es"}]}
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "regiones": ["brasil"], "categorias": ["eventos"]}).inserted_id
+    r = c.get(f"/api/hubspot/destino/notas_fase2/{oid}")
+    assert r.status_code == 200
+    assert r.json["blog_id"] == "43859303259" and r.json["etiquetas"] == ["Eventos"]
+    assert [a["nombre"] for a in r.json["autores"]] == ["Ana", "Zoe"] and "tag_ids" not in r.json
+
+
+def test_nota_sin_blog_en_su_idioma_no_llama_a_hubspot_ni_sube_la_imagen(hs, base):
+    llamadas, _ = hs
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada", "regiones": ["china"],
+                                       "imagen": {"generada": {"id": "0" * 24}}}).inserted_id
+    with pytest.raises(hubspot.ErrorHubSpot, match="idioma"):
+        historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
+    assert llamadas == [] and "hubspot" not in base.notas_fase2.find_one({"_id": oid})
+
+
+def test_actualizar_no_pisa_autor_ni_etiquetas_cambiados_en_hubspot(hs, sin_forzar):
+    llamadas, _ = hs
+    hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "hubspot": {"id": "999"}})
+    c = llamadas[0]["json"]
+    assert "blogAuthorId" not in c and "tagIds" not in c

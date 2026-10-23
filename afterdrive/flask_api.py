@@ -611,13 +611,31 @@ def hubspot_estado():
     return jsonify({"success": True, "configurado": hubspot.configurado()})
 
 
+@app.route("/api/hubspot/destino/<coleccion>/<item_id>", methods=["GET"])
+def hubspot_destino(coleccion, item_id):
+    """Blog, etiquetas y autor que le tocan a la nota, y los autores para elegir."""
+    from afterdrive import historial, hubspot
+    try:
+        lugar = historial.destino_hubspot(coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 422
+    except Exception as e:
+        return _error_interno(e)
+    if lugar is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **lugar})
+
+
 @app.route("/api/hubspot/enviar", methods=["POST"])
 def hubspot_enviar():
-    """Envía una nota aprobada a HubSpot: {"coleccion", "id", "publicar": bool}."""
+    """Envía una nota aprobada a HubSpot: {"coleccion", "id", "publicar": bool, "autor_id"?}."""
     from afterdrive import historial, hubspot
     body = request.get_json(silent=True) or {}
     try:
-        item = historial.enviar_a_hubspot(body.get("coleccion", ""), body.get("id", ""), body.get("publicar") is True)
+        item = historial.enviar_a_hubspot(body.get("coleccion", ""), body.get("id", ""), body.get("publicar") is True,
+                                          autor_id=body.get("autor_id") or None)
     except historial.ErrorHistorial as e:
         return jsonify({"success": False, "error": str(e)}), 400
     except hubspot.ErrorHubSpot as e:

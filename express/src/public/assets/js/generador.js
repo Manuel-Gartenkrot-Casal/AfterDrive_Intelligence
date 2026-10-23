@@ -559,6 +559,7 @@ async function fase2MostrarUltima(id) {
             ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
       check.appendChild(res);
     }
+    pintarDestinoHubspot(d.nota, check);
     var lugarCalificacion = document.createElement('details');
     lugarCalificacion.className = 'revision-criterios';
     lugarCalificacion.innerHTML = '<summary>Calificar esta nota</summary>';

@@ -328,23 +328,48 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
 
 
-def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None) -> dict | None:
+def destino_hubspot(coleccion: str, item_id: str, base=None) -> dict | None:
+    """A qué blog va la nota, con qué etiquetas y autor, y los autores que se pueden elegir."""
+    from afterdrive import hubspot
+
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas se envían a HubSpot.")
+    doc = _base(base)[coleccion].find_one({"_id": _oid(item_id)}, {"regiones": 1, "categorias": 1, "hubspot_autor_id": 1})
+    if not doc:
+        return None
+    lugar = hubspot.destino(doc)
+    lugar.pop("tag_ids")
+    try:
+        lugar["autores"] = hubspot.autores(lugar["idioma"])
+    except hubspot.ErrorHubSpot:
+        lugar["autores"] = []   # se sube igual con el autor por defecto
+    return lugar
+
+
+def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, autor_id: str | None = None) -> dict | None:
     """Manda una Nota aprobada a HubSpot (borrador o publicada) y guarda el resultado.
 
     Solo las notas aprobadas (o ya publicadas, para actualizarlas): así nada
-    llega al blog sin que una persona lo haya revisado.
+    llega al blog sin que una persona lo haya revisado. `autor_id` es el autor
+    elegido al revisarla; queda guardado para los reenvíos.
     """
     from afterdrive import hubspot
 
     if coleccion not in COLECCIONES_CON_ESTADO:
         raise ErrorHistorial("Solo las notas generadas se pueden enviar a HubSpot.")
+    if autor_id is not None and not re.fullmatch(r"\d{1,20}", str(autor_id)):
+        raise ErrorHistorial("Autor inválido.")
     col = _base(base)[coleccion]
     doc = col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING)
     if not doc:
         return None
     if doc.get("estado") not in (_db.ESTADO_APROBADA, _db.ESTADO_PUBLICADO):
         raise ErrorHistorial("Aprobá la nota antes de enviarla a HubSpot.")
+    if autor_id is not None:
+        col.update_one({"_id": doc["_id"]}, {"$set": {"hubspot_autor_id": str(autor_id)}})
+        doc["hubspot_autor_id"] = str(autor_id)
 
+    hubspot.destino(doc)   # sin blog para su idioma: falla antes de subir la imagen
     aviso = _subir_imagen_generada(col, doc, base)
     r = hubspot.enviar(doc, publicar=publicar)   # ErrorHubSpot sube tal cual
     ahora = datetime.datetime.now(datetime.UTC).isoformat()

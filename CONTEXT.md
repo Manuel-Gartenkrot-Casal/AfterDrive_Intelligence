@@ -21,8 +21,8 @@ Artículo que la clasificación rechazó; se recuerda solo para no volver a proc
 Paso de un lote de artículos scrapeados a Artículos guardados: clasificar, vectorizar y guardar.
 _Avoid_: clasificar y guardar
 
-**Modo degradado**:
-Estado en que el clasificador no está disponible y los artículos se aprueban sin juicio, para no perderlos por una caída ajena a su contenido.
+**Pendiente**:
+Artículo que no se pudo clasificar porque la IA no respondió. No se guarda ni se descarta: la próxima corrida lo vuelve a clasificar. Reemplaza al viejo "modo degradado", que lo aprobaba sin juicio.
 
 ### Notas
 
