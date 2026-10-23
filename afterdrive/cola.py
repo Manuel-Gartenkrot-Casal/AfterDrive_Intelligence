@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -49,8 +50,34 @@ TERMINALES = ("ok", "error", "cancelada", "interrumpida")
 ETIQUETAS = {"scraping": "Buscar noticias", "generacion": "Generar nota"}
 
 # Qué servidor tomó cada Corrida. Si hay dos contra la misma base (Render y un
-# Docker local, por ejemplo), en Corridas se ve cuál corrió cada una.
-EQUIPO = f"{socket.gethostname()} (pid {os.getpid()})"
+# Docker local, por ejemplo), en Corridas se ve cuál corrió cada una. Nunca el
+# hostname crudo: en Render es el ID del servicio (srv-...). Solo el tipo y un
+# código corto que distingue un proceso de otro.
+_ETIQUETAS_EQUIPO = ("Render", "GitHub Actions", "Local")
+
+
+def _codigo(texto: str) -> str:
+    return hashlib.sha256(texto.encode()).hexdigest()[:4]
+
+
+def _equipo() -> str:
+    if os.getenv("RENDER"):
+        tipo = "Render"
+    elif os.getenv("GITHUB_ACTIONS"):
+        tipo = "GitHub Actions"
+    else:
+        tipo = "Local"
+    return f"{tipo} · {_codigo(f'{socket.gethostname()}:{os.getpid()}')}"
+
+
+def _equipo_visible(valor: str | None) -> str | None:
+    """Las Corridas viejas guardaron el hostname crudo: se muestran con el código."""
+    if not valor or valor.startswith(_ETIQUETAS_EQUIPO):
+        return valor
+    return f"Servidor · {_codigo(valor)}"
+
+
+EQUIPO = _equipo()
 
 
 class ColaLlena(RuntimeError):
@@ -89,6 +116,7 @@ _PATRONES_SECRETOS = [
     (re.compile(r"mongodb(\+srv)?://\S+"), "mongodb://***"),
     (re.compile(r"[\w.-]+\.mongodb\.net"), "***.mongodb.net"),
     (re.compile(r"(?i)(bearer\s+)\S+"), r"\1***"),
+    (re.compile(r"\bsrv-[a-z0-9]{10,}[\w-]*"), "srv-***"),   # ID del servicio de Render
     (re.compile(r"\bnvapi-[\w-]+"), "nvapi-***"),
     (re.compile(r"\bsk-[\w-]{8,}"), "sk-***"),
     (re.compile(r"\bAIza[\w-]{10,}"), "***"),
@@ -128,7 +156,7 @@ def _publica(doc: dict) -> dict:
         "inicio": doc.get("inicio"),
         "fin": doc.get("fin"),
         "error": _censurar((doc.get("resultado") or {}).get("error")),
-        "equipo": doc.get("equipo"),
+        "equipo": _equipo_visible(doc.get("equipo")),
     }
 
 

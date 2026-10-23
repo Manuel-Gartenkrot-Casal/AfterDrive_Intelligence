@@ -336,6 +336,7 @@ def test_el_registro_no_muestra_claves_ni_la_base(col, monkeypatch):
         print("Authorization: Bearer nvapi-AbC123def456ghi789")
         print("fallo en https://api.x.com/v1?key=AIzaSyXXXXXXXXXXXXXXXX&q=1 con sk-or-v1-abcdef0123456789")
         print("la paga respondió con clave-super-secreta-123 en el texto")
+        print("corriendo en srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d")
         raise RuntimeError("no conecta a pruebascrapling.uo6x74d.mongodb.net con clave-super-secreta-123")
 
     monkeypatch.setattr(corridas, "_scrapear_fuentes", scrapear)
@@ -343,7 +344,7 @@ def test_el_registro_no_muestra_claves_ni_la_base(col, monkeypatch):
     cola.procesar_pendientes()
     r = cola.log(id_)
     texto = "\n".join(r["lineas"]) + (r["error"] or "") + str(col.find_one()["resultado"])
-    for secreto in ("pruebascrapling", "uo6x74d", "nvapi-AbC123", "AIzaSy", "sk-or-v1-abc", "clave-super-secreta"):
+    for secreto in ("pruebascrapling", "uo6x74d", "nvapi-AbC123", "AIzaSy", "sk-or-v1-abc", "clave-super-secreta", "dafbmo0u"):
         assert secreto not in texto, secreto
     assert "Conectando a MongoDB" in texto   # el resto de la línea se conserva
 
@@ -355,3 +356,16 @@ def test_las_corridas_viejas_tambien_se_leen_censuradas(col):
     r = cola.log(str(id_))
     assert "pruebascrapling" not in str(r)
     assert "pruebascrapling" not in str(cola.listar())
+
+
+def test_el_equipo_no_muestra_el_hostname(col, monkeypatch):
+    """En Render el hostname es el ID del servicio (srv-...): no se expone."""
+    import socket
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(socket, "gethostname", lambda: "srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d")
+    equipo = cola._equipo()
+    assert equipo.startswith("Render · ") and "srv-" not in equipo
+    viejo = col.insert_one({"tipo": "script", "estado": "ok", "creada": cola._ahora(), "fin": cola._ahora(),
+                            "equipo": "srv-dafbmo0u01pc739p5v0g-hibernate-5cfcbf7858-4nt6d (pid 26)"}).inserted_id
+    assert "srv-" not in cola.log(str(viejo))["equipo"]
+    assert "srv-" not in str(cola.listar())
