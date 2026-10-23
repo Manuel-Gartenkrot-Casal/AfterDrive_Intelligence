@@ -96,3 +96,25 @@ def test_sin_buscadores_ni_ia_termina_con_error_claro(base, monkeypatch, capsys)
     base_falsa = base
     assert ds.main() == 1
     assert "[ERROR] No se pudo buscar" in capsys.readouterr().out
+
+
+RSS_OK = """<rss><channel>
+<item><title>Crece el mercado de autopartes en la región</title><source url="https://www.diarioautopartes.com">Diario Autopartes</source></item>
+<item><title>Receta de tortas</title><source url="https://cocina.com">Cocina</source></item>
+<item><title>Repuestos: suben las ventas</title><source url="https://ya-confiable.com">Ya</source></item>
+</channel></rss>"""
+
+
+def test_google_noticias_sugiere_el_sitio_del_medio(base, monkeypatch):
+    _sin_ia(monkeypatch)
+    pedidos = []
+
+    def get(url, **k):
+        pedidos.append(url)
+        return Resp(text=RSS_OK) if "news.google.com" in url else Resp(404)
+    monkeypatch.setattr(ds, "_transporte", {"post": lambda url, **k: Resp(202), "get": get})
+    r = ds.discover(base)
+    guardadas = list(base.suggested_urls.find())
+    assert [g["dominio"] for g in guardadas] == ["diarioautopartes.com"] and r["guardadas"] == 1
+    assert guardadas[0]["url"] == "https://www.diarioautopartes.com/"
+    assert not any("duckduckgo" in u or "bing" in u for u in pedidos)   # respondió el primero

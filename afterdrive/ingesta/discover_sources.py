@@ -10,7 +10,9 @@ Interfaz:
     raiz(url) -> str
 
 Dos caminos, y alcanza con que funcione uno:
-1. Buscadores: DuckDuckGo, DuckDuckGo Lite y Bing, en ese orden. Desde un
+1. Buscadores: Google Noticias (RSS), DuckDuckGo, DuckDuckGo Lite y Bing, en
+   ese orden. El RSS de Google Noticias trae el sitio de cada medio y no pide
+   captcha; los demás quedan de respaldo. Desde un
    servidor en la nube (Render, GitHub Actions) los buscadores suelen
    responder con un desafío anti-bots (DuckDuckGo devuelve 202) en vez de
    resultados: antes eso se contaba como "0 resultados" y la búsqueda
@@ -29,6 +31,7 @@ import datetime
 import sys
 import time
 import unicodedata
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from urllib.parse import parse_qs, quote_plus, urlparse
 
@@ -166,7 +169,26 @@ def _bing(q: str) -> list[Resultado]:
     return resultados
 
 
-MOTORES = [("DuckDuckGo", _ddg), ("DuckDuckGo Lite", _ddg_lite), ("Bing", _bing)]
+def _google_noticias(q: str) -> list[Resultado]:
+    """Notas del RSS de Google Noticias; la URL es el sitio del medio (el link de la nota es una redirección)."""
+    resp = _transporte["get"](
+        f"https://news.google.com/rss/search?q={quote_plus(q)}&hl=es-419&gl=AR&ceid=AR:es-419",
+        headers=_HEADERS, timeout=15,
+    )
+    try:
+        items = ET.fromstring(_revisar(resp, "Google Noticias")).findall("./channel/item")
+    except ET.ParseError:
+        return []
+    resultados = []
+    for item in items:
+        fuente = item.find("source")
+        if fuente is not None and fuente.get("url"):
+            resultados.append(Resultado(fuente.get("url"), item.findtext("title", ""), (fuente.text or "").strip()))
+    return resultados
+
+
+MOTORES = [("Google Noticias", _google_noticias), ("DuckDuckGo", _ddg), ("DuckDuckGo Lite", _ddg_lite),
+           ("Bing", _bing)]
 
 
 def _buscar(q: str, bloqueados: dict) -> list[Resultado]:
