@@ -168,6 +168,7 @@ async function pedirCriticaIA(nota, caja) {
     var d = await pedido;
     nota.critica = d.critica;
     if (caja.isConnected) llenarCriticaIA(caja, d.critica);
+    if (_seccion === 'historial') cargarHistorial(_hist.pagina);   // la lista muestra la calificación nueva
   } catch (e) {
     if (!caja.isConnected) return;
     caja.classList.remove('cargando');

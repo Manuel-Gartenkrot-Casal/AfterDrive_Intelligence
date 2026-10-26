@@ -6,7 +6,7 @@ import mongomock
 import pytest
 from bson import ObjectId
 
-from afterdrive import calibracion
+from afterdrive import calibracion, historial
 from afterdrive.generacion import critica
 from afterdrive.ia import llm
 
@@ -98,6 +98,13 @@ def test_una_critica_fallida_no_pisa_la_anterior(monkeypatch, base):
     nid = base.notas_fase2.insert_one({"contenido": NOTA, "critica": {"puntaje": 7}}).inserted_id
     assert "error" in critica.criticar_guardada("notas_fase2", str(nid), base=base)
     assert base.notas_fase2.find_one({"_id": nid})["critica"] == {"puntaje": 7}
+
+
+def test_la_lista_del_historial_trae_el_puntaje_de_la_ia(base):
+    base.notas_fase2.insert_many([{"contenido": NOTA, "critica": {"puntaje": 7, "errores": [{"tipo": "tono"}]}},
+                                  {"contenido": NOTA}])
+    puntajes = [it["critica_puntaje"] for it in historial.listar("generados_aprobados", base=base)["items"]]
+    assert sorted(puntajes, key=str) == [7, None]
 
 
 @pytest.fixture
