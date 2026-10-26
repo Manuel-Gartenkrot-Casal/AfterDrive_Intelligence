@@ -280,3 +280,19 @@ def test_documentacion_en_ayuda(client, api):
     r = anonimo.get("/ayuda")
     assert r.status_code == 302 and r.headers["Location"].endswith("/")
     assert c.get("/ayuda").status_code == 200
+
+
+def test_switch_del_blog_de_pruebas(client, monkeypatch):
+    from afterdrive import config_store
+    c, store = client
+    monkeypatch.setattr(config_store, "get_blog_pruebas_config",
+                        lambda: store.get("blog_pruebas", {"activo": True})["activo"])
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "123")
+    assert c.get("/api/hubspot/blog-pruebas").get_json()["activo"] is True
+    d = c.post("/api/hubspot/blog-pruebas", json={"activo": False}).get_json()
+    assert d["activo"] is False and d["disponible"] is True
+    assert store["blog_pruebas"] == {"activo": False}
+    assert c.post("/api/hubspot/blog-pruebas", json={"activo": "no"}).status_code == 400
+    monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS")
+    assert c.get("/api/hubspot/blog-pruebas").get_json() == {
+        "success": True, "disponible": False, "blog_id": "", "activo": False}

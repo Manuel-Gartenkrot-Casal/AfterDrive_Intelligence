@@ -17,6 +17,7 @@ Usa la API de CMS v3 (POST/PATCH /cms/v3/blogs/posts) con el token de una app
 privada de HubSpot con el scope "content". Configuración:
     HUBSPOT_TOKEN      token de la app privada (Configuración > Integraciones > Apps privadas)
     HUBSPOT_BLOG_PRUEBAS  opcional: manda TODO a este blog (para probar en el "Blog test").
+                       Se prende y apaga desde la vista Desarrollador (blog_pruebas()).
                        El viejo HUBSPOT_BLOG_ID ya no se usa.
     HUBSPOT_IMAGEN_DEFAULT  opcional: imagen destacada para las notas que no tienen una propia
 
@@ -104,6 +105,19 @@ def configurado() -> bool:
     return bool(os.getenv("HUBSPOT_TOKEN"))
 
 
+def blog_pruebas() -> str:
+    """Id del blog de pruebas si está cargado y el switch de la vista Desarrollador está prendido."""
+    forzado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    if not forzado:
+        return ""
+    try:
+        from afterdrive import config_store
+        activo = config_store.get_blog_pruebas_config()
+    except Exception:
+        activo = True  # sin Mongo, como antes: manda la variable
+    return forzado if activo else ""
+
+
 def idioma(nota: dict) -> str | None:
     """es, pt o en según la voz de la nota (sus regiones). None si no hay blog en ese idioma."""
     from afterdrive.ia.redaccion import voz
@@ -122,7 +136,7 @@ def destino(nota: dict) -> dict:
     blog_id, blog = BLOGS[cod]
     # Otro nombre que el viejo HUBSPOT_BLOG_ID (el blog de producción): uno que
     # haya quedado cargado en Render no manda todo a un solo blog.
-    forzado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    forzado = blog_pruebas()
     if forzado:
         blog_id, blog = forzado, f"Blog de pruebas ({forzado})"
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
@@ -407,7 +421,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     if categorias:
         cuerpo["tagIds"] = [ETIQUETAS[c][_COLUMNA[cod]] for c in categorias]
     cuerpo["slug"] = _slug(partes["titulo"], f"{str(nota.get('_id', ''))[-6:]}-{cod}")
-    forzado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    forzado = blog_pruebas()
     if forzado:
         # Blog de pruebas: todo al mismo blog, sin vincular (no es multilenguaje).
         resp = _llamar("post", API, {**cuerpo, "contentGroupId": forzado})

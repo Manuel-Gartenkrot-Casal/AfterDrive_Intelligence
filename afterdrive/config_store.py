@@ -193,3 +193,17 @@ def get_modo_pago_config() -> dict:
 
 def set_modo_pago_config(hasta: str):
     _set_section("modo_pago", {"hasta": hasta})
+
+
+# ── Blog de pruebas de HubSpot (vista Desarrollador) ──────────────────────────
+
+# Prendido = los borradores van al blog de HUBSPOT_BLOG_PRUEBAS (si está cargado).
+DEFAULT_BLOG_PRUEBAS = {"activo": True}
+
+
+def get_blog_pruebas_config() -> bool:
+    return bool(_get_section("blog_pruebas", DEFAULT_BLOG_PRUEBAS)["activo"])
+
+
+def set_blog_pruebas_config(activo: bool):
+    _set_section("blog_pruebas", {"activo": bool(activo)})

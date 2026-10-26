@@ -90,3 +90,61 @@ async function switchProvider(provider) {
     }
   } catch(e) { log('Error al cambiar proveedor', 'error'); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BLOG DE PRUEBAS (HubSpot) — switch de la vista Desarrollador
+   Prendido: los borradores van a blog_test (HUBSPOT_BLOG_PRUEBAS).
+   Apagado: al blog de cada idioma.
+   ═══════════════════════════════════════════════════════════════════════ */
+var _blogPruebas = null;  // la última respuesta de /api/hubspot/blog-pruebas
+
+function pintarBlogPruebas(d) {
+  _blogPruebas = d;
+  var sw = $('sw-blog-pruebas');
+  if (!sw) return;
+  sw.classList.toggle('active', !!d.activo);
+  sw.setAttribute('aria-checked', !!d.activo);
+  sw.setAttribute('aria-disabled', !d.disponible);
+  sw.style.opacity = d.disponible ? '' : '0.5';
+  sw.title = !d.disponible
+    ? 'Falta cargar HUBSPOT_BLOG_PRUEBAS en el Environment de Render.'
+    : (d.activo ? 'Los borradores se suben a blog_test (' + d.blog_id + ').'
+                : 'Los borradores se suben al blog de cada idioma.');
+}
+
+async function checkBlogPruebas() {
+  try {
+    var r = await fetch('/api/hubspot/blog-pruebas');
+    var d = await r.json();
+    if (d.success) pintarBlogPruebas(d);
+  } catch(e) { console.error('Error leyendo blog de pruebas:', e); }
+}
+
+async function cambiarBlogPruebas() {
+  if (!_blogPruebas) return;
+  if (!_blogPruebas.disponible) {
+    showToast('Falta cargar HUBSPOT_BLOG_PRUEBAS en el Environment de Render.', 'error');
+    return;
+  }
+  var activo = !_blogPruebas.activo;
+  if (!activo && !(await confirmar({
+    titulo: '¿Subir a los blogs reales?',
+    mensaje: 'Los borradores van a ir a los blogs de After Drive de cada idioma, no a blog_test.',
+    accion: 'Sí, a los blogs reales',
+    cancelar: 'Cancelar'
+  }))) return;
+  try {
+    var r = await fetch('/api/hubspot/blog-pruebas', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({activo: activo})
+    });
+    var d = await r.json();
+    if (d.success) {
+      pintarBlogPruebas(d);
+      log(d.activo ? 'Borradores a blog_test' : 'Borradores a los blogs de cada idioma', 'success');
+    } else {
+      showToast(d.error, 'error');
+    }
+  } catch(e) { log('Error al cambiar el blog de pruebas', 'error'); }
+}

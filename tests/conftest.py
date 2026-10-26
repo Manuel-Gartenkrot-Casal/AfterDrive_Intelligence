@@ -44,6 +44,12 @@ def sin_modo_pago(monkeypatch):
     os.environ.pop("MODO_PAGO_HASTA", None)
 
 
+@pytest.fixture(autouse=True)
+def blog_pruebas_prendido(monkeypatch):
+    """El switch del blog de pruebas no se lee de la base real: prendido, como el default."""
+    monkeypatch.setattr(config_store, "get_blog_pruebas_config", lambda: True)
+
+
 @pytest.fixture
 def api(monkeypatch):
     """(flask_api, store): la app sin Mongo ni scheduler, con usuario admin / secreta123."""

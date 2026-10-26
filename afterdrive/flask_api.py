@@ -587,6 +587,25 @@ def hubspot_estado():
     return jsonify({"success": True, "configurado": hubspot.configurado()})
 
 
+@app.route("/api/hubspot/blog-pruebas", methods=["GET"])
+def hubspot_blog_pruebas():
+    """Si los borradores van al blog de pruebas (HUBSPOT_BLOG_PRUEBAS) o a los de cada idioma."""
+    from afterdrive import hubspot
+    cargado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    return jsonify({"success": True, "disponible": bool(cargado), "blog_id": cargado,
+                    "activo": bool(hubspot.blog_pruebas())})
+
+
+@app.route("/api/hubspot/blog-pruebas", methods=["POST"])
+def set_hubspot_blog_pruebas():
+    """Prende o apaga el envío al blog de pruebas. Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    config_store.set_blog_pruebas_config(body["activo"])
+    return hubspot_blog_pruebas()
+
+
 @app.route("/api/hubspot/destino/<coleccion>/<item_id>", methods=["GET"])
 def hubspot_destino(coleccion, item_id):
     """Blog, etiquetas y autor que le tocan a la nota, y los autores para elegir."""

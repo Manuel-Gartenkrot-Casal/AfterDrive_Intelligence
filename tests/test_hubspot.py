@@ -336,3 +336,13 @@ def test_actualizar_no_pisa_autor_ni_etiquetas_cambiados_en_hubspot(hs, sin_forz
     hubspot.enviar({"_id": ObjectId(), "contenido": NOTA, "hubspot": {"id": "999"}})
     c = llamadas[0]["json"]
     assert "blogAuthorId" not in c and "tagIds" not in c
+
+
+def test_switch_apagado_ignora_blog_de_pruebas(monkeypatch):
+    from afterdrive import config_store
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "123")
+    monkeypatch.setattr(config_store, "get_blog_pruebas_config", lambda: False)
+    assert hubspot.blog_pruebas() == ""
+    assert hubspot.destino({"regiones": ["brasil"]})["blog_id"] == "43859303259"
+    monkeypatch.setattr(config_store, "get_blog_pruebas_config", lambda: True)
+    assert hubspot.destino({"regiones": ["brasil"]})["blog_id"] == "123"

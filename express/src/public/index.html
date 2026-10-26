@@ -75,6 +75,12 @@
           <button class="prov-btn" id="prov-openrouter" onclick="switchProvider('openrouter')">OpenRouter</button>
           <button class="prov-btn prov-paga" id="prov-paga" onclick="switchProvider('paga')" title="Cada llamada cuesta dinero: pide confirmación"><span class="prov-paga-icono" aria-hidden="true">$</span>API paga</button>
         </div>
+        <span class="sidebar-etiqueta solo-dev">Borradores en HubSpot</span>
+        <div class="puntapie-toggle solo-dev" id="sw-blog-pruebas" role="switch" tabindex="0" aria-checked="false"
+             aria-label="Subir los borradores a blog_test" onclick="cambiarBlogPruebas()"
+             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();cambiarBlogPruebas()}">
+          <div class="toggle-switch"></div><span>blog_test</span>
+        </div>
       </div>
       <!-- Ayuda: repetir el recorrido guiado o abrir la documentación. -->
       <div class="sidebar-ayuda">
