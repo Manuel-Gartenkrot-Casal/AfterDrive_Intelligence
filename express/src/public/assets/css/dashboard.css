@@ -178,10 +178,15 @@ body {
    navegacion.js; lo que es sticky debajo (barra lateral, acciones de Crear
    nota) se corre ese alto para no quedar tapado. */
 @media (min-width: 901px) {
-  .header { position: sticky; top: 0; z-index: 30; }
-  html { scroll-padding-top: calc(var(--header-alto, 80px) + 16px); }
-  body .sidebar { top: calc(var(--header-alto, 80px) + 16px); }
-  body .f2-acciones { top: calc(var(--header-alto, 80px) + 12px); }
+  /* Se pega donde arranca (20px del borde, el padding de .app-container): así
+     no se mueve al scrollear. ::before tapa ese margen para que el contenido
+     no se vea pasar por arriba. */
+  .header { position: sticky; top: 20px; z-index: 30; }
+  .header::before { content: ''; position: absolute; left: -24px; right: -24px; bottom: 100%; height: 20px;
+                    background: var(--canvas); pointer-events: none; }
+  html { scroll-padding-top: calc(var(--header-alto, 80px) + 36px); }
+  body .sidebar { top: calc(var(--header-alto, 80px) + 44px); }
+  body .f2-acciones { top: calc(var(--header-alto, 80px) + 32px); }
 }
 @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
@@ -2240,7 +2245,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .ayuda-menu [role="menuitem"]:hover, .ayuda-menu [role="menuitem"]:focus-visible { background: var(--well); outline: none; color: var(--brand); }
 
 .tour-capa { position: fixed; inset: 0; z-index: 1000; }
-.tour-abierto [data-seccion], .tour-abierto .sidebar > * { scroll-margin-top: calc(var(--header-alto, 0px) + 16px); }
+.tour-abierto [data-seccion], .tour-abierto .sidebar > * { scroll-margin-top: calc(var(--header-alto, 0px) + 36px); }
 .tour-capa.oscura { background: rgba(10, 12, 18, 0.55); }
 .tour-foco {
   position: fixed; z-index: 1001; pointer-events: none;
