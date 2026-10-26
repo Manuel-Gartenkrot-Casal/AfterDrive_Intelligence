@@ -130,3 +130,73 @@ def test_endpoint_de_critica(client, base, monkeypatch):
     _responde(monkeypatch, "no es json")
     r = client.post("/api/historial/critica", json={"coleccion": "notas_fase2", "id": nid})
     assert r.status_code == 503 and not r.json["success"]
+
+
+# ── Idioma de la calificación ────────────────────────────────────────────────
+
+
+def test_la_critica_se_escribe_en_espanol_aunque_la_nota_este_en_otro_idioma(monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    monkeypatch.setattr(llm, "completar", lambda system, user, **k: pedidos.append(system) or json.dumps(RESPUESTA))
+    c = critica.criticar("# Freios em alta\n\nTexto.", "comercial", idioma="pt")
+    assert "en español rioplatense, aunque la nota esté en otro idioma" in pedidos[0]
+    assert c["idioma"] == "es"
+
+
+def _guardada(base, **extra):
+    return base.notas_fase2.insert_one({"contenido": NOTA, "critica": {
+        "puntaje": 7, "resumen": "Buen gancho.", "idioma": "es",
+        "errores": [{"tipo": "tono", "fragmento": "Descubre", "problema": "Tutea.", "sugerencia": "Descubrí"}], **extra}}).inserted_id
+
+
+def test_traducir_guardada_traduce_una_vez_y_la_deja_en_la_nota(monkeypatch, base):
+    pedidos = []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+
+    def completar(system, user, **k):
+        pedidos.append((system, json.loads(user), k["tarea"]))
+        return json.dumps({"resumen": "Good hook.", "problemas": ["Uses tú."]})
+    monkeypatch.setattr(llm, "completar", completar)
+    nid = _guardada(base)
+    t = critica.traducir_guardada("notas_fase2", str(nid), "en", base=base)
+    assert t == {"resumen": "Good hook.", "problemas": ["Uses tú."]}
+    (system, enviado, tarea), = pedidos
+    assert "inglés" in system and tarea == "traduccion" and enviado == {"resumen": "Buen gancho.", "problemas": ["Tutea."]}
+    assert base.notas_fase2.find_one({"_id": nid})["critica"]["traducciones"]["en"] == t
+    # La segunda vez sale de lo guardado, sin llamar a la IA.
+    assert critica.traducir_guardada("notas_fase2", str(nid), "en", base=base) == t and len(pedidos) == 1
+
+
+def test_en_su_propio_idioma_no_se_traduce(monkeypatch, base):
+    monkeypatch.setattr(llm, "completar", lambda *a, **k: pytest.fail("no tenía que llamar a la IA"))
+    nid = _guardada(base)
+    assert critica.traducir_guardada("notas_fase2", str(nid), "es", base=base) == {"resumen": "Buen gancho.", "problemas": ["Tutea."]}
+
+
+def test_una_traduccion_incompleta_no_se_guarda(monkeypatch, base):
+    _responde(monkeypatch, json.dumps({"resumen": "Bom gancho.", "problemas": []}))
+    nid = _guardada(base)
+    assert "error" in critica.traducir_guardada("notas_fase2", str(nid), "pt", base=base)
+    assert "traducciones" not in base.notas_fase2.find_one({"_id": nid})["critica"]
+
+
+def test_traducir_guardada_valida_el_pedido(base):
+    nid = _guardada(base)
+    with pytest.raises(calibracion.ErrorCalibracion):
+        critica.traducir_guardada("notas_fase2", str(nid), "fr", base=base)
+    sin = base.notas_fase2.insert_one({"contenido": NOTA}).inserted_id
+    with pytest.raises(calibracion.ErrorCalibracion):
+        critica.traducir_guardada("notas_fase2", str(sin), "en", base=base)
+    assert critica.traducir_guardada("notas_fase2", str(ObjectId()), "en", base=base) is None
+
+
+def test_endpoint_de_traduccion_de_la_critica(client, base, monkeypatch):
+    _responde(monkeypatch, json.dumps({"resumen": "Bom gancho.", "problemas": ["Usa tú."]}))
+    nid = str(_guardada(base))
+    r = client.post("/api/historial/critica/traduccion", json={"coleccion": "notas_fase2", "id": nid, "idioma": "pt"})
+    assert r.status_code == 200 and r.json["traduccion"]["resumen"] == "Bom gancho."
+    assert client.post("/api/historial/critica/traduccion",
+                       json={"coleccion": "notas_fase2", "id": nid, "idioma": "xx"}).status_code == 400
+    assert client.post("/api/historial/critica/traduccion",
+                       json={"coleccion": "notas_fase2", "id": str(ObjectId()), "idioma": "pt"}).status_code == 404

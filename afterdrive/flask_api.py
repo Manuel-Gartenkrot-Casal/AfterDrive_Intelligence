@@ -583,6 +583,26 @@ def historial_criticar():
     return jsonify({"success": True, "critica": resultado})
 
 
+@app.route("/api/historial/critica/traduccion", methods=["POST"])
+def historial_critica_traducida():
+    """La calificación de la IA en el idioma del dashboard: {"coleccion", "id", "idioma": es|pt|en}."""
+    from afterdrive import calibracion
+    from afterdrive.generacion import critica
+
+    body = request.get_json(silent=True) or {}
+    try:
+        resultado = critica.traducir_guardada(body.get("coleccion", ""), body.get("id", ""), body.get("idioma", ""))
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if resultado is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    if resultado.get("error"):
+        return jsonify({"success": False, "error": resultado["error"]}), 503
+    return jsonify({"success": True, "traduccion": resultado})
+
+
 @app.route("/api/calibracion", methods=["GET"])
 def calibracion_resumen():
     """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""
@@ -619,6 +639,39 @@ def historial_imagen():
     if item is None:
         return jsonify({"success": False, "error": "Nota no encontrada."}), 404
     return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/imagen/archivo", methods=["POST"])
+def historial_imagen_archivo():
+    """Imagen destacada desde la computadora: multipart con "archivo", "coleccion", "id" y "alt"."""
+    from afterdrive import historial
+
+    archivo = request.files.get("archivo")
+    if not archivo:
+        return jsonify({"success": False, "error": "Falta el archivo de la imagen."}), 400
+    contenido = archivo.read(historial.IMAGEN_SUBIDA_MAX + 1)
+    try:
+        r = historial.subir_imagen(request.form.get("coleccion", ""), request.form.get("id", ""), contenido,
+                                   archivo.filename or "", request.form.get("alt", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if r is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **r})
+
+
+@app.route("/api/imagenes/<imagen_id>", methods=["GET"])
+def imagen_subida(imagen_id: str):
+    """Una imagen subida desde la computadora (solo con sesión, como todo /api)."""
+    from afterdrive import historial
+
+    local = historial.imagen_subida(imagen_id)
+    if not local:
+        return jsonify({"success": False, "error": "Imagen no encontrada."}), 404
+    contenido, mime = local
+    return app.response_class(contenido, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.route("/api/historial/vista-previa/<coleccion>/<item_id>", methods=["GET"])

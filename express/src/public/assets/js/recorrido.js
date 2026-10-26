@@ -25,8 +25,8 @@ function armarRecorrido(nota, cont) {
   cont.innerHTML = '<div class="pasos" role="tablist" aria-label="Pasos de la revisión">'
     + PASOS.map(function(p, i) {
         return '<button type="button" role="tab" class="paso" id="tab-' + p.id + '" data-paso="' + p.id + '" aria-controls="paso-' + p.id + '"'
-          + ' onclick="irAPaso(\'' + p.id + '\')"><span class="paso-num" aria-hidden="true">' + (i + 1) + '</span>'
-          + '<span class="paso-nombre">' + p.nombre + '</span><span class="paso-estado"></span></button>';
+          + ' onclick="irAPaso(\'' + p.id + '\')"><span class="paso-nombre"><span class="paso-num" aria-hidden="true">' + (i + 1) + '</span>'
+          + p.nombre + '</span><span class="paso-estado"></span></button>';
       }).join('') + '</div>'
     + PASOS.map(function(p) {
         return '<section class="paso-panel" role="tabpanel" id="paso-' + p.id + '" aria-labelledby="tab-' + p.id + '" tabindex="-1" hidden></section>';
@@ -99,7 +99,7 @@ function actualizarPasos() {
     var tab = $('tab-' + p.id), est = estados[p.id];
     tab.classList.toggle('hecho', est.hecho);
     tab.classList.toggle('atencion', !!est.nivel);
-    tab.querySelector('.paso-num').textContent = est.hecho ? '✓' : String(i + 1);
+    tab.querySelector('.paso-num').textContent = String(i + 1);
     tab.querySelector('.paso-estado').textContent = est.texto;
   });
 }
@@ -119,7 +119,7 @@ function enCelular() { return window.matchMedia('(max-width: 900px)').matches; }
 /* ── Paso 1: Revisar ────────────────────────────────────────────────────── */
 
 /* Lo que se chequeó, como filas: c = ok | warn | err, un titular, una línea,
-   el detalle (HTML) y, si hay, una acción. luz = el texto corto del semáforo. */
+   el detalle (HTML) y, si hay, una acción. Cada fila lleva un punto del color de su estado. */
 function chequeosDeNota(nota) {
   var out = [];
   var v = nota.verificacion;
@@ -128,13 +128,13 @@ function chequeosDeNota(nota) {
     var det = (sin.length ? '<p class="revision-sub">Sin respaldo: revisalos antes de publicar.</p>' + lista(sin, 'mal') : '')
       + (dud.length ? '<p class="revision-sub">No se pudieron confirmar:</p>' + lista(dud, 'dudoso') : '');
     out.push(!v.total
-      ? { c: 'ok', id: 'datos', titulo: 'Datos', linea: 'La nota no tiene cifras ni nombres para verificar.', luz: 'Datos' }
+      ? { c: 'ok', id: 'datos', titulo: 'Datos', linea: 'La nota no tiene cifras ni nombres para verificar.' }
       : { c: sin.length ? 'err' : dud.length ? 'warn' : 'ok', id: 'datos',
           titulo: sin.length ? 'Datos sin respaldo' : 'Datos contra las noticias',
-          linea: ok + ' de ' + v.total + ' datos aparecen en las noticias.', detalle: det, luz: 'Datos ' + ok + '/' + v.total });
+          linea: ok + ' de ' + v.total + ' datos aparecen en las noticias.', detalle: det });
   }
   if (nota.parecida_a) {
-    out.push({ c: 'err', id: 'parecida', titulo: 'Parecida a una nota reciente', luz: 'Repetida',
+    out.push({ c: 'err', id: 'parecida', titulo: 'Parecida a una nota reciente',
                linea: 'Se parece a “' + nota.parecida_a.titulo + '” (' + Math.round(nota.parecida_a.similitud * 100) + '%).' });
   }
   var estilo = nota.estilo || [];
@@ -147,7 +147,6 @@ function chequeosDeNota(nota) {
     if (s.enlaces_internos !== undefined) filas.push(['Enlaces a otras notas del blog', String(s.enlaces_internos)]);
     var grave = estilo.some(function(h) { return h.grave; });
     out.push({ c: grave ? 'err' : estilo.length ? 'warn' : 'ok', id: 'estilo', titulo: 'Estilo y SEO',
-               luz: estilo.length ? (estilo.length === 1 ? 'Estilo: 1 aviso' : 'Estilo: ' + estilo.length + ' avisos') : 'Estilo y SEO',
                linea: estilo.length ? estilo[0].detalle + (estilo.length > 1 ? ' (y ' + (estilo.length - 1) + ' más)' : '') : 'Sin problemas de estilo detectados.',
                detalle: (estilo.length > 1 ? lista(estilo.map(function(h) { return h.detalle; }), 'dudoso') : '') + tablaRevision(filas),
                accion: estilo.length ? { texto: 'Editar', onclick: 'editarNota()' } : null });
@@ -156,22 +155,22 @@ function chequeosDeNota(nota) {
   if (cal && cal.puntaje !== null && cal.puntaje !== undefined) {
     var fallas = cal.fallas_criticas || [], reesc = cal.reescrita_por || [];
     var nombres = function(a) { return a.join(', ').replace(/_/g, ' '); };
-    out.push({ c: fallas.length ? 'err' : 'ok', id: 'lineamientos', titulo: 'Lineamientos', luz: 'Lineamientos ' + cal.puntaje + '/9',
+    out.push({ c: fallas.length ? 'err' : 'ok', id: 'lineamientos', titulo: 'Lineamientos',
                linea: fallas.length ? 'Sigue fallando en ' + nombres(fallas) + '.' : 'Cumple ' + cal.puntaje + ' de 9 lineamientos.',
                detalle: reesc.length ? '<p>' + (cal.segundo_intento === 'correccion' ? 'Se corrigió' : 'Se reescribió') + ' porque falló en: '
                                        + escHtml(nombres(reesc)) + '.</p>' : '' });
   }
   var im = nota.imagen || {}, eleccion = nota.imagen_eleccion || {};
   out.push(im.url
-    ? { c: 'ok', id: 'imagen', titulo: 'Imagen destacada', linea: 'Tiene imagen destacada.', luz: 'Con imagen' }
-    : { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada', luz: 'Sin imagen',
+    ? { c: 'ok', id: 'imagen', titulo: 'Imagen destacada', linea: 'Tiene imagen destacada.' }
+    : { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada',
         linea: eleccion.metodo === 'ia' ? resumenMotivoImagen(eleccion.motivo) : 'Ninguna noticia de la nota tenía foto.',
         detalle: eleccion.metodo === 'ia' && eleccion.motivo ? detalleMotivoImagen(eleccion.motivo) : '',
         accion: { texto: 'Elegir imagen', onclick: 'vistaPreviaNota()' } });
   var hs = nota.hubspot_traducciones || {};
   var fallidas = Object.keys(hs).filter(function(c) { return hs[c] && hs[c].error; });
   if (fallidas.length) {
-    out.push({ c: 'warn', id: 'idiomas', titulo: 'Otros idiomas', luz: 'Idiomas con error',
+    out.push({ c: 'warn', id: 'idiomas', titulo: 'Otros idiomas',
                linea: 'No se pudo subir la versión en ' + fallidas.map(function(c) { return (NOMBRE_IDIOMA[c] || c).toLowerCase(); }).join(' y ') + '.',
                accion: { texto: 'Ver', onclick: "irAPaso('publicar')" } });
   }
@@ -220,7 +219,8 @@ function filaChequeo(ch) {
   li.className = 'chequeo';
   li.dataset.c = ch.c;
   li.id = 'chequeo-' + ch.id;
-  li.innerHTML = '<span class="chequeo-icono" aria-hidden="true">' + (ch.c === 'ok' ? '✓' : ch.c === 'warn' ? '!' : '✕') + '</span>'
+  li.innerHTML = '<span class="chequeo-punto" aria-hidden="true"></span>'
+    + '<span class="sr-only">' + (ch.c === 'ok' ? 'En orden: ' : ch.c === 'warn' ? 'Aviso: ' : 'Problema: ') + '</span>'
     + '<div class="chequeo-texto"><strong>' + escHtml(ch.titulo) + '</strong><span>' + escHtml(ch.linea) + '</span>'
     + (ch.detalle ? '<button type="button" class="enlace-detalle" aria-expanded="false" aria-controls="' + id + '">Ver detalle</button>' : '')
     + '</div>'
@@ -241,13 +241,11 @@ function pintarPasoRevisar(nota, panel) {
   var atencion = chequeos.filter(function(c) { return c.c !== 'ok'; })
     .sort(function(a, b) { return (a.c === 'err' ? 0 : 1) - (b.c === 'err' ? 0 : 1); });
   var bien = chequeos.filter(function(c) { return c.c === 'ok'; });
-  panel.innerHTML = '<h3 class="paso-titulo">¿Está lista para publicar?</h3>'
-    + '<p class="paso-ayuda">La IA la revisó al generarla. Primero aparece lo que necesita tu atención.</p>'
-    + '<div class="semaforo">' + atencion.concat(bien).map(function(c) {
-        return '<button type="button" class="luz" data-c="' + c.c + '" onclick="irAChequeo(\'' + c.id + '\')">' + escHtml(c.luz) + '</button>';
-      }).join('') + '</div>'
+  panel.innerHTML = '<div class="paso-cabeza"><h3 class="paso-titulo">Revisión automática</h3>'
+    + '<p class="paso-ayuda">Lo que la IA chequeó al generar la nota.</p></div>'
+    + '<p class="paso-resumen">' + resumenChequeos(atencion.length, bien.length) + '</p>'
     + (atencion.length ? '<p class="grupo-titulo">Necesita atención</p><ul class="chequeos" id="chequeos-atencion"></ul>'
-                       : '<p class="revision-ok todo-listo">No hay nada que corregir: podés seguir a calificarla.</p>')
+                       : '<p class="todo-listo">No hay nada que corregir: podés seguir a calificarla.</p>')
     + (bien.length ? '<p class="grupo-titulo">Todo bien</p><ul class="chequeos chequeos-ok" id="chequeos-ok"></ul>' : '')
     + '<p class="grupo-titulo">Cómo se generó</p>'
     + '<details class="como-se-genero"><summary><span>Plan, noticias y costo<small>' + escHtml(resumenGeneracion(nota)) + '</small></span></summary>'
@@ -257,12 +255,11 @@ function pintarPasoRevisar(nota, panel) {
   pintarGeneracion(nota, $('recorrido-generacion'));
 }
 
-function irAChequeo(id) {
-  var fila = $('chequeo-' + id);
-  if (!fila) return;
-  fila.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  fila.classList.remove('destacado'); void fila.offsetWidth;
-  fila.classList.add('destacado');
+function resumenChequeos(mal, bien) {
+  var partes = [];
+  if (mal) partes.push(mal === 1 ? '1 punto a revisar' : mal + ' puntos a revisar');
+  if (bien) partes.push(bien === 1 ? '1 en orden' : bien + ' en orden');
+  return partes.map(function(x) { return '<span>' + x + '</span>'; }).join(' · ');
 }
 
 function resumenGeneracion(nota) {
@@ -301,8 +298,8 @@ function pintarGeneracion(nota, cont) {
 /* ── Paso 2: Calificar ──────────────────────────────────────────────────── */
 
 function pintarPasoCalificar(nota, panel) {
-  panel.innerHTML = '<h3 class="paso-titulo">¿Qué tan buena es?</h3>'
-    + '<p class="paso-ayuda">La IA ya la calificó. Tu calificación es la que enseña a la generación qué funciona.</p>';
+  panel.innerHTML = '<div class="paso-cabeza"><h3 class="paso-titulo">Calificación</h3>'
+    + '<p class="paso-ayuda">La de la IA es orientativa; la tuya es la que enseña a la generación qué funciona.</p></div>';
   pintarCriticaIA(nota, panel);
   pintarCalificacion(nota, panel);
 }
@@ -310,11 +307,22 @@ function pintarPasoCalificar(nota, panel) {
 /* ── Paso 3: Publicar ───────────────────────────────────────────────────── */
 
 function pintarPasoPublicar(nota, panel) {
-  panel.innerHTML = '<h3 class="paso-titulo">¿Cómo sale publicada?</h3>'
-    + '<p class="paso-ayuda">Revisá lo que va a HubSpot: la imagen, quién firma y los otros idiomas.</p>';
+  panel.innerHTML = '<div class="paso-cabeza"><h3 class="paso-titulo">Publicación</h3>'
+    + '<p class="paso-ayuda">Lo que va a HubSpot: la imagen, quién firma y los otros idiomas.</p></div>';
   pintarImagen(nota, panel);
   pintarDestinoHubspot(nota, panel);
   pintarTraducciones(nota, panel);
+}
+
+// La imagen se cambió desde la vista previa: Revisar y Publicar se vuelven a armar.
+function imagenCambiada(imagen) {
+  if (!_recorrido.activo) return;
+  var nota = _recorrido.nota;
+  if (imagen) { nota.imagen = imagen; nota.imagen_eleccion = { metodo: 'manual' }; }
+  else delete nota.imagen;
+  pintarPasoRevisar(nota, $('paso-revisar'));
+  pintarPasoPublicar(nota, $('paso-publicar'));
+  actualizarPasos();
 }
 
 /* ── Menú "Más" del pie ─────────────────────────────────────────────────── */

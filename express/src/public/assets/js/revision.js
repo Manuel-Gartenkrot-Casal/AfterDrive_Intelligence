@@ -96,6 +96,7 @@ function juicioHtml(nota, sugerida) {
 var _TIPOS_CRITICA = { gramatica: 'Gramática', ortografia: 'Ortografía', redaccion: 'Redacción', tono: 'Tono', estructura: 'Estructura' };
 var ERRORES_A_LA_VISTA = 3;
 var _criticasEnCurso = {};   // id de nota → pedido en curso: abrirla de nuevo no repite la llamada
+var _traduccionesEnCurso = {};   // id de nota + idioma → traducción en curso
 
 function pintarCriticaIA(nota, contenedor) {
   var caja = document.createElement('section');
@@ -104,8 +105,16 @@ function pintarCriticaIA(nota, contenedor) {
   caja.setAttribute('aria-live', 'polite');
   contenedor.appendChild(caja);
   var c = nota.critica, vigente = c && !c.error && c.puntaje && !(nota.editado_en && c.fecha && nota.editado_en > c.fecha);
-  if (vigente) llenarCriticaIA(caja, c);
+  if (vigente) llenarCriticaIA(caja, c, nota);
   else pedirCriticaIA(nota, caja);
+}
+
+/* La crítica se escribe en español; lo que explica la IA (resumen y problemas)
+   se muestra en el idioma del dashboard. El fragmento y su corrección quedan en
+   el idioma de la nota. null = falta traducirla (ver traducirCriticaIA). */
+function textosCritica(c, cod) {
+  if (c.idioma === cod) return { resumen: c.resumen, problemas: (c.errores || []).map(function(e) { return e.problema; }) };
+  return (c.traducciones || {})[cod] || null;
 }
 
 function nivelCritica(n) { return n >= 8 ? 'bien' : n >= 6 ? 'medio' : 'mal'; }
@@ -116,17 +125,20 @@ function cabeceraCritica(c) {
     + '</div>';
 }
 
-function llenarCriticaIA(caja, c) {
+function llenarCriticaIA(caja, c, nota) {
   caja.classList.remove('cargando');
+  var cod = idiomaUI(), t = textosCritica(c, cod), traducir = !t;
+  // Mientras llega la traducción se ve lo que hay, con un aviso.
+  t = t || { resumen: c.resumen, problemas: (c.errores || []).map(function(e) { return e.problema; }) };
   var html = cabeceraCritica(c);
-  if (c.resumen) html += '<p class="critica-resumen" translate="no">' + escHtml(c.resumen) + '</p>';
+  if (traducir) html += '<p class="critica-esperando critica-traduciendo"><span class="critica-spinner" aria-hidden="true"></span>Traduciendo la calificación…</p>';
+  if (t.resumen) html += '<p class="critica-resumen" translate="no">' + escHtml(t.resumen) + '</p>';
   var aspectos = ['gramatica', 'redaccion', 'tono', 'estructura'].filter(function(k) { return c.aspectos && c.aspectos[k]; });
   if (aspectos.length) {
     html += '<ul class="critica-aspectos">' + aspectos.map(function(k) {
       var v = c.aspectos[k];
-      return '<li data-nivel="' + nivelCritica(v) + '"><span>' + _TIPOS_CRITICA[k] + '</span>'
-        + '<span class="critica-barra" aria-hidden="true"><span style="width:' + (v * 10) + '%"></span></span>'
-        + '<span class="critica-valor">' + v + '/10</span></li>';
+      return '<li data-nivel="' + nivelCritica(v) + '"><span class="critica-valor">' + v + '</span>'
+        + '<span>' + _TIPOS_CRITICA[k] + '</span></li>';
     }).join('') + '</ul>';
   }
   var errores = c.errores || [];
@@ -137,10 +149,10 @@ function llenarCriticaIA(caja, c) {
       + '<ol class="critica-errores">' + errores.map(function(e, i) {
         return '<li' + (i >= ERRORES_A_LA_VISTA ? ' hidden' : '') + '>'
           + '<span class="critica-tipo" data-tipo="' + escHtml(e.tipo) + '">' + (_TIPOS_CRITICA[e.tipo] || _TIPOS_CRITICA.redaccion) + '</span>'
-          + '<div translate="no">'
-          + (e.fragmento ? '<q class="critica-fragmento">' + escHtml(e.fragmento) + '</q>' : '')
-          + '<p>' + escHtml(e.problema) + '</p>'
-          + (e.sugerencia ? '<p class="critica-sugerencia">' + escHtml(e.sugerencia) + '</p>' : '')
+          + '<div>'
+          + '<p class="critica-problema" translate="no">' + escHtml(t.problemas[i] || e.problema) + '</p>'
+          + (e.fragmento ? '<q class="critica-fragmento" translate="no">' + escHtml(e.fragmento) + '</q>' : '')
+          + (e.sugerencia ? '<p class="critica-sugerencia"><span>Sugerencia</span> <span translate="no">' + escHtml(e.sugerencia) + '</span></p>' : '')
           + '</div></li>';
       }).join('') + '</ol>';
     if (errores.length > ERRORES_A_LA_VISTA) {
@@ -154,7 +166,33 @@ function llenarCriticaIA(caja, c) {
     caja.querySelectorAll('.critica-errores li[hidden]').forEach(function(li) { li.hidden = false; });
     mas.remove();
   };
+  caja.dataset.idioma = cod;
+  if (traducir && nota) traducirCriticaIA(nota, caja, cod);
 }
+
+async function traducirCriticaIA(nota, caja, cod) {
+  var clave = nota._id + ':' + cod;
+  var pedido = _traduccionesEnCurso[clave] || (_traduccionesEnCurso[clave] = pedir('/api/historial/critica/traduccion', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id, idioma: cod })
+  }));
+  try {
+    var d = await pedido;
+    nota.critica.traducciones = nota.critica.traducciones || {};
+    nota.critica.traducciones[cod] = d.traduccion;
+    if (caja.isConnected && caja.dataset.idioma === cod) llenarCriticaIA(caja, nota.critica, nota);
+  } catch (e) {
+    var aviso = caja.querySelector('.critica-traduciendo');
+    if (aviso && caja.dataset.idioma === cod) {
+      aviso.classList.remove('critica-esperando');
+      aviso.className = 'revision-sub';
+      aviso.textContent = 'No se pudo traducir la calificación: ' + e.message;
+    }
+  } finally {
+    delete _traduccionesEnCurso[clave];
+  }
+}
+
 
 async function pedirCriticaIA(nota, caja) {
   caja.classList.add('cargando');
@@ -167,7 +205,7 @@ async function pedirCriticaIA(nota, caja) {
   try {
     var d = await pedido;
     nota.critica = d.critica;
-    if (caja.isConnected) llenarCriticaIA(caja, d.critica);
+    if (caja.isConnected) llenarCriticaIA(caja, d.critica, nota);
     if (_seccion === 'historial') cargarHistorial(_hist.pagina);   // la lista muestra la calificación nueva
   } catch (e) {
     if (!caja.isConnected) return;

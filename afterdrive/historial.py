@@ -426,7 +426,13 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
 
     def copiar(url: str, nombre: str) -> tuple[str, str]:
         try:
-            contenido, mime = imagen_web.descargar(url)
+            if url.startswith(PREFIJO_IMAGEN_SUBIDA):   # subida desde la computadora: está en la base
+                local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database)
+                if not local:
+                    return "", "la imagen subida ya no está"
+                contenido, mime = local
+            else:
+                contenido, mime = imagen_web.descargar(url)
             extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
             return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), ""
         except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
@@ -500,6 +506,64 @@ def cambiar_imagen(coleccion: str, item_id: str, url: str, alt: str = "", base=N
     return _normalizar(col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
 
 
+# ── Imagen subida desde la computadora ────────────────────────────────────────
+# Se guarda en la base (imagenes_subidas) y se sirve en /api/imagenes/<id> con
+# sesión; al subir la nota a HubSpot se copia desde ahí (ver _copiar_imagen_a_hubspot).
+
+PREFIJO_IMAGEN_SUBIDA = "/api/imagenes/"
+IMAGEN_SUBIDA_MAX = 5 * 1024 * 1024
+
+
+def _tipo_imagen(contenido: bytes) -> str | None:
+    """mime por los primeros bytes: no alcanza con la extensión ni con lo que diga el navegador."""
+    if contenido.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if contenido.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP":
+        return "image/webp"
+    if contenido.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    return None
+
+
+def subir_imagen(coleccion: str, item_id: str, contenido: bytes, nombre: str = "", alt: str = "", base=None) -> dict | None:
+    """Imagen destacada elegida desde la computadora. Devuelve {"imagen"} o None si la nota no existe."""
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas tienen imagen destacada.")
+    if not contenido:
+        raise ErrorHistorial("El archivo está vacío.")
+    if len(contenido) > IMAGEN_SUBIDA_MAX:
+        raise ErrorHistorial("La imagen pesa más de 5 MB.")
+    mime = _tipo_imagen(contenido)
+    if not mime:
+        raise ErrorHistorial("El archivo no es una imagen JPG, PNG, WebP o GIF.")
+    b = _base(base)
+    col = b[coleccion]
+    doc = col.find_one({"_id": _oid(item_id)}, {"_id": 1})
+    if not doc:
+        return None
+    nombre = " ".join(str(nombre or "").split())[:120]
+    guardada = b.imagenes_subidas.insert_one({
+        "contenido": contenido, "mime": mime, "nombre": nombre, "coleccion": coleccion, "nota_id": doc["_id"],
+        "fecha": datetime.datetime.now(datetime.UTC).isoformat(),
+    })
+    alt = " ".join(alt.split())[:200] if isinstance(alt, str) else ""
+    nueva = {"url": PREFIJO_IMAGEN_SUBIDA + str(guardada.inserted_id), "alt": alt, "subida": {"nombre": nombre}}
+    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}})
+    return {"imagen": nueva}
+
+
+def imagen_subida(imagen_id: str, base=None) -> tuple[bytes, str] | None:
+    """(bytes, mime) de una imagen subida, o None si no existe."""
+    try:
+        oid = ObjectId(imagen_id)
+    except (InvalidId, TypeError):
+        return None
+    doc = _base(base).imagenes_subidas.find_one({"_id": oid})
+    return (bytes(doc["contenido"]), doc["mime"]) if doc else None
+
+
 def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
     """Cómo quedaría la Nota en HubSpot. No necesita HubSpot configurado."""
     from afterdrive import hubspot
@@ -514,7 +578,11 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
                     **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", "")} if "imagen_apta" in f else {})}
                    for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
-        return {**hubspot.vista_previa(doc), "imagen_propia": doc.get("imagen") or None,
-                "imagenes_noticias": de_noticias}
+        previa = hubspot.vista_previa(doc)
     except hubspot.ErrorHubSpot as e:
         raise ErrorHistorial(str(e)) from e
+    propia = doc.get("imagen") or {}
+    if str(propia.get("url") or "").startswith(PREFIJO_IMAGEN_SUBIDA) and not propia.get("hubspot_url"):
+        # Subida desde la computadora y todavía sin copia en HubSpot: se ve la de este servidor.
+        previa["imagen"] = {"url": propia["url"], "alt": propia.get("alt") or (previa.get("imagen") or {}).get("alt", "")}
+    return {**previa, "imagen_propia": propia or None, "imagenes_noticias": de_noticias}

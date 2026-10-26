@@ -325,6 +325,11 @@ async function vistaPreviaNota() {
     + '<div class="previa-cuerpo" translate="no">' + DOMPurify.sanitize(d.html) + '</div>'
     + '</div>'
     + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
+    + '<div class="zona-imagen" id="zona-imagen">'
+    + '<input type="file" id="archivo-imagen" accept="image/jpeg,image/png,image/webp,image/gif" hidden>'
+    + '<p><strong>Arrastrá una imagen acá</strong> o elegila desde tu computadora.</p>'
+    + '<button type="button" class="btn btn-xs" onclick="$(\'archivo-imagen\').click()">Elegir archivo</button>'
+    + '<small>JPG, PNG, WebP o GIF, hasta 5 MB.</small></div>'
     + bloqueImagenesNoticias(d, propia)
     + '<label class="control-label" for="previa-img-url">O pegá la URL de una imagen (https)</label>'
     + '<input id="previa-img-url" class="input-field" type="url" placeholder="https://…/imagen.jpg">'
@@ -333,10 +338,58 @@ async function vistaPreviaNota() {
     + '<div class="previa-acciones"><button type="button" class="btn btn-xs btn-primary" onclick="guardarImagenNota()">Guardar imagen</button>'
     + (propia.url ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
     + '</div></fieldset>';
-  $('previa-img-url').value = propia.url || '';
+  $('previa-img-url').value = propia.subida ? '' : (propia.url || '');   // la subida no tiene URL pública
   $('previa-img-alt').value = propia.alt || '';
+  prepararZonaImagen();
   $('nota-acciones').innerHTML = '<button type="button" class="btn btn-xs" onclick="cancelarEdicionNota()">Volver al texto</button>';
   $('art-body').scrollTop = 0;
+}
+
+/* Imagen desde la computadora: se arrastra a la zona o se elige con el botón. */
+var IMAGEN_MAX_BYTES = 5 * 1024 * 1024;
+
+function prepararZonaImagen() {
+  var zona = $('zona-imagen'), input = $('archivo-imagen');
+  if (!zona) return;
+  input.onchange = function() { if (input.files[0]) subirArchivoImagen(input.files[0]); };
+  ['dragenter', 'dragover'].forEach(function(t) {
+    zona.addEventListener(t, function(ev) { ev.preventDefault(); zona.classList.add('activa'); });
+  });
+  ['dragleave', 'drop'].forEach(function(t) {
+    zona.addEventListener(t, function(ev) { ev.preventDefault(); zona.classList.remove('activa'); });
+  });
+  zona.addEventListener('drop', function(ev) {
+    var f = ev.dataTransfer && ev.dataTransfer.files[0];
+    if (f) subirArchivoImagen(f);
+  });
+}
+
+// Soltar un archivo fuera de la zona no tiene que abrirlo en la pestaña.
+['dragover', 'drop'].forEach(function(t) {
+  document.addEventListener(t, function(ev) {
+    if ($('modal-art').classList.contains('open') && !ev.target.closest('#zona-imagen')) ev.preventDefault();
+  });
+});
+
+async function subirArchivoImagen(archivo) {
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(archivo.type)) { showToast('El archivo tiene que ser una imagen JPG, PNG, WebP o GIF.', 'error'); return; }
+  if (archivo.size > IMAGEN_MAX_BYTES) { showToast('La imagen pesa más de 5 MB.', 'error'); return; }
+  var n = _notaActual, zona = $('zona-imagen');
+  if (zona) zona.classList.add('subiendo');
+  var datos = new FormData();
+  datos.append('archivo', archivo);
+  datos.append('coleccion', n.coleccion);
+  datos.append('id', n.id);
+  datos.append('alt', $('previa-img-alt') ? $('previa-img-alt').value.trim() : '');
+  try {
+    var d = await pedir('/api/historial/imagen/archivo', { method: 'POST', body: datos });
+    showToast('Imagen guardada', 'success');
+    imagenCambiada(d.imagen);
+    vistaPreviaNota();
+  } catch (e) {
+    if (zona) zona.classList.remove('subiendo');
+    showToast(e.message, 'error');
+  }
 }
 
 /* Fotos de las noticias de la nota: elegir una la deja como destacada. */
@@ -381,6 +434,7 @@ async function guardarImagenNota(quitar) {
                              url: quitar ? '' : $('previa-img-url').value.trim(), alt: $('previa-img-alt').value.trim() })
     });
     showToast(quitar ? 'Imagen quitada' : 'Imagen guardada', 'success');
+    imagenCambiada(quitar ? null : { url: $('previa-img-url').value.trim(), alt: $('previa-img-alt').value.trim() });
     vistaPreviaNota();
   } catch (e) { showToast(e.message, 'error'); }
 }

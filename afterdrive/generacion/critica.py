@@ -5,6 +5,13 @@ Interfaz:
     criticar(nota, persona="comercial", regiones=None, idioma=None) -> dict   una llamada al modelo de evaluación
     criticar_guardada(coleccion, item_id, base=None) -> dict | None
                                                     critica una nota guardada y deja el resultado en ella
+    traducir_guardada(coleccion, item_id, idioma, base=None) -> dict | None
+                                                    el resumen y los problemas en el idioma del dashboard
+
+La crítica se escribe en español aunque la nota esté en otro idioma (las notas
+nuevas salen en portugués): el fragmento citado y su corrección quedan en el
+idioma de la nota, y lo que explica la IA se traduce al idioma elegido en el
+dashboard la primera vez que se pide (queda guardado en "traducciones").
 
 A diferencia del juez (generacion/juez.py), que decide si la nota pasa, acá se
 mira solo la escritura y se señala cada error con el fragmento, qué está mal y
@@ -27,6 +34,8 @@ ERRORES_MAX = 8
 NOTA_MAX = 16000            # chars de la nota que entran al prompt
 MAX_TOKENS = 3000           # la lista de errores es larga y los modelos gratis además razonan
 INTENTOS = 2
+IDIOMA_CRITICA = "es"
+IDIOMAS_UI = {"es": "español rioplatense", "pt": "portugués de Brasil", "en": "inglés"}
 
 _SYSTEM = """\
 Sos corrector de estilo del blog B2B de AfterDrive by Alephee (autopartes y postventa automotriz).
@@ -41,17 +50,22 @@ Otra IA escribió la nota y vos revisás solo CÓMO está escrita, no si los dat
   exagerar o sonar a folleto cuenta como error de tono.
 - estructura: títulos, orden de las ideas, párrafos que no siguen la estructura pedida, cierre flojo.
 
+## Idioma de tu respuesta
+Escribí el resumen y cada problema en español rioplatense, aunque la nota esté en otro idioma.
+El fragmento va TAL CUAL aparece en la nota (corto, hasta una oración) y la sugerencia es ese
+mismo fragmento corregido, en el idioma de la nota. Si el arreglo no entra en un fragmento,
+dejá la sugerencia vacía y explicá en el problema qué hacer.
+
 ## Cómo respondés
 Sé concreto y exigente, pero no inventes errores: si algo está bien, no lo marques.
-Cada error cita el fragmento TAL CUAL aparece en la nota (corto, hasta una oración).
-Sé breve: problema y sugerencia en una oración cada uno.
+Sé breve: el problema en una oración.
 Solo un JSON, sin texto alrededor:
 {"puntaje": entero 1 a 10 (qué tan bien escrita está),
- "resumen": "dos o tres oraciones: qué logró y en qué se equivocó la IA al redactarla",
+ "resumen": "dos o tres oraciones, en español: qué logró y en qué se equivocó la IA al redactarla",
  "aspectos": {"gramatica": 1 a 10, "redaccion": 1 a 10, "tono": 1 a 10, "estructura": 1 a 10},
  "errores": [{"tipo": "gramatica|ortografia|redaccion|tono|estructura",
-              "fragmento": "texto exacto de la nota", "problema": "qué está mal",
-              "sugerencia": "cómo quedaría bien"}] (los más importantes primero, hasta 8)}
+              "fragmento": "texto exacto de la nota", "problema": "qué está mal, en español",
+              "sugerencia": "el fragmento corregido, en el idioma de la nota"}] (los más importantes primero, hasta 8)}
 """
 
 
@@ -137,6 +151,7 @@ def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str |
         "resumen": _texto(data.get("resumen"), 500),
         "aspectos": {k: v for k in ASPECTOS if (v := _numero(aspectos.get(k), None)) is not None},
         "errores": errores[:ERRORES_MAX],
+        "idioma": IDIOMA_CRITICA,
         "fecha": datetime.datetime.now(datetime.UTC).isoformat(),
     }
 
@@ -155,4 +170,62 @@ def criticar_guardada(coleccion: str, item_id: str, base=None) -> dict | None:
                          doc.get("idioma"))
     if not resultado.get("error"):
         col.update_one({"_id": doc["_id"]}, {"$set": {"critica": resultado}})
+    return resultado
+
+
+# ── Traducción al idioma del dashboard ────────────────────────────────────────
+
+_SYSTEM_TRADUCCION = """\
+Traducís al {idioma} los textos de una revisión de estilo de una nota de blog B2B.
+Recibís un JSON y devolvés solo un JSON con las mismas claves y la misma cantidad de
+elementos en "problemas", en el mismo orden. Lo que esté entre comillas es una cita
+de la nota: dejalo como está. Sin texto alrededor del JSON.
+"""
+
+
+def _textos(critica: dict) -> dict:
+    return {"resumen": critica.get("resumen") or "",
+            "problemas": [e.get("problema") or "" for e in critica.get("errores") or []]}
+
+
+def traducir(critica: dict, idioma: str) -> dict:
+    """{"resumen", "problemas": [...]} en `idioma`. Con "error" si no se pudo."""
+    if critica.get("idioma") == idioma:
+        return _textos(critica)
+    if not llm.disponible():
+        return {"error": "Proveedor de IA no disponible para traducir la calificación."}
+    original = _textos(critica)
+    try:
+        data = _extraer_json(llm.completar(_SYSTEM_TRADUCCION.format(idioma=IDIOMAS_UI[idioma]),
+                                           json.dumps(original, ensure_ascii=False),
+                                           temperature=0.1, max_tokens=MAX_TOKENS, tarea="traduccion"))
+    except Exception as e:
+        return {"error": f"No se pudo traducir la calificación: {e}"}
+    problemas = data.get("problemas") if isinstance(data.get("problemas"), list) else []
+    if len(problemas) != len(original["problemas"]):
+        return {"error": "La traducción de la calificación vino incompleta."}
+    return {"resumen": _texto(data.get("resumen"), 600), "problemas": [_texto(x, 300) for x in problemas]}
+
+
+def traducir_guardada(coleccion: str, item_id: str, idioma: str, base=None) -> dict | None:
+    """Traduce la crítica guardada y deja la traducción en la nota. None si la nota no existe."""
+    from afterdrive import calibracion
+
+    if coleccion not in calibracion.COLECCIONES:
+        raise calibracion.ErrorCalibracion("Solo se critican las notas generadas.")
+    if idioma not in IDIOMAS_UI:
+        raise calibracion.ErrorCalibracion("Idioma desconocido.")
+    col = calibracion._base(base)[coleccion]
+    doc = col.find_one({"_id": calibracion._oid(item_id)}, {"critica": 1})
+    if not doc:
+        return None
+    critica = doc.get("critica") or {}
+    if not critica.get("puntaje") or critica.get("error"):
+        raise calibracion.ErrorCalibracion("La nota todavía no tiene la calificación de la IA.")
+    guardada = (critica.get("traducciones") or {}).get(idioma)
+    if guardada:
+        return guardada
+    resultado = traducir(critica, idioma)
+    if not resultado.get("error") and critica.get("idioma") != idioma:
+        col.update_one({"_id": doc["_id"]}, {"$set": {f"critica.traducciones.{idioma}": resultado}})
     return resultado

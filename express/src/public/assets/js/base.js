@@ -26,7 +26,8 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 // Para argumentos de onclick='fn('...')': encodeURIComponent deja pasar la comilla simple.
 function encArg(s) { return encodeURIComponent(s).replace(/'/g, '%27'); }
 // Un href armado con datos solo puede ser http(s): nunca javascript: ni data:.
-function urlSegura(u) { return /^https?:\/\//i.test(u || '') ? escHtml(u) : '#'; }
+// Links de afuera (http/https) o una imagen subida desde la computadora, servida por este servidor.
+function urlSegura(u) { return /^https?:\/\//i.test(u || '') || /^\/api\/imagenes\/[0-9a-f]{24}$/.test(u || '') ? escHtml(u) : '#'; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    PARTICLES BACKGROUND

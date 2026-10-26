@@ -262,7 +262,9 @@ def _imagen(nota: dict, titulo: str) -> dict:
     archivos de HubSpot (hubspot_url) y se usa esa copia.
     """
     propia = nota.get("imagen") or {}
-    url = propia.get("hubspot_url") or propia.get("url") or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
+    # Una subida desde la computadora tiene una ruta de este servidor: solo sirve su copia en HubSpot.
+    externa = propia.get("url") if not str(propia.get("url") or "").startswith("/") else ""
+    url = propia.get("hubspot_url") or externa or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
 
 

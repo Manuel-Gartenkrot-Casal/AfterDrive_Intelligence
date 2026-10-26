@@ -68,7 +68,7 @@ def sembrar() -> None:
          "notas_blog_citadas": [{"titulo": "Catálogo y fitment", "url": "https://afterdrive.alephee.com/es/blog/catalogo",
                                  "origen": "blog"}],
          "imagen_eleccion": {"metodo": "ia", "motivo": "La IA descartó todas las fotos. Es un logo."},
-         "critica": {"puntaje": 6, "fecha": "2026-10-15T14:05:00+00:00",
+         "critica": {"puntaje": 6, "fecha": "2026-10-15T14:05:00+00:00", "idioma": "es",
                      "resumen": "El gancho es concreto, pero mezcla voseo y tuteo y repite la misma idea.",
                      "aspectos": {"gramatica": 8, "redaccion": 5, "tono": 4, "estructura": 7},
                      "errores": [

@@ -155,9 +155,7 @@ def test_recorrido_de_revision(pagina):
     expect(lateral.locator("#tab-revisar")).to_have_attribute("aria-selected", "true")
     expect(lateral.locator("#chequeos-atencion .chequeo").first).to_contain_text("Falta la imagen destacada")
     expect(lateral.locator("#tab-revisar .paso-estado")).to_have_text("1 aviso")
-    # El semáforo lleva a su fila.
-    lateral.locator(".luz", has_text="Sin imagen").click()
-    expect(lateral.locator("#chequeo-imagen")).to_have_class(re.compile(r"\bdestacado\b"))
+    expect(lateral.locator(".paso-resumen")).to_have_text("1 punto a revisar · 1 en orden")
     # La acción principal sigue el recorrido.
     acciones.get_by_role("button", name="Siguiente: calificar →").click()
     expect(lateral.locator("#paso-calificar")).to_be_visible()
@@ -384,6 +382,36 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
     assert len(pedidos) == 1 and pedidos[0]["coleccion"] == "notas_fase2" and pedidos[0]["id"]
 
 
+def test_la_calificacion_de_la_ia_sigue_el_idioma_del_dashboard(pagina):
+    pedidos = []
+
+    def traducir(ruta):
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "traduccion": {
+            "resumen": "Concrete hook, but it mixes voseo and tuteo.",
+            "problemas": ["Uses tú in a voseo article.", "Repeated eight times.", "Missing accent.", "Weak ending."]}})
+    pagina.route("**/api/historial/critica/traduccion", traducir)
+    lateral = pagina.locator(".modal-sidebar")
+    critica = lateral.locator(".critica-ia")
+    # En español no hace falta traducir: la crítica se escribe en español.
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral.locator("#tab-calificar").click()
+    expect(critica).to_contain_text("mezcla voseo y tuteo")
+    assert pedidos == []
+    pagina.keyboard.press("Escape")
+    # En inglés, lo que explica la IA se traduce; la cita y su corrección quedan como en la nota.
+    pagina.locator(".header").get_by_role("button", name="EN").click()
+    pagina.locator(".hist-item", has_text="Rotación de stock").click()
+    lateral.locator("#tab-calificar").click()
+    expect(critica.locator(".critica-resumen")).to_have_text("Concrete hook, but it mixes voseo and tuteo.")
+    primero = critica.locator(".critica-errores li").first
+    expect(primero).to_contain_text("Uses tú in a voseo article.")
+    expect(primero).to_contain_text("Descubrí cómo ordenar el stock")
+    assert [p["idioma"] for p in pedidos] == ["en"]
+    pagina.keyboard.press("Escape")
+    pagina.locator(".header").get_by_role("button", name="ES").click()
+
+
 def test_si_la_ia_no_puede_revisar_lo_dice_en_el_apartado(pagina):
     pagina.route("**/api/historial/critica", lambda r: r.fulfill(
         status=503, json={"success": False, "error": "Proveedor de IA no disponible para criticar la nota."}))
@@ -467,6 +495,36 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
     otros.get_by_role("button", name="Ver traducción").click()
     expect(otros.locator(".revision-traduccion-texto")).to_contain_text("Texto em português")
     expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
+
+
+def test_imagen_desde_la_computadora(pagina):
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    _abrir_nota(pagina, "Frenos")
+    pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
+    zona = pagina.locator("#zona-imagen")
+    expect(zona).to_contain_text("Arrastrá una imagen acá")
+    # Un archivo que no es imagen no se manda.
+    pagina.set_input_files("#archivo-imagen", files=[{"name": "nota.txt", "mimeType": "text/plain", "buffer": b"hola"}])
+    expect(pagina.locator(".toast", has_text="JPG, PNG, WebP o GIF")).to_be_visible()
+    # Una imagen elegida desde la computadora queda como destacada en la vista previa.
+    pagina.set_input_files("#archivo-imagen", files=[{"name": "frenos.png", "mimeType": "image/png", "buffer": png}])
+    expect(pagina.locator(".previa-imagen")).to_have_attribute("src", re.compile(r"^/api/imagenes/[0-9a-f]{24}$"))
+    src = pagina.locator(".previa-imagen").get_attribute("src")
+    assert pagina.evaluate("u => fetch(u).then(r => r.status)", src) == 200
+    # Y el recorrido ya no la marca como faltante.
+    pagina.get_by_role("button", name="Volver al texto").click()
+    pagina.locator("#tab-revisar").click()
+    expect(pagina.locator("#chequeo-imagen")).to_contain_text("Tiene imagen destacada.")
+    # Arrastrar también funciona.
+    pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
+    expect(zona).to_be_visible()
+    pagina.evaluate("""png => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(png)], 'otra.png', {type: 'image/png'}));
+        const zona = document.getElementById('zona-imagen');
+        zona.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
+    }""", list(png))
+    expect(pagina.locator(".previa-imagen")).not_to_have_attribute("src", src)
 
 
 def test_la_vista_previa_marca_las_fotos_que_la_ia_descarto(pagina):
