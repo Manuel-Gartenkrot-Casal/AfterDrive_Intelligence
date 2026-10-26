@@ -2,7 +2,7 @@
 imagen_destacada.py — Qué fotos de las noticias van en una Nota: la destacada y dos para el cuerpo.
 
 Interfaz:
-    elegir(noticias, titulo, angulo="", cantidad=CANTIDAD) -> Eleccion
+    elegir(noticias, titulo, angulo="", cantidad=CANTIDAD, extra=None) -> Eleccion
 
 Las candidatas son las fotos de las noticias de la nota (las que la respaldan
 primero), hasta MAX_FOTOS, sin repetir. La IA las juzga contra el TEMA de la
@@ -14,6 +14,10 @@ reparte entre las secciones).
 - Sin ella, el mismo modelo juzga sin verlas: por la noticia de la que salen,
   su texto alternativo y el nombre del archivo. Descarta las que claramente no
   tienen que ver (antes iba la primera foto a ciegas, aunque fuera de otra cosa).
+
+Una foto guardada que el sitio ya no sirve (404) se vuelve a buscar en la
+página de la noticia. Si entre las de la nota no hay suficientes aptas, se
+buscan las que faltan entre otras noticias del mismo tema (`extra`).
 
 Si la IA falla, van las primeras en orden: la IA mejora la elección pero nunca
 la frena. Si las descarta todas, la nota queda sin imágenes y el motivo se
@@ -29,6 +33,7 @@ from urllib.parse import urlparse
 CANTIDAD = 3        # destacada + 2 en el cuerpo
 MAX_FOTOS = 8
 MAX_BUSQUEDAS = 5   # páginas de noticias viejas que se descargan para buscarles la foto
+REFRESCOS = 3       # fotos que dejaron de responder: se relee su página para tomar la actual
 # Bedrock rechaza imágenes de más de 3,75 MB en Converse.
 MAX_BYTES_IA = 3_750_000
 
@@ -87,26 +92,75 @@ def _unicas(noticias: list) -> list:
     return resultado
 
 
-def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD) -> Eleccion:
-    """Elige hasta `cantidad` fotos. Nunca lanza, salvo una cancelación desde el dashboard."""
+def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD, extra=None) -> Eleccion:
+    """Elige hasta `cantidad` fotos. Nunca lanza, salvo una cancelación desde el dashboard.
+
+    extra: función sin argumentos que devuelve más noticias del mismo tema. Si
+    entre las de la nota no hay `cantidad` fotos aptas, se buscan ahí las que faltan.
+    """
+    from afterdrive.generacion import contexto_noticias
+
+    candidatas = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
+    eleccion = _ronda(candidatas, titulo, angulo, cantidad) if candidatas else \
+        Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
+    faltan = cantidad - len(eleccion.imagenes)
+    if faltan <= 0 or extra is None or eleccion.metodo == "primera":
+        return eleccion
+    vistas = {n.imagen["url"] for n in candidatas} | {id(n) for n in noticias}
+    try:
+        mas = [n for n in extra() if id(n) not in vistas and n.url not in {x.url for x in noticias}]
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron buscar más noticias con foto: {e}", flush=True)
+        return eleccion
+    otras = [n for n in _unicas(contexto_noticias.con_foto(mas, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
+             if n.imagen["url"] not in vistas]
+    if not otras:
+        return eleccion
+    print(f"  Faltan {faltan} imagen(es) apta(s): se buscan entre {len(otras)} foto(s) de otras noticias del tema.",
+          flush=True)
+    segunda = _ronda(otras, titulo, angulo, faltan)
+    imagenes = eleccion.imagenes + segunda.imagenes
+    veredictos = {**eleccion.veredictos, **segunda.veredictos}
+    if not imagenes:
+        motivo = eleccion.motivo + " Tampoco sirvió ninguna foto de otras noticias del tema."
+        return Eleccion([], segunda.metodo, veredictos, motivo=motivo.strip())
+    return Eleccion(imagenes, eleccion.metodo if eleccion.imagenes else segunda.metodo, veredictos)
+
+
+def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
+    """Bytes de la foto de la noticia. Si el sitio ya no la sirve (4xx), se vuelve a leer la
+    página de la noticia una vez para tomar su foto actual (hasta `refrescos` por nota)."""
+    from afterdrive import imagen_web
+    from afterdrive.generacion import contexto_noticias
+
+    try:
+        return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
+    except imagen_web.ErrorDescarga as e:
+        if refrescos[0] <= 0 or "respondió 4" not in str(e):
+            raise
+        refrescos[0] -= 1
+        if contexto_noticias.refrescar_imagen(n) is None:
+            raise
+        print(f"  La foto de '{n.titulo[:50]}' cambió en su página: se usa la actual.", flush=True)
+        return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
+
+
+def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int) -> Eleccion:
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
-    candidatas = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
-    if not candidatas:
-        return Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
     primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
-
     veredictos, enviadas, imagenes = {}, candidatas, None
     if llm.ve_imagenes():
         from afterdrive import imagen_web
-        enviadas, imagenes = [], []
+        enviadas, imagenes, refrescos = [], [], [REFRESCOS]
         for n in candidatas:
+            url = n.imagen["url"]
             try:
-                imagenes.append(imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA))
+                imagenes.append(_descargar(n, refrescos))
                 enviadas.append(n)
             except imagen_web.ErrorDescarga as e:
-                veredictos[n.imagen["url"]] = {"apta": False, "motivo": f"No se pudo descargar: {e}."}
+                veredictos[url] = {"apta": False, "motivo": f"No se pudo descargar: {e}."}
         if not enviadas:
             primeras.motivo = "No se pudo descargar ninguna foto para que la IA las mire."
             primeras.veredictos = veredictos
@@ -140,7 +194,7 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
     elegidas = respuesta["elegidas"][:cantidad]
     if not elegidas:
         motivos = "; ".join(v["motivo"] for v in veredictos.values() if v.get("motivo"))
-        print("  [AVISO] La IA descartó todas las fotos: la nota queda sin imagen.", flush=True)
+        print("  [AVISO] La IA descartó todas las fotos.", flush=True)
         return Eleccion([], metodo, veredictos, motivo=f"La IA descartó todas las fotos. {motivos}".strip())
     return Eleccion([contexto_noticias.imagen_de(enviadas[i - 1]) for i in elegidas], metodo, veredictos)
 

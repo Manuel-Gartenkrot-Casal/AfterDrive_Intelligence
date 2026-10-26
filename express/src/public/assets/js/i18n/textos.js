@@ -704,7 +704,7 @@ var _FILAS_TEXTOS = [
 
 _FILAS_TEXTOS.push(
 ["Idioma de la nota", "Idioma do post", "Article language"],
-["Se escribe en el idioma de las regiones elegidas. Al subirla a HubSpot se crean borradores traducidos en los otros dos idiomas del blog. El idioma de la interfaz no cambia el de la nota.", "É escrito no idioma das regiões escolhidas. Ao enviá-lo ao HubSpot, são criados rascunhos traduzidos nos outros dois idiomas do blog. O idioma da interface não muda o do post.", "Written in the language of the selected regions. When uploaded to HubSpot, translated drafts are created in the blog's other two languages. The interface language does not change the article language."],
+["Todas las notas se escriben en este idioma y se traducen a los otros dos del blog apenas se crean (las ves y editás en el Historial). Las regiones eligen el mercado, no el idioma.", "Todos os posts são escritos neste idioma e traduzidos para os outros dois do blog assim que são criados (você os vê e edita no Histórico). As regiões escolhem o mercado, não o idioma.", "All articles are written in this language and translated into the blog's other two as soon as they are created (you can see and edit them in History). Regions choose the market, not the language."],
 ["Generando nota…", "Gerando post…", "Generating article…"],
 ["Procesando…", "Processando…", "Processing…"],
 ["Menú", "Menu", "Menu"],

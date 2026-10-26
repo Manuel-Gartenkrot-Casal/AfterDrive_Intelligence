@@ -1628,7 +1628,11 @@ body.hud-open.hud-open { --shell-pie: 220px; }
   body.hud-open .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: var(--shell-pie); }
   .header { flex: 0 0 auto; }
   .layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-  .sidebar { position: relative; top: auto; min-height: 0; }
+  /* El dock de actividad va abajo a la derecha: la barra lateral (a la izquierda)
+     no le deja lugar y llega hasta abajo. Si no, con el dock abierto se achicaba
+     a la mitad y los ajustes de la vista Desarrollador quedaban en una franja. */
+  .sidebar { position: relative; top: auto; min-height: 0; margin-bottom: calc(24px - var(--shell-pie)); }
+  body.hud-open .sidebar { margin-bottom: 0; }
   /* El padding (compensado con margen negativo) evita que se recorten los
      bordes de las tarjetas contra el borde del área que scrollea. */
   .contenido { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;

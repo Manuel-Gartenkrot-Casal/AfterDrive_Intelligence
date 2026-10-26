@@ -376,7 +376,8 @@ def set_generacion_config():
 
 @app.route("/api/fase2/config", methods=["GET"])
 def get_fase2_config():
-    return jsonify({"success": True, **config_store.get_fase2_config()})
+    from afterdrive.ia.redaccion import idioma_principal
+    return jsonify({"success": True, **config_store.get_fase2_config(), "idioma_principal": idioma_principal()})
 
 
 @app.route("/api/fase2/config", methods=["POST"])

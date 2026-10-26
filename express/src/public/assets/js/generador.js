@@ -124,12 +124,10 @@ async function fase2Init() {
   panel.setAttribute('aria-busy', 'false');
 }
 
+// Las notas se escriben siempre en el idioma principal (lo dice /api/fase2/config); las regiones eligen el mercado.
+var _idiomaPrincipal = 'pt';
 function idiomaNotaElegido() {
-  var regiones = Array.from(_f2RegionesActivas);
-  var extranjera = regiones.find(function(r) { return ['brasil','asia','china'].includes(r); });
-  var cod = extranjera ? {brasil:'pt', asia:'en', china:'zh'}[extranjera]
-    : (!regiones.length || (regiones.length === 1 && regiones[0] === 'argentina') ? 'es' : 'es-neutro');
-  return {es:'Español rioplatense', 'es-neutro':'Español neutro', pt:'Português do Brasil', en:'English', zh:'中文'}[cod];
+  return {es:'Español rioplatense', pt:'Português do Brasil', en:'English'}[_idiomaPrincipal] || 'Português do Brasil';
 }
 function resumenCrear() {
   pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
@@ -163,6 +161,7 @@ async function fase2CargarConfig() {
     var r = await fetch('/api/fase2/config');
     var d = await r.json();
     if (!d.success) return;
+    if (d.idioma_principal) _idiomaPrincipal = d.idioma_principal;
     (d.categorias || []).forEach(function(c) {
       var el = document.querySelector('#f2-categorias-grid .toggle-item[data-slug="' + c + '"]');
       if (el) { _f2CategoriasActivas.add(c); el.classList.add('active'); }

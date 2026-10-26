@@ -368,3 +368,33 @@ def test_al_enviar_se_copian_las_tres_y_van_en_el_cuerpo(base, nota, monkeypatch
     assert len(subidas) == 3
     doc = base.notas_fase2.find_one()
     assert [im["hubspot_url"] for im in doc["imagenes_cuerpo"]] == [f"https://hs/{n}" for n in subidas[1:]]
+
+
+def test_una_foto_que_ya_no_responde_se_busca_de_nuevo_en_su_pagina(ia_fotos, monkeypatch):
+    from afterdrive.generacion import imagen_destacada
+    responder, descargas, pedidos = ia_fotos
+    descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 404")
+    leidas = []
+
+    def refrescar(n):
+        leidas.append(n.url)
+        n.imagen = {"url": "https://n.com/1-nueva.jpg", "alt": ""}
+        return n.imagen
+    monkeypatch.setattr(contexto_noticias, "refrescar_imagen", refrescar)
+    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "Taller."}], "elegidas": [1]}')
+    e = imagen_destacada.elegir(_con_fotos(1), "T")
+    assert leidas and e.imagen["url"] == "https://n.com/1-nueva.jpg" and len(pedidos[0]["imagenes"]) == 1
+
+
+def test_si_no_alcanzan_se_buscan_en_otras_noticias_del_tema(ia_fotos, monkeypatch):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm
+    _, _, pedidos = ia_fotos
+    respuestas = iter(['{"fotos": [{"n": 1, "apta": false, "motivo": "Billetes de dólar."}], "elegidas": []}',
+                       '{"fotos": [{"n": 1, "apta": true, "motivo": "Devoluciones."}, {"n": 2, "apta": true, "motivo": "ok"}],'
+                       ' "elegidas": [2, 1]}'])
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: pedidos.append(kw) or next(respuestas))
+    otras = [_noticia(i, f"https://n.com/{i}.jpg") for i in (7, 8)]
+    e = imagen_destacada.elegir(_con_fotos(1), "Devoluciones en marketplaces", extra=lambda: otras)
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/8.jpg", "https://n.com/7.jpg"]
+    assert e.veredictos["https://n.com/1.jpg"]["apta"] is False and len(pedidos) == 2

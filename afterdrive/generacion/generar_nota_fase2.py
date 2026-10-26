@@ -548,8 +548,10 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     # quedan en `fuentes` (con lo que opinó la IA) para elegir otra al revisarla.
     usadas_ids = {id(n) for n in usadas}
     titulo = calidad.partes(articulo).titulo
-    eleccion = imagen_destacada.elegir(usadas + [n for n in noticias if id(n) not in usadas_ids], titulo,
-                                       (plan_nota or {}).get("angulo", ""))
+    eleccion = imagen_destacada.elegir(
+        usadas + [n for n in noticias if id(n) not in usadas_ids], titulo, (plan_nota or {}).get("angulo", ""),
+        # Si las fotos de estas noticias no alcanzan, más noticias del mismo tema.
+        extra=lambda: contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=15))
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)

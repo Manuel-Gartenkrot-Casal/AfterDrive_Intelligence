@@ -308,6 +308,19 @@ def imagen_de(n: Noticia) -> dict:
     return {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""), "origen": {"titulo": n.titulo, "url": n.url}}
 
 
+def refrescar_imagen(n: Noticia) -> dict | None:
+    """Vuelve a leer la página de la noticia para sacar su foto actual: la guardada dejó de responder
+    (los sitios cambian o borran las fotos). Devuelve la nueva si cambió de URL, o None. Queda guardada."""
+    anterior = (n.imagen or {}).get("url")
+    if not n.url:
+        return None
+    nueva = _buscar_imagen(n)
+    if nueva and nueva.get("url") != anterior:
+        n.imagen = nueva
+        return nueva
+    return None
+
+
 def _buscar_imagen(n: Noticia) -> dict | None:
     from afterdrive.db import col_articulos
     from afterdrive.ingesta import imagen_articulo, scraper

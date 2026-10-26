@@ -646,7 +646,7 @@ def test_lo_que_opino_la_ia_de_cada_foto_queda_en_las_fuentes(entorno, monkeypat
     noticias = [Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió.", url="https://n/1",
                         imagen={"url": "https://n/1.jpg", "alt": ""}, imagen_buscada=True)]
     monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
-    monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="": imagen_destacada.Eleccion(
+    monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="", extra=None: imagen_destacada.Eleccion(
         [], "ia", {"https://n/1.jpg": {"apta": False, "motivo": "Es un logo."}}, motivo="La IA descartó todas las fotos."))
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
