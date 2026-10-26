@@ -529,6 +529,26 @@ def historial_calificar():
     return jsonify({"success": True, "calificacion": cal})
 
 
+@app.route("/api/historial/critica", methods=["POST"])
+def historial_criticar():
+    """Crítica de la redacción de una Nota hecha por la IA: {"coleccion", "id"}. Se guarda en la nota."""
+    from afterdrive import calibracion
+    from afterdrive.generacion import critica
+
+    body = request.get_json(silent=True) or {}
+    try:
+        resultado = critica.criticar_guardada(body.get("coleccion", ""), body.get("id", ""))
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if resultado is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    if resultado.get("error"):
+        return jsonify({"success": False, "error": resultado["error"]}), 503
+    return jsonify({"success": True, "critica": resultado})
+
+
 @app.route("/api/calibracion", methods=["GET"])
 def calibracion_resumen():
     """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""

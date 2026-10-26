@@ -1814,6 +1814,44 @@ body.hud-open.hud-open { --shell-pie: 220px; }
 .calificar textarea::-webkit-scrollbar-button { display: none; height: 0; }
 .calificar-pie { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .calificar-estado { font-size: 0.72rem; color: var(--text-lo); }
+/* Calificación de la IA: puntaje de la redacción, aspectos y los errores que marcó. */
+.critica-ia {
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding: var(--s3); margin-bottom: var(--s3);
+  border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: var(--r-md); background: var(--well);
+}
+.critica-ia h4 { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
+.critica-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.critica-puntaje { font-size: 0.75rem; color: var(--text-lo); font-variant-numeric: tabular-nums; }
+.critica-puntaje strong { font-size: 1.15rem; font-weight: 700; color: var(--nivel); }
+.critica-ia [data-nivel="bien"] { --nivel: var(--ok); }
+.critica-ia [data-nivel="medio"] { --nivel: var(--warn); }
+.critica-ia [data-nivel="mal"] { --nivel: var(--err); }
+.critica-resumen { font-size: 0.8rem; line-height: 1.5; color: var(--text-mid); }
+.critica-aspectos { list-style: none; display: grid; gap: 4px; }
+.critica-aspectos li { display: grid; grid-template-columns: 76px minmax(0, 1fr) 34px; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--text-mid); }
+.critica-barra { height: 5px; border-radius: var(--r-pill); background: var(--border); overflow: hidden; }
+.critica-barra > span { display: block; height: 100%; border-radius: inherit; background: var(--nivel); }
+.critica-valor { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-lo); }
+.critica-subtitulo { margin-top: 4px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-lo); }
+.critica-errores { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.critica-errores li { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--bg); font-size: 0.78rem; line-height: 1.45; color: var(--text-hi); }
+.critica-errores li[hidden] { display: none; }
+.critica-errores li > div { display: flex; flex-direction: column; gap: 3px; }
+.critica-tipo { align-self: flex-start; padding: 0 7px; border-radius: var(--r-pill); font-size: 0.66rem; font-weight: 600; line-height: 18px;
+                color: var(--tipo, var(--text-mid)); background: color-mix(in srgb, var(--tipo, var(--text-mid)) 12%, transparent); }
+.critica-tipo[data-tipo="gramatica"], .critica-tipo[data-tipo="ortografia"] { --tipo: var(--err); }
+.critica-tipo[data-tipo="tono"] { --tipo: var(--brand); }
+.critica-tipo[data-tipo="redaccion"] { --tipo: var(--warn); }
+.critica-tipo[data-tipo="estructura"] { --tipo: var(--info); }
+.critica-fragmento { font-style: italic; color: var(--text-mid); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 55%, transparent); }
+.critica-sugerencia { color: var(--ok); }
+.critica-sugerencia::before { content: '→ '; }
+.critica-mas { align-self: flex-start; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 0.75rem; font-weight: 600; color: var(--brand); cursor: pointer; }
+.critica-mas:hover { text-decoration: underline; }
+.critica-pie { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
+.critica-pie .btn { margin-left: auto; }
+
 /* Guardado con éxito: el botón pasa a verde con tilde y el recuadro destella. */
 .calificar { transition: border-color var(--t-fast); }
 .calificar.exito { border-color: var(--ok); animation: calificarExito 1.2s ease-out; }
