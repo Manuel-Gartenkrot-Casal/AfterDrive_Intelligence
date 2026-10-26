@@ -1060,6 +1060,17 @@ body.modal-abierto { overflow: hidden; }
 .sidebar-pie .modo-switch button { flex: 1 1 auto; min-width: 0; padding-inline: 8px; font-size: 0.75rem; white-space: nowrap; }
 .sidebar-pie .provider-toggle { flex-wrap: wrap; border-radius: var(--r-md); }
 .sidebar-pie .provider-toggle .prov-label { display: none; }
+/* Escritorio: la barra es sticky, así que nunca pasa del alto de la pantalla.
+   Si los ajustes no entran (vista Desarrollador en pantallas bajas), se
+   desplazan dentro de su zona; la navegación y Ayuda quedan siempre visibles
+   (el menú de Ayuda sale por fuera de esta zona y no se recorta). */
+@media (min-width: 901px) {
+  .sidebar { max-height: calc(100dvh - var(--shell-top, 124px) - 8px); }
+  .nav-lista, .sidebar-ayuda { flex-shrink: 0; }
+  .sidebar-pie { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+                 margin-inline: -4px; padding-inline: 4px; padding-bottom: 4px; }
+  .sidebar-pie .puntapie-toggle { padding-block: 6px; }
+}
 
 #confirmar-texto { white-space: pre-line; }
 

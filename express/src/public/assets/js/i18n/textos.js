@@ -543,6 +543,10 @@ var _FILAS_TEXTOS = [
   // ── Proveedores y API paga ────────────────────────────────────────────────
   ['API paga', 'API paga', 'Paid API'],
   ['Proveedor de IA', 'Provedor de IA', 'AI provider'],
+  ['Borradores en HubSpot', 'Rascunhos no HubSpot', 'HubSpot drafts'],
+  ['Aprobación automática', 'Aprovação automática', 'Auto-approval'],
+  ['Prendida', 'Ligada', 'On'],
+  ['Apagada', 'Desligada', 'Off'],
   ['Proveedor', 'Provedor', 'Provider'],
   ['Proveedor activo:', 'Provedor ativo:', 'Active provider:'],
   ['Proveedor cambiado a:', 'Provedor alterado para:', 'Provider changed to:'],
