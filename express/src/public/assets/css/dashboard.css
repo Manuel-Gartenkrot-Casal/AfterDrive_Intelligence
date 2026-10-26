@@ -174,20 +174,6 @@ body {
   transition: opacity var(--t-med) var(--ease-out);
 }
 .header.active::after { opacity: 1; animation: scanline 1.8s linear infinite; }
-/* Escritorio: el header queda fijo arriba al scrollear. --header-alto lo mide
-   navegacion.js; lo que es sticky debajo (barra lateral, acciones de Crear
-   nota) se corre ese alto para no quedar tapado. */
-@media (min-width: 901px) {
-  /* Se pega donde arranca (20px del borde, el padding de .app-container): así
-     no se mueve al scrollear. ::before tapa ese margen para que el contenido
-     no se vea pasar por arriba. */
-  .header { position: sticky; top: 20px; z-index: 30; }
-  .header::before { content: ''; position: absolute; left: -24px; right: -24px; bottom: 100%; height: 20px;
-                    background: var(--canvas); pointer-events: none; }
-  html { scroll-padding-top: calc(var(--header-alto, 80px) + 36px); }
-  body .sidebar { top: calc(var(--header-alto, 80px) + 44px); }
-  body .f2-acciones { top: calc(var(--header-alto, 80px) + 32px); }
-}
 @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 .header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -1074,12 +1060,11 @@ body.modal-abierto { overflow: hidden; }
 .sidebar-pie .modo-switch button { flex: 1 1 auto; min-width: 0; padding-inline: 8px; font-size: 0.75rem; white-space: nowrap; }
 .sidebar-pie .provider-toggle { flex-wrap: wrap; border-radius: var(--r-md); }
 .sidebar-pie .provider-toggle .prov-label { display: none; }
-/* Escritorio: la barra es sticky, así que nunca pasa del alto de la pantalla.
-   Si los ajustes no entran (vista Desarrollador en pantallas bajas), se
-   desplazan dentro de su zona; la navegación y Ayuda quedan siempre visibles
-   (el menú de Ayuda sale por fuera de esta zona y no se recorta). */
+/* Escritorio: la barra ocupa el alto de la pantalla (ver APP SHELL). Si los
+   ajustes no entran (vista Desarrollador en pantallas bajas), se desplazan
+   dentro de su zona; la navegación y Ayuda quedan siempre visibles (el menú de
+   Ayuda sale por fuera de esta zona y no se recorta). */
 @media (min-width: 901px) {
-  .sidebar { max-height: var(--sidebar-alto, calc(100dvh - var(--shell-top, 124px) - 8px)); }
   .nav-lista, .sidebar-ayuda { flex-shrink: 0; }
   .sidebar-pie { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
                  margin-inline: -4px; padding-inline: 4px; padding-bottom: 4px; }
@@ -1561,9 +1546,6 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.actividad-dock) {
   transition: background-color 240ms ease, color 160ms ease, border-color 240ms ease;
 }
-@media (min-width: 901px) {
-  .contenido { min-height: calc(100dvh - 224px); }
-}
 @media (max-width: 1100px) {
   .hero-cliente,.inicio-trabajo { grid-template-columns: minmax(0,1fr); }
   .fase2-grupos { grid-template-columns: minmax(0,1fr); }
@@ -1625,23 +1607,34 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   APP SHELL (vista Cliente): en escritorio el área de trabajo ocupa todo
-   el alto de la pantalla. Los paneles se estiran hasta abajo y lo que no
-   entra se desplaza dentro del panel, no la página.
-   La vista Desarrollador conserva la distribución anterior: suma consola y
-   estadísticas debajo y estirar los paneles las encimaba.
+   APP SHELL: en escritorio la página no se desplaza. El header y la barra
+   lateral quedan quietos y solo scrollea el área de contenido (.contenido),
+   que ocupa el alto que queda en la pantalla.
+   En la vista Cliente, además, los paneles se estiran hasta abajo y lo que
+   no entra se desplaza dentro del panel. La vista Desarrollador conserva la
+   distribución anterior: suma consola y estadísticas debajo y estirar los
+   paneles las encimaba.
    --shell-pie deja lugar abajo para el dock de actividad o el HUD.
    ═══════════════════════════════════════════════════════════════════════ */
-[data-modo="cliente"] body { --shell-pie: 24px; }
-[data-modo="cliente"] body:has(.actividad-dock:not([hidden])) { --shell-pie: 96px; }
-[data-modo="cliente"] body.hud-open.hud-open { --shell-pie: 220px; }
+body { --shell-pie: 24px; }
+body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
+body.hud-open.hud-open { --shell-pie: 220px; }
 [data-modo="cliente"] .app-container,
 [data-modo="cliente"] body.hud-open .app-container { padding-bottom: var(--shell-pie); }
 
 @media (min-width: 901px) {
-  /* 20px de margen + 80px de header + 24px de separación */
-  :root { --shell-top: 124px; }
-  [data-modo="cliente"] :is(.sidebar, .contenido) { min-height: calc(100dvh - var(--shell-top) - var(--shell-pie)); }
+  html, body { height: 100%; overflow: hidden; }
+  .app-container,
+  body.hud-open .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: var(--shell-pie); }
+  .header { flex: 0 0 auto; }
+  .layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .sidebar { position: relative; top: auto; min-height: 0; }
+  /* El padding (compensado con margen negativo) evita que se recorten los
+     bordes de las tarjetas contra el borde del área que scrollea. */
+  .contenido { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+               margin: -4px; padding: 4px 4px 24px; }
+  .f2-acciones { top: 0; }
+  .barra-guardar { bottom: var(--s4); }
   [data-modo="cliente"] .contenido { display: flex; flex-direction: column; }
 
   [data-modo="cliente"] .inicio-trabajo { flex: 1 1 0; min-height: 240px; grid-template-rows: minmax(0, 1fr); }
@@ -2245,7 +2238,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .ayuda-menu [role="menuitem"]:hover, .ayuda-menu [role="menuitem"]:focus-visible { background: var(--well); outline: none; color: var(--brand); }
 
 .tour-capa { position: fixed; inset: 0; z-index: 1000; }
-.tour-abierto [data-seccion], .tour-abierto .sidebar > * { scroll-margin-top: calc(var(--header-alto, 0px) + 36px); }
+.tour-abierto [data-seccion], .tour-abierto .sidebar > * { scroll-margin-top: 24px; }
 .tour-capa.oscura { background: rgba(10, 12, 18, 0.55); }
 .tour-foco {
   position: fixed; z-index: 1001; pointer-events: none;

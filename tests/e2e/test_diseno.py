@@ -163,12 +163,33 @@ def test_consola_no_tapa_guardar_configuracion(navegador, base_url, ancho):
         pg.select_option('#f2-largo','largo')
         barra = pg.locator('#barra-crear')
         expect(barra).to_be_visible()
-        pg.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        # En escritorio scrollea el área de contenido; en el celular, la página.
+        pg.evaluate('window.scrollTo(0, document.body.scrollHeight); $("contenido").scrollTo(0, 1e6)')
         pg.wait_for_timeout(300)
         a,b=barra.bounding_box(), pg.locator('#actividad-dock').bounding_box()
         assert a['y']+a['height'] <= b['y']+1
         barra.locator('[data-accion="descartar"]').click()
         expect(barra).to_be_hidden()
+        assert pg.errores == []
+    finally:
+        pg.context.close()
+
+
+@pytest.mark.parametrize("modo", ["cliente", "dev"])
+def test_header_y_barra_quietos_al_scrollear(navegador, base_url, modo):
+    """En escritorio solo se desplaza el contenido: el header y la barra lateral no se mueven."""
+    pg = abrir(navegador, base_url, modo=modo, ancho=1366, alto=560)
+    try:
+        pg.click('.nav-link[data-seccion="crear"]')
+        antes = [pg.locator(s).bounding_box() for s in ("#appHeader", ".sidebar")]
+        pg.mouse.move(900, 400)
+        for _ in range(6):
+            pg.mouse.wheel(0, 200)
+            pg.wait_for_timeout(60)
+        pg.wait_for_timeout(200)
+        assert pg.evaluate("$('contenido').scrollTop") > 0
+        assert pg.evaluate("scrollY") == 0
+        assert [pg.locator(s).bounding_box() for s in ("#appHeader", ".sidebar")] == antes
         assert pg.errores == []
     finally:
         pg.context.close()
