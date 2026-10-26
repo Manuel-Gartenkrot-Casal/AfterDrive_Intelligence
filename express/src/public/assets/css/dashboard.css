@@ -2119,6 +2119,11 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.85rem; }
 .previa-ayuda { font-size: 0.8rem; color: var(--text-lo); line-height: 1.5; }
 .revision-imagen { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
+.revision-imagenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s2); }
+.revision-imagenes figure { margin: 0; min-width: 0; }
+.revision-imagenes figcaption { margin-top: var(--s1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nota-cambio { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s3);
+  padding: var(--s2) var(--s3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.85rem; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    TABLERO COMO PANEL DE CONTROL: fila de indicadores (cifra grande,

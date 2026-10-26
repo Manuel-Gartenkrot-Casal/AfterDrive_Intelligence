@@ -181,7 +181,19 @@ function initFormularios() {
 }
 
 /* fetch que falla si el server responde error, con el mensaje del server. */
+// Cambios que hizo esta pestaña (todo lo que no es GET), en curso y terminados: vivo.js no los avisa como ajenos.
+var _cambiosPropios = { enCurso: 0, total: 0 };
+
 async function pedir(url, opciones) {
+  var cambio = !!opciones && !!opciones.method && opciones.method.toUpperCase() !== 'GET';
+  if (!cambio) return _pedir(url, opciones);
+  _cambiosPropios.enCurso++;
+  _cambiosPropios.total++;
+  try { return await _pedir(url, opciones); }
+  finally { _cambiosPropios.enCurso--; _cambiosPropios.total++; }
+}
+
+async function _pedir(url, opciones) {
   var r = await fetch(url, opciones);
   var d = {};
   try { d = await r.json(); } catch (e) {}

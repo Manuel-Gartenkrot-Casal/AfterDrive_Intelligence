@@ -544,6 +544,7 @@ async function fase2MostrarUltima(id) {
     }
     var check = $('check-list');
     var nota = d.nota;
+    var firma = JSON.stringify(nota);   // antes de que la vista le agregue cosas: vivo.js compara contra esto
     $('modal-titulo').textContent = tituloDeNota(nota.contenido) || (id ? 'Nota' : 'Última nota');
     // Cada dato en su span: así se traduce cada uno (p. ej. "Generada el …").
     $('modal-meta').innerHTML = [
@@ -558,6 +559,8 @@ async function fase2MostrarUltima(id) {
     pintarCuerpoNota();   // pestañas por idioma; el contenido no se traduce con la UI
     verPanelModal('nota');
     armarRecorrido(nota, check);   // Revisar → Calificar → Publicar (recorrido.js)
+    _recorrido.firma = firma;
+    _recorrido.cambiosVistos = _cambiosPropios.total;
 
     // Criterios del evaluador, dentro de "Cómo se generó".
     var lugar = $('recorrido-evaluacion');

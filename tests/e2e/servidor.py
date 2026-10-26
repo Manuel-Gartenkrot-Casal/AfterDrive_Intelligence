@@ -97,6 +97,15 @@ def sembrar() -> None:
                   "palabra_clave": "rotación de stock", "implicancias": [],
                   "secciones": [{"titulo": "Qué pasó", "idea": "x", "noticias": [1]},
                                 {"titulo": "Qué cambia", "idea": "y", "noticias": []}]}},
+        {"contenido": "# Baterías en el mostrador\n\n" + CUERPO, "generado_en": "2026-10-14T14:00:00+00:00",
+         "estado": "aprobada", "categorias": ["autopartes"],
+         "imagen": {"url": "https://s.com/fotos/bateria.jpg", "alt": "Batería",
+                    "origen": {"titulo": "Baterías al alza", "url": "https://s.com/bat"}},
+         "imagenes_cuerpo": [
+             {"url": "https://s.com/fotos/deposito.jpg", "alt": "Depósito",
+              "origen": {"titulo": "Depósitos llenos", "url": "https://s.com/dep"}},
+             {"url": "https://s.com/fotos/mostrador.jpg", "alt": "Mostrador",
+              "origen": {"titulo": "El mostrador vende más", "url": "https://s.com/mos"}}]},
     ])
     dbm.db.articulos.insert_many(
         [{"url": f"https://s.com/{i}", "titulo": f"Noticia {i}", "cuerpo": "Texto. " * 20} for i in range(3)])

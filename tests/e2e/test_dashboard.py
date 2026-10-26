@@ -497,6 +497,52 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
     expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
 
 
+def test_publicar_muestra_la_destacada_y_las_dos_del_texto(pagina):
+    _abrir_nota(pagina, "Baterías en el mostrador")
+    pagina.locator("#tab-publicar").click()
+    lateral = pagina.locator(".modal-sidebar")
+    expect(lateral.locator(".revision-bloque", has_text="Imagen destacada").locator("img")).to_have_attribute(
+        "src", "https://s.com/fotos/bateria.jpg")
+    cuerpo = lateral.locator(".revision-bloque", has_text="Imágenes en el texto")
+    expect(cuerpo.locator("img")).to_have_count(2)
+    expect(cuerpo.get_by_role("link", name="El mostrador vende más")).to_have_attribute("href", "https://s.com/mos")
+
+
+def _cambiar_desde_afuera(pg, contenido):
+    """Otra persona edita la nota abierta (por la API, sin tocar esta pestaña)."""
+    assert pg.evaluate("""c => fetch('/api/historial/contenido', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({coleccion: 'notas_fase2', id: _notaActual.id, contenido: c})}).then(r => r.ok)""", contenido)
+
+
+def test_la_nota_y_la_lista_se_actualizan_sin_refrescar(pagina):
+    _abrir_nota(pagina, "Baterías en el mostrador")
+    pagina.locator("#tab-publicar").click()
+    pagina.evaluate("refrescarVivo()")   # lo mismo que hace solo cada 10 s
+    expect(pagina.locator("#nota-cambio")).to_have_count(0)   # nada cambió
+    # Otra persona la edita: se avisa, sin repintar debajo tuyo.
+    _cambiar_desde_afuera(pagina, "# Baterías: cambió otra persona\n\n" + "Texto nuevo. " * 30)
+    pagina.evaluate("refrescarVivo()")
+    expect(pagina.locator("#nota-cambio")).to_contain_text("Esta nota cambió mientras la mirabas.")
+    expect(pagina.locator("#modal-titulo")).to_have_text("Baterías en el mostrador")
+    pagina.locator("#nota-cambio").get_by_role("button", name="Actualizar").click()
+    expect(pagina.locator("#modal-titulo")).to_have_text("Baterías: cambió otra persona")
+    expect(pagina.locator("#nota-texto")).to_contain_text("Texto nuevo.")
+    expect(pagina.locator("#nota-cambio")).to_have_count(0)
+    expect(pagina.locator("#tab-publicar")).to_have_attribute("aria-selected", "true")   # sigue en el mismo paso
+    # Lo que cambiás vos desde esta pestaña no se avisa como ajeno.
+    pagina.locator("#tab-calificar").click()
+    pagina.locator(".calificar .estrella[data-n='4']").click()
+    pagina.locator("#calificar-guardar").click()
+    expect(pagina.locator("#calificar-estado")).to_contain_text("Guardada")
+    pagina.evaluate("refrescarVivo()")
+    pagina.evaluate("refrescarVivo()")
+    expect(pagina.locator("#nota-cambio")).to_have_count(0)
+    # La lista del historial muestra el título nuevo sola.
+    pagina.keyboard.press("Escape")
+    pagina.evaluate("refrescarVivo()")
+    expect(pagina.locator(".hist-item", has_text="Baterías: cambió otra persona")).to_be_visible()
+
+
 def test_imagen_desde_la_computadora(pagina):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
     _abrir_nota(pagina, "Frenos")

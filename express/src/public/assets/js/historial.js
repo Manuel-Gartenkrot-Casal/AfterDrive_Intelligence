@@ -50,7 +50,8 @@ function fechaCorta(iso) {
   return iso ? new Date(iso).toLocaleString(localeUI(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 }
 
-async function cargarHistorial(pagina) {
+// silencioso: sin "Cargando…" (lo usa la actualización automática de vivo.js).
+async function cargarHistorial(pagina, silencioso) {
   _hist.pagina = pagina || 1;
   var esNotas = _hist.seccion === 'generados_aprobados';
   document.querySelectorAll('#hist-pestanas .pestana').forEach(function(b) {
@@ -63,9 +64,11 @@ async function cargarHistorial(pagina) {
     b.setAttribute('aria-pressed', b.dataset.estado === _hist.estado);
   });
   var lista = $('hist-lista');
-  lista.setAttribute('aria-busy', 'true');
-  $('hist-paginador').textContent = '';
-  lista.innerHTML = '<p class="corridas-vacio">Cargando…</p>';
+  if (!silencioso) {
+    lista.setAttribute('aria-busy', 'true');
+    $('hist-paginador').textContent = '';
+    lista.innerHTML = '<p class="corridas-vacio">Cargando…</p>';
+  }
   var qs = '?pagina=' + _hist.pagina + '&por_pagina=15&q=' + encodeURIComponent(_hist.q)
     + (esNotas ? '&estado=' + _hist.estado : '');
   var d;
@@ -73,6 +76,8 @@ async function cargarHistorial(pagina) {
   catch (e) { lista.removeAttribute('aria-busy'); lista.innerHTML = '<p class="corridas-vacio">No se pudo cargar: ' + escHtml(e.message) + '</p>'; return; }
 
   lista.removeAttribute('aria-busy');
+  // La página quedó vacía (otro aprobó o borró lo que había): a la última que tiene algo.
+  if (!d.items.length && _hist.pagina > 1 && d.paginas < _hist.pagina) return cargarHistorial(Math.max(1, d.paginas), silencioso);
   if (!d.items.length) {
     lista.innerHTML = '<p class="corridas-vacio">' + (_hist.q ? 'No hay resultados para esa búsqueda.' : ({generados_aprobados: 'No hay notas en este estado. Probá otro filtro o creá una nueva nota.', generados_descartados: 'No hay notas descartadas por la evaluación automática.', scrapeados_aprobados: 'Todavía no hay noticias guardadas. Revisá tus fuentes para empezar.', scrapeados_descartados: 'No hay noticias descartadas.'}[_hist.seccion])) + '</p>';
   } else {

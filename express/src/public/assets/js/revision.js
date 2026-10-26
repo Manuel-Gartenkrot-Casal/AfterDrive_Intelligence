@@ -28,6 +28,7 @@ async function pintarCalificacion(nota, contenedor) {
     || (sugerida ? { puntaje: juicio.calificacion, etiquetas: juicio.etiquetas, comentario: juicio.comentario } : {});
   _cal.puntaje = previa.puntaje || 0;
   _cal.etiquetas = (previa.etiquetas || []).slice();
+  _cal.tocada = false;   // true en cuanto se toca: la actualización automática no la pisa (vivo.js)
   var catalogo = await catalogoEtiquetas();
   var caja = document.createElement('section');
   caja.className = 'calificar';
@@ -51,15 +52,16 @@ async function pintarCalificacion(nota, contenedor) {
   contenedor.appendChild(caja);
   var comentario = $('calificar-comentario');
   comentario.value = previa.comentario || '';
-  comentario.oninput = function() { ajustarAlto(comentario); };
+  comentario.oninput = function() { _cal.tocada = true; ajustarAlto(comentario); };
   ajustarAlto(comentario);
   caja.querySelectorAll('.estrella').forEach(function(b) {
-    b.onclick = function() { _cal.puntaje = +b.dataset.n; marcarCalificacion(); };
+    b.onclick = function() { _cal.puntaje = +b.dataset.n; _cal.tocada = true; marcarCalificacion(); };
   });
   caja.querySelectorAll('[data-etiqueta]').forEach(function(b) {
     b.onclick = function() {
       var k = b.dataset.etiqueta, i = _cal.etiquetas.indexOf(k);
       if (i >= 0) _cal.etiquetas.splice(i, 1); else _cal.etiquetas.push(k);
+      _cal.tocada = true;
       marcarCalificacion();
     };
   });
@@ -276,6 +278,7 @@ async function guardarCalificacion(nota) {
     est.textContent = 'Guardada. La próxima nota la tiene en cuenta.';
     showToast('Calificación guardada', 'success');
     vaciarCalificacion();
+    _cal.tocada = false;
     marcarGuardado();
     if (_seccion === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); }
   } catch (e) { est.textContent = ''; marcarCalificacion(); showToast(e.message, 'error'); }
@@ -330,6 +333,24 @@ function pintarImagen(nota, contenedor) {
       + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
   }
   contenedor.appendChild(bloqueRevision('Imagen destacada', html));
+  pintarImagenesCuerpo(nota, contenedor);
+}
+
+/* Las fotos que van dentro del texto (hasta 2), con la noticia de la que salió cada una. */
+function pintarImagenesCuerpo(nota, contenedor) {
+  var imgs = (nota.imagenes_cuerpo || []).filter(function(im) {
+    return im && urlSegura(im.hubspot_url || im.url || '') !== '#';
+  }).slice(0, 2);
+  var html = imgs.length
+    ? '<div class="revision-imagenes">' + imgs.map(function(im) {
+        return '<figure><img class="revision-imagen" src="' + urlSegura(im.hubspot_url || im.url) + '" alt="' + escHtml(im.alt || '') + '"'
+          + ' referrerpolicy="no-referrer" loading="lazy">'
+          + (im.origen ? '<figcaption class="revision-sub"><a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
+                         + escHtml(im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
+          + '</figure>';
+      }).join('') + '</div>'
+    : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';
+  contenedor.appendChild(bloqueRevision('Imágenes en el texto', html));
 }
 
 /* Notas de AfterDrive by Alephee que la nota cita y enlaza (solo las que encajaban). */

@@ -34,5 +34,6 @@ window.onload = function() {
   }, 1200);
 
   setInterval(updateStats, 15000);
+  initVivo();   // lo que se mira se actualiza solo (vivo.js)
   initAyuda();   // y, la primera vez, el recorrido guiado
 };
