@@ -87,88 +87,95 @@ function juicioHtml(nota, sugerida) {
 /* ═══════════════════════════════════════════════════════════════════════
    CALIFICACIÓN DE LA IA
    Un corrector de estilo revisa la redacción (gramática, ortografía, tono y
-   estructura) y dice en qué se equivocó la IA al escribirla. Se hace al
-   generar la nota; las notas anteriores la piden con el botón. Es solo
-   información: la calificación que cuenta es la de abajo, la de una persona.
+   estructura) y dice en qué se equivocó la IA al escribirla. Es automática:
+   se hace al generar la nota y, si una nota no la tiene (anterior a esto, o
+   editada después), se pide sola al abrirla. Es solo información: la
+   calificación que cuenta es la de una persona, en "Calificar esta nota".
    Ver afterdrive/generacion/critica.py.
    ═══════════════════════════════════════════════════════════════════════ */
 var _TIPOS_CRITICA = { gramatica: 'Gramática', ortografia: 'Ortografía', redaccion: 'Redacción', tono: 'Tono', estructura: 'Estructura' };
 var ERRORES_A_LA_VISTA = 3;
+var _criticasEnCurso = {};   // id de nota → pedido en curso: abrirla de nuevo no repite la llamada
 
 function pintarCriticaIA(nota, contenedor) {
   var caja = document.createElement('section');
   caja.className = 'critica-ia';
   caja.setAttribute('aria-labelledby', 'critica-titulo');
+  caja.setAttribute('aria-live', 'polite');
   contenedor.appendChild(caja);
-  llenarCriticaIA(nota, caja);
+  var c = nota.critica, vigente = c && !c.error && c.puntaje && !(nota.editado_en && c.fecha && nota.editado_en > c.fecha);
+  if (vigente) llenarCriticaIA(caja, c);
+  else pedirCriticaIA(nota, caja);
 }
 
 function nivelCritica(n) { return n >= 8 ? 'bien' : n >= 6 ? 'medio' : 'mal'; }
 
-function llenarCriticaIA(nota, caja) {
-  var c = nota.critica, ok = c && !c.error && c.puntaje;
-  var html = '<div class="critica-cabecera"><h4 id="critica-titulo">Calificación de la IA</h4>'
-    + (ok ? '<span class="critica-puntaje" data-nivel="' + nivelCritica(c.puntaje) + '"><strong>' + c.puntaje + '</strong>/10</span>' : '')
+function cabeceraCritica(c) {
+  return '<div class="critica-cabecera"><h4 id="critica-titulo">Calificación de la IA</h4>'
+    + (c ? '<span class="critica-puntaje" data-nivel="' + nivelCritica(c.puntaje) + '"><strong>' + c.puntaje + '</strong>/10</span>' : '')
     + '</div>';
-  if (!ok) {
-    html += '<p class="calificar-ayuda">' + (c && c.error ? escHtml(c.error)
-      : 'Esta nota todavía no tiene la revisión de la IA: gramática, ortografía, tono y estructura.') + '</p>';
+}
+
+function llenarCriticaIA(caja, c) {
+  caja.classList.remove('cargando');
+  var html = cabeceraCritica(c);
+  if (c.resumen) html += '<p class="critica-resumen" translate="no">' + escHtml(c.resumen) + '</p>';
+  var aspectos = ['gramatica', 'redaccion', 'tono', 'estructura'].filter(function(k) { return c.aspectos && c.aspectos[k]; });
+  if (aspectos.length) {
+    html += '<ul class="critica-aspectos">' + aspectos.map(function(k) {
+      var v = c.aspectos[k];
+      return '<li data-nivel="' + nivelCritica(v) + '"><span>' + _TIPOS_CRITICA[k] + '</span>'
+        + '<span class="critica-barra" aria-hidden="true"><span style="width:' + (v * 10) + '%"></span></span>'
+        + '<span class="critica-valor">' + v + '/10</span></li>';
+    }).join('') + '</ul>';
+  }
+  var errores = c.errores || [];
+  if (!errores.length) {
+    html += '<p class="revision-ok">No encontró errores de redacción.</p>';
   } else {
-    if (c.resumen) html += '<p class="critica-resumen" translate="no">' + escHtml(c.resumen) + '</p>';
-    var aspectos = ['gramatica', 'redaccion', 'tono', 'estructura'].filter(function(k) { return c.aspectos && c.aspectos[k]; });
-    if (aspectos.length) {
-      html += '<ul class="critica-aspectos">' + aspectos.map(function(k) {
-        var v = c.aspectos[k];
-        return '<li data-nivel="' + nivelCritica(v) + '"><span>' + _TIPOS_CRITICA[k] + '</span>'
-          + '<span class="critica-barra" aria-hidden="true"><span style="width:' + (v * 10) + '%"></span></span>'
-          + '<span class="critica-valor">' + v + '/10</span></li>';
-      }).join('') + '</ul>';
-    }
-    var errores = c.errores || [];
-    if (!errores.length) {
-      html += '<p class="revision-ok">No encontró errores de redacción.</p>';
-    } else {
-      html += '<p class="critica-subtitulo">' + (errores.length === 1 ? 'En qué se equivocó (1)' : 'En qué se equivocó (' + errores.length + ')') + '</p>'
-        + '<ol class="critica-errores">' + errores.map(function(e, i) {
-          return '<li' + (i >= ERRORES_A_LA_VISTA ? ' hidden' : '') + '>'
-            + '<span class="critica-tipo" data-tipo="' + escHtml(e.tipo) + '">' + (_TIPOS_CRITICA[e.tipo] || _TIPOS_CRITICA.redaccion) + '</span>'
-            + '<div translate="no">'
-            + (e.fragmento ? '<q class="critica-fragmento">' + escHtml(e.fragmento) + '</q>' : '')
-            + '<p>' + escHtml(e.problema) + '</p>'
-            + (e.sugerencia ? '<p class="critica-sugerencia">' + escHtml(e.sugerencia) + '</p>' : '')
-            + '</div></li>';
-        }).join('') + '</ol>';
-      if (errores.length > ERRORES_A_LA_VISTA) {
-        html += '<button type="button" class="critica-mas">Ver ' + (errores.length - ERRORES_A_LA_VISTA) + ' más</button>';
-      }
+    html += '<p class="critica-subtitulo">En qué se equivocó (' + errores.length + ')</p>'
+      + '<ol class="critica-errores">' + errores.map(function(e, i) {
+        return '<li' + (i >= ERRORES_A_LA_VISTA ? ' hidden' : '') + '>'
+          + '<span class="critica-tipo" data-tipo="' + escHtml(e.tipo) + '">' + (_TIPOS_CRITICA[e.tipo] || _TIPOS_CRITICA.redaccion) + '</span>'
+          + '<div translate="no">'
+          + (e.fragmento ? '<q class="critica-fragmento">' + escHtml(e.fragmento) + '</q>' : '')
+          + '<p>' + escHtml(e.problema) + '</p>'
+          + (e.sugerencia ? '<p class="critica-sugerencia">' + escHtml(e.sugerencia) + '</p>' : '')
+          + '</div></li>';
+      }).join('') + '</ol>';
+    if (errores.length > ERRORES_A_LA_VISTA) {
+      html += '<button type="button" class="critica-mas">Ver ' + (errores.length - ERRORES_A_LA_VISTA) + ' más</button>';
     }
   }
-  var editada = ok && nota.editado_en && c.fecha && nota.editado_en > c.fecha;
-  html += '<div class="critica-pie">'
-    + (ok ? '<span class="calificar-estado">' + (editada ? 'La nota se editó después de esta revisión.' : 'Revisada el ' + fechaCorta(c.fecha)) + '</span>' : '')
-    + '<button type="button" class="btn btn-xs" id="critica-pedir">' + (ok ? 'Revisar de nuevo' : 'Revisar con IA') + '</button></div>';
+  if (c.fecha) html += '<p class="calificar-estado">Revisada el ' + fechaCorta(c.fecha) + '</p>';
   caja.innerHTML = html;
   var mas = caja.querySelector('.critica-mas');
   if (mas) mas.onclick = function() {
     caja.querySelectorAll('.critica-errores li[hidden]').forEach(function(li) { li.hidden = false; });
     mas.remove();
   };
-  $('critica-pedir').onclick = function() { pedirCriticaIA(nota, caja); };
 }
 
 async function pedirCriticaIA(nota, caja) {
-  var btn = $('critica-pedir');
-  setBtnLoading(btn, true);
+  caja.classList.add('cargando');
+  caja.innerHTML = cabeceraCritica(null)
+    + '<p class="critica-esperando"><span class="critica-spinner" aria-hidden="true"></span>La IA está revisando la redacción…</p>';
+  var pedido = _criticasEnCurso[nota._id] || (_criticasEnCurso[nota._id] = pedir('/api/historial/critica', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id })
+  }));
   try {
-    var d = await pedir('/api/historial/critica', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id })
-    });
+    var d = await pedido;
     nota.critica = d.critica;
-    if (caja.isConnected) llenarCriticaIA(nota, caja);
+    if (caja.isConnected) llenarCriticaIA(caja, d.critica);
   } catch (e) {
-    setBtnLoading(btn, false);
-    showToast(e.message, 'error');
+    if (!caja.isConnected) return;
+    caja.classList.remove('cargando');
+    caja.innerHTML = cabeceraCritica(null)
+      + '<p class="revision-sub">No se pudo revisar la redacción: ' + escHtml(e.message) + '</p>'
+      + '<p class="calificar-ayuda">Se vuelve a intentar la próxima vez que abras la nota.</p>';
+  } finally {
+    delete _criticasEnCurso[nota._id];
   }
 }
 

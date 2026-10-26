@@ -1821,7 +1821,7 @@ body.hud-open.hud-open { --shell-pie: 220px; }
 /* Calificación de la IA: puntaje de la redacción, aspectos y los errores que marcó. */
 .critica-ia {
   display: flex; flex-direction: column; gap: var(--s2);
-  padding: var(--s3); margin-bottom: var(--s3);
+  padding: var(--s3); margin-bottom: var(--s4);
   border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: var(--r-md); background: var(--well);
 }
 .critica-ia h4 { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
@@ -1853,8 +1853,9 @@ body.hud-open.hud-open { --shell-pie: 220px; }
 .critica-sugerencia::before { content: '→ '; }
 .critica-mas { align-self: flex-start; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 0.75rem; font-weight: 600; color: var(--brand); cursor: pointer; }
 .critica-mas:hover { text-decoration: underline; }
-.critica-pie { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
-.critica-pie .btn { margin-left: auto; }
+.critica-esperando { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-mid); }
+.critica-spinner { width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%;
+                   border: 2px solid var(--border); border-top-color: var(--info); animation: spin 0.8s linear infinite; }
 
 /* Guardado con éxito: el botón pasa a verde con tilde y el recuadro destella. */
 .calificar { transition: border-color var(--t-fast); }
