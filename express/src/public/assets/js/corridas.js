@@ -218,7 +218,7 @@ async function runNowStream() {
   var textos = botones.map(function(b) { return b.textContent; });
   botones.forEach(function(b) { b.disabled = true; b.textContent = 'Scrapeando...'; });
   log('--- INICIANDO SCRAPING MANUAL ---', 'warn');
-  showPipeline();
+  marcarHeaderActivo();
   var extraidos = 0, aprobados = 0, errores = 0;
   try {
     var fin = await correrEnCola('/api/corridas/scraping', null, function(l) {
@@ -230,7 +230,6 @@ async function runNowStream() {
                : (l.indexOf('[ERROR]') >= 0 || l.indexOf('[FAIL]') >= 0) ? 'error'
                : (l.indexOf('[WARN]') >= 0 || l.indexOf('SIN RESPUESTA') >= 0) ? 'warn' : 'info';
       log(l, type);
-      advancePipeline(l);
     }, function(d) {
       var t = textoEnCola(d);
       botones.forEach(function(b) { b.textContent = t || 'Scrapeando...'; });
@@ -248,11 +247,9 @@ async function runNowStream() {
       estado = errores ? 'err' : 'warn';
       msg = 'No se pudieron obtener artículos de las fuentes. Revisá la consola.';
     }
-    finishPipeline(estado, msg);
     log('--- SCRAPING FINALIZADO: ' + msg + ' ---', estado === 'ok' ? 'success' : estado === 'warn' ? 'warn' : 'error');
     showToast(msg, estado === 'ok' ? 'success' : estado === 'warn' ? 'warn' : 'error');
   } catch(e) {
-    finishPipeline('err', e.message);
     log('Error en scraping: ' + e.message, 'error');
     showToast(e.message, 'error');
   } finally {

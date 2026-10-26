@@ -38,16 +38,17 @@ REFRESCOS = 3       # fotos que dejaron de responder: se relee su página para t
 MAX_BYTES_IA = 3_750_000
 
 _CRITERIOS = """\
-Una foto es apta solo si cumple todo:
+Una foto es apta si cumple todo:
 - Es una fotografía real: no un logo, un ícono, un banner publicitario, una captura de pantalla ni un gráfico \
 o infografía con mucho texto.
-- Muestra algo del TEMA concreto de la nota (el producto, la actividad, el lugar o el tipo de empresa del que \
-habla el título). Una foto genérica del sector que no se relaciona con el tema NO es apta: es preferible \
-dejar la nota con menos imágenes que poner una que no tiene que ver.
+- Tiene que ver con la nota: muestra el TEMA concreto (el producto, la actividad, el lugar o el tipo de \
+empresa del que habla el título) o, si no, el sector de la nota (repuestos, autos, talleres, depósitos, \
+logística, fábricas, ferias, comercio de autopartes). NO es apta una foto ajena al sector aunque venga de \
+una noticia usada: billetes o cotizaciones, políticos, deportes, catástrofes, personas sin contexto.
 - Se ve nítida y no tiene marcas de agua grandes ni texto sobreimpreso que la tape.
 
-Ordená las aptas de la que mejor acompaña al título a la que menos ("elegidas", como mucho {cantidad}). \
-Si ninguna es apta, "elegidas" es [].
+Ordená las aptas: primero las que muestran el tema y después las del sector ("elegidas", como mucho \
+{cantidad}). Si ninguna es apta, "elegidas" es [].
 
 Respondé solo con este JSON, una entrada por foto en el orden recibido:
 {{"fotos": [{{"n": 1, "apta": true, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
@@ -58,8 +59,8 @@ _SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Aleph
 _SYSTEM_TEXTO = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
                  "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa, SIN verlas: "
                  "solo tenés el título de la noticia de la que sale cada foto, su texto alternativo y el nombre "
-                 "del archivo. Juzgá qué muestra probablemente cada una. Ante la duda sobre si se relaciona con "
-                 "el tema, no es apta. Un nombre de archivo o texto que sugiere logo, banner, autor o publicidad, "
+                 "del archivo. Juzgá qué muestra probablemente cada una: si la noticia es del sector, su foto "
+                 "probablemente también. Si la noticia es de otro tema, no es apta. Un nombre de archivo o texto que sugiere logo, banner, autor o publicidad, "
                  "no es apta.\n\n" + _CRITERIOS)
 
 
@@ -145,26 +146,44 @@ def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
         return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
 
 
-def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int) -> Eleccion:
+def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool | None = None) -> Eleccion:
+    """Una pasada de la IA sobre las candidatas. ver=False la obliga a juzgar sin mirar las fotos."""
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
     primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
     veredictos, enviadas, imagenes = {}, candidatas, None
-    if llm.ve_imagenes():
+    if ver is not False and llm.ve_imagenes():
         from afterdrive import imagen_web
-        enviadas, imagenes, refrescos = [], [], [REFRESCOS]
+        enviadas, imagenes, refrescos, sin_bajar = [], [], [REFRESCOS], []
         for n in candidatas:
-            url = n.imagen["url"]
             try:
                 imagenes.append(_descargar(n, refrescos))
                 enviadas.append(n)
             except imagen_web.ErrorDescarga as e:
-                veredictos[url] = {"apta": False, "motivo": f"No se pudo descargar: {e}."}
+                print(f"  [AVISO] No se pudo descargar la foto de '{n.titulo[:50]}': {e}", flush=True)
+                sin_bajar.append(n)
         if not enviadas:
-            primeras.motivo = "No se pudo descargar ninguna foto para que la IA las mire."
-            primeras.veredictos = veredictos
-            return primeras
+            # Ninguna se pudo mirar: se juzgan por su noticia y su texto en vez de descartarlas.
+            return _ronda(sin_bajar, titulo, angulo, cantidad, ver=False)
+        vistas = _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras)
+        faltan = cantidad - len(vistas.imagenes)
+        if faltan > 0 and sin_bajar and vistas.metodo != "primera":
+            # Las que no se pudieron bajar completan los lugares que faltan, juzgadas sin verlas.
+            resto = _ronda(sin_bajar, titulo, angulo, faltan, ver=False)
+            vistas.veredictos.update(resto.veredictos)
+            if resto.imagenes:
+                return Eleccion(vistas.imagenes + resto.imagenes, vistas.metodo, vistas.veredictos)
+            if not vistas.imagenes:
+                vistas.motivo = (vistas.motivo + " " + resto.motivo).strip()
+        return vistas
+    return _ronda_con(enviadas, None, titulo, angulo, cantidad, veredictos, primeras)
+
+
+def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int, veredictos: dict,
+               primeras: Eleccion) -> Eleccion:
+    from afterdrive.generacion import contexto_noticias
+    from afterdrive.ia import llm
 
     con_vista = imagenes is not None
     print(f"  Eligiendo las imágenes con IA entre {len(enviadas)} foto(s)"

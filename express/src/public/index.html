@@ -107,25 +107,6 @@
     </nav>
 
     <main class="contenido" id="contenido" tabindex="-1">
-    <!-- Pipeline HUD (hidden by default) -->
-    <div class="pipeline-hud" id="pipelineHud">
-      <div class="pipeline-label" data-cliente="Buscando noticias">Pipeline de Procesamiento</div>
-      <div class="pipeline-flow">
-        <div class="pipeline-node" id="pn-init"><div class="node-dot"></div><span data-cliente="Inicio">Init</span></div>
-        <div class="pipeline-edge" id="pe-1"></div>
-        <div class="pipeline-node" id="pn-scrape"><div class="node-dot"></div><span data-cliente="Fuentes">Scrape</span></div>
-        <div class="pipeline-edge" id="pe-2"></div>
-        <div class="pipeline-node" id="pn-parse"><div class="node-dot"></div><span data-cliente="Lectura">Parse</span></div>
-        <div class="pipeline-edge" id="pe-3"></div>
-        <div class="pipeline-node" id="pn-classify"><div class="node-dot"></div><span data-cliente="Filtro">Clasificar</span></div>
-        <div class="pipeline-edge" id="pe-4"></div>
-        <div class="pipeline-node" id="pn-embed"><div class="node-dot"></div><span data-cliente="Índice">Vectorizar</span></div>
-        <div class="pipeline-edge" id="pe-5"></div>
-        <div class="pipeline-node" id="pn-store"><div class="node-dot"></div><span data-cliente="Guardado">Guardar</span></div>
-      </div>
-      <div class="pipeline-ticker" id="pipelineTicker">Inicializando...</div>
-    </div>
-
     <!-- Bienvenida (vista cliente) -->
     <section class="hero-cliente solo-cliente" data-seccion="inicio" aria-labelledby="hero-title">
       <div class="hero-intro">

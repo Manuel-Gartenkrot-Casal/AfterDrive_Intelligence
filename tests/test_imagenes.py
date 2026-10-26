@@ -309,15 +309,25 @@ def test_si_la_ia_falla_va_la_primera(ia_fotos, falla):
     assert e.metodo == "primera" and e.imagen["url"] == "https://n.com/1.jpg" and e.motivo
 
 
-def test_las_que_no_se_descargan_no_van_a_la_ia(ia_fotos):
+def test_las_que_no_se_descargan_se_juzgan_sin_verlas_despues_de_las_vistas(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, descargas, pedidos = ia_fotos
     descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 403")
-    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "Taller."}], "elegida": 1}')
+    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "Taller."}], "elegidas": [1]}')
     e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.imagen["url"] == "https://n.com/2.jpg" and len(pedidos[0]["imagenes"]) == 1
-    assert "403" in e.veredictos["https://n.com/1.jpg"]["motivo"]
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg", "https://n.com/1.jpg"]
+    assert len(pedidos[0]["imagenes"]) == 1 and "imagenes" not in pedidos[1]   # la segunda, sin verla
 
+
+def test_si_ninguna_se_descarga_se_juzgan_todas_por_su_texto(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, descargas, pedidos = ia_fotos
+    for i in (1, 2):
+        descargas[f"https://n.com/{i}.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 404")
+    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Billetes."}, {"n": 2, "apta": true, "motivo": "Repuestos."}],'
+              ' "elegidas": [2]}')
+    e = imagen_destacada.elegir(_con_fotos(2), "T")
+    assert e.metodo == "ia-texto" and e.imagen["url"] == "https://n.com/2.jpg" and len(pedidos) == 1
 
 def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(monkeypatch):
     from afterdrive.generacion import imagen_destacada

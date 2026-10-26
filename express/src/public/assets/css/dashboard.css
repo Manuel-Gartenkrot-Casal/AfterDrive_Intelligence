@@ -653,89 +653,8 @@ body {
 #trusted-urls-list > div:last-child { border-bottom: 0 !important; }
 
 
-/* ═══════════════════════════════════════════════════════════════════════
-   PIPELINE HUD
-   ═══════════════════════════════════════════════════════════════════════ */
-/* Dock fijo abajo: se ve desde cualquier sección (Scrapear se toca desde Fase 2). */
-.pipeline-hud {
-  display: none;
-  position: fixed;
-  left: 50%; bottom: var(--s5);
-  transform: translateX(-50%);
-  width: min(880px, calc(100vw - 32px));
-  z-index: calc(var(--z-toast) - 1);
-  padding: var(--s4) var(--s5);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-  box-shadow: var(--shadow-float);
-}
-.pipeline-hud.visible { display: block; animation: dockIn 0.35s var(--ease-out); }
-@keyframes dockIn { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
-body.hud-open .app-container { padding-bottom: 220px; }
-body.hud-open .toast-container { bottom: 240px; }
-.pipeline-hud.hud-ok .pipeline-ticker { color: var(--ok); }
-.pipeline-hud.hud-warn .pipeline-ticker { color: var(--warn); }
-.pipeline-hud.hud-err .pipeline-ticker { color: var(--err); }
-.pipeline-label { font-size: 0.85rem; font-weight: 600; color: var(--text-mid); margin-bottom: var(--s4); }
-.pipeline-flow { display: flex; align-items: center; gap: var(--s2); }
-.pipeline-node {
-  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
-  font-size: 0.72rem; font-weight: 500;
-  color: var(--text-lo);
-  flex-shrink: 0;
-  transition: color var(--t-med);
-}
-.pipeline-node .node-dot {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  box-shadow: var(--raised-xs);
-  position: relative;
-  transition: box-shadow var(--t-med) var(--ease-out);
-}
-.pipeline-node .node-dot::after {
-  content: '';
-  position: absolute; inset: 11px;
-  border-radius: 50%;
-  background: var(--hairline);
-  transition: background var(--t-med), transform var(--t-med) var(--ease-out);
-}
-.pipeline-node.active { color: var(--brand); }
-.pipeline-node.active .node-dot { box-shadow: var(--inset-sm); }
-.pipeline-node.active .node-dot::after { background: var(--brand); animation: nodeBeat 1.1s ease-in-out infinite; }
-.pipeline-node.done { color: var(--ok); }
-.pipeline-node.done .node-dot { box-shadow: var(--inset-sm); }
-.pipeline-node.done .node-dot::after { background: var(--ok); }
+/* Latido de los indicadores de "en curso" (estado de notas, dock de actividad). */
 @keyframes nodeBeat { 50% { transform: scale(1.35); } }
-
-.pipeline-edge {
-  flex: 1;
-  height: 6px;
-  margin-bottom: 24px;
-  border-radius: var(--r-pill);
-  box-shadow: var(--inset-sm);
-  position: relative;
-  overflow: hidden;
-}
-.pipeline-edge.active::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, var(--brand), transparent);
-  animation: edgeFlow 1.2s linear infinite;
-}
-.pipeline-edge.done { background: var(--ok); box-shadow: none; opacity: 0.8; }
-@keyframes edgeFlow { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-
-.pipeline-ticker {
-  margin-top: var(--s3);
-  font-weight: 500;
-  padding: 10px 16px;
-  border-radius: var(--r-md);
-  box-shadow: var(--inset-sm);
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  color: var(--text-mid);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════
    FASE 2
@@ -1213,7 +1132,6 @@ html { overflow-x: clip; scrollbar-gutter: stable; }
    RESPONSIVE
    ═══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 1280px) {
-  .pipeline-node span { font-size: 0.65rem; }
 }
 @media (max-width: 1024px) {
   .fuentes-cols { gap: var(--s5); }
@@ -1234,11 +1152,6 @@ html { overflow-x: clip; scrollbar-gutter: stable; }
   .fuentes-cols { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
   .agenda-card { padding: var(--s4); }
   .agenda-hint { text-align: left; }
-  .pipeline-hud { bottom: var(--s3); padding: var(--s3) var(--s4); }
-  .pipeline-node .node-dot { width: 26px; height: 26px; }
-  .pipeline-node .node-dot::after { inset: 8px; }
-  .pipeline-flow { overflow-x: auto; padding: 6px 4px 8px; }
-  .pipeline-edge { min-width: 18px; }
   .provider-toggle { flex-wrap: wrap; border-radius: var(--r-md); }
   .modal-overlay { padding: var(--s3); }
   .modal { padding: var(--s4); }
@@ -1615,15 +1528,13 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    distribución anterior: suma consola y estadísticas debajo y estirar los
    paneles las encimaba.
    --shell-pie es el lugar que se deja al final del contenido para el dock de
-   actividad o el HUD, que flotan encima.
+   actividad, que flota encima.
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
 body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
-body.hud-open.hud-open { --shell-pie: 220px; }
 /* En el celular scrollea la página: el lugar para el dock va al final de todo. */
 @media (max-width: 900px) {
-  [data-modo="cliente"] .app-container,
-  [data-modo="cliente"] body.hud-open .app-container { padding-bottom: var(--shell-pie); }
+  [data-modo="cliente"] .app-container { padding-bottom: var(--shell-pie); }
 }
 
 @media (min-width: 901px) {
@@ -1633,8 +1544,7 @@ body.hud-open.hud-open { --shell-pie: 220px; }
      franja vacía a todo lo ancho. El lugar para el dock va al final del
      scroll del contenido (padding-bottom), así lo último se puede subir por
      encima de él. */
-  .app-container,
-  body.hud-open .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 24px; }
+  .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 24px; }
   .header { flex: 0 0 auto; }
   .layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
   .sidebar { position: relative; top: auto; min-height: 0; }
