@@ -48,6 +48,7 @@ from afterdrive.generacion import (
     calidad,
     contexto_noticias,
     correccion,
+    critica,
     imagen_destacada,
     juez,
     notas_blog,
@@ -578,11 +579,19 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     else:
         print(f"  Juicio: {'pasa' if doc['juicio']['pasa'] else 'no pasa'} "
               f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
+    # Corrector de estilo: lo que la IA hizo mal al redactar, para mostrar al calificarla.
+    print("  Revisando la redacción (gramática, tono y estructura)...", flush=True)
+    doc["critica"] = critica.criticar(articulo, persona, regiones, idioma)
+    if doc["critica"].get("error"):
+        print(f"  [AVISO] {doc['critica']['error']}", flush=True)
+    else:
+        print(f"  Redacción: {doc['critica']['puntaje']}/10, {len(doc['critica']['errores'])} errores marcados",
+              flush=True)
     # Las otras versiones (español e inglés) se traducen ya: se ven y editan en el historial.
     from afterdrive import traducciones
     if traducciones.activas():
         doc["traducciones"] = traducciones.traducir_nota(doc)
-    # Un paso de arriba (juez, imagen) pudo tragarse la cancelación: no se guarda igual.
+    # Un paso de arriba (juez, crítica, imagen, traducciones) pudo tragarse la cancelación: no se guarda igual.
     llm.verificar_cancelacion()
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     guardada = col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable

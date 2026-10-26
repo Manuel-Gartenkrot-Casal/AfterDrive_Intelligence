@@ -54,6 +54,7 @@ async function irASeccion(id, opts) {
   }
   if (anterior) {
     window.scrollTo({ top: 0 });
+    $('contenido').scrollTop = 0;   // en escritorio scrollea el contenido, no la página
     $('contenido').focus({ preventScroll: true });
   }
   document.dispatchEvent(new CustomEvent('seccion', { detail: id }));
@@ -174,24 +175,3 @@ document.addEventListener('keydown', function(e) {
     toggleNavegacion(); $('menu-movil').focus();
   }
 });
-
-/* Escritorio: el header queda fijo (ver .header en dashboard.css). Se mide su
-   alto para correr lo sticky de abajo, y la barra lateral va del borde de
-   arriba que tenga ahora hasta el pie de la pantalla: ni corta ni se sale. */
-(function () {
-  var pendiente = false;
-  function ajustar() {
-    pendiente = false;
-    var header = document.getElementById('appHeader');
-    if (header) document.documentElement.style.setProperty('--header-alto', header.offsetHeight + 'px');
-    var barra = document.querySelector('.sidebar');
-    if (!barra || window.innerWidth <= 900) return;
-    var arriba = Math.max(barra.getBoundingClientRect().top, 20);
-    barra.style.setProperty('--sidebar-alto', (window.innerHeight - arriba - 20) + 'px');
-  }
-  function pedir() { if (!pendiente) { pendiente = true; requestAnimationFrame(ajustar); } }
-  window.addEventListener('scroll', pedir, { passive: true });
-  window.addEventListener('resize', pedir);
-  document.addEventListener('DOMContentLoaded', pedir);
-  pedir();
-})();

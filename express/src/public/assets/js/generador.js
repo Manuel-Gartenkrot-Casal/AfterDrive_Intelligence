@@ -568,6 +568,7 @@ async function fase2MostrarUltima(id) {
     lugarCalificacion.className = 'revision-criterios';
     lugarCalificacion.innerHTML = '<summary>Calificar esta nota</summary>';
     check.appendChild(lugarCalificacion);
+    pintarCriticaIA(d.nota, lugarCalificacion);   // la de la IA arriba; la de una persona, debajo
     pintarCalificacion(d.nota, lugarCalificacion);
 
     if (d.nota.categorias && d.nota.categorias.length) {
