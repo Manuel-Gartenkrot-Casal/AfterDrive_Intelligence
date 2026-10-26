@@ -83,6 +83,12 @@ async function cargarHistorial(pagina) {
         lado += '<span class="badge-calidad" title="Lineamientos de calidad cumplidos">' + it.calidad.puntaje + '/9</span>';
       if (it.calificacion && it.calificacion.puntaje)
         lado += '<span class="badge-estrellas" title="Tu calificación" aria-label="Calificada con ' + it.calificacion.puntaje + ' de 5">' + estrellas(it.calificacion.puntaje) + '</span>';
+      if (it.critica_puntaje) {
+        // La de la IA va de 1 a 10: en estrellas, la mitad redondeada, con la marca IA para no confundirla.
+        var deIA = Math.max(1, Math.round(it.critica_puntaje / 2));
+        lado += '<span class="badge-estrellas badge-ia" title="Calificación de la IA: ' + it.critica_puntaje + '/10" aria-label="La IA la calificó con ' + deIA + ' de 5">'
+          + '<span class="marca-ia" aria-hidden="true">IA</span>' + estrellas(deIA) + '</span>';
+      }
       return '<button type="button" class="hist-item" onclick="abrirItemHistorial(\'' + it.seccion + '\', \'' + it.coleccion + '\', \'' + it.id + '\')">'
         + '<div class="hist-cuerpo"><div class="hist-titulo" translate="no">' + escHtml(it.titulo) + '</div>'
         + (it.resumen ? '<div class="hist-resumen" translate="no">' + escHtml(extractoHistorial(it)) + '</div>' : '')

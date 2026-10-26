@@ -1338,7 +1338,7 @@ html { overflow-x: clip; scrollbar-gutter: stable; }
 @media (max-width: 640px) {
   .historial-seccion { padding: var(--s4); }
   .hist-item { flex-direction: column; }
-  .hist-lado { flex-direction: row; align-items: center; }
+  .hist-lado { flex-direction: row; flex-wrap: wrap; align-items: center; flex-shrink: 1; max-width: 100%; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1894,6 +1894,9 @@ body.hud-open.hud-open { --shell-pie: 220px; }
 .revision-lista.seo { list-style: none; margin-left: 0; font-family: var(--mono); font-size: 0.72rem; color: var(--text-lo); }
 .revision-lista small { color: var(--text-lo); }
 .badge-estrellas { font-size: 0.78rem; color: var(--warn); letter-spacing: 1px; white-space: nowrap; }
+.badge-ia { display: inline-flex; align-items: center; gap: 5px; }
+.marca-ia { padding: 0 5px; border-radius: var(--r-pill); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; line-height: 15px;
+            color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent); }
 
 /* Panel "Cómo aprende la generación" (Historial) */
 .calibracion-panel {

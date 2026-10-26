@@ -255,7 +255,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(calificar.locator('[data-etiqueta][aria-pressed="true"]')).to_have_count(0)
 
     pagina.keyboard.press("Escape")
-    pagina.locator(".hist-item", has_text="Rotación de stock").locator(".badge-estrellas").wait_for()
+    pagina.locator(".hist-item", has_text="Rotación de stock").locator(".badge-estrellas:not(.badge-ia)").wait_for()
     panel = pagina.locator("#calibracion-panel")
     expect(panel.locator("#calibracion-resumen")).to_contain_text("1 nota calificada")
     panel.locator("summary").click()
@@ -263,6 +263,13 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
 
 
 def test_calificacion_de_la_ia_en_su_apartado(pagina):
+    # En la lista, como las estrellas de una persona, con la marca IA (6/10 = 3 de 5).
+    pagina.click('.sidebar a[data-seccion="historial"]')
+    pagina.click('[data-hist="generados_aprobados"]')
+    insignia = pagina.locator(".hist-item", has_text="Rotación de stock").locator(".badge-ia")
+    expect(insignia).to_have_text("IA★★★☆☆")
+    expect(insignia).to_have_attribute("title", "Calificación de la IA: 6/10")
+    expect(pagina.locator(".hist-item", has_text="Frenos").locator(".badge-ia")).to_have_count(0)
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
     # A la vista sin abrir "Calificar esta nota", y sin botón para pedirla.
