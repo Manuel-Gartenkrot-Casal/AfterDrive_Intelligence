@@ -175,13 +175,15 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-/* Alto de la barra lateral en escritorio: del borde de arriba que tenga ahora
-   (debajo del header, o pegada arriba cuando el header ya se fue al scrollear)
-   hasta el pie de la pantalla. Así no queda corta ni se sale. */
+/* Escritorio: el header queda fijo (ver .header en dashboard.css). Se mide su
+   alto para correr lo sticky de abajo, y la barra lateral va del borde de
+   arriba que tenga ahora hasta el pie de la pantalla: ni corta ni se sale. */
 (function () {
   var pendiente = false;
   function ajustar() {
     pendiente = false;
+    var header = document.getElementById('appHeader');
+    if (header) document.documentElement.style.setProperty('--header-alto', header.offsetHeight + 'px');
     var barra = document.querySelector('.sidebar');
     if (!barra || window.innerWidth <= 900) return;
     var arriba = Math.max(barra.getBoundingClientRect().top, 20);

@@ -505,3 +505,31 @@ def test_sin_ia_el_articulo_queda_pendiente_y_no_se_guarda(monkeypatch, disponib
 
     assert (res["aprobados"], res["rechazados"], res["pendientes"]) == (0, 0, 1)
     assert escrituras == []  # ni guardada ni descartada: la próxima corrida la reintenta
+
+
+def test_cancelar_corta_una_llamada_sin_streaming_mientras_espera(transporte, openrouter, monkeypatch):
+    import threading
+    import time
+    soltar = threading.Event()
+    cancelar = threading.Event()
+
+    def post_lento(url, json=None, headers=None, timeout=None, stream=False):
+        soltar.wait(10)   # el proveedor tarda: sin cortar, esperaría 10 s
+        return chat("tarde")
+    monkeypatch.setitem(llm._transporte, "post", post_lento)
+    monkeypatch.setattr(llm, "_cancelada", cancelar.is_set)
+    threading.Timer(0.2, cancelar.set).start()
+    t0 = time.monotonic()
+    with pytest.raises(llm.Cancelada):
+        llm.completar("s", "u")
+    soltar.set()
+    assert time.monotonic() - t0 < 2
+
+
+def test_la_espera_por_429_se_corta_al_cancelar(monkeypatch):
+    import time
+    monkeypatch.setattr(llm, "_cancelada", lambda: True)
+    t0 = time.monotonic()
+    with pytest.raises(llm.Cancelada):
+        llm._dormir(30)
+    assert time.monotonic() - t0 < 1

@@ -570,6 +570,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     else:
         print(f"  Juicio: {'pasa' if doc['juicio']['pasa'] else 'no pasa'} "
               f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
+    # Un paso de arriba (juez, imagen) pudo tragarse la cancelación: no se guarda igual.
+    llm.verificar_cancelacion()
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
     guardada = col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
     nota_id = getattr(guardada, "inserted_id", None)

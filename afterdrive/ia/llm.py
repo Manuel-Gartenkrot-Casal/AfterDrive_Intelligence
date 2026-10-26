@@ -75,9 +75,10 @@ class ErrorLLM(RuntimeError):
 class Cancelada(ErrorLLM):
     """La Corrida se canceló desde el dashboard.
 
-    Se corta antes de la próxima llamada o, en una respuesta por streaming, en
-    el próximo fragmento. Una llamada sin streaming (Bedrock Converse) no se
-    puede interrumpir: se corta cuando vuelve.
+    Se revisa antes de cada llamada y cada CANCELAR_CADA_S mientras se espera
+    la respuesta (ver _interrumpible), con o sin streaming, y durante las
+    esperas por 429. La request abandonada termina sola en segundo plano: lo
+    que el proveedor ya haya cobrado no se recupera.
     """
 
 
@@ -97,6 +98,36 @@ def al_cancelar(consulta: Callable[[], bool]) -> None:
 def verificar_cancelacion() -> None:
     if _cancelada():
         raise Cancelada("Cancelada desde el dashboard.")
+
+
+CANCELAR_CADA_S = 0.5
+
+
+def _interrumpible(fn):
+    """Corre fn() en otro hilo y espera revisando si cancelaron la Corrida.
+
+    Una request a la IA puede tardar minutos (Bedrock no usa streaming): sin
+    esto, cancelar desde el dashboard esperaba a que volviera.
+    """
+    if _cancelada is _nunca:   # nada puede cancelarla: sin hilo extra
+        return fn()
+    caja: dict = {}
+    listo = threading.Event()
+
+    def correr():
+        try:
+            caja["r"] = fn()
+        except BaseException as e:  # se relanza en el hilo que llamó
+            caja["e"] = e
+        finally:
+            listo.set()
+
+    threading.Thread(target=correr, name="llm-request", daemon=True).start()
+    while not listo.wait(CANCELAR_CADA_S):
+        verificar_cancelacion()
+    if "e" in caja:
+        raise caja["e"]
+    return caja["r"]
 
 
 _ANTI_RAZONAMIENTO = (
@@ -314,7 +345,12 @@ _transporte = {"post": _http_post, "get": _http_get}
 
 
 def _dormir(segundos: float) -> None:
-    time.sleep(segundos)
+    """Espera (backoff de 429) cortando enseguida si cancelan la Corrida."""
+    fin = time.monotonic() + segundos
+    while (resto := fin - time.monotonic()) > 0:
+        verificar_cancelacion()
+        time.sleep(min(CANCELAR_CADA_S, resto))
+    verificar_cancelacion()
 
 
 # ── Disponibilidad ────────────────────────────────────────────────────────────
@@ -486,11 +522,11 @@ def _con_respaldo(perfil: Perfil, modelo: str, enviar, reintentos: int = 5) -> t
 
     def _probar_fallback(motivo: str):
         print(f"[FALLBACK] '{modelo}' {motivo} -> probando {fallback}", flush=True)
-        return enviar(fallback)
+        return _interrumpible(lambda: enviar(fallback))
 
     resp = None
     for intento in range(reintentos):
-        resp = enviar(modelo)
+        resp = _interrumpible(lambda: enviar(modelo))
         if resp.status_code in _MODELO_CAIDO:
             if fallback:
                 _modelos_caidos[(perfil.nombre, modelo)] = _reloj()
@@ -726,7 +762,12 @@ def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
         return _completar_stream(perfil, sin_opciones)
     _levantar_si_falla(perfil, resp)
     try:
-        info = _leer_stream(perfil, resp)
+        info = _interrumpible(lambda: _leer_stream(perfil, resp))
+    except Cancelada:
+        cerrar = getattr(resp, "close", None)
+        if cerrar:
+            cerrar()   # corta la conexión: el hilo que leía termina solo
+        raise
     except ErrorLLM:
         # Aceptó y no mandó nada: pudo haber razonado (y cobrado) sin transmitirlo.
         _registrar_estimado(perfil, modelo, json.dumps(payload["messages"]), payload.get(perfil.campo_max_tokens, 0))
