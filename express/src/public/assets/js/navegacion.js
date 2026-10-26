@@ -174,3 +174,22 @@ document.addEventListener('keydown', function(e) {
     toggleNavegacion(); $('menu-movil').focus();
   }
 });
+
+/* Alto de la barra lateral en escritorio: del borde de arriba que tenga ahora
+   (debajo del header, o pegada arriba cuando el header ya se fue al scrollear)
+   hasta el pie de la pantalla. Así no queda corta ni se sale. */
+(function () {
+  var pendiente = false;
+  function ajustar() {
+    pendiente = false;
+    var barra = document.querySelector('.sidebar');
+    if (!barra || window.innerWidth <= 900) return;
+    var arriba = Math.max(barra.getBoundingClientRect().top, 20);
+    barra.style.setProperty('--sidebar-alto', (window.innerHeight - arriba - 20) + 'px');
+  }
+  function pedir() { if (!pendiente) { pendiente = true; requestAnimationFrame(ajustar); } }
+  window.addEventListener('scroll', pedir, { passive: true });
+  window.addEventListener('resize', pedir);
+  document.addEventListener('DOMContentLoaded', pedir);
+  pedir();
+})();

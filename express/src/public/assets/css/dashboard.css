@@ -1065,7 +1065,7 @@ body.modal-abierto { overflow: hidden; }
    desplazan dentro de su zona; la navegación y Ayuda quedan siempre visibles
    (el menú de Ayuda sale por fuera de esta zona y no se recorta). */
 @media (min-width: 901px) {
-  .sidebar { max-height: calc(100dvh - var(--shell-top, 124px) - 8px); }
+  .sidebar { max-height: var(--sidebar-alto, calc(100dvh - var(--shell-top, 124px) - 8px)); }
   .nav-lista, .sidebar-ayuda { flex-shrink: 0; }
   .sidebar-pie { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
                  margin-inline: -4px; padding-inline: 4px; padding-bottom: 4px; }
