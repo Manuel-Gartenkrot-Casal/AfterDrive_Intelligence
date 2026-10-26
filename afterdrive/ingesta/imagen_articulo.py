@@ -99,7 +99,10 @@ def extraer(html: str | None, url: str) -> dict | None:
         soup = BeautifulSoup(html, "lxml")
     except Exception:
         return None
-    for candidata in _candidatas(soup):
+    # Las completas primero: una relativa sin "/" (p. ej. "images/x.jpg" en sitios Joomla sin <base>)
+    # se pega a la ruta de la nota y da 404, y el mismo sitio suele repetir la foto completa más abajo.
+    candidatas = sorted(_candidatas(soup), key=lambda c: not re.match(r"\s*(https?:)?//", c, re.I))
+    for candidata in candidatas:
         absoluta = urljoin(url, candidata.strip())
         if absoluta.startswith("//"):
             absoluta = "https:" + absoluta

@@ -37,6 +37,16 @@ def test_rutas_relativas_y_sin_esquema_se_completan():
                                    "https://sitio.com/nota")["url"] == "https://cdn.sitio.com/b.png"
 
 
+def test_una_url_completa_gana_a_una_relativa_sin_barra():
+    # aftermarketinternational.com (Joomla) pone "images/..." relativo a la raíz sin <base>:
+    # pegado a la ruta de la nota da 404. La misma foto viene completa más abajo.
+    ld = '<script type="application/ld+json">{}</script>'
+    html = _html(ld.format('{"image": "images/stories/a.jpg"}')
+                 + ld.format('{"image": {"url": "https://sitio.com/images/stories/a.jpg"}}'))
+    assert imagen_articulo.extraer(html, "https://sitio.com/seccion/nota.html")["url"] == \
+        "https://sitio.com/images/stories/a.jpg"
+
+
 def test_salta_logos_e_iconos_y_sigue_con_la_siguiente():
     html = _html('<meta property="og:image" content="https://sitio.com/wp-content/logo.png">'
                  '<meta name="twitter:image" content="https://sitio.com/favicon-192.png">',
