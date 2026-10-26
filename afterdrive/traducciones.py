@@ -187,6 +187,28 @@ def subir(coleccion: str, item_id: str, base=None) -> dict:
     return resultado
 
 
+def encolar(coleccion: str, item_id: str) -> dict | None:
+    """{"id", "idiomas"} de la Corrida que traduce y sube las otras versiones, o None si no corresponde."""
+    from bson import ObjectId
+
+    from afterdrive import cola, historial
+    from afterdrive import db as _db
+
+    if not activas() or coleccion not in historial.COLECCIONES_CON_ESTADO:
+        return None
+    doc = _db.db[coleccion].find_one({"_id": ObjectId(item_id)}, {"regiones": 1, "hubspot": 1})
+    idiomas = idiomas_destino(doc or {})
+    if not doc or not (doc.get("hubspot") or {}).get("id") or not idiomas:
+        return None
+    nombres = " y ".join(NOMBRE[c] for c in idiomas)
+    try:
+        r = cola.encolar("script", {"modulo": "afterdrive.traducciones", "argv": [coleccion, item_id]},
+                         etiqueta=f"Traducir al {nombres} y subir a HubSpot")
+    except cola.ColaLlena as e:
+        return {"error": str(e), "idiomas": idiomas}
+    return {"id": r.get("id"), "idiomas": idiomas}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Versiones de una nota en los otros idiomas del blog (HubSpot)")
     parser.add_argument("coleccion")

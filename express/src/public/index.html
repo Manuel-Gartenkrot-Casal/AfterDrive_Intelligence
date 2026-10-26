@@ -81,6 +81,13 @@
              onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();cambiarBlogPruebas()}">
           <div class="toggle-switch"></div><span>blog_test</span>
         </div>
+        <span class="sidebar-etiqueta solo-dev">Aprobación automática</span>
+        <div class="puntapie-toggle solo-dev" id="sw-aprobacion-auto" role="switch" tabindex="0" aria-checked="false"
+             aria-label="Aprobación automática con IA" title="Las notas programadas que pasan el juez de IA se aprueban y suben como borrador"
+             onclick="cambiarAprobacionAuto()"
+             onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();cambiarAprobacionAuto()}">
+          <div class="toggle-switch"></div><span>Apagada</span>
+        </div>
       </div>
       <!-- Ayuda: repetir el recorrido guiado o abrir la documentación. -->
       <div class="sidebar-ayuda">

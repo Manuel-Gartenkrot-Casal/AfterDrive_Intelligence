@@ -141,8 +141,16 @@ def calificar(coleccion: str, item_id: str, puntaje, etiquetas=(), comentario: s
         "comentario": comentario,
         "calificado_en": _ahora().isoformat(),
     }
-    r = _base(base)[coleccion].update_one({"_id": _oid(item_id)}, {"$set": {"calificacion": calificacion}})
-    return calificacion if r.matched_count else None
+    col = _base(base)[coleccion]
+    doc = col.find_one({"_id": _oid(item_id)}, {"juicio": 1})
+    if not doc:
+        return None
+    # Lo que había sugerido el juez de IA: para medir qué tan bien juzga (no se aprende de eso).
+    sugerida = (doc.get("juicio") or {}).get("calificacion")
+    if isinstance(sugerida, int):
+        calificacion["sugerida_ia"] = sugerida
+    col.update_one({"_id": doc["_id"]}, {"$set": {"calificacion": calificacion}})
+    return calificacion
 
 
 # ── Lectura ───────────────────────────────────────────────────────────────────
@@ -320,6 +328,21 @@ def _promedios(docs: list[dict], clave) -> list[dict]:
                   key=lambda g: -g["notas"])
 
 
+def _juez(calificadas: list[dict]) -> dict:
+    """Qué tan cerca estuvo la calificación sugerida por la IA de la que guardó la persona,
+    y cuántas notas aprobadas por la IA terminaron rechazadas."""
+    pares = [(d["calificacion"]["sugerida_ia"], d["calificacion"]["puntaje"]) for d in calificadas
+             if isinstance(d["calificacion"].get("sugerida_ia"), int)]
+    aprobadas_ia = [d for d in calificadas if d.get("aprobada_por") == "ia"]
+    return {
+        "pares": len(pares),
+        "diferencia_media": round(sum(abs(a - b) for a, b in pares) / len(pares), 2) if pares else None,
+        "acierto": round(sum(1 for a, b in pares if abs(a - b) <= 1) / len(pares), 2) if pares else None,
+        "aprobadas_ia": len(aprobadas_ia),
+        "aprobadas_ia_mal": sum(1 for d in aprobadas_ia if d["calificacion"]["puntaje"] <= 2),
+    }
+
+
 def resumen(base=None) -> dict:
     """Estado de la calibración para el dashboard."""
     todas = _calificadas(base, limite=500, dias=3650)
@@ -338,6 +361,7 @@ def resumen(base=None) -> dict:
         "etiquetas": [{"clave": e, "nombre": ETIQUETAS[e][0], "veces": n, "activa": True}
                       for e, n in _reglas_por_etiquetas(recientes)],
         "evaluador": {"pares": len(pares), "minimo": MIN_PARES, "umbral": umbral, "coincidencia": coincidencia},
+        "juez": _juez(todas),
         "reglas": cal.reglas,
         "aciertos": cal.aciertos,
         "ejemplos_propios": [{"id": e["id"], "titulo": e["titulo"], "puntaje": e["puntaje"]} for e in cal.ejemplos_propios],

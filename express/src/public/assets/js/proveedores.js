@@ -148,3 +148,57 @@ async function cambiarBlogPruebas() {
     }
   } catch(e) { log('Error al cambiar el blog de pruebas', 'error'); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   APROBACIÓN AUTOMÁTICA — switch de la vista Desarrollador
+   Prendida: las notas de la generación programada que pasan el filtro y el
+   juez de IA se aprueban solas y suben a HubSpot como borrador (nunca se publican).
+   ═══════════════════════════════════════════════════════════════════════ */
+var _aprobacionAuto = null;
+
+function pintarAprobacionAuto(d) {
+  _aprobacionAuto = d;
+  var sw = $('sw-aprobacion-auto');
+  if (!sw) return;
+  sw.classList.toggle('active', !!d.activo);
+  sw.setAttribute('aria-checked', !!d.activo);
+  sw.querySelector('span').textContent = d.activo ? 'Prendida' : 'Apagada';
+}
+
+async function checkAprobacionAuto() {
+  try {
+    var r = await fetch('/api/aprobacion-auto');
+    var d = await r.json();
+    if (d.success) pintarAprobacionAuto(d);
+  } catch(e) { console.error('Error leyendo aprobación automática:', e); }
+}
+
+async function cambiarAprobacionAuto() {
+  if (!_aprobacionAuto) return;
+  var activo = !_aprobacionAuto.activo;
+  if (activo) {
+    var destino = _blogPruebas && _blogPruebas.activo ? 'blog_test' : 'los blogs reales de cada idioma';
+    if (!(await confirmar({
+      titulo: '¿Prender la aprobación automática?',
+      mensaje: 'Las notas de la generación programada que pasen los controles y el juez de IA (confianza ≥ '
+        + _aprobacionAuto.confianza_min + ') se aprueban solas y suben como borrador a ' + destino
+        + '. Nunca se publican solas. Las que no pasen quedan en borrador con el motivo.',
+      accion: 'Sí, prender',
+      cancelar: 'Cancelar'
+    }))) return;
+  }
+  try {
+    var r = await fetch('/api/aprobacion-auto', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({activo: activo})
+    });
+    var d = await r.json();
+    if (d.success) {
+      pintarAprobacionAuto(d);
+      log('Aprobación automática ' + (d.activo ? 'prendida' : 'apagada'), 'success');
+    } else {
+      showToast(d.error, 'error');
+    }
+  } catch(e) { log('Error al cambiar la aprobación automática', 'error'); }
+}

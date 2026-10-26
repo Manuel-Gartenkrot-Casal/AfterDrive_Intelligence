@@ -606,6 +606,24 @@ def set_hubspot_blog_pruebas():
     return hubspot_blog_pruebas()
 
 
+@app.route("/api/aprobacion-auto", methods=["GET"])
+def get_aprobacion_auto():
+    """Si las notas de la generación programada se aprueban solas (con el juez de IA)."""
+    from afterdrive.generacion import juez
+    return jsonify({"success": True, "activo": config_store.get_aprobacion_auto_config(),
+                    "confianza_min": juez.CONFIANZA_MIN})
+
+
+@app.route("/api/aprobacion-auto", methods=["POST"])
+def set_aprobacion_auto():
+    """Prende o apaga la aprobación automática. Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    config_store.set_aprobacion_auto_config(body["activo"])
+    return get_aprobacion_auto()
+
+
 @app.route("/api/hubspot/destino/<coleccion>/<item_id>", methods=["GET"])
 def hubspot_destino(coleccion, item_id):
     """Blog, etiquetas y autor que le tocan a la nota, y los autores para elegir."""
@@ -645,24 +663,8 @@ def hubspot_enviar():
 
 
 def _encolar_traducciones(coleccion: str, item_id: str) -> dict | None:
-    """{"id", "idiomas"} de la Corrida que traduce y sube las otras versiones, o None si no corresponde."""
-    from afterdrive import historial, traducciones
-    from afterdrive.db import db as base
-
-    if not traducciones.activas() or coleccion not in historial.COLECCIONES_CON_ESTADO:
-        return None
-    from bson import ObjectId
-    doc = base[coleccion].find_one({"_id": ObjectId(item_id)}, {"regiones": 1, "hubspot": 1})
-    idiomas = traducciones.idiomas_destino(doc or {})
-    if not doc or not (doc.get("hubspot") or {}).get("id") or not idiomas:
-        return None
-    nombres = " y ".join(traducciones.NOMBRE[c] for c in idiomas)
-    try:
-        r = cola.encolar("script", {"modulo": "afterdrive.traducciones", "argv": [coleccion, item_id]},
-                         etiqueta=f"Traducir al {nombres} y subir a HubSpot")
-    except cola.ColaLlena as e:
-        return {"error": str(e), "idiomas": idiomas}
-    return {"id": r.get("id"), "idiomas": idiomas}
+    from afterdrive import traducciones
+    return traducciones.encolar(coleccion, item_id)
 
 
 @app.route("/api/hubspot/traducciones", methods=["POST"])

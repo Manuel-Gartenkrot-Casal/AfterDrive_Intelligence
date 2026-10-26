@@ -26,7 +26,7 @@ def ejecutadas(monkeypatch):
         orden.append(("scraping", max_articulos))
         return {"success": True, "aprobados": 2}
 
-    def generar(params):
+    def generar(params, programada=False):
         print("generando")
         orden.append(("generacion", params))
         return {"success": False, "error": "sin categorías"}
@@ -122,7 +122,7 @@ def test_cancelar_la_generacion_en_curso_la_corta_en_la_proxima_llamada(col, mon
 
     listo, llamadas = threading.Event(), []
 
-    def generar(params):
+    def generar(params, programada=False):
         # Simula la redacción: una llamada a la IA tras otra hasta que se cancela.
         listo.set()
         for _ in range(500):
@@ -241,7 +241,7 @@ def test_el_pedido_de_cancelar_de_otro_proceso_corta_aunque_no_haya_log(col, mon
     monkeypatch.setattr(cola, "VIGILAR_CADA_S", 0.05)
     listo = threading.Event()
 
-    def generar(params):
+    def generar(params, programada=False):
         listo.set()
         for _ in range(500):
             if corridas._cancelar.is_set():

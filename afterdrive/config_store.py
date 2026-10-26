@@ -207,3 +207,18 @@ def get_blog_pruebas_config() -> bool:
 
 def set_blog_pruebas_config(activo: bool):
     _set_section("blog_pruebas", {"activo": bool(activo)})
+
+
+# ── Aprobación automática (vista Desarrollador) ───────────────────────────────
+
+# Prendido = las notas de la generación programada que pasan el filtro y el
+# juez se aprueban solas y suben a HubSpot como borrador. Ver aprobacion_auto.py
+DEFAULT_APROBACION_AUTO = {"activo": False}
+
+
+def get_aprobacion_auto_config() -> bool:
+    return bool(_get_section("aprobacion_auto", DEFAULT_APROBACION_AUTO)["activo"])
+
+
+def set_aprobacion_auto_config(activo: bool):
+    _set_section("aprobacion_auto", {"activo": bool(activo)})

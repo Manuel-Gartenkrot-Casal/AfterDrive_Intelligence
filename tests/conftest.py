@@ -50,6 +50,12 @@ def blog_pruebas_prendido(monkeypatch):
     monkeypatch.setattr(config_store, "get_blog_pruebas_config", lambda: True)
 
 
+@pytest.fixture(autouse=True)
+def aprobacion_auto_apagada(monkeypatch):
+    """La aprobación automática no se lee de la base real: apagada, como el default."""
+    monkeypatch.setattr(config_store, "get_aprobacion_auto_config", lambda: False)
+
+
 @pytest.fixture
 def api(monkeypatch):
     """(flask_api, store): la app sin Mongo ni scheduler, con usuario admin / secreta123."""

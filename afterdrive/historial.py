@@ -176,6 +176,9 @@ def _normalizar(doc: dict, coleccion: str, seccion: str, completo: bool = False)
         item["calidad"] = doc.get("calidad")
         item["hubspot"] = doc.get("hubspot")
         item["calificacion"] = doc.get("calificacion")
+        item["aprobada_por"] = doc.get("aprobada_por")
+        item["aprobacion_auto"] = doc.get("aprobacion_auto")
+        item["juicio"] = doc.get("juicio")
         if item["estado"] == _db.ESTADO_RECHAZADA:
             item["motivo"] = doc.get("motivo_rechazo") or None
     if seccion.endswith("descartados"):

@@ -184,7 +184,7 @@ def generacion(params: dict | None = None) -> dict:
         return _generar(params)
 
 
-def _generar(params: dict | None) -> dict:
+def _generar(params: dict | None, programada: bool = False) -> dict:
     try:
         from afterdrive.generacion.generar_nota_fase2 import generar_nota
 
@@ -201,6 +201,12 @@ def _generar(params: dict | None) -> dict:
         return {"success": False, "error": "Cancelada."}
     if resultado.get("success"):
         print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
+        if programada and resultado.get("id"):
+            try:
+                from afterdrive import aprobacion_auto
+                resultado["aprobacion_auto"] = aprobacion_auto.procesar("notas_fase2", resultado["id"])
+            except Exception as e:  # la nota ya está guardada: queda en borrador
+                print(f"[Aprobación automática] [AVISO] No se pudo evaluar: {e}", flush=True)
     else:
         print(f"[Generación] [ERROR] {resultado.get('error')}", flush=True)
     return resultado

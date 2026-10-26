@@ -49,6 +49,7 @@ from afterdrive.generacion import (
     contexto_noticias,
     correccion,
     imagen_destacada,
+    juez,
     notas_blog,
     plan,
     verificacion,
@@ -560,13 +561,23 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
                 f["imagen_apta"], f["imagen_motivo"] = veredicto["apta"], veredicto["motivo"]
         return f
     doc["fuentes"] = [_fuente(n) for n in noticias]
+    # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.
+    print("  Juzgando la nota (editor crítico)...", flush=True)
+    doc["juicio"] = juez.juzgar(articulo, contexto_noticias.formatear(noticias, max_chars=juez.NOTICIAS_MAX),
+                                cal.reglas)
+    if doc["juicio"].get("error"):
+        print(f"  [AVISO] {doc['juicio']['error']}", flush=True)
+    else:
+        print(f"  Juicio: {'pasa' if doc['juicio']['pasa'] else 'no pasa'} "
+              f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota
-    col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
+    guardada = col_notas_fase2.insert_one(dict(doc))  # copia: insert_one agrega un _id no serializable
+    nota_id = getattr(guardada, "inserted_id", None)
     contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
     meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo")}
-    return {"success": True, "contenido": articulo, "meta": meta}
+    return {"success": True, "contenido": articulo, "meta": meta, "id": str(nota_id) if nota_id else None}
 
 
 def get_ultima_nota() -> dict | None:

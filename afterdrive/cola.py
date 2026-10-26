@@ -395,7 +395,7 @@ def _ejecutar(doc: dict) -> dict:
             with contextlib.redirect_stdout(tee):
                 if tipo == "scraping":
                     return corridas._scrapear_fuentes(params.get("max_articulos"))
-                return corridas._generar(params or None)
+                return corridas._generar(params or None, programada=doc.get("origen") == "cron")
         finally:
             tee.cerrar()
 

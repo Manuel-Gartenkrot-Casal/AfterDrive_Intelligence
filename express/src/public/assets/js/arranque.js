@@ -16,6 +16,7 @@ window.onload = function() {
   updateStats();
   checkProviders();
   checkBlogPruebas();
+  checkAprobacionAuto();
   setModo(document.documentElement.getAttribute('data-modo'));
   initFormularios();
   initSecciones();

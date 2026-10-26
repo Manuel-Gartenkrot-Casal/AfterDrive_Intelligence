@@ -21,7 +21,11 @@ function estrellas(n) {
 }
 
 async function pintarCalificacion(nota, contenedor) {
-  var previa = nota.calificacion || {};
+  var juicio = nota.juicio && !nota.juicio.error ? nota.juicio : null;
+  // Sin calificación guardada, se precarga la que sugiere la IA: se edita y recién al guardar cuenta.
+  var sugerida = !nota.calificacion && juicio;
+  var previa = nota.calificacion
+    || (sugerida ? { puntaje: juicio.calificacion, etiquetas: juicio.etiquetas, comentario: juicio.comentario } : {});
   _cal.puntaje = previa.puntaje || 0;
   _cal.etiquetas = (previa.etiquetas || []).slice();
   var catalogo = await catalogoEtiquetas();
@@ -30,6 +34,7 @@ async function pintarCalificacion(nota, contenedor) {
   caja.setAttribute('aria-labelledby', 'calificar-titulo');
   caja.innerHTML = '<h4 id="calificar-titulo">Tu calificación</h4>'
     + '<p class="calificar-ayuda">Enseña a la generación qué funciona y qué no.</p>'
+    + juicioHtml(nota, sugerida)
     + '<div class="estrellas" role="radiogroup" aria-label="Calificación de 1 a 5">'
     + [1, 2, 3, 4, 5].map(function(i) {
         return '<button type="button" role="radio" class="estrella" data-n="' + i + '" aria-label="' + i + ' de 5">★</button>';
@@ -61,6 +66,22 @@ async function pintarCalificacion(nota, contenedor) {
   $('calificar-guardar').onclick = function() { guardarCalificacion(nota); };
   if (previa.calificado_en) $('calificar-estado').textContent = 'Calificada el ' + fechaCorta(previa.calificado_en);
   marcarCalificacion();
+}
+
+// Lo que dijo el juez de IA: si la aprobó sola, o por qué la frenó, y si la calificación es sugerida.
+function juicioHtml(nota, sugerida) {
+  var j = nota.juicio, a = nota.aprobacion_auto, html = '';
+  if (nota.aprobada_por === 'ia') {
+    html += '<p class="revision-ok">Aprobada por la IA y subida a HubSpot como borrador.</p>';
+  } else if (a && !a.pasa) {
+    html += '<p class="revision-sub">La IA no la aprobó sola: ' + escHtml(a.motivos.join('; ')) + '</p>';
+  }
+  if (j && j.error) html += '<p class="revision-sub">' + escHtml(j.error) + '</p>';
+  if (sugerida) {
+    html += '<p class="revision-sub"><span class="marca">Sugerida por IA</span> Revisala y cambiala si hace falta: '
+      + 'solo cuenta para el aprendizaje cuando la guardás.</p>';
+  }
+  return html;
 }
 
 function marcarCalificacion() {
@@ -316,6 +337,15 @@ async function cargarCalibracion() {
         + lista(d.ejemplos_propios.map(function(e) { return e.titulo + ' (' + e.puntaje + ' ★)'; }), 'ok') : '')
     + '</div>';
   var ev = d.evaluador;
+  var jz = d.juez;
+  if (jz && (jz.pares || jz.aprobadas_ia)) {
+    html += '<div class="cal-col"><h4>Juez de IA</h4>'
+      + (jz.pares ? '<p>Su calificación sugerida quedó a ±1 estrella de la tuya en el <strong>' + Math.round(jz.acierto * 100)
+          + '%</strong> de ' + jz.pares + ' notas (diferencia media ' + jz.diferencia_media + ' ★).</p>' : '')
+      + (jz.aprobadas_ia ? '<p class="revision-sub">Aprobó sola ' + jz.aprobadas_ia + ' notas calificadas; '
+          + jz.aprobadas_ia_mal + ' con 1 o 2 estrellas.</p>' : '')
+      + '</div>';
+  }
   html += '<div class="cal-col"><h4>Evaluador automático</h4>'
     + (ev.umbral !== null
         ? '<p>Con tus calificaciones, una nota necesita al menos <strong>' + ev.umbral + ' de 9</strong> lineamientos o se reescribe. '
