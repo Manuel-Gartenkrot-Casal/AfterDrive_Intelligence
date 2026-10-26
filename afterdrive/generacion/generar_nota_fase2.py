@@ -24,7 +24,7 @@ Recorrido de una nota:
   7. El largo (corto, medio, largo) se elige en Crear nota.
   8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
      destacada es una foto de las noticias usadas (la guardó el scraper),
-     elegida con IA si la API paga está en uso (imagen_destacada.py).
+     elegidas con IA contra el tema de la nota: la destacada y 2 para el cuerpo (imagen_destacada.py).
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -114,6 +114,7 @@ def _build_system_prompt(
         compacto=ajustes.compacto,
         extension=redaccion.extension(largo),
         puntapie_url=puntapie_url,
+        idioma=redaccion.idioma_principal(),
     )
     extra = []
     if regiones:
@@ -378,7 +379,10 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     clientes_ids = clientes_ids or []
     regiones = regiones or []
     ajustes = llm.ajustes_redaccion()
-    voz = redaccion.voz(regiones)
+    # Todas las notas se escriben en el idioma principal (portugués); las
+    # regiones eligen el mercado. Las otras versiones se traducen al final.
+    idioma = redaccion.idioma_principal()
+    voz = redaccion.voz_de_idioma(idioma)
 
     clientes_docs = []
     for cid in clientes_ids:
@@ -396,9 +400,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
     ejemplos = ejemplos[: ajustes.max_ejemplos]
     # Notas de AfterDrive by Alephee para citar y enlazar, en el idioma de la nota.
-    from afterdrive import hubspot
     blog = notas_blog.relacionadas(_consulta(categorias, tema, regiones), categorias,
-                                   hubspot.idioma({"regiones": regiones}), limite=3 if ajustes.compacto else 4)
+                                   idioma, limite=3 if ajustes.compacto else 4)
     if blog:
         print(f"  Notas del blog para citar si encajan: {len(blog)}", flush=True)
     print(f"  Few-shot: {len(ejemplos)} ejemplo(s) cargado(s) para {categorias}", flush=True)
@@ -503,6 +506,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "contenido": articulo,
         "categorias": categorias,
         "regiones": regiones,
+        "idioma": idioma,
         "clientes_mencionados": [c.get("nombre") for c in clientes_docs],
         "puntapie_url": puntapie_url,
         "persona": persona,
@@ -548,6 +552,10 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
+        # Las siguientes van dentro del texto (hubspot.py las reparte entre las secciones).
+        doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.imagenes[1:]]
+        if doc["imagenes_cuerpo"]:
+            print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
     else:
         print(f"  [AVISO] La nota se guarda sin imagen destacada: {eleccion.motivo}", flush=True)
     doc["imagen_eleccion"] = eleccion.como_dict()
@@ -570,6 +578,10 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     else:
         print(f"  Juicio: {'pasa' if doc['juicio']['pasa'] else 'no pasa'} "
               f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
+    # Las otras versiones (español e inglés) se traducen ya: se ven y editan en el historial.
+    from afterdrive import traducciones
+    if traducciones.activas():
+        doc["traducciones"] = traducciones.traducir_nota(doc)
     # Un paso de arriba (juez, imagen) pudo tragarse la cancelación: no se guarda igual.
     llm.verificar_cancelacion()
     doc["costo"] = costo.como_dict()   # lo gastado hasta acá: todas las llamadas de esta nota

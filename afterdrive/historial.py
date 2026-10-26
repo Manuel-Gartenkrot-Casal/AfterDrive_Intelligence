@@ -6,6 +6,7 @@ Interfaz:
     listar(seccion, pagina=1, por_pagina=20, q="", estado="todos", base=None) -> página
     detalle(seccion, coleccion, item_id, base=None) -> ítem con el contenido completo
     cambiar_estado(coleccion, item_id, estado, base=None) -> ítem actualizado
+    editar_traduccion(coleccion, item_id, idioma, contenido) -> traducción guardada
     cambiar_imagen(coleccion, item_id, url, alt="", base=None) -> ítem con la imagen destacada elegida
     editar(coleccion, item_id, contenido, base=None) -> ítem actualizado
                             (la primera edición guarda la versión generada en contenido_original)
@@ -331,6 +332,32 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
 
 
+def editar_traduccion(coleccion: str, item_id: str, idioma: str, contenido: str, base=None) -> dict | None:
+    """Reemplaza el texto de la versión de una Nota en otro idioma. Devuelve la traducción guardada.
+
+    Queda al día con el original actual: si después se edita el original, se
+    marca como desactualizada (y al subir a HubSpot se vuelve a traducir).
+    """
+    from afterdrive import hubspot, traducciones
+
+    if coleccion not in COLECCIONES_CON_ESTADO:
+        raise ErrorHistorial("Solo las notas generadas tienen traducciones.")
+    contenido = (contenido or "").strip() if isinstance(contenido, str) else ""
+    if len(contenido) < LARGO_MINIMO_NOTA:
+        raise ErrorHistorial(f"La traducción quedó demasiado corta (mínimo {LARGO_MINIMO_NOTA} caracteres).")
+    if not contenido.startswith("# "):
+        raise ErrorHistorial("La traducción tiene que empezar con el título (una línea con '# ').")
+    col = _base(base)[coleccion]
+    doc = col.find_one({"_id": _oid(item_id)}, {"contenido": 1, "regiones": 1, "idioma": 1})
+    if not doc:
+        return None
+    if idioma not in traducciones.IDIOMAS or idioma == hubspot.idioma(doc):
+        raise ErrorHistorial("Idioma inválido para una traducción de esta nota.")
+    nueva = traducciones.entrada(contenido, doc.get("contenido", ""), editada=True)
+    col.update_one({"_id": doc["_id"]}, {"$set": {f"traducciones.{idioma}": nueva}})
+    return nueva
+
+
 def destino_hubspot(coleccion: str, item_id: str, base=None) -> dict | None:
     """A qué blog va la nota, con qué etiquetas y autor, y los autores que se pueden elegir."""
     from afterdrive import hubspot
@@ -387,29 +414,43 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
 
 
 def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
-    """Copia la imagen destacada (la foto de la noticia) a los archivos de HubSpot. Devuelve un aviso si no pudo.
+    """Copia las imágenes de la nota (destacada y del cuerpo) a los archivos de HubSpot.
 
     Así el blog no depende de que el sitio de la noticia la siga sirviendo ni
-    de que acepte que otro sitio la muestre. Si la copia falla, la nota se
-    sube igual con el link original: una imagen no debería frenar una publicación.
+    de que acepte que otro sitio la muestre. Si una copia falla, la nota se
+    sube igual con el link original: una imagen no debería frenar una
+    publicación. Devuelve un aviso si alguna no se pudo copiar.
     """
-    from afterdrive import hubspot
+    from afterdrive import hubspot, imagen_web
 
+    def copiar(url: str, nombre: str) -> tuple[str, str]:
+        try:
+            contenido, mime = imagen_web.descargar(url)
+            extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
+            return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), ""
+        except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
+            return "", str(e)
+
+    errores = []
     imagen = doc.get("imagen") or {}
-    url = imagen.get("url") or ""
-    if not url or imagen.get("hubspot_url"):
+    if imagen.get("url") and not imagen.get("hubspot_url"):
+        copia, error = copiar(imagen["url"], f"nota-{doc['_id']}")
+        if copia:
+            col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
+            doc["imagen"] = {**imagen, "hubspot_url": copia}
+        else:
+            errores.append(f"la destacada ({error})")
+    for i, im in enumerate(doc.get("imagenes_cuerpo") or []):
+        if im.get("url") and not im.get("hubspot_url"):
+            copia, error = copiar(im["url"], f"nota-{doc['_id']}-{i + 2}")
+            if copia:
+                col.update_one({"_id": doc["_id"]}, {"$set": {f"imagenes_cuerpo.{i}.hubspot_url": copia}})
+                im["hubspot_url"] = copia
+            else:
+                errores.append(f"la {i + 2}ª ({error})")
+    if not errores:
         return ""
-    from afterdrive import imagen_web
-
-    try:
-        contenido, mime = imagen_web.descargar(url)
-        extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
-        copia = hubspot.subir_imagen(contenido, mime, f"nota-{doc['_id']}.{extension}")
-    except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
-        return f"No se pudo copiar la imagen a HubSpot ({e}). Se usa el link original."
-    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
-    doc["imagen"] = {**imagen, "hubspot_url": copia}
-    return ""
+    return f"No se pudo copiar a HubSpot {', '.join(errores)}. Se usa el link original."
 
 
 def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:

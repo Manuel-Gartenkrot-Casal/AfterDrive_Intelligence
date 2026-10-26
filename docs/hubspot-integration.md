@@ -35,7 +35,7 @@ Para probar la API a mano hay una colección de Postman en [hubspot-postman/](hu
 
 ## A dónde va cada nota
 
-**Blog**: sale del idioma de la nota, que a su vez sale de las regiones elegidas al generarla (`redaccion.voz`).
+**Blog**: sale del idioma de la nota (`idioma`). Las notas nuevas se escriben todas en portugués, así que el post principal va al blog PT y el español y el inglés son sus traducciones. Las notas anteriores a este cambio lo deducen de sus regiones (`redaccion.voz`).
 
 | Idioma de la nota | Blog | Autor por defecto (Gastón Zelerteins) |
 |---|---|---|
@@ -62,19 +62,20 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `tagIds` | Las etiquetas de las categorías, en el idioma del blog |
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
 | `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
+| `postBody` (imágenes) | Las 2 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Van también en las traducciones |
 | `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias, copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 
 ## Otros idiomas
 
-Cada nota se escribe en un idioma (el de sus regiones). Al subirla, una corrida de la Cola (`afterdrive/traducciones.py`, aparece en Actividad) la traduce a los otros dos idiomas del blog con la voz de cada uno (español rioplatense, portugués de Brasil, inglés) y sube cada versión **como borrador**. Nunca se publica sola.
+Cada nota se escribe en portugués y **se traduce al crearla** al español rioplatense y al inglés (`afterdrive/traducciones.py`). Las traducciones se ven y se editan en el historial. Al subir la nota, una corrida de la Cola (aparece en Actividad) sube cada versión **como borrador**, con el texto guardado. Nunca se publica sola.
 
 1. **Variación de idioma** (`POST /cms/v3/blogs/posts/multi-language/create-language-variation`): HubSpot clona el post original como su traducción, en el blog de ese idioma, y después se le carga el texto traducido, la meta, las etiquetas y el autor de ese idioma. Así quedan vinculadas (selector de idioma y hreflang).
 2. Si HubSpot no la crea (por ejemplo, porque los tres blogs no están configurados como versiones de un mismo blog multilenguaje, o porque el código de idioma no coincide), se crea un **borrador normal** en el blog del idioma y se intenta vincularlo con `attach-to-lang-group`.
 3. Si tampoco se puede vincular, queda como **borrador suelto**, con un aviso en la nota.
 
-- La traducción queda guardada con la huella del texto original: reenviar sin editar la nota **no vuelve a pagar** la traducción, solo actualiza el borrador. Si la editaste, se traduce de nuevo.
+- La traducción queda guardada con la huella del texto original: subir o reenviar sin editar el original **no vuelve a pagar** la traducción, solo actualiza el borrador (con los cambios hechos a mano en esa versión). Si editaste el original, la traducción queda desactualizada y al subir se traduce de nuevo (se pierden los cambios a mano de esa versión).
 - La traducción mantiene el Markdown, las cifras, los nombres y los enlaces del original (un enlace nuevo se quita). Si sale cortada o sin título, esa versión no se sube y el error se ve al abrir la nota.
 - Con `HUBSPOT_BLOG_PRUEBAS`, las versiones van a ese blog sin vincular.
 - Al abrir la nota, el bloque **Otros idiomas** muestra cada versión, su link y el texto traducido. **Volver a subir las traducciones** reintenta.

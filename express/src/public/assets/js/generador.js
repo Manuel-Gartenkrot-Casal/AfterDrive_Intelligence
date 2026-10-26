@@ -52,7 +52,7 @@ document.addEventListener('keydown', function(ev) {
 });
 
 function copiar() {
-  navigator.clipboard.writeText($('art-body').textContent);
+  navigator.clipboard.writeText(($('nota-texto') || $('art-body')).textContent);
   log('Texto copiado al portapapeles', 'success');
 }
 
@@ -535,7 +535,6 @@ async function fase2MostrarUltima(id) {
       return;
     }
     var modal = $('modal-art');
-    var body = $('art-body');
     var check = $('check-list');
     var comm = $('eval-comms');
     $('modal-titulo').textContent = id ? 'Nota' : 'Última nota';
@@ -543,11 +542,12 @@ async function fase2MostrarUltima(id) {
       day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
     }) : '';
     abrirModal();
-    body.innerHTML = '<div translate="no">' + DOMPurify.sanitize(marked.parse(d.nota.contenido)) + '</div>';   // contenido: no se traduce
     check.innerHTML = '';
     comm.textContent = '';
     _notaActual = { coleccion: 'notas_fase2', id: d.nota._id, estado: d.nota.estado || 'borrador',
-                    contenido: d.nota.contenido, hubspot: d.nota.hubspot || null };
+                    contenido: d.nota.contenido, hubspot: d.nota.hubspot || null,
+                    idioma: d.nota.idioma || null, vista: d.nota.idioma || null, traducciones: d.nota.traducciones || {} };
+    pintarCuerpoNota();   // pestañas por idioma; el contenido no se traduce con la UI
     pintarAccionesNota();
     pintarRevisionNota(d.nota, check);
 

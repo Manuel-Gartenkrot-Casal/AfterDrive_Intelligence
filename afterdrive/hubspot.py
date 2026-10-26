@@ -21,8 +21,8 @@ privada de HubSpot con el scope "content". Configuración:
                        El viejo HUBSPOT_BLOG_ID ya no se usa.
     HUBSPOT_IMAGEN_DEFAULT  opcional: imagen destacada para las notas que no tienen una propia
 
-El blog sale del idioma de la Nota (sus regiones): español -> After Drive ES,
-portugués -> PT, inglés -> EN. Las etiquetas son las que ya existen en HubSpot
+El blog sale del idioma de la Nota (`idioma`, portugués en las nuevas; en las
+viejas, sus regiones): español -> After Drive ES, portugués -> PT, inglés -> EN. Las etiquetas son las que ya existen en HubSpot
 para cada categoría, en el idioma del blog (ETIQUETAS): nunca se crean nuevas,
 porque son de toda la cuenta. El autor es el elegido al revisar la nota
 (hubspot_autor_id) o, si no, AUTOR_POR_DEFECTO.
@@ -119,8 +119,15 @@ def blog_pruebas() -> str:
 
 
 def idioma(nota: dict) -> str | None:
-    """es, pt o en según la voz de la nota (sus regiones). None si no hay blog en ese idioma."""
+    """es, pt o en: el idioma en que se escribió la nota. None si no hay blog en ese idioma.
+
+    Las notas nuevas lo guardan (`idioma`, el principal: portugués); las
+    anteriores lo deducen de la voz de sus regiones.
+    """
     from afterdrive.ia.redaccion import voz
+
+    if nota.get("idioma") in BLOGS:
+        return nota["idioma"]
 
     nombre = voz(nota.get("regiones")).idioma
     if nombre.startswith("español"):
@@ -259,6 +266,40 @@ def _imagen(nota: dict, titulo: str) -> dict:
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
 
 
+def imagenes_cuerpo(nota: dict) -> list[dict]:
+    """[{url, alt}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo)."""
+    return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or ""}
+            for im in nota.get("imagenes_cuerpo") or [] if im.get("hubspot_url") or im.get("url")]
+
+
+def con_imagenes(html: str, imagenes: list[dict]) -> str:
+    """Reparte las imágenes entre las secciones del cuerpo: antes de los subtítulos a 1/3 y 2/3 de la nota.
+
+    Nunca antes de la primera sección (la nota abre con texto) ni después de
+    la última. Sin subtítulos suficientes, van después del primer párrafo.
+    """
+    from html import escape
+
+    if not imagenes:
+        return html
+    figuras = [f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
+               f'style="max-width:100%; height:auto;" loading="lazy"></p>' for im in imagenes]
+    titulos = [m.start() for m in re.finditer(r"<h3\b", html)]
+    n = len(titulos)
+    if n >= 3:
+        indices = sorted({min(n - 1, max(1, round(n * (k + 1) / (len(figuras) + 1)))) for k in range(len(figuras))})
+        # Si dos imágenes caen en el mismo lugar, van juntas.
+        grupos = {i: [] for i in indices}
+        for k, fig in enumerate(figuras):
+            grupos[indices[min(k, len(indices) - 1)]].append(fig)
+        for i in sorted(grupos, reverse=True):
+            html = html[:titulos[i]] + "".join(grupos[i]) + html[titulos[i]:]
+        return html
+    fin = html.find("</p>")
+    corte = fin + 4 if fin >= 0 else len(html)
+    return html[:corte] + "".join(figuras) + html[corte:]
+
+
 def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
     """Sube una imagen al gestor de archivos de HubSpot y devuelve su URL pública.
 
@@ -295,6 +336,7 @@ def vista_previa(nota: dict) -> dict:
         lugar = destino(nota)
     except ErrorHubSpot as e:
         lugar = {"error": str(e), "etiquetas": []}
+    partes["html"] = con_imagenes(partes["html"], imagenes_cuerpo(nota))
     return {
         **partes,
         "imagen": _imagen(nota, partes["titulo"]),
@@ -317,7 +359,7 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
     cuerpo = {
         "name": partes["titulo"],
         "htmlTitle": partes["titulo"],
-        "postBody": partes["html"],
+        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
         "metaDescription": partes["meta"],
         "state": "PUBLISHED" if publicar else "DRAFT",
     }
@@ -403,7 +445,8 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     partes = preparar(contenido)
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
     cuerpo = {
-        "name": partes["titulo"], "htmlTitle": partes["titulo"], "postBody": partes["html"],
+        "name": partes["titulo"], "htmlTitle": partes["titulo"],
+        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
         "metaDescription": partes["meta"], "state": "DRAFT",
     }
     imagen = _imagen(nota, partes["titulo"])

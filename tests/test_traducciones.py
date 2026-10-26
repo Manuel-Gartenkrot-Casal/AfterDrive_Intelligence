@@ -284,3 +284,46 @@ def test_sin_subir_la_original_el_reintento_explica_por_que(api, monkeypatch, ba
     r = c.post("/api/hubspot/traducciones", json={"coleccion": "notas_fase2", "id": oid})
     assert r.status_code == 400 and "subila primero" in r.json["error"]
     assert c.post("/api/hubspot/traducciones", json={"coleccion": "articulos", "id": oid}).status_code == 400
+
+
+def test_editar_una_traduccion_y_quedar_desactualizada(base):
+    from afterdrive import historial
+    oid = str(base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "pt", "estado": "borrador"}).inserted_id)
+    texto = "# Título en español\n\n" + "Texto editado a mano. " * 10
+    t = historial.editar_traduccion("notas_fase2", oid, "es", texto, base=base)
+    assert t["editada"] and traducciones.al_dia(t, NOTA)
+    with pytest.raises(historial.ErrorHistorial):
+        historial.editar_traduccion("notas_fase2", oid, "pt", texto, base=base)   # pt es el original
+    with pytest.raises(historial.ErrorHistorial):
+        historial.editar_traduccion("notas_fase2", oid, "es", "sin título " * 20, base=base)
+    historial.editar("notas_fase2", oid, NOTA + "\n\nUn párrafo más.", base=base)
+    doc = base.notas_fase2.find_one()
+    assert not traducciones.al_dia(doc["traducciones"]["es"], doc["contenido"])
+
+
+def test_retraducir_guarda_sin_subir(base, monkeypatch):
+    oid = str(base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "pt"}).inserted_id)
+    monkeypatch.setattr(traducciones, "traducir", lambda c, o, d: f"# En {d}\n\nTexto.")
+    traducciones.retraducir("notas_fase2", oid, "en", base=base)
+    t = base.notas_fase2.find_one()["traducciones"]["en"]
+    assert t["contenido"].startswith("# En en") and not t["editada"]
+    with pytest.raises(traducciones.ErrorTraduccion):
+        traducciones.retraducir("notas_fase2", oid, "pt", base=base)
+
+
+def test_la_nota_del_dashboard_trae_idioma_y_estado_de_traducciones(api, monkeypatch, base):
+    flask_api, _ = api
+    monkeypatch.setattr(db_module, "db", base)
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    oid = str(base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "pt", "generado_en": "2026-10-26",
+        "traducciones": {"es": traducciones.entrada("# ES\n\nx", "otro texto")}}).inserted_id)
+    from afterdrive.generacion import generar_nota_fase2 as g
+    monkeypatch.setattr(g, "col_notas_fase2", base.notas_fase2)
+    nota = c.get(f"/api/fase2/notas/{oid}").get_json()["nota"]
+    assert nota["idioma"] == "pt" and nota["traducciones"]["es"]["al_dia"] is False
+    r = c.post("/api/historial/retraducir", json={"coleccion": "notas_fase2", "id": oid, "idioma": "es"})
+    assert r.status_code == 202
+    assert base.corridas.find_one()["params"]["argv"] == ["notas_fase2", oid, "--traducir", "es"]
+    assert c.post("/api/historial/retraducir", json={"coleccion": "x", "id": oid, "idioma": "es"}).status_code == 400

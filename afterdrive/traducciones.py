@@ -1,13 +1,17 @@
 """
 traducciones.py — Las versiones de una Nota en los otros idiomas del blog, como borradores en HubSpot.
 
-Uso (lo encola el servidor después de subir la nota a HubSpot; corre en la Cola):
+Las traducciones se hacen apenas se crea la nota (traducir_nota, desde la
+generación) y se ven y editan en el historial. Al subir la nota a HubSpot se
+encola la subida de cada versión (corre en la Cola):
     python -m afterdrive.traducciones <coleccion> <id>
 
 Interfaz:
     activas() -> bool                         HUBSPOT_TRADUCCIONES=0 las apaga
     idiomas_destino(nota) -> ["pt", "en"]     los del blog menos el de la nota
     traducir(contenido, origen, destino) -> str       ErrorTraduccion
+    traducir_nota(nota) -> {cod: entrada | {"error"}}   al crear la nota
+    al_dia(guardada, original) -> bool                   la traducción corresponde al original actual
     subir(coleccion, item_id, base=None) -> {"subidas": [...], "errores": [...], "avisos": [...]}
     ErrorTraduccion
 
@@ -116,6 +120,41 @@ def traducir(contenido: str, origen: str, destino: str) -> str:
     return texto
 
 
+def entrada(texto: str, original: str, editada: bool = False) -> dict:
+    """Lo que se guarda en `traducciones.<idioma>`. `huella` es la del original traducido:
+    si el original cambia después, la traducción queda desactualizada."""
+    from afterdrive.ia import llm
+    return {"contenido": texto, "huella": huella(original), "proveedor": llm.proveedor_activo(),
+            "editada": editada, "traducido_en": datetime.datetime.now(datetime.UTC).isoformat()}
+
+
+def al_dia(guardada: dict | None, original: str) -> bool:
+    return bool(guardada and guardada.get("contenido") and guardada.get("huella") == huella(original))
+
+
+def traducir_nota(nota: dict) -> dict:
+    """Traduce la nota recién creada a los otros idiomas de los blogs: {cod: entrada | {"error"}}.
+
+    Una traducción que falla no frena la nota: queda el error y se reintenta
+    desde el historial o al subirla a HubSpot.
+    """
+    from afterdrive import hubspot
+    from afterdrive.ia import llm
+
+    origen, contenido = hubspot.idioma(nota), nota.get("contenido", "")
+    resultado = {}
+    for cod in idiomas_destino(nota):
+        print(f"  Traduciendo al {NOMBRE[cod]}...", flush=True)
+        try:
+            resultado[cod] = entrada(traducir(contenido, origen, cod), contenido)
+        except llm.Cancelada:
+            raise
+        except (ErrorTraduccion, llm.ErrorLLM) as e:
+            print(f"  [AVISO] No se pudo traducir al {NOMBRE[cod]}: {e}", flush=True)
+            resultado[cod] = {"error": str(e)}
+    return resultado
+
+
 def subir(coleccion: str, item_id: str, base=None) -> dict:
     """Traduce lo que falte (o cambió) y sube cada versión a HubSpot como borrador."""
     from bson import ObjectId
@@ -137,22 +176,20 @@ def subir(coleccion: str, item_id: str, base=None) -> dict:
     if not destinos:
         raise ErrorTraduccion("La nota no está en un idioma de los blogs (español, portugués o inglés).")
 
-    actual = huella(doc.get("contenido", ""))
     resultado = {"subidas": [], "errores": [], "avisos": []}
     with consumo.medir() as costo:
         for cod in destinos:
             nombre = NOMBRE[cod]
             guardada = (doc.get("traducciones") or {}).get(cod) or {}
             try:
-                if guardada.get("huella") == actual and guardada.get("contenido"):
+                if al_dia(guardada, doc.get("contenido", "")):
                     texto = guardada["contenido"]
                     print(f"[{cod}] La traducción al {nombre} ya estaba hecha: se actualiza el borrador.", flush=True)
                 else:
                     print(f"[{cod}] Traduciendo al {nombre}...", flush=True)
                     texto = traducir(doc.get("contenido", ""), origen, cod)
-                    col.update_one({"_id": doc["_id"]}, {"$set": {f"traducciones.{cod}": {
-                        "contenido": texto, "huella": actual, "proveedor": llm.proveedor_activo(),
-                        "traducido_en": datetime.datetime.now(datetime.UTC).isoformat()}}})
+                    col.update_one({"_id": doc["_id"]},
+                                   {"$set": {f"traducciones.{cod}": entrada(texto, doc.get("contenido", ""))}})
                 previo = (doc.get("hubspot_traducciones") or {}).get(cod)
                 print(f"[{cod}] Subiendo a HubSpot como borrador...", flush=True)
                 r = hubspot.enviar_traduccion(doc, cod, texto, primario, previo=previo)
@@ -209,11 +246,49 @@ def encolar(coleccion: str, item_id: str) -> dict | None:
     return {"id": r.get("id"), "idiomas": idiomas}
 
 
+def retraducir(coleccion: str, item_id: str, cod: str, base=None) -> dict:
+    """Vuelve a traducir la nota a `cod` y la guarda (sin subir nada). Pisa los cambios hechos a mano."""
+    from bson import ObjectId
+
+    from afterdrive import hubspot
+
+    if base is None:
+        from afterdrive.db import db as base
+    col = base[coleccion]
+    doc = col.find_one({"_id": ObjectId(item_id)}, {"contenido": 1, "regiones": 1, "idioma": 1})
+    if not doc:
+        raise ErrorTraduccion("Nota no encontrada.")
+    if cod not in idiomas_destino(doc):
+        raise ErrorTraduccion(f"No hay a qué idioma traducir: {cod}.")
+    print(f"[{cod}] Traduciendo al {NOMBRE[cod]}...", flush=True)
+    nueva = entrada(traducir(doc.get("contenido", ""), hubspot.idioma(doc), cod), doc.get("contenido", ""))
+    col.update_one({"_id": doc["_id"]}, {"$set": {f"traducciones.{cod}": nueva}})
+    print(f"[OK] Traducción al {NOMBRE[cod]} guardada.", flush=True)
+    return nueva
+
+
+def encolar_retraduccion(coleccion: str, item_id: str, cod: str) -> dict:
+    """{"id"} de la Corrida que vuelve a traducir la nota a `cod`. cola.ColaLlena si no entra."""
+    from afterdrive import cola
+    r = cola.encolar("script", {"modulo": "afterdrive.traducciones", "argv": [coleccion, item_id, "--traducir", cod]},
+                     etiqueta=f"Traducir al {NOMBRE[cod]}")
+    return {"id": r.get("id")}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Versiones de una nota en los otros idiomas del blog (HubSpot)")
     parser.add_argument("coleccion")
     parser.add_argument("id")
+    parser.add_argument("--traducir", choices=IDIOMAS, help="solo traducir a este idioma y guardarlo, sin subir")
     args = parser.parse_args(argv)
+    if args.traducir:
+        from afterdrive.ia import llm
+        try:
+            retraducir(args.coleccion, args.id, args.traducir)
+        except (ErrorTraduccion, llm.ErrorLLM) as e:
+            print(f"[ERROR] {e}", flush=True)
+            return 1
+        return 0
     try:
         r = subir(args.coleccion, args.id)
     except ErrorTraduccion as e:

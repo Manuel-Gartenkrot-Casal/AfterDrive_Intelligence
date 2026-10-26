@@ -513,6 +513,39 @@ def historial_editar():
     return jsonify({"success": True, "item": item})
 
 
+@app.route("/api/historial/traduccion", methods=["PATCH"])
+def historial_editar_traduccion():
+    """Guarda la versión editada de una traducción: {"coleccion", "id", "idioma", "contenido"}."""
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        t = historial.editar_traduccion(body.get("coleccion", ""), body.get("id", ""), body.get("idioma", ""),
+                                        body.get("contenido"))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if t is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "traduccion": t})
+
+
+@app.route("/api/historial/retraducir", methods=["POST"])
+def historial_retraducir():
+    """Encola volver a traducir una nota a un idioma: {"coleccion", "id", "idioma"}."""
+    from afterdrive import historial, traducciones
+    body = request.get_json(silent=True) or {}
+    coleccion, item_id, cod = body.get("coleccion", ""), body.get("id", ""), body.get("idioma", "")
+    if coleccion not in historial.COLECCIONES_CON_ESTADO or cod not in traducciones.IDIOMAS \
+            or not re.fullmatch(r"[0-9a-f]{24}", str(item_id)):
+        return jsonify({"success": False, "error": "Pedido inválido."}), 400
+    try:
+        r = traducciones.encolar_retraduccion(coleccion, item_id, cod)
+    except cola.ColaLlena as e:
+        return jsonify({"success": False, "error": str(e)}), 429
+    return jsonify({"success": True, **r}), 202
+
+
 @app.route("/api/historial/calificacion", methods=["POST"])
 def historial_calificar():
     """Calificación de una Nota: {"coleccion", "id", "puntaje": 1-5, "etiquetas": [...], "comentario"}."""
@@ -1011,6 +1044,16 @@ def fase2_eliminar_cliente(slug: str):
     return jsonify({"success": True})
 
 
+def _nota_para_dashboard(doc: dict) -> dict:
+    """La nota con su idioma (las viejas lo deducen de las regiones) y si cada traducción está al día."""
+    from afterdrive import hubspot, traducciones
+    doc["idioma"] = hubspot.idioma(doc)
+    for t in (doc.get("traducciones") or {}).values():
+        if isinstance(t, dict) and t.get("contenido"):
+            t["al_dia"] = traducciones.al_dia(t, doc.get("contenido", ""))
+    return doc
+
+
 def _argv_generar(body: dict):
     """(argv de generar_nota_fase2, None), o (None, respuesta 400)."""
     listas, error = _listas(body, "categorias", "clientes", "regiones")
@@ -1049,7 +1092,7 @@ def fase2_ultima_nota():
         return jsonify({"success": False, "error": "No hay notas generadas aún."}), 404
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
-    return jsonify({"success": True, "nota": doc})
+    return jsonify({"success": True, "nota": _nota_para_dashboard(doc)})
 
 
 @app.route("/api/fase2/notas/<nota_id>", methods=["GET"])
@@ -1066,7 +1109,7 @@ def fase2_nota(nota_id: str):
         return jsonify({"success": False, "error": "Nota no encontrada."}), 404
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
-    return jsonify({"success": True, "nota": doc})
+    return jsonify({"success": True, "nota": _nota_para_dashboard(doc)})
 
 
 def _keep_alive():

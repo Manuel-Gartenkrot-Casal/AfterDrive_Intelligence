@@ -358,29 +358,106 @@ async function guardarImagenNota(quitar) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+/* ── Idiomas de la nota ──
+   La nota se escribe en el idioma principal (portugués) y se traduce al crearla.
+   Cada versión se ve en su pestaña y se edita por separado. */
+var NOMBRE_IDIOMA = { pt: 'Português', es: 'Español', en: 'English' };
+
+function _vistaEsPrincipal(n) { return !n.idioma || n.vista === n.idioma; }
+
+function _traduccionVista(n) { return (n.traducciones || {})[n.vista] || {}; }
+
+function pintarCuerpoNota() {
+  var n = _notaActual, html = '';
+  if (!n) return;
+  if (n.idioma) {
+    var orden = [n.idioma].concat(['pt', 'es', 'en'].filter(function(c) { return c !== n.idioma; }));
+    html += '<div class="idiomas-nota" role="tablist" aria-label="Idioma">' + orden.map(function(c) {
+      var t = (n.traducciones || {})[c] || {}, marca = '';
+      if (c !== n.idioma) {
+        if (t.error && !t.contenido) marca = ' <span class="marca">Error</span>';
+        else if (!t.contenido) marca = ' <span class="marca">Sin traducir</span>';
+        else if (t.al_dia === false) marca = ' <span class="marca">Desactualizada</span>';
+        else if (t.editada) marca = ' <span class="marca">Editada</span>';
+      }
+      return '<button type="button" role="tab" class="chip' + (c === n.vista ? ' on' : '') + '" aria-selected="' + (c === n.vista)
+        + '" onclick="verIdiomaNota(\'' + c + '\')">' + NOMBRE_IDIOMA[c] + (c === n.idioma ? ' · principal' : '') + marca + '</button>';
+    }).join('') + '</div>';
+  }
+  var texto = n.contenido || '';
+  if (!_vistaEsPrincipal(n)) {
+    var t = _traduccionVista(n);
+    texto = t.contenido || '';
+    if (t.contenido && t.al_dia === false) {
+      html += '<p class="revision-sub">El texto principal cambió después de esta traducción. Al subir a HubSpot se vuelve a traducir'
+        + (t.editada ? ' (y se pierden tus cambios en esta versión)' : '') + ', o retraducila ahora.</p>';
+    }
+    if (!t.contenido) html += '<p class="revision-sub">' + (t.error ? 'No se pudo traducir: ' + escHtml(t.error) : 'Todavía no hay traducción a este idioma.') + '</p>';
+    html += '<p><button type="button" class="btn btn-xs" onclick="retraducirNota()">' + (t.contenido ? 'Volver a traducir' : 'Traducir') + '</button></p>';
+  }
+  if (n.idioma) html = '<div class="idiomas-cab">' + html + '</div>';
+  html += '<div id="nota-texto" translate="no">' + DOMPurify.sanitize(marked.parse(texto)) + '</div>';
+  $('art-body').innerHTML = html;
+}
+
+function verIdiomaNota(cod) {
+  _notaActual.vista = cod;
+  pintarCuerpoNota();
+  pintarAccionesNota();
+}
+
+async function retraducirNota() {
+  var n = _notaActual, t = _traduccionVista(n);
+  if (t.editada && !(await confirmar({ titulo: '¿Volver a traducir?', mensaje: 'Se pierden los cambios que hiciste a mano en esta versión.',
+                                       accion: 'Sí, traducir de nuevo', cancelar: 'Cancelar' }))) return;
+  try {
+    await pedir('/api/historial/retraducir', { method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ coleccion: n.coleccion, id: n.id, idioma: n.vista }) });
+    showToast('Traduciendo al ' + NOMBRE_IDIOMA[n.vista] + ': lo ves en Actividad. Volvé a abrir la nota cuando termine.', 'success');
+    if (typeof refrescarCorridas === 'function') refrescarCorridas();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
 function editarNota() {
-  var n = _notaActual;
-  $('art-body').innerHTML = '<label class="control-label" for="editor-nota">Texto de la nota (Markdown)</label>'
+  var n = _notaActual, principal = _vistaEsPrincipal(n);
+  if (!principal && !_traduccionVista(n).contenido) { showToast('Primero traducila.', 'warn'); return; }
+  $('art-body').innerHTML = '<label class="control-label" for="editor-nota">'
+    + (principal ? 'Texto de la nota (Markdown)' : 'Versión en ' + NOMBRE_IDIOMA[n.vista] + ' (Markdown)') + '</label>'
     + '<textarea id="editor-nota" class="editor-nota"></textarea>';
-  $('editor-nota').value = n.contenido || '';
+  $('editor-nota').value = principal ? (n.contenido || '') : _traduccionVista(n).contenido;
   $('editor-nota').focus();
   $('nota-acciones').innerHTML = '<button type="button" class="btn btn-xs btn-primary" onclick="guardarEdicionNota()">Guardar texto</button>'
     + '<button type="button" class="btn btn-xs" onclick="cancelarEdicionNota()">Cancelar</button>';
 }
 
 function cancelarEdicionNota() {
-  $('art-body').innerHTML = '<div translate="no">' + DOMPurify.sanitize(marked.parse(_notaActual.contenido || '')) + '</div>';
+  pintarCuerpoNota();
   pintarAccionesNota();
 }
 
 async function guardarEdicionNota() {
   var n = _notaActual;
+  if (!_vistaEsPrincipal(n)) {
+    try {
+      var r = await pedir('/api/historial/traduccion', {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ coleccion: n.coleccion, id: n.id, idioma: n.vista, contenido: $('editor-nota').value })
+      });
+      n.traducciones = n.traducciones || {};
+      n.traducciones[n.vista] = Object.assign(r.traduccion, { al_dia: true });
+      cancelarEdicionNota();
+      showToast('Traducción guardada', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+    return;
+  }
   try {
     var d = await pedir('/api/historial/contenido', {
       method: 'PATCH', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ coleccion: n.coleccion, id: n.id, contenido: $('editor-nota').value })
     });
     n.contenido = d.item.contenido;
+    // Las traducciones guardadas pasan a estar desactualizadas.
+    Object.keys(n.traducciones || {}).forEach(function(c) { if (n.traducciones[c].contenido) n.traducciones[c].al_dia = false; });
     $('modal-titulo').textContent = d.item.titulo;
     cancelarEdicionNota();
     showToast('Texto guardado', 'success');

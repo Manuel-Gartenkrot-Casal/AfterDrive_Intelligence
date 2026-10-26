@@ -9,6 +9,16 @@ from afterdrive.generacion import generar_nota_fase2 as g
 from afterdrive.generacion.contexto_noticias import Noticia
 from afterdrive.ia import llm
 
+
+@pytest.fixture(autouse=True)
+def notas_en_espanol(monkeypatch):
+    """Las notas de prueba de este archivo están en español: se generan en español y sin traducir.
+
+    El idioma principal real (portugués) y las traducciones al crear se prueban aparte.
+    """
+    monkeypatch.setenv("IDIOMA_PRINCIPAL", "es")
+    monkeypatch.setenv("HUBSPOT_TRADUCCIONES", "0")
+
 NOTA = """# El catálogo digital llega al mostrador
 
 ## Qué pasó
@@ -147,10 +157,13 @@ def test_sin_noticias_se_pide_no_inventar(entorno, monkeypatch):
     assert "sin cifras" in llamadas["user"]
 
 
-def test_region_mexico_pide_tuteo(entorno):
-    llamadas, _, _ = entorno
+def test_la_region_elige_el_mercado_no_el_idioma(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.delenv("IDIOMA_PRINCIPAL")   # el real: portugués
+    system = g._build_system_prompt(["autopartes"], [], None, "comercial", ["mexico"])
+    assert "Escribí toda la nota en portugués de Brasil" in system and "México" in system
     g.generar_nota(["autopartes"], regiones=["mexico"])
-    assert "tuteo" in llamadas["system"]
+    assert col.docs[0]["idioma"] == "pt"
 
 
 # ── Ranking de noticias (puro) ────────────────────────────────────────────────
@@ -634,7 +647,7 @@ def test_lo_que_opino_la_ia_de_cada_foto_queda_en_las_fuentes(entorno, monkeypat
                         imagen={"url": "https://n/1.jpg", "alt": ""}, imagen_buscada=True)]
     monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
     monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="": imagen_destacada.Eleccion(
-        None, "ia", {"https://n/1.jpg": {"apta": False, "motivo": "Es un logo."}}, motivo="La IA descartó todas las fotos."))
+        [], "ia", {"https://n/1.jpg": {"apta": False, "motivo": "Es un logo."}}, motivo="La IA descartó todas las fotos."))
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
     assert "imagen" not in guardada and guardada["imagen_eleccion"]["metodo"] == "ia"
@@ -663,3 +676,23 @@ def test_la_nota_puede_citar_y_enlazar_notas_de_afterdrive(entorno, monkeypatch)
     assert guardada["notas_blog_citadas"] == [{"titulo": "Catálogo y fitment",
                                                "url": "https://afterdrive.alephee.com/es/blog/catalogo", "origen": "blog"}]
     assert "3 de cada 10" not in guardada["verificacion"]["sin_respaldo"]   # el resumen respalda el dato
+
+
+def test_al_crear_la_nota_se_traduce_a_los_otros_idiomas(entorno, monkeypatch):
+    from afterdrive import traducciones
+    llamadas, col, _ = entorno
+    monkeypatch.delenv("IDIOMA_PRINCIPAL")
+    monkeypatch.delenv("HUBSPOT_TRADUCCIONES")
+    pedidas = []
+
+    def traducir(contenido, origen, destino):
+        pedidas.append((origen, destino))
+        if destino == "en":
+            raise traducciones.ErrorTraduccion("vino cortada")
+        return "# Título en español\\n\\nTexto."
+    monkeypatch.setattr(traducciones, "traducir", traducir)
+    g.generar_nota(["autopartes"])
+    doc = col.docs[0]
+    assert pedidas == [("pt", "es"), ("pt", "en")]
+    assert traducciones.al_dia(doc["traducciones"]["es"], doc["contenido"])
+    assert doc["traducciones"]["en"] == {"error": "vino cortada"}

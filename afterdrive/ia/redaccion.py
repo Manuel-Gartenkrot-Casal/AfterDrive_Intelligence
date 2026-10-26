@@ -5,6 +5,7 @@ Interfaz:
     system_prompt(persona, region=None, compacto=False, extension=None, directiva="") -> str
     voz(regiones) -> Voz
     voz_de_idioma(cod) -> Voz          es, pt o en (los blogs de HubSpot)
+    idioma_principal() -> "pt"         en el que se escriben las notas (IDIOMA_PRINCIPAL)
     extension(largo) -> str          "corto" | "medio" | "largo" -> rango de palabras
     alephee_url() -> str
     PERSONAS
@@ -69,6 +70,16 @@ _VOZ_DE_BLOG = {"es": "argentina", "pt": "brasil", "en": "asia"}
 def voz_de_idioma(cod: str) -> Voz:
     """Voz de una traducción al idioma de un blog (es, pt, en)."""
     return _VOCES[_VOZ_DE_BLOG[cod]]
+
+
+def idioma_principal() -> str:
+    """Idioma en el que se escriben todas las notas (es, pt o en): portugués salvo IDIOMA_PRINCIPAL.
+
+    Las regiones ya no cambian el idioma: eligen el mercado del que habla la
+    nota. Las otras versiones se traducen apenas se crea (traducciones.py).
+    """
+    cod = os.getenv("IDIOMA_PRINCIPAL", "pt").strip().lower()
+    return cod if cod in _VOZ_DE_BLOG else "pt"
 
 
 def alephee_url() -> str:
@@ -298,10 +309,11 @@ def system_prompt(
     extension: str | None = None,
     puntapie_url: str | None = None,
     directiva: str = "",
+    idioma: str | None = None,
 ) -> str:
-    """System prompt de redacción para una persona y una región."""
+    """System prompt de redacción para una persona. `idioma` (es, pt, en) fija la voz; si no, sale de la región."""
     p = PERSONAS.get(persona) or PERSONAS["analitico"]
-    v = voz(region)
+    v = voz_de_idioma(idioma) if idioma else voz(region)
     extension = extension or _EXTENSION_DEFAULT
 
     if compacto:

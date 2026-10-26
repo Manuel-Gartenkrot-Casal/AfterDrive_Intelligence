@@ -1295,7 +1295,7 @@ html { overflow-x: clip; scrollbar-gutter: stable; }
   font: inherit; font-size: 0.78rem; color: var(--text-mid);
   background: var(--bg); box-shadow: var(--raised-xs);
 }
-.chip[aria-pressed="true"] { background: var(--well); color: var(--text-hi); font-weight: 600; box-shadow: none; }
+.chip[aria-pressed="true"], .chip[aria-selected="true"] { background: var(--well); color: var(--text-hi); font-weight: 600; box-shadow: none; }
 .hist-item {
   display: flex; gap: var(--s3); align-items: flex-start;
   width: 100%; text-align: left; cursor: pointer;
@@ -2309,3 +2309,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .f2-pasos { gap: 4px; }
   .f2-pasos li { flex: 1 1 42%; font-size: .75rem; }
 }
+
+/* Pestañas de idioma de la nota (historial). */
+.idiomas-cab { max-width: 75ch; margin: 0 auto var(--s4); }
+.idiomas-cab p { margin: var(--s3) 0 0; max-width: none; }
+.idiomas-nota { display: flex; flex-wrap: wrap; gap: 6px; }
+.idiomas-nota .chip .marca { margin: 0 0 0 4px; }

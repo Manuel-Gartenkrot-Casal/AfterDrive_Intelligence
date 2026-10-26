@@ -319,11 +319,52 @@ def test_las_que_no_se_descargan_no_van_a_la_ia(ia_fotos):
     assert "403" in e.veredictos["https://n.com/1.jpg"]["motivo"]
 
 
-def test_sin_api_paga_no_se_llama_a_la_ia(monkeypatch):
+def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(monkeypatch):
     from afterdrive.generacion import imagen_destacada
     from afterdrive.ia import llm
     monkeypatch.setattr(llm, "ve_imagenes", lambda: False)
-    monkeypatch.setattr(llm, "completar", lambda *a, **k: pytest.fail("no debería llamar a la IA"))
-    e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.metodo == "primera" and e.imagen["url"] == "https://n.com/1.jpg"
+    pedidos = []
+
+    def completar(system, user, **kw):
+        pedidos.append({"system": system, "user": user, **kw})
+        return ('{"fotos": [{"n": 1, "apta": false, "motivo": "Es de otra noticia: elecciones."},'
+                ' {"n": 2, "apta": true, "motivo": "Pastillas de freno."}], "elegidas": [2]}')
+    monkeypatch.setattr(llm, "completar", completar)
+    e = imagen_destacada.elegir(_con_fotos(2), "Pastillas de freno: suben las ventas")
+    assert e.metodo == "ia-texto" and [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg"]
+    assert "imagenes" not in pedidos[0] and "SIN verlas" in pedidos[0]["system"] and "2.jpg" in pedidos[0]["user"]
     assert imagen_destacada.elegir([], "T").metodo == "ninguna"
+
+
+def test_elige_hasta_tres_en_orden_sin_repetir(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    fotos = ", ".join(f'{{"n": {i}, "apta": true, "motivo": "ok"}}' for i in range(1, 6))
+    responder('{"fotos": [' + fotos + '], "elegidas": [4, 2, 2, 5, 1]}')
+    e = imagen_destacada.elegir(_con_fotos(5), "T")
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/4.jpg", "https://n.com/2.jpg", "https://n.com/5.jpg"]
+    assert e.imagen["url"] == "https://n.com/4.jpg"
+
+
+def test_las_imagenes_del_cuerpo_se_reparten_entre_las_secciones():
+    html = "<p>intro</p>" + "".join(f"<h3>S{i}</h3><p>t{i}</p>" for i in range(1, 7))
+    imgs = [{"url": "https://h/a.jpg", "alt": "A"}, {"url": "https://h/b.jpg", "alt": 'B "x"'}]
+    r = hubspot.con_imagenes(html, imgs)
+    assert r.index("a.jpg") < r.index("<h3>S3</h3>") and r.index("<h3>S2</h3>") < r.index("a.jpg")
+    assert r.index("<h3>S4</h3>") < r.index("b.jpg") < r.index("<h3>S5</h3>")
+    assert 'alt="B &quot;x&quot;"' in r and r.index("<h3>S1</h3>") < r.index("a.jpg")
+    corto = hubspot.con_imagenes("<p>uno</p><p>dos</p>", imgs[:1])
+    assert corto.startswith("<p>uno</p><p><img")
+    assert hubspot.con_imagenes(html, []) == html
+
+
+def test_al_enviar_se_copian_las_tres_y_van_en_el_cuerpo(base, nota, monkeypatch, hubspot_falso):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagenes_cuerpo": [
+        {"url": "https://n.com/2.jpg", "alt": "dos"}, {"url": "https://n.com/3.jpg", "alt": "tres"}]}})
+    subidas = []
+    monkeypatch.setattr(imagen_web, "descargar", lambda url, max_bytes=None: (JPG, "image/jpeg"))
+    monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, nombre: subidas.append(nombre) or f"https://hs/{nombre}")
+    historial.enviar_a_hubspot("notas_fase2", nota, False, base=base)
+    assert len(subidas) == 3
+    doc = base.notas_fase2.find_one()
+    assert [im["hubspot_url"] for im in doc["imagenes_cuerpo"]] == [f"https://hs/{n}" for n in subidas[1:]]

@@ -1,108 +1,152 @@
 """
-imagen_destacada.py — Qué foto de las noticias va como imagen destacada de una Nota.
+imagen_destacada.py — Qué fotos de las noticias van en una Nota: la destacada y dos para el cuerpo.
 
 Interfaz:
-    elegir(noticias, titulo, angulo="") -> Eleccion
+    elegir(noticias, titulo, angulo="", cantidad=CANTIDAD) -> Eleccion
 
 Las candidatas son las fotos de las noticias de la nota (las que la respaldan
-primero). Con la API paga en uso (llm.ve_imagenes) el modelo de clasificación
-las mira: descarta logos, banners, gráficos con texto o fotos que no tienen
-que ver con el tema, y elige la que mejor acompaña a la nota. Si las descarta
-todas, la nota queda sin imagen y el motivo se muestra al revisarla.
+primero), hasta MAX_FOTOS, sin repetir. La IA las juzga contra el TEMA de la
+nota (no alcanza con que sean del sector) y devuelve las aptas en orden: la
+primera va como destacada y las siguientes dentro del texto (hubspot.py las
+reparte entre las secciones).
 
-Sin API paga, o si la IA falla, va la primera foto, como antes: la IA mejora
-la elección pero nunca la frena.
+- Con la API paga (llm.ve_imagenes) el modelo de clasificación mira las fotos.
+- Sin ella, el mismo modelo juzga sin verlas: por la noticia de la que salen,
+  su texto alternativo y el nombre del archivo. Descarta las que claramente no
+  tienen que ver (antes iba la primera foto a ciegas, aunque fuera de otra cosa).
+
+Si la IA falla, van las primeras en orden: la IA mejora la elección pero nunca
+la frena. Si las descarta todas, la nota queda sin imágenes y el motivo se
+muestra al revisarla.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
-MAX_FOTOS = 4
+CANTIDAD = 3        # destacada + 2 en el cuerpo
+MAX_FOTOS = 8
+MAX_BUSQUEDAS = 5   # páginas de noticias viejas que se descargan para buscarles la foto
 # Bedrock rechaza imágenes de más de 3,75 MB en Converse.
 MAX_BYTES_IA = 3_750_000
 
-_SYSTEM = """\
-Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en Latinoamérica). \
-Elegís la imagen destacada de una nota entre las fotos de las noticias que usa.
-
-Una foto es apta si:
+_CRITERIOS = """\
+Una foto es apta solo si cumple todo:
 - Es una fotografía real: no un logo, un ícono, un banner publicitario, una captura de pantalla ni un gráfico \
 o infografía con mucho texto.
-- Tiene que ver con el tema de la nota o con el sector: repuestos, talleres, vehículos, depósitos, logística, \
-fábricas, ferias o personas trabajando en ellos.
+- Muestra algo del TEMA concreto de la nota (el producto, la actividad, el lugar o el tipo de empresa del que \
+habla el título). Una foto genérica del sector que no se relaciona con el tema NO es apta: es preferible \
+dejar la nota con menos imágenes que poner una que no tiene que ver.
 - Se ve nítida y no tiene marcas de agua grandes ni texto sobreimpreso que la tape.
 
-De las aptas, elegí la que mejor acompaña el título de la nota. Si ninguna es apta, "elegida" es null.
+Ordená las aptas de la que mejor acompaña al título a la que menos ("elegidas", como mucho {cantidad}). \
+Si ninguna es apta, "elegidas" es [].
 
 Respondé solo con este JSON, una entrada por foto en el orden recibido:
-{"fotos": [{"n": 1, "apta": true, "motivo": "una oración en español"}], "elegida": 1}"""
+{{"fotos": [{{"n": 1, "apta": true, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
+
+_SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
+                  "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa.\n\n" + _CRITERIOS)
+
+_SYSTEM_TEXTO = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
+                 "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa, SIN verlas: "
+                 "solo tenés el título de la noticia de la que sale cada foto, su texto alternativo y el nombre "
+                 "del archivo. Juzgá qué muestra probablemente cada una. Ante la duda sobre si se relaciona con "
+                 "el tema, no es apta. Un nombre de archivo o texto que sugiere logo, banner, autor o publicidad, "
+                 "no es apta.\n\n" + _CRITERIOS)
 
 
 @dataclass
 class Eleccion:
-    imagen: dict | None                 # campo `imagen` de la nota, o None
-    metodo: str                         # "ia", "primera" o "ninguna"
+    imagenes: list[dict]                # campo `imagen` de cada una, en orden (la primera es la destacada)
+    metodo: str                         # "ia", "ia-texto", "primera" o "ninguna"
     veredictos: dict = field(default_factory=dict)   # url -> {"apta": bool, "motivo": str}
     motivo: str = ""                    # por qué no hay imagen o por qué no decidió la IA
 
+    @property
+    def imagen(self) -> dict | None:
+        return self.imagenes[0] if self.imagenes else None
+
     def como_dict(self) -> dict:
-        return {"metodo": self.metodo, "motivo": self.motivo}
+        return {"metodo": self.metodo, "motivo": self.motivo, "cantidad": len(self.imagenes)}
 
 
-def elegir(noticias: list, titulo: str, angulo: str = "") -> Eleccion:
-    """Elige la foto. Nunca lanza, salvo una cancelación desde el dashboard."""
+def _archivo(url: str) -> str:
+    return os.path.basename(urlparse(url).path)[:80]
+
+
+def _unicas(noticias: list) -> list:
+    vistas, resultado = set(), []
+    for n in noticias:
+        url = n.imagen["url"]
+        if url not in vistas:
+            vistas.add(url)
+            resultado.append(n)
+    return resultado
+
+
+def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD) -> Eleccion:
+    """Elige hasta `cantidad` fotos. Nunca lanza, salvo una cancelación desde el dashboard."""
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
-    candidatas = contexto_noticias.con_foto(noticias, limite=MAX_FOTOS)
+    candidatas = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
     if not candidatas:
-        return Eleccion(None, "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
-    primera = Eleccion(contexto_noticias.imagen_de(candidatas[0]), "primera")
-    if not llm.ve_imagenes():
-        return primera
+        return Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
+    primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
 
-    from afterdrive import imagen_web
+    veredictos, enviadas, imagenes = {}, candidatas, None
+    if llm.ve_imagenes():
+        from afterdrive import imagen_web
+        enviadas, imagenes = [], []
+        for n in candidatas:
+            try:
+                imagenes.append(imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA))
+                enviadas.append(n)
+            except imagen_web.ErrorDescarga as e:
+                veredictos[n.imagen["url"]] = {"apta": False, "motivo": f"No se pudo descargar: {e}."}
+        if not enviadas:
+            primeras.motivo = "No se pudo descargar ninguna foto para que la IA las mire."
+            primeras.veredictos = veredictos
+            return primeras
 
-    veredictos, enviadas, imagenes = {}, [], []
-    for n in candidatas:
-        try:
-            imagenes.append(imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA))
-            enviadas.append(n)
-        except imagen_web.ErrorDescarga as e:
-            veredictos[n.imagen["url"]] = {"apta": False, "motivo": f"No se pudo descargar: {e}."}
-    if not enviadas:
-        primera.motivo = "No se pudo descargar ninguna foto para que la IA las mire."
-        primera.veredictos = veredictos
-        return primera
-
-    print(f"  Eligiendo la imagen destacada con IA entre {len(enviadas)} foto(s)...", flush=True)
-    lista = "\n".join(f"{i}. Foto de la noticia \"{n.titulo}\"" for i, n in enumerate(enviadas, 1))
+    con_vista = imagenes is not None
+    print(f"  Eligiendo las imágenes con IA entre {len(enviadas)} foto(s)"
+          f"{'' if con_vista else ' (sin verlas: por su noticia y su texto)'}...", flush=True)
+    if con_vista:
+        lista = "\n".join(f"{i}. Foto de la noticia \"{n.titulo}\"" for i, n in enumerate(enviadas, 1))
+    else:
+        lista = "\n".join(f"{i}. Noticia: \"{n.titulo}\" | texto alternativo: \"{n.imagen.get('alt', '')}\" | "
+                          f"archivo: {_archivo(n.imagen['url'])}" for i, n in enumerate(enviadas, 1))
     pedido = f"Título de la nota: {titulo}\n" + (f"Ángulo: {angulo}\n" if angulo else "") + f"\nFotos:\n{lista}"
     try:
-        crudo = llm.completar(_SYSTEM, pedido, temperature=0, max_tokens=1500, tarea="clasificacion",
-                              imagenes=imagenes)
+        crudo = llm.completar((_SYSTEM_VISION if con_vista else _SYSTEM_TEXTO).format(cantidad=cantidad), pedido,
+                              temperature=0, max_tokens=1500, tarea="clasificacion",
+                              **({"imagenes": imagenes} if con_vista else {}))
         respuesta = _leer(crudo, len(enviadas))
     except llm.Cancelada:
         raise
     except Exception as e:
-        print(f"  [AVISO] La IA no pudo mirar las fotos ({e}): va la primera.", flush=True)
-        primera.motivo = f"La IA no pudo mirar las fotos: {e}"
-        primera.veredictos = veredictos
-        return primera
+        print(f"  [AVISO] La IA no pudo juzgar las fotos ({e}): van las primeras.", flush=True)
+        primeras.motivo = f"La IA no pudo juzgar las fotos: {e}"
+        primeras.veredictos = veredictos
+        return primeras
 
     for i, n in enumerate(enviadas, 1):
         veredictos[n.imagen["url"]] = respuesta["fotos"].get(i, {"apta": False, "motivo": "La IA no la evaluó."})
-    elegida = respuesta["elegida"]
-    if elegida is None:
+    metodo = "ia" if con_vista else "ia-texto"
+    elegidas = respuesta["elegidas"][:cantidad]
+    if not elegidas:
         motivos = "; ".join(v["motivo"] for v in veredictos.values() if v.get("motivo"))
         print("  [AVISO] La IA descartó todas las fotos: la nota queda sin imagen.", flush=True)
-        return Eleccion(None, "ia", veredictos, motivo=f"La IA descartó todas las fotos. {motivos}".strip())
-    return Eleccion(contexto_noticias.imagen_de(enviadas[elegida - 1]), "ia", veredictos)
+        return Eleccion([], metodo, veredictos, motivo=f"La IA descartó todas las fotos. {motivos}".strip())
+    return Eleccion([contexto_noticias.imagen_de(enviadas[i - 1]) for i in elegidas], metodo, veredictos)
 
 
 def _leer(crudo: str, total: int) -> dict:
-    """{"fotos": {n: {"apta", "motivo"}}, "elegida": n | None}. ValueError si no hay JSON útil."""
+    """{"fotos": {n: {"apta", "motivo"}}, "elegidas": [n, ...]}. ValueError si no hay JSON útil."""
     from afterdrive.ia.lm_studio import _extraer_json
 
     data = _extraer_json(crudo)
@@ -112,9 +156,12 @@ def _leer(crudo: str, total: int) -> dict:
     for f in data["fotos"]:
         if isinstance(f, dict) and isinstance(f.get("n"), int | float) and 1 <= int(f["n"]) <= total:
             fotos[int(f["n"])] = {"apta": f.get("apta") is True, "motivo": " ".join(str(f.get("motivo") or "").split())[:200]}
-    elegida = data.get("elegida")
-    elegida = int(elegida) if isinstance(elegida, int | float) and 1 <= int(elegida) <= total else None
-    # Una elegida que la misma respuesta marcó como no apta no se usa.
-    if elegida is not None and fotos.get(elegida, {}).get("apta") is False:
-        elegida = None
-    return {"fotos": fotos, "elegida": elegida}
+    crudas = data.get("elegidas")
+    if crudas is None:   # formato anterior: una sola
+        crudas = [data.get("elegida")] if data.get("elegida") is not None else []
+    elegidas = []
+    for e in crudas if isinstance(crudas, list) else []:
+        if isinstance(e, int | float) and 1 <= int(e) <= total and int(e) not in elegidas \
+                and fotos.get(int(e), {}).get("apta") is not False:   # una marcada como no apta no se usa
+            elegidas.append(int(e))
+    return {"fotos": fotos, "elegidas": elegidas}
