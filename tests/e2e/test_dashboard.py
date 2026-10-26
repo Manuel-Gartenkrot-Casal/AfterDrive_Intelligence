@@ -262,44 +262,53 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")
 
 
-def test_calificacion_de_la_ia_arriba_de_la_humana(pagina):
+def test_calificacion_de_la_ia_en_su_apartado(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
-    lateral.get_by_text("Calificar esta nota", exact=True).click()
+    # A la vista sin abrir "Calificar esta nota", y sin botón para pedirla.
     critica = lateral.locator(".critica-ia")
     expect(critica).to_contain_text("Calificación de la IA")
     expect(critica.locator(".critica-puntaje")).to_have_text("6/10")
     expect(critica).to_contain_text("mezcla voseo y tuteo")
     expect(critica.locator(".critica-aspectos li")).to_have_count(4)
+    expect(critica.locator(".btn")).to_have_count(0)
     # Los primeros errores a la vista; el resto, con un clic.
     expect(critica.locator(".critica-errores li:visible")).to_have_count(3)
     expect(critica.locator(".critica-errores li").first).to_contain_text("Descubrí cómo ordenar el stock")
     critica.get_by_role("button", name="Ver 1 más").click()
     expect(critica.locator(".critica-errores li:visible")).to_have_count(4)
-    # La calificación de las personas sigue debajo, igual que antes.
+    # La calificación de las personas sigue en su lugar, debajo.
+    lateral.get_by_text("Calificar esta nota", exact=True).click()
     calificar = lateral.locator(".calificar")
     expect(calificar.get_by_role("button", name="Guardar calificación")).to_be_visible()
+    expect(calificar.locator(".critica-ia")).to_have_count(0)
     assert critica.bounding_box()["y"] < calificar.bounding_box()["y"]
     pagina.keyboard.press("Escape")
 
-    # Una nota sin revisión la pide con el botón.
+    # Una nota sin revisión la pide sola al abrirse, una vez.
     pedidos = []
 
     def responder(ruta):
         pedidos.append(ruta.request.post_data_json)
+        pagina.wait_for_timeout(300)
         ruta.fulfill(json={"success": True, "critica": {
             "puntaje": 9, "resumen": "Bien escrita.", "aspectos": {"gramatica": 9}, "errores": [],
             "fecha": "2026-10-20T10:00:00+00:00"}})
     pagina.route("**/api/historial/critica", responder)
     _abrir_nota(pagina, "Frenos")
-    lateral.get_by_text("Calificar esta nota", exact=True).click()
     critica = lateral.locator(".critica-ia")
-    expect(critica).to_contain_text("todavía no tiene la revisión de la IA")
-    critica.get_by_role("button", name="Revisar con IA").click()
     expect(critica.locator(".critica-puntaje")).to_have_text("9/10")
     expect(critica).to_contain_text("No encontró errores de redacción.")
-    expect(critica.get_by_role("button", name="Revisar de nuevo")).to_be_visible()
-    assert pedidos[0]["coleccion"] == "notas_fase2" and pedidos[0]["id"]
+    assert len(pedidos) == 1 and pedidos[0]["coleccion"] == "notas_fase2" and pedidos[0]["id"]
+
+
+def test_si_la_ia_no_puede_revisar_lo_dice_en_el_apartado(pagina):
+    pagina.route("**/api/historial/critica", lambda r: r.fulfill(
+        status=503, json={"success": False, "error": "Proveedor de IA no disponible para criticar la nota."}))
+    _abrir_nota(pagina, "Frenos")
+    critica = pagina.locator(".modal-sidebar .critica-ia")
+    expect(critica).to_contain_text("No se pudo revisar la redacción: Proveedor de IA no disponible")
+    expect(critica).to_contain_text("Se vuelve a intentar la próxima vez que abras la nota.")
 
 
 def test_tablero_de_desarrollador(pagina):

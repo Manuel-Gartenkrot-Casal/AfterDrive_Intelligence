@@ -721,14 +721,12 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
-["Esta nota todavía no tiene la revisión de la IA: gramática, ortografía, tono y estructura.", "Este post ainda não tem a revisão da IA: gramática, ortografia, tom e estrutura.", "This article doesn't have the AI review yet: grammar, spelling, tone and structure."],
 ["Gramática", "Gramática", "Grammar"],
 ["Ortografía", "Ortografia", "Spelling"],
 ["Estructura", "Estrutura", "Structure"],
 ["No encontró errores de redacción.", "Não encontrou erros de redação.", "No writing errors found."],
-["La nota se editó después de esta revisión.", "O post foi editado depois desta revisão.", "The article was edited after this review."],
-["Revisar de nuevo", "Revisar de novo", "Review again"],
-["Revisar con IA", "Revisar com IA", "Review with AI"],
+["La IA está revisando la redacción…", "A IA está revisando a redação…", "The AI is reviewing the writing…"],
+["Se vuelve a intentar la próxima vez que abras la nota.", "Será tentado de novo na próxima vez que você abrir o post.", "It will try again the next time you open the article."],
 );
 
 var TEXTOS = { pt: {}, en: {} };
@@ -757,6 +755,7 @@ var PATRONES = {
     [/^En qué se equivocó \((\d+)\)$/, 'Onde errou ($1)'],
     [/^Ver (\d+) más$/, 'Ver mais $1'],
     [/^Revisada el (.+)$/, 'Revisado em $1'],
+    [/^No se pudo revisar la redacción: (.+)$/, 'Não foi possível revisar a redação: $1'],
     [/^Cita (\d+) nota\(s\) de AfterDrive by Alephee:$/, 'Cita $1 post(s) do AfterDrive by Alephee:'],
     [/^Las versiones en (.+) se traducen y suben como borrador en segundo plano\. Seguilas en Actividad\.$/, function(m, x) { return 'As versões em ' + x.replace('español', 'espanhol').replace('portugués', 'português').replace('inglés', 'inglês').replace(' y ', ' e ') + ' são traduzidas e enviadas como rascunho em segundo plano. Acompanhe em Atividade.'; }],
     [/^Blog de pruebas \((\d+)\)$/, 'Blog de testes ($1)'],
@@ -833,6 +832,7 @@ var PATRONES = {
     [/^En qué se equivocó \((\d+)\)$/, 'What it got wrong ($1)'],
     [/^Ver (\d+) más$/, 'Show $1 more'],
     [/^Revisada el (.+)$/, 'Reviewed on $1'],
+    [/^No se pudo revisar la redacción: (.+)$/, 'Could not review the writing: $1'],
     [/^Cita (\d+) nota\(s\) de AfterDrive by Alephee:$/, 'Cites $1 AfterDrive by Alephee post(s):'],
     [/^Las versiones en (.+) se traducen y suben como borrador en segundo plano\. Seguilas en Actividad\.$/, function(m, x) { return 'The ' + x.replace('español', 'Spanish').replace('portugués', 'Portuguese').replace('inglés', 'English').replace(' y ', ' and ') + ' versions are translated and uploaded as drafts in the background. Follow them in Activity.'; }],
     [/^Blog de pruebas \((\d+)\)$/, 'Test blog ($1)'],

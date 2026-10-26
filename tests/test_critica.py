@@ -62,6 +62,22 @@ def test_critica_rota_queda_con_error(monkeypatch, texto):
     assert "error" in critica.criticar(NOTA)
 
 
+def test_respuesta_cortada_se_queda_con_lo_completo(monkeypatch):
+    # El modelo se quedó sin tokens a mitad del segundo error.
+    completa = json.dumps(RESPUESTA, ensure_ascii=False)
+    cortada = completa[:completa.index("Descubre cómo") + 5]
+    _responde(monkeypatch, "<think>pienso</think>" + cortada)
+    c = critica.criticar(NOTA)
+    assert c["puntaje"] == 10 and [e["tipo"] for e in c["errores"]] == ["ortografia"]
+
+
+def test_reintenta_una_vez_si_la_respuesta_viene_rota(monkeypatch):
+    respuestas = iter(["no es json", json.dumps(RESPUESTA)])
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    monkeypatch.setattr(llm, "completar", lambda *a, **k: next(respuestas))
+    assert critica.criticar(NOTA)["puntaje"] == 10
+
+
 def test_sin_proveedor_no_critica(monkeypatch):
     monkeypatch.setattr(llm, "disponible", lambda: False)
     assert "error" in critica.criticar(NOTA)
