@@ -42,7 +42,11 @@ function cerrar() {
 }
 document.addEventListener('keydown', function(ev) {
   if (!$('modal-art').classList.contains('open') || $('confirmar').open) return;
-  if (ev.key === 'Escape') { ev.preventDefault(); cerrar(); }
+  if (ev.key === 'Escape') {
+    ev.preventDefault();
+    if ($('nota-menu') && !$('nota-menu').hidden) { alternarMenuNota(false); $('nota-mas').focus(); }
+    else cerrar();
+  }
   if (ev.key !== 'Tab') return;
   var controles = Array.from($('modal-art').querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]'))
     .filter(function(el) { return !el.disabled && el.getClientRects().length; });
@@ -50,6 +54,11 @@ document.addEventListener('keydown', function(ev) {
   if (ev.shiftKey && document.activeElement === primero) { ev.preventDefault(); ultimo.focus(); }
   else if (!ev.shiftKey && document.activeElement === ultimo) { ev.preventDefault(); primero.focus(); }
 });
+
+function tituloDeNota(md) {
+  var m = String(md || '').match(/^#\s+(.+)$/m);
+  return m ? m[1].trim() : '';
+}
 
 function copiar() {
   navigator.clipboard.writeText(($('nota-texto') || $('art-body')).textContent);
@@ -533,97 +542,49 @@ async function fase2MostrarUltima(id) {
       showToast('No hay notas generadas aún', 'warn');
       return;
     }
-    var modal = $('modal-art');
     var check = $('check-list');
-    var comm = $('eval-comms');
-    $('modal-titulo').textContent = id ? 'Nota' : 'Última nota';
-    $('modal-meta').textContent = d.nota.generado_en ? 'Generada el ' + new Date(d.nota.generado_en).toLocaleString(localeUI(), {
-      day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-    }) : '';
+    var nota = d.nota;
+    $('modal-titulo').textContent = tituloDeNota(nota.contenido) || (id ? 'Nota' : 'Última nota');
+    // Cada dato en su span: así se traduce cada uno (p. ej. "Generada el …").
+    $('modal-meta').innerHTML = [
+      nota.generado_en ? 'Generada el ' + new Date(nota.generado_en).toLocaleString(localeUI(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '',
+      nota.persona ? nota.persona.charAt(0).toUpperCase() + nota.persona.slice(1) : '',
+      nota.idioma && NOMBRE_IDIOMA[nota.idioma] ? NOMBRE_IDIOMA[nota.idioma] : ''
+    ].filter(Boolean).map(function(x) { return '<span>' + escHtml(x) + '</span>'; }).join(' · ');
     abrirModal();
-    check.innerHTML = '';
-    comm.textContent = '';
-    _notaActual = { coleccion: 'notas_fase2', id: d.nota._id, estado: d.nota.estado || 'borrador',
-                    contenido: d.nota.contenido, hubspot: d.nota.hubspot || null,
-                    idioma: d.nota.idioma || null, vista: d.nota.idioma || null, traducciones: d.nota.traducciones || {} };
+    _notaActual = { coleccion: 'notas_fase2', id: nota._id, estado: nota.estado || 'borrador',
+                    contenido: nota.contenido, hubspot: nota.hubspot || null,
+                    idioma: nota.idioma || null, vista: nota.idioma || null, traducciones: nota.traducciones || {} };
     pintarCuerpoNota();   // pestañas por idioma; el contenido no se traduce con la UI
-    pintarAccionesNota();
-    pintarRevisionNota(d.nota, check);
+    verPanelModal('nota');
+    armarRecorrido(nota, check);   // Revisar → Calificar → Publicar (recorrido.js)
 
-    var cal = d.nota.calidad;
-    if (cal && cal.puntaje !== null && cal.puntaje !== undefined) {
-      var res = document.createElement('div');
-      res.className = 'calidad-resumen' + (cal.fallas_criticas && cal.fallas_criticas.length ? ' con-fallas' : '');
-      res.innerHTML = '<strong>' + cal.puntaje + '/9</strong> lineamientos cumplidos'
-        + (cal.reescrita_por && cal.reescrita_por.length
-            ? '<span>' + (cal.segundo_intento === 'correccion' ? 'Se corrigió' : 'Se reescribió') + ' porque falló en: '
-              + escHtml(cal.reescrita_por.join(', ').replace(/_/g, ' ')) + '.</span>' : '')
-        + (cal.fallas_criticas && cal.fallas_criticas.length
-            ? '<span>Revisala antes de publicar: sigue fallando en ' + escHtml(cal.fallas_criticas.join(', ').replace(/_/g, ' ')) + '.</span>' : '');
-      check.appendChild(res);
-    }
-    pintarDestinoHubspot(d.nota, check);
-    pintarCriticaIA(d.nota, check);   // apartado propio, siempre a la vista
-    var lugarCalificacion = document.createElement('details');
-    lugarCalificacion.className = 'revision-criterios';
-    lugarCalificacion.innerHTML = '<summary>Calificar esta nota</summary>';
-    check.appendChild(lugarCalificacion);
-    pintarCalificacion(d.nota, lugarCalificacion);
-
-    if (d.nota.categorias && d.nota.categorias.length) {
-      var info = document.createElement('div');
-      info.style.cssText = 'margin-bottom:12px;font-size:0.8rem;color:var(--text-lo)';
-      info.textContent = 'Categorías: ' + d.nota.categorias.join(', ');
-      if (d.nota.puntapie_url) info.textContent += ' | Puntapié: ' + d.nota.puntapie_url;
-      check.appendChild(info);
-    }
-
-    if (d.nota.fuentes && d.nota.fuentes.length) {
-      var fu = document.createElement('details');
-      fu.open = true;
-      fu.className = 'fuentes-nota';
-      fu.innerHTML = '<summary class="fuentes-nota-titulo">Noticias usadas</summary>' + d.nota.fuentes.map(function(f) {
-        return '<a href="' + urlSegura(f.url) + '" target="_blank" rel="noopener">' + escHtml(f.titulo) + '</a>';
-      }).join('');
-      check.appendChild(fu);
-    }
-
-    var evaluando = document.createElement('div');
-    evaluando.className = 'evaluando';
-    evaluando.textContent = 'Evaluando la nota...';
+    // Criterios del evaluador, dentro de "Cómo se generó".
+    var lugar = $('recorrido-evaluacion');
     var evD = { success: false };
-    if (d.nota.evaluacion) {
-      evD = { success: true, evaluation: d.nota.evaluacion };   // guardada al generar
+    if (nota.evaluacion) {
+      evD = { success: true, evaluation: nota.evaluacion };   // guardada al generar
     } else try {
-      check.appendChild(evaluando);
+      lugar.innerHTML = '<div class="evaluando">Evaluando la nota...</div>';
       var evR = await fetch('/api/evaluate-article', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ articulo: d.nota.contenido })
+        body: JSON.stringify({ articulo: nota.contenido })
       });
       evD = await evR.json();
     } catch(e) {}
-    evaluando.remove();
+    if (!lugar.isConnected) return;
+    lugar.innerHTML = '';
     if (!evD.success) {
-      var nd = document.createElement('div');
-      nd.className = 'evaluando-no';
-      nd.style.cssText = 'font-size:0.8rem;color:var(--text-lo)';
-      nd.textContent = 'La evaluación no está disponible ahora.';
-      check.appendChild(nd);
+      lugar.appendChild(bloqueRevision('Criterios automáticos', '<p class="revision-sub">La evaluación no está disponible ahora.</p>'));
+      return;
     }
-    if (evD.success) {
-      var criterios = document.createElement('details');
-      criterios.className = 'revision-criterios';
-      criterios.innerHTML = '<summary>Ver criterios automáticos</summary>';
-      check.appendChild(criterios);
-      Object.entries(evD.evaluation.lineamientos || evD.evaluation).forEach(function(entry) {
-        var k = entry[0], v = entry[1];
-        var item = document.createElement('div');
-        item.className = 'check-item ' + (v ? 'ok' : 'fail');
-        item.innerHTML = '<div class="check-dot"></div> ' + escHtml(k === 'sin_alucinaciones' ? 'Sin indicios de invención detectados' : k.replace(/_/g, ' '));
-        criterios.appendChild(item);
-      });
-      if (evD.evaluation.comentarios) comm.textContent = evD.evaluation.comentarios;
-    }
+    var criterios = Object.entries(evD.evaluation.lineamientos || evD.evaluation).filter(function(e) { return typeof e[1] === 'boolean'; });
+    lugar.appendChild(bloqueRevision('Criterios automáticos', '<div class="criterios">' + criterios.map(function(entry) {
+      var k = entry[0], v = entry[1];
+      return '<div class="check-item ' + (v ? 'ok' : 'fail') + '"><div class="check-dot"></div> '
+        + escHtml(k === 'sin_alucinaciones' ? 'Sin indicios de invención detectados' : k.replace(/_/g, ' ')) + '</div>';
+    }).join('') + '</div>'
+      + (evD.evaluation.comentarios ? '<p class="eval-comments">' + escHtml(evD.evaluation.comentarios) + '</p>' : '')));
   } catch(e) { showToast('Error al cargar nota', 'error'); }
 }

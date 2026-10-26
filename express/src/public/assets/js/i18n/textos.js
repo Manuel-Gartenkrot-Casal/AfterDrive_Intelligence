@@ -721,6 +721,58 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
+["Revisar", "Revisar", "Review"],
+["Calificar", "Avaliar", "Rate"],
+["Todo bien", "Tudo certo", "All good"],
+["1 aviso", "1 aviso", "1 warning"],
+["Calificada", "Avaliado", "Rated"],
+["Sin calificar", "Sem avaliação", "Not rated"],
+["¿Está lista para publicar?", "Está pronto para publicar?", "Is it ready to publish?"],
+["La IA la revisó al generarla. Primero aparece lo que necesita tu atención.", "A IA o revisou ao gerá-lo. Primeiro aparece o que precisa da sua atenção.", "The AI reviewed it when generating it. What needs your attention comes first."],
+["Necesita atención", "Precisa de atenção", "Needs attention"],
+["Cómo se generó", "Como foi gerado", "How it was generated"],
+["No hay nada que corregir: podés seguir a calificarla.", "Não há nada para corrigir: você pode seguir para avaliá-lo.", "Nothing to fix: you can move on to rating it."],
+["Plan, noticias y costo", "Plano, notícias e custo", "Plan, news and cost"],
+["Datos", "Dados", "Facts"],
+["Datos sin respaldo", "Dados sem respaldo", "Unsupported facts"],
+["Lineamientos", "Diretrizes", "Guidelines"],
+["Falta la imagen destacada", "Falta a imagem de destaque", "Featured image missing"],
+["Tiene imagen destacada.", "Tem imagem de destaque.", "Has a featured image."],
+["Ninguna noticia de la nota tenía foto.", "Nenhuma notícia do post tinha foto.", "None of the article's news had a photo."],
+["La IA descartó las fotos de las noticias.", "A IA descartou as fotos das notícias.", "The AI discarded the news photos."],
+["Repetida", "Repetido", "Duplicate"],
+["Estilo: 1 aviso", "Estilo: 1 aviso", "Style: 1 warning"],
+["Con imagen", "Com imagem", "Has image"],
+["Sin imagen", "Sem imagem", "No image"],
+["Idiomas con error", "Idiomas com erro", "Languages with errors"],
+["Ver detalle", "Ver detalhe", "Show details"],
+["Ocultar detalle", "Ocultar detalhe", "Hide details"],
+["Elegir imagen", "Escolher imagem", "Choose image"],
+["Ver", "Ver", "View"],
+["Cambiar imagen", "Trocar imagem", "Change image"],
+["¿Qué tan buena es?", "Quão bom ele é?", "How good is it?"],
+["La IA ya la calificó. Tu calificación es la que enseña a la generación qué funciona.", "A IA já o avaliou. A sua avaliação é a que ensina à geração o que funciona.", "The AI already rated it. Your rating is what teaches generation what works."],
+["¿Cómo sale publicada?", "Como ele será publicado?", "How will it be published?"],
+["Revisá lo que va a HubSpot: la imagen, quién firma y los otros idiomas.", "Revise o que vai para o HubSpot: a imagem, quem assina e os outros idiomas.", "Check what goes to HubSpot: the image, the author and the other languages."],
+["Plan de la nota", "Plano do post", "Article plan"],
+["Categorías", "Categorias", "Categories"],
+["Criterios automáticos", "Critérios automáticos", "Automatic criteria"],
+["Más ▾", "Mais ▾", "More ▾"],
+["Más acciones", "Mais ações", "More actions"],
+["Copiar texto", "Copiar texto", "Copy text"],
+["Siguiente: calificar →", "Próximo: avaliar →", "Next: rate →"],
+["Siguiente: publicar →", "Próximo: publicar →", "Next: publish →"],
+["Revisar y publicar →", "Revisar e publicar →", "Review and publish →"],
+["Abrir en HubSpot", "Abrir no HubSpot", "Open in HubSpot"],
+["Ver traducción", "Ver tradução", "View translation"],
+["Ocultar traducción", "Ocultar tradução", "Hide translation"],
+["Borrador en HubSpot, vinculado al original", "Rascunho no HubSpot, vinculado ao original", "HubSpot draft, linked to the original"],
+["Borrador en HubSpot, sin vincular", "Rascunho no HubSpot, sem vínculo", "HubSpot draft, not linked"],
+["Traducida, sin subir", "Traduzido, sem enviar", "Translated, not uploaded"],
+["Sin traducir", "Sem tradução", "Not translated"],
+["Pasos de la revisión", "Etapas da revisão", "Review steps"],
+["Qué ver", "O que ver", "What to view"],
+["Sin imagen: ninguna noticia de la nota tenía foto.", "Sem imagem: nenhuma notícia do post tinha foto.", "No image: none of the article's news had a photo."],
 ["Gramática", "Gramática", "Grammar"],
 ["Ortografía", "Ortografia", "Spelling"],
 ["Estructura", "Estrutura", "Structure"],
@@ -750,8 +802,30 @@ var _MOTIVOS = [
 ];
 _MOTIVOS.forEach(function(f) { TEXTOS.pt[f[0]] = f[1]; TEXTOS.en[f[0]] = f[2]; });
 
+/* "4 fotos no se pudieron descargar y 1 no servía para la nota" en otro idioma. */
+function _fotosDescartadas(x, cod) {
+  var bajadas = (x.match(/(\d+) fotos? no se pud/) || [])[1], otras = (x.match(/(\d+) no serv/) || [])[1], frases = [];
+  var t = cod === 'pt'
+    ? { b1: '1 foto não pôde ser baixada', bn: ' fotos não puderam ser baixadas', o1: '1 não servia para o post', on: ' não serviam para o post', y: ' e ' }
+    : { b1: '1 photo could not be downloaded', bn: ' photos could not be downloaded', o1: '1 did not fit the article', on: ' did not fit the article', y: ' and ' };
+  if (bajadas) frases.push(bajadas === '1' ? t.b1 : bajadas + t.bn);
+  if (otras) frases.push(otras === '1' ? t.o1 : otras + t.on);
+  return frases.join(t.y);
+}
+
 var PATRONES = {
   pt: [
+    [/^Datos (\d+)\/(\d+)$/, 'Dados $1/$2'],
+    [/^Estilo: (\d+) avisos$/, 'Estilo: $1 avisos'],
+    [/^Lineamientos (\d+)\/9$/, 'Diretrizes $1/9'],
+    [/^IA: (\d+)\/10$/, 'IA: $1/10'],
+    [/^(\d+) avisos$/, '$1 avisos'],
+    [/^Cumple (\d+) de 9 lineamientos\.$/, 'Cumpre $1 de 9 diretrizes.'],
+    [/^Sigue fallando en (.+)\.$/, function(m, x) { return 'Ainda falha em ' + _lista('pt')(x) + '.'; }],
+    [/^La IA descartó las fotos: (.+)\.$/, function(m, x) { return 'A IA descartou as fotos: ' + _fotosDescartadas(x, 'pt') + '.'; }],
+    [/^No se pudo subir la versión en (.+)\.$/, function(m, x) { return 'Não foi possível enviar a versão em ' + x.replace('español', 'espanhol').replace('portugués', 'português').replace('inglés', 'inglês').replace(' y ', ' e ') + '.'; }],
+    [/^Ángulo: (.+)$/, 'Ângulo: $1'],
+    [/^Puntapié: (.+)$/, 'Ponto de partida: $1'],
     [/^En qué se equivocó \((\d+)\)$/, 'Onde errou ($1)'],
     [/^Ver (\d+) más$/, 'Ver mais $1'],
     [/^Revisada el (.+)$/, 'Revisado em $1'],
@@ -831,6 +905,17 @@ var PATRONES = {
     [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
+    [/^Datos (\d+)\/(\d+)$/, 'Facts $1/$2'],
+    [/^Estilo: (\d+) avisos$/, 'Style: $1 warnings'],
+    [/^Lineamientos (\d+)\/9$/, 'Guidelines $1/9'],
+    [/^IA: (\d+)\/10$/, 'AI: $1/10'],
+    [/^(\d+) avisos$/, '$1 warnings'],
+    [/^Cumple (\d+) de 9 lineamientos\.$/, 'Meets $1 of 9 guidelines.'],
+    [/^Sigue fallando en (.+)\.$/, function(m, x) { return 'Still fails on ' + _lista('en')(x) + '.'; }],
+    [/^La IA descartó las fotos: (.+)\.$/, function(m, x) { return 'The AI discarded the photos: ' + _fotosDescartadas(x, 'en') + '.'; }],
+    [/^No se pudo subir la versión en (.+)\.$/, function(m, x) { return 'Could not upload the ' + x.replace('español', 'Spanish').replace('portugués', 'Portuguese').replace('inglés', 'English') + ' version.'; }],
+    [/^Ángulo: (.+)$/, 'Angle: $1'],
+    [/^Puntapié: (.+)$/, 'Starting point: $1'],
     [/^En qué se equivocó \((\d+)\)$/, 'What it got wrong ($1)'],
     [/^Ver (\d+) más$/, 'Show $1 more'],
     [/^Revisada el (.+)$/, 'Reviewed on $1'],

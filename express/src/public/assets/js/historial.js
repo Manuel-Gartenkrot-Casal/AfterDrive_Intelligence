@@ -114,8 +114,7 @@ async function abrirItemHistorial(seccion, coleccion, id) {
   var it = d.item;
   $('modal-titulo').textContent = it.titulo;
   $('modal-meta').textContent = it.origen + ' · ' + fechaCorta(it.fecha);
-  $('check-list').innerHTML = '';
-  $('eval-comms').textContent = '';
+  sinRecorrido();
   var html = '';
   if (it.motivo) html += '<p><strong>Por qué se descartó:</strong> ' + escHtml(it.motivo) + '</p>';
   if (it.url) html += '<p><a href="' + urlSegura(it.url) + '" target="_blank" rel="noopener">Ver el original</a></p>';
@@ -131,36 +130,57 @@ async function abrirItemHistorial(seccion, coleccion, id) {
 /* ── Revisión de la nota abierta ── */
 var _notaActual = null;
 
+/* Pie del modal. Izquierda: Editar, Vista previa y "Más" (lo que se usa
+   poco). Derecha: una sola acción principal, la que corresponde al paso del
+   recorrido (ver recorrido.js) y al estado de la nota. */
 function pintarAccionesNota() {
-  var cont = $('nota-acciones');
-  if (!_notaActual) { cont.innerHTML = ''; return; }
-  var e = _notaActual.estado;
-  var b = function(estado, texto, primario) {
-    return '<button type="button" class="btn btn-xs' + (primario ? ' btn-primary' : '') + '" onclick="cambiarEstadoNota(\'' + estado + '\')">' + texto + '</button>';
-  };
-  var html = '<span class="estado-chip ' + e + '">' + NOMBRE_ESTADO_NOTA[e] + '</span>';
+  var cont = $('nota-acciones'), chip = $('modal-estado');
+  if (!_notaActual) {
+    chip.hidden = true;
+    cont.innerHTML = '<button type="button" class="btn btn-xs" onclick="copiar()">Copiar texto</button>';
+    return;
+  }
+  var n = _notaActual, e = n.estado;
+  chip.hidden = false;
+  chip.className = 'estado-chip ' + e;
+  chip.textContent = NOMBRE_ESTADO_NOTA[e];
   // En todas las notas, esté o no configurado HubSpot en este servidor: si falta el
   // token, el bloque de la revisión lo dice y la subida devuelve el motivo.
-  var subible = !_notaActual.sinDestino;   // sinDestino: no hay blog en su idioma
-  if (e === 'borrador') html += (subible
-      ? '<button type="button" class="btn btn-xs btn-primary" onclick="aprobarYSubir()">Aprobar y subir a HubSpot</button>'
-      : b('aprobada', 'Aprobar', true)) + b('rechazada', 'Rechazar');
-  if (e === 'aprobada') html += b('borrador', 'Volver a revisar');
-  if (e === 'rechazada') html += b('borrador', 'Volver a revisar');
-  if (e === 'publicado') html += b('aprobada', 'Despublicar');
-  if (e !== 'publicado') html += '<button type="button" class="btn btn-xs" onclick="editarNota()">Editar</button>';
-  html += '<button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Vista previa</button>';
-  if (subible && (e === 'aprobada' || e === 'publicado')) {
-    var yaEnviada = _notaActual.hubspot && _notaActual.hubspot.id;
-    if (e === 'aprobada') html += '<button type="button" class="btn btn-xs" onclick="enviarAHubspot(false)">'
-      + (yaEnviada ? 'Actualizar borrador en HubSpot' : 'Subir borrador a HubSpot') + '</button>';
-    html += '<button type="button" class="btn btn-xs btn-primary" onclick="enviarAHubspot(true)">'
-      + (e === 'publicado' && yaEnviada ? 'Actualizar en HubSpot' : 'Publicar en HubSpot') + '</button>';
+  var subible = !n.sinDestino;   // sinDestino: no hay blog en su idioma
+  var yaEnviada = n.hubspot && n.hubspot.id;
+  var boton = function(onclick, texto, clase) {
+    return '<button type="button" class="btn btn-xs' + (clase || '') + '" onclick="' + onclick + '">' + texto + '</button>';
+  };
+  var item = function(onclick, texto, clase) {
+    return '<button type="button" role="menuitem" class="' + (clase || '') + '" onclick="' + onclick + '">' + texto + '</button>';
+  };
+  var izq = (e !== 'publicado' ? boton('editarNota()', 'Editar') : '') + boton('vistaPreviaNota()', 'Vista previa');
+
+  var menu = item('copiar()', 'Copiar texto');
+  if (n.hubspot && n.hubspot.url) {
+    menu += '<a role="menuitem" href="' + urlSegura(n.hubspot.url) + '" target="_blank" rel="noopener">Ver en HubSpot</a>';
   }
-  if (_notaActual.hubspot && _notaActual.hubspot.url) {
-    html += '<a class="btn btn-xs" href="' + urlSegura(_notaActual.hubspot.url) + '" target="_blank" rel="noopener">Ver en HubSpot</a>';
-  }
-  cont.innerHTML = html;
+  if (subible && e === 'aprobada') menu += item('enviarAHubspot(false)', yaEnviada ? 'Actualizar borrador en HubSpot' : 'Subir borrador a HubSpot');
+  if (e === 'aprobada' || e === 'rechazada') menu += item("cambiarEstadoNota('borrador')", 'Volver a revisar');
+  if (e === 'publicado') menu += item("cambiarEstadoNota('aprobada')", 'Despublicar', 'peligro');
+  if (e === 'borrador') menu += '<hr>' + item("cambiarEstadoNota('rechazada')", 'Rechazar', 'peligro');
+
+  var paso = _recorrido.activo ? _recorrido.paso : 'publicar', der = '';
+  if (_recorrido.activo && enCelular() && $('modal-caja').dataset.vista === 'nota') der = boton("verPanelModal('revision')", 'Revisar y publicar →', ' btn-primary');
+  else if (paso === 'revisar') der = boton("irAPaso('calificar')", 'Siguiente: calificar →', ' btn-primary');
+  else if (paso === 'calificar') der = boton("irAPaso('publicar')", 'Siguiente: publicar →', ' btn-primary');
+  else if (e === 'borrador') der = subible ? boton('aprobarYSubir()', 'Aprobar y subir a HubSpot', ' btn-primary')
+                                           : boton("cambiarEstadoNota('aprobada')", 'Aprobar', ' btn-primary');
+  else if (e === 'aprobada' && subible) der = boton('enviarAHubspot(true)', 'Publicar en HubSpot', ' btn-primary');
+  else if (e === 'publicado' && subible && yaEnviada) der = boton('enviarAHubspot(true)', 'Actualizar en HubSpot', ' btn-primary');
+  else if (e === 'rechazada') der = boton("cambiarEstadoNota('borrador')", 'Volver a revisar', ' btn-primary');
+
+  cont.innerHTML = '<div class="acciones-izq">' + izq
+    + '<div class="menu-nota"><button type="button" class="btn btn-xs" id="nota-mas" aria-haspopup="menu" aria-expanded="false"'
+    + ' aria-controls="nota-menu" onclick="alternarMenuNota()">Más ▾</button>'
+    + '<div class="menu-nota-lista" id="nota-menu" role="menu" aria-label="Más acciones" hidden>' + menu + '</div></div></div>'
+    + (der ? '<div class="acciones-der">' + der + '</div>' : '');
+  actualizarPasos();
 }
 
 var _estadoHubspot = null;
@@ -290,6 +310,7 @@ async function cambiarEstadoNota(estado, sinAviso) {
 /* Cómo quedaría el post en el blog: lo mismo que se manda a HubSpot. */
 async function vistaPreviaNota() {
   var n = _notaActual, d;
+  verPanelModal('nota');
   try { d = await pedir('/api/historial/vista-previa/' + n.coleccion + '/' + n.id); }
   catch (e) { showToast(e.message, 'error'); return; }
   var propia = d.imagen_propia || {};
@@ -426,6 +447,7 @@ async function retraducirNota() {
 
 function editarNota() {
   var n = _notaActual, principal = _vistaEsPrincipal(n);
+  verPanelModal('nota');
   if (!principal && !_traduccionVista(n).contenido) { showToast('Primero traducila.', 'warn'); return; }
   $('art-body').innerHTML = '<label class="control-label" for="editor-nota">'
     + (principal ? 'Texto de la nota (Markdown)' : 'Versión en ' + NOMBRE_IDIOMA[n.vista] + ' (Markdown)') + '</label>'

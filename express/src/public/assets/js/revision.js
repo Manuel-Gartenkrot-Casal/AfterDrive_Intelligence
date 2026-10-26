@@ -234,6 +234,7 @@ async function guardarCalificacion(nota) {
                              etiquetas: _cal.etiquetas, comentario: $('calificar-comentario').value.trim() })
     });
     nota.calificacion = d.calificacion;
+    actualizarPasos();
     est.textContent = 'Guardada. La próxima nota la tiene en cuenta.';
     showToast('Calificación guardada', 'success');
     vaciarCalificacion();
@@ -281,13 +282,14 @@ function pintarImagen(nota, contenedor) {
       + (im.origen ? '<p class="revision-sub">Foto de la noticia: <a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener">'
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
       + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
-      + '<p class="revision-sub">Para cambiarla: Vista previa.</p>';
+      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Cambiar imagen</button></p>';
   } else if (eleccion.metodo === 'ia') {
     html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
-      + (eleccion.motivo ? '<p class="revision-sub">' + escHtml(eleccion.motivo) + '</p>' : '')
-      + '<p class="revision-sub">Podés elegir una igual o pegar otra desde Vista previa.</p>';
+      + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>'
+      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
   } else {
-    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto. Podés poner una desde Vista previa.</p>';
+    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto.</p>'
+      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
   }
   contenedor.appendChild(bloqueRevision('Imagen destacada', html));
 }
@@ -307,31 +309,41 @@ function pintarCitasBlog(nota, contenedor) {
 
 var NOMBRE_IDIOMA = { es: 'Español', pt: 'Portugués', en: 'Inglés' };
 
-/* Versiones en los otros idiomas del blog: estado en HubSpot y el texto traducido. */
+/* Versiones en los otros idiomas del blog: una fila por idioma con su estado en
+   HubSpot y botones para ver el texto o abrir el borrador. */
 function pintarTraducciones(nota, contenedor) {
   var hs = nota.hubspot_traducciones || {}, tr_ = nota.traducciones || {};
   var codigos = Object.keys(NOMBRE_IDIOMA).filter(function(c) { return hs[c] || tr_[c]; });
   var subida = nota.hubspot && nota.hubspot.id;
   if (!codigos.length && !subida) return;
-  var html = codigos.length ? '' : '<p class="revision-sub">Todavía no se subieron las versiones en los otros idiomas.</p>';
+  var html = codigos.length ? '<ul class="idiomas-lista">' : '<p class="revision-sub">Todavía no se subieron las versiones en los otros idiomas.</p>';
   codigos.forEach(function(c) {
-    var h = hs[c] || {}, t = tr_[c];
-    var estado = h.error ? '<span class="revision-mal">' + escHtml(h.error) + '</span>'
-      : h.id ? '<span>' + (h.vinculada ? 'borrador en HubSpot, vinculado al original' : 'borrador en HubSpot, sin vincular') + '</span>'
-               + (h.url ? ' <a href="' + urlSegura(h.url) + '" target="_blank" rel="noopener">ver</a>' : '')
-      : '<span>traducida, sin subir</span>';
-    html += '<div class="revision-traduccion"><p><strong>' + escHtml(NOMBRE_IDIOMA[c]) + ':</strong> ' + estado + '</p>'
-      + (h.aviso ? '<p class="revision-sub">' + escHtml(h.aviso) + '</p>' : '')
-      + (t && t.contenido ? '<details><summary>Ver la traducción</summary><div class="revision-traduccion-texto" translate="no">'
-                            + DOMPurify.sanitize(marked.parse(t.contenido)) + '</div></details>' : '')
-      + '</div>';
+    var h = hs[c] || {}, t = tr_[c], id = 'traduccion-' + c;
+    var estado = h.error ? '<small class="revision-mal">' + escHtml(h.error) + '</small>'
+      : '<small>' + (h.id ? (h.vinculada ? 'Borrador en HubSpot, vinculado al original' : 'Borrador en HubSpot, sin vincular')
+                          : t && t.contenido ? 'Traducida, sin subir' : 'Sin traducir') + '</small>';
+    html += '<li class="revision-traduccion"><div><strong>' + escHtml(NOMBRE_IDIOMA[c]) + '</strong>' + estado
+      + (h.aviso ? '<small>' + escHtml(h.aviso) + '</small>' : '') + '</div><div class="idioma-botones">'
+      + (t && t.contenido ? '<button type="button" class="btn btn-xs" aria-expanded="false" aria-controls="' + id + '"'
+                            + ' onclick="alternarTraduccion(this)">Ver traducción</button>' : '')
+      + (h.url ? '<a class="btn btn-xs" href="' + urlSegura(h.url) + '" target="_blank" rel="noopener">Abrir en HubSpot</a>' : '')
+      + '</div>'
+      + (t && t.contenido ? '<div class="revision-traduccion-texto" id="' + id + '" translate="no" hidden>' + DOMPurify.sanitize(marked.parse(t.contenido)) + '</div>' : '')
+      + '</li>';
   });
+  if (codigos.length) html += '</ul>';
   if (subida) {
-    html += '<button type="button" class="btn btn-xs" id="btn-traducciones" onclick="subirTraducciones(\'' + escHtml(nota._id) + '\')">'
-      + (codigos.length ? 'Volver a subir las traducciones' : 'Traducir y subir') + '</button>';
+    html += '<p><button type="button" class="btn btn-xs" id="btn-traducciones" onclick="subirTraducciones(\'' + escHtml(nota._id) + '\')">'
+      + (codigos.length ? 'Volver a subir las traducciones' : 'Traducir y subir') + '</button></p>';
   }
-  var conError = codigos.some(function(c) { return (hs[c] || {}).error; });
-  contenedor.appendChild(bloqueRevision('Otros idiomas', html, conError ? 'con-fallas' : ''));
+  contenedor.appendChild(bloqueRevision('Otros idiomas', html));
+}
+
+function alternarTraduccion(btn) {
+  var texto = $(btn.getAttribute('aria-controls')), abrir = texto.hidden;
+  texto.hidden = !abrir;
+  btn.setAttribute('aria-expanded', abrir);
+  btn.textContent = tr(abrir ? 'Ocultar traducción' : 'Ver traducción');
 }
 
 /* Traduce (si cambió el texto) y sube las versiones en la Cola; al terminar, recarga la nota. */
@@ -349,53 +361,6 @@ async function subirTraducciones(id) {
     else showToast(errores[errores.length - 1] || fin.error || 'No se pudieron subir las traducciones. Mirá el registro en Actividad.', 'error');
   } catch (e) { showToast(e.message, 'error'); }
   if (_notaActual && _notaActual.id === id) fase2MostrarUltima(id);
-}
-
-function pintarRevisionNota(nota, contenedor) {
-  var v = nota.verificacion;
-  if (v && v.total !== undefined) {
-    var ok = (v.respaldados || []).length, html;
-    if (!v.total) html = '<p class="revision-ok">La nota no tiene cifras ni nombres para verificar.</p>';
-    else {
-      html = '<p class="' + ((v.sin_respaldo || []).length ? 'revision-mal' : 'revision-ok') + '">'
-        + ok + ' de ' + v.total + ' datos aparecen en las noticias.</p>';
-      if ((v.sin_respaldo || []).length) html += '<p class="revision-sub">Sin respaldo: revisalos antes de publicar.</p>' + lista(v.sin_respaldo, 'mal');
-      if ((v.dudosos || []).length) html += '<p class="revision-sub">No se pudieron confirmar:</p>' + lista(v.dudosos, 'dudoso');
-    }
-    contenedor.appendChild(bloqueRevision('Datos contra las noticias', html, (v.sin_respaldo || []).length ? 'con-fallas' : ''));
-  }
-  if (nota.parecida_a) {
-    contenedor.appendChild(bloqueRevision('Parecida a una nota reciente',
-      '<p class="revision-mal">Se parece a “' + escHtml(nota.parecida_a.titulo) + '” ('
-      + Math.round(nota.parecida_a.similitud * 100) + '%).</p>', 'con-fallas'));
-  }
-  var estilo = nota.estilo || [];
-  if (nota.seo || estilo.length) {
-    var s = nota.seo || {}, filas = [];
-    if (s.palabra_clave) filas.push('Palabra clave: ' + s.palabra_clave);
-    if (s.titulo_caracteres !== undefined) filas.push('Título: ' + s.titulo_caracteres + ' caracteres (máx. 60)');
-    if (s.meta_caracteres !== undefined) filas.push('Meta description: ' + s.meta_caracteres + ' caracteres (máx. 155)');
-    if (s.preguntas_frecuentes !== undefined) filas.push('Preguntas frecuentes: ' + s.preguntas_frecuentes);
-    if (s.enlaces_internos !== undefined) filas.push('Enlaces a otras notas del blog: ' + s.enlaces_internos);
-    var html2 = (estilo.length ? lista(estilo.map(function(h) { return h.detalle; }), 'dudoso')
-                               : '<p class="revision-ok">Sin problemas de estilo detectados.</p>')
-      + (filas.length ? lista(filas, 'seo') : '');
-    contenedor.appendChild(bloqueRevision('Estilo y SEO', html2, estilo.some(function(h) { return h.grave; }) ? 'con-fallas' : ''));
-  }
-  pintarImagen(nota, contenedor);
-  pintarCitasBlog(nota, contenedor);
-  pintarTraducciones(nota, contenedor);
-  pintarCosto(nota, contenedor);
-  if (nota.plan) {
-    var p = nota.plan, det = document.createElement('details');
-    det.className = 'revision-criterios';
-    det.innerHTML = '<summary>Ver el plan de la nota</summary>'
-      + (p.angulo ? '<p class="revision-sub">Ángulo: ' + escHtml(p.angulo) + '</p>' : '')
-      + '<ol class="revision-lista">' + p.secciones.map(function(x) {
-          return '<li><span translate="no">' + escHtml(x.titulo) + '</span>' + (x.noticias.length ? ' <small>(noticias ' + x.noticias.join(', ') + ')</small>' : '') + '</li>';
-        }).join('') + '</ol>';
-    contenedor.appendChild(det);
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

@@ -621,26 +621,28 @@
 
   <!-- Modal -->
   <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
-      <div class="modal-main">
-        <div class="modal-header">
-          <div>
-            <h2 class="modal-title" id="modal-titulo">Última nota</h2>
-            <p class="modal-meta" id="modal-meta"></p>
-          </div>
-          <button class="modal-close" onclick="cerrar()" aria-label="Cerrar">&times;</button>
+    <div class="modal" id="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo" data-vista="nota">
+      <div class="modal-header">
+        <div class="modal-cabeza">
+          <span class="estado-chip" id="modal-estado" hidden></span>
+          <h2 class="modal-title" id="modal-titulo">Última nota</h2>
+          <p class="modal-meta" id="modal-meta"></p>
         </div>
-        <div class="modal-body" id="art-body"></div>
-        <div class="modal-footer">
-          <div class="nota-acciones" id="nota-acciones"></div>
-          <button class="btn" onclick="copiar()">Copiar Texto</button>
-          <button class="btn" onclick="cerrar()">Cerrar</button>
-        </div>
+        <button class="modal-close" onclick="cerrar()" aria-label="Cerrar">&times;</button>
       </div>
-      <div class="modal-sidebar">
-        <h3 class="sidebar-title">Contexto y evaluación</h3><p class="revision-ayuda">Evaluación automática orientativa. La revisión editorial sigue en tus manos.</p>
+      <!-- Celular: la nota y la revisión no entran juntas; se elige cuál ver. -->
+      <div class="modal-vista" role="group" aria-label="Qué ver">
+        <button type="button" class="chip" data-vista="nota" aria-pressed="true" onclick="verPanelModal('nota')">Nota</button>
+        <button type="button" class="chip" data-vista="revision" aria-pressed="false" onclick="verPanelModal('revision')">Revisar y publicar</button>
+      </div>
+      <div class="modal-main">
+        <div class="modal-body" id="art-body"></div>
+      </div>
+      <div class="modal-sidebar" id="modal-sidebar">
         <div class="checklist" id="check-list"></div>
-        <div id="eval-comms" class="eval-comments"></div>
+      </div>
+      <div class="modal-footer">
+        <div class="nota-acciones" id="nota-acciones"></div>
       </div>
     </div>
   </div>
@@ -659,6 +661,7 @@
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
   <script src="/assets/js/revision.js"></script>
+  <script src="/assets/js/recorrido.js"></script>
   <script src="/assets/js/metricas.js"></script>
   <script src="/assets/js/animaciones.js"></script>
   <script src="/assets/js/tour.js"></script>

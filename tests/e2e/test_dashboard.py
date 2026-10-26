@@ -105,7 +105,8 @@ def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     _abrir_nota(pagina, "Frenos")
     acciones = pagina.locator("#nota-acciones")
 
-    acciones.get_by_role("button", name="Rechazar").click()
+    acciones.get_by_role("button", name="Más").click()
+    acciones.get_by_role("menuitem", name="Rechazar").click()
     pagina.locator("#confirmar").wait_for(state="visible")
     assert pagina.locator("#confirmar-valor").is_visible()
     assert pagina.is_disabled("#confirmar-si")
@@ -115,6 +116,7 @@ def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     pagina.locator("#confirmar").wait_for(state="hidden")
 
     # Con HubSpot configurado, aprobar también sube el borrador, firmado por el autor elegido.
+    pagina.click("#tab-publicar")
     autor = pagina.locator("#hubspot-autor")
     autor.wait_for()
     assert autor.locator("option:checked").inner_text() == "Gaston Zelerteins"
@@ -123,12 +125,74 @@ def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     envios = []
     pagina.on("request", lambda r: envios.append(r) if r.url.endswith("/api/hubspot/enviar") else None)
     acciones.get_by_role("button", name="Aprobar y subir a HubSpot").dblclick()   # un doble clic no duplica el post
-    acciones.locator(".estado-chip.aprobada").wait_for()
-    acciones.get_by_role("button", name="Actualizar borrador en HubSpot").wait_for()
+    pagina.locator("#modal-estado.aprobada").wait_for()
+    expect(acciones.get_by_role("button", name="Publicar en HubSpot")).to_be_visible()
+    acciones.get_by_role("button", name="Más").click()
+    expect(acciones.get_by_role("menuitem", name="Actualizar borrador en HubSpot")).to_be_visible()
     id_nota = pagina.evaluate("_notaActual.id")
     destino = pagina.evaluate("id => fetch('/api/hubspot/destino/notas_fase2/' + id).then(r => r.json())", id_nota)
     assert destino["autor_id"] == "191488460449"
     assert len(envios) == 1
+
+
+def _volver_a_revisar(pg, titulo):
+    """Los tests comparten servidor: otro pudo haber aprobado la nota."""
+    pg.evaluate("""async t => {
+        const d = await (await fetch('/api/historial/generados_aprobados?q=' + encodeURIComponent(t))).json();
+        const it = d.items[0];
+        await fetch('/api/historial/estado', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                              body: JSON.stringify({coleccion: it.coleccion, id: it.id, estado: 'borrador'})});
+    }""", titulo)
+
+
+def test_recorrido_de_revision(pagina):
+    # Para revisar: abre en Revisar, con lo que necesita atención primero.
+    _volver_a_revisar(pagina, "Frenos")
+    _abrir_nota(pagina, "Frenos")
+    lateral, acciones = pagina.locator(".modal-sidebar"), pagina.locator("#nota-acciones")
+    expect(pagina.locator("#modal-titulo")).to_have_text("Frenos: la demanda sube")
+    expect(pagina.locator("#modal-estado")).to_have_text("Para revisar")
+    expect(lateral.locator("#tab-revisar")).to_have_attribute("aria-selected", "true")
+    expect(lateral.locator("#chequeos-atencion .chequeo").first).to_contain_text("Falta la imagen destacada")
+    expect(lateral.locator("#tab-revisar .paso-estado")).to_have_text("1 aviso")
+    # El semáforo lleva a su fila.
+    lateral.locator(".luz", has_text="Sin imagen").click()
+    expect(lateral.locator("#chequeo-imagen")).to_have_class(re.compile(r"\bdestacado\b"))
+    # La acción principal sigue el recorrido.
+    acciones.get_by_role("button", name="Siguiente: calificar →").click()
+    expect(lateral.locator("#paso-calificar")).to_be_visible()
+    acciones.get_by_role("button", name="Siguiente: publicar →").click()
+    expect(lateral.locator("#paso-publicar")).to_be_visible()
+    expect(acciones.get_by_role("button", name="Aprobar y subir a HubSpot")).to_be_visible()
+    # Flechas entre pasos, como en cualquier lista de pestañas.
+    lateral.locator("#tab-publicar").focus()
+    pagina.keyboard.press("ArrowLeft")
+    expect(lateral.locator("#tab-calificar")).to_have_attribute("aria-selected", "true")
+    # "Más": Escape cierra el menú, no la nota.
+    acciones.get_by_role("button", name="Más").click()
+    expect(acciones.get_by_role("menuitem", name="Copiar texto")).to_be_visible()
+    pagina.keyboard.press("Escape")
+    expect(acciones.get_by_role("menu")).to_be_hidden()
+    expect(pagina.locator("#modal-art.open")).to_be_visible()
+
+
+def test_recorrido_en_el_celular(navegador, base_url):
+    pg = abrir(navegador, base_url, ancho=390, alto=844)
+    try:
+        pg.click("#menu-movil")
+        _abrir_nota(pg, "Frenos")
+        # Se ve la nota; el botón principal lleva a la revisión.
+        expect(pg.locator("#art-body")).to_be_visible()
+        expect(pg.locator(".modal-sidebar")).to_be_hidden()
+        pg.locator("#nota-acciones").get_by_role("button", name="Revisar y publicar →").click()
+        expect(pg.locator(".paso-panel:visible")).to_have_count(1)
+        expect(pg.locator("#art-body")).to_be_hidden()
+        pg.locator(".modal-vista").get_by_role("button", name="Nota").click()
+        expect(pg.locator("#art-body")).to_be_visible()
+        assert pg.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert pg.errores == []
+    finally:
+        pg.context.close()
 
 
 def test_vista_previa_de_la_nota(pagina):
@@ -228,18 +292,28 @@ def test_cancelar_la_nota_en_curso(pagina):
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
-    # Lo que se revisó al generarla.
-    assert "2 de 3 datos aparecen en las noticias" in lateral.inner_text()
-    assert "US$ 80 millones" in lateral.locator(".revision-lista.mal").inner_text()
-    assert "Palabra clave: rotación de stock" in lateral.inner_text()
-    assert "Se corrigió porque falló en" in lateral.inner_text()
-    assert "Sin imagen: la IA descartó las fotos de las noticias." in lateral.inner_text()
+    # Aprobada y sin calificar: abre en el paso Calificar.
+    expect(lateral.locator("#tab-calificar")).to_have_attribute("aria-selected", "true")
+    # Lo que se revisó al generarla, en el paso Revisar: titular a la vista, detalle a pedido.
+    lateral.locator("#tab-revisar").click()
+    datos = lateral.locator("#chequeo-datos")
+    expect(datos).to_contain_text("2 de 3 datos aparecen en las noticias")
+    datos.get_by_role("button", name="Ver detalle").click()
+    expect(datos.locator(".revision-lista.mal")).to_contain_text("US$ 80 millones")
+    estilo = lateral.locator("#chequeo-estilo")
+    estilo.get_by_role("button", name="Ver detalle").click()
+    expect(estilo.locator(".tabla-revision")).to_contain_text("rotación de stock")
+    lineamientos = lateral.locator("#chequeo-lineamientos")
+    lineamientos.get_by_role("button", name="Ver detalle").click()
+    expect(lineamientos).to_contain_text("Se corrigió porque falló en")
+    expect(lateral.locator("#chequeo-imagen")).to_contain_text("1 no servía para la nota")
+    lateral.locator(".como-se-genero summary").click()
     costo = lateral.locator(".revision-bloque", has_text="Costo de esta nota")
-    assert "USD 0,231" in costo.inner_text() and "redacción: USD 0,18" in costo.inner_text()
-    lateral.locator("summary", has_text="Ver el plan").click()
-    expect(lateral.locator(".revision-criterios ol.revision-lista")).to_contain_text("Qué pasó")
+    expect(costo).to_contain_text("USD 0,231")
+    expect(costo).to_contain_text("redacción: USD 0,18")
+    expect(lateral.locator(".revision-bloque", has_text="Plan de la nota")).to_contain_text("Qué pasó")
 
-    lateral.get_by_text("Calificar esta nota", exact=True).click()
+    lateral.locator("#tab-calificar").click()
     calificar = lateral.locator(".calificar")
     calificar.wait_for()
     assert calificar.get_by_role("button", name="Guardar calificación").is_disabled()
@@ -272,7 +346,8 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
     expect(pagina.locator(".hist-item", has_text="Frenos").locator(".badge-ia")).to_have_count(0)
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
-    # A la vista sin abrir "Calificar esta nota", y sin botón para pedirla.
+    # En el paso Calificar, a la vista y sin botón para pedirla.
+    lateral.locator("#tab-calificar").click()
     critica = lateral.locator(".critica-ia")
     expect(critica).to_contain_text("Calificación de la IA")
     expect(critica.locator(".critica-puntaje")).to_have_text("6/10")
@@ -285,7 +360,6 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
     critica.get_by_role("button", name="Ver 1 más").click()
     expect(critica.locator(".critica-errores li:visible")).to_have_count(4)
     # La calificación de las personas sigue en su lugar, debajo.
-    lateral.get_by_text("Calificar esta nota", exact=True).click()
     calificar = lateral.locator(".calificar")
     expect(calificar.get_by_role("button", name="Guardar calificación")).to_be_visible()
     expect(calificar.locator(".critica-ia")).to_have_count(0)
@@ -303,6 +377,7 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
             "fecha": "2026-10-20T10:00:00+00:00"}})
     pagina.route("**/api/historial/critica", responder)
     _abrir_nota(pagina, "Frenos")
+    lateral.locator("#tab-calificar").click()
     critica = lateral.locator(".critica-ia")
     expect(critica.locator(".critica-puntaje")).to_have_text("9/10")
     expect(critica).to_contain_text("No encontró errores de redacción.")
@@ -379,14 +454,17 @@ def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
 def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
-    expect(lateral).to_contain_text("Sin imagen: la IA descartó las fotos de las noticias.")
+    lateral.locator("#tab-revisar").click()
+    lateral.locator(".como-se-genero summary").click()
     expect(lateral).to_contain_text("Cita 1 nota(s) de AfterDrive by Alephee:")
     expect(lateral.get_by_role("link", name="Catálogo y fitment")).to_have_attribute(
         "href", "https://afterdrive.alephee.com/es/blog/catalogo")
+    lateral.locator("#tab-publicar").click()
+    expect(lateral).to_contain_text("Sin imagen: la IA descartó las fotos de las noticias.")
     otros = lateral.locator(".revision-bloque", has_text="Otros idiomas")
-    expect(otros).to_contain_text("borrador en HubSpot, vinculado al original")
+    expect(otros).to_contain_text("Borrador en HubSpot, vinculado al original")
     expect(otros).to_contain_text("la traducción al inglés vino cortada")
-    otros.get_by_text("Ver la traducción").click()
+    otros.get_by_role("button", name="Ver traducción").click()
     expect(otros.locator(".revision-traduccion-texto")).to_contain_text("Texto em português")
     expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
 
@@ -520,6 +598,7 @@ def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, b
     pg.reload()
     pg.wait_for_selector(".sidebar")
     _abrir_nota(pg, "Frenos")
+    pg.click("#tab-publicar")
     expect(pg.locator("#nota-acciones button", has_text="HubSpot").first).to_be_visible()
     expect(pg.locator(".revision-bloque", has_text="Publicación en HubSpot")).to_contain_text("falta HUBSPOT_TOKEN")
     assert pg.errores == []
