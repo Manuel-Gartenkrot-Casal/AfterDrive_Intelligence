@@ -1614,29 +1614,34 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    no entra se desplaza dentro del panel. La vista Desarrollador conserva la
    distribución anterior: suma consola y estadísticas debajo y estirar los
    paneles las encimaba.
-   --shell-pie deja lugar abajo para el dock de actividad o el HUD.
+   --shell-pie es el lugar que se deja al final del contenido para el dock de
+   actividad o el HUD, que flotan encima.
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
 body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
 body.hud-open.hud-open { --shell-pie: 220px; }
-[data-modo="cliente"] .app-container,
-[data-modo="cliente"] body.hud-open .app-container { padding-bottom: var(--shell-pie); }
+/* En el celular scrollea la página: el lugar para el dock va al final de todo. */
+@media (max-width: 900px) {
+  [data-modo="cliente"] .app-container,
+  [data-modo="cliente"] body.hud-open .app-container { padding-bottom: var(--shell-pie); }
+}
 
 @media (min-width: 901px) {
   html, body { height: 100%; overflow: hidden; }
+  /* El layout llega siempre hasta abajo: el dock de actividad y el HUD flotan
+     encima. Antes el alto se achicaba a lo que dejaba el dock y quedaba una
+     franja vacía a todo lo ancho. El lugar para el dock va al final del
+     scroll del contenido (padding-bottom), así lo último se puede subir por
+     encima de él. */
   .app-container,
-  body.hud-open .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: var(--shell-pie); }
+  body.hud-open .app-container { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 24px; }
   .header { flex: 0 0 auto; }
   .layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-  /* El dock de actividad va abajo a la derecha: la barra lateral (a la izquierda)
-     no le deja lugar y llega hasta abajo. Si no, con el dock abierto se achicaba
-     a la mitad y los ajustes de la vista Desarrollador quedaban en una franja. */
-  .sidebar { position: relative; top: auto; min-height: 0; margin-bottom: calc(24px - var(--shell-pie)); }
-  body.hud-open .sidebar { margin-bottom: 0; }
+  .sidebar { position: relative; top: auto; min-height: 0; }
   /* El padding (compensado con margen negativo) evita que se recorten los
      bordes de las tarjetas contra el borde del área que scrollea. */
   .contenido { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
-               margin: -4px; padding: 4px 4px 24px; }
+               margin: -4px; padding: 4px 4px var(--shell-pie); }
   .f2-acciones { top: 0; }
   .barra-guardar { bottom: var(--s4); }
   [data-modo="cliente"] .contenido { display: flex; flex-direction: column; }
