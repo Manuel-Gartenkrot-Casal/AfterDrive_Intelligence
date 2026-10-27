@@ -126,7 +126,9 @@ def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     pagina.on("request", lambda r: envios.append(r) if r.url.endswith("/api/hubspot/enviar") else None)
     acciones.get_by_role("button", name="Aprobar y subir a HubSpot").dblclick()   # un doble clic no duplica el post
     pagina.locator("#modal-estado.aprobada").wait_for()
-    expect(acciones.get_by_role("button", name="Publicar en HubSpot")).to_be_visible()
+    # Publicar está desactivado por ahora: la acción principal es actualizar el borrador.
+    expect(acciones.get_by_role("button", name="Actualizar borrador en HubSpot")).to_be_visible()
+    expect(acciones.get_by_role("button", name="Publicar en HubSpot")).to_have_count(0)
     acciones.get_by_role("button", name="Más").click()
     expect(acciones.get_by_role("menuitem", name="Actualizar borrador en HubSpot")).to_be_visible()
     id_nota = pagina.evaluate("_notaActual.id")

@@ -134,6 +134,8 @@ async function abrirItemHistorial(seccion, coleccion, id) {
 
 /* ── Revisión de la nota abierta ── */
 var _notaActual = null;
+// Desactivado por ahora: solo se sube como borrador (el servidor también lo frena, ver historial.py).
+var PUBLICAR_DESDE_DASHBOARD = false;
 
 /* Pie del modal. Izquierda: Editar, Vista previa y "Más" (lo que se usa
    poco). Derecha: una sola acción principal, la que corresponde al paso del
@@ -176,8 +178,10 @@ function pintarAccionesNota() {
   else if (paso === 'calificar') der = boton("irAPaso('publicar')", 'Siguiente: publicar →', ' btn-primary');
   else if (e === 'borrador') der = subible ? boton('aprobarYSubir()', 'Aprobar y subir a HubSpot', ' btn-primary')
                                            : boton("cambiarEstadoNota('aprobada')", 'Aprobar', ' btn-primary');
+  else if (e === 'aprobada' && subible && !PUBLICAR_DESDE_DASHBOARD)
+    der = boton('enviarAHubspot(false)', yaEnviada ? 'Actualizar borrador en HubSpot' : 'Subir borrador a HubSpot', ' btn-primary');
   else if (e === 'aprobada' && subible) der = boton('enviarAHubspot(true)', 'Publicar en HubSpot', ' btn-primary');
-  else if (e === 'publicado' && subible && yaEnviada) der = boton('enviarAHubspot(true)', 'Actualizar en HubSpot', ' btn-primary');
+  else if (e === 'publicado' && subible && yaEnviada && PUBLICAR_DESDE_DASHBOARD) der = boton('enviarAHubspot(true)', 'Actualizar en HubSpot', ' btn-primary');
   else if (e === 'rechazada') der = boton("cambiarEstadoNota('borrador')", 'Volver a revisar', ' btn-primary');
 
   cont.innerHTML = '<div class="acciones-izq">' + izq

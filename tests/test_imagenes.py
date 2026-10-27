@@ -418,3 +418,24 @@ def test_si_no_alcanzan_se_buscan_en_otras_noticias_del_tema(ia_fotos, monkeypat
     e = imagen_destacada.elegir(_con_fotos(1), "Devoluciones en marketplaces", extra=lambda: otras)
     assert [i["url"] for i in e.imagenes] == ["https://n.com/8.jpg", "https://n.com/7.jpg"]
     assert e.veredictos["https://n.com/1.jpg"]["apta"] is False and len(pedidos) == 2
+
+
+def test_no_repite_fotos_que_ya_estan_en_otras_notas(ia_fotos):
+    # Con todas las noticias ya usadas, las notas salen de las mismas noticias: sus fotos no se repiten.
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}')
+    e = imagen_destacada.elegir(_con_fotos(3), "T", excluir={"https://n.com/1.jpg", "https://n.com/2.jpg"})
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/3.jpg"] and len(pedidos[0]["imagenes"]) == 1
+    sin = imagen_destacada.elegir(_con_fotos(1), "T", excluir={"https://n.com/1.jpg"})
+    assert sin.imagenes == [] and "otras notas" in sin.motivo
+
+
+def test_fotos_usadas_lee_destacadas_y_del_cuerpo_de_notas_recientes():
+    from afterdrive.generacion import imagen_destacada
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_many([
+        {"generado_en": "2099-01-01T00:00:00+00:00", "imagen": {"url": "https://a.jpg"},
+         "imagenes_cuerpo": [{"url": "https://b.jpg"}]},
+        {"generado_en": "2000-01-01T00:00:00+00:00", "imagen": {"url": "https://vieja.jpg"}}])
+    assert imagen_destacada.fotos_usadas(base=base) == {"https://a.jpg", "https://b.jpg"}

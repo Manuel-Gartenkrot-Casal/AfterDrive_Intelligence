@@ -112,11 +112,24 @@ def test_solo_las_notas_aprobadas_van_a_hubspot(hs, base):
     llamadas, _ = hs
     oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "borrador"}).inserted_id
     with pytest.raises(historial.ErrorHistorial, match="Aprobá"):
-        historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=True, base=base)
+        historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
     assert llamadas == []
 
 
-def test_publicar_marca_la_nota_y_guarda_el_post(hs, base):
+def test_publicar_esta_desactivado_por_ahora(hs, base):
+    llamadas, _ = hs
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada"}).inserted_id
+    with pytest.raises(historial.ErrorHistorial, match="borrador"):
+        historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=True, base=base)
+    assert llamadas == [] and base.notas_fase2.find_one({"_id": oid})["estado"] == "aprobada"
+
+
+@pytest.fixture
+def publicar_habilitado(monkeypatch):
+    monkeypatch.setattr(historial, "PUBLICAR_DESDE_DASHBOARD", True)
+
+
+def test_publicar_marca_la_nota_y_guarda_el_post(hs, base, publicar_habilitado):
     _, respuesta = hs
     respuesta["body"] = {"id": "777", "url": "https://blog/x", "state": "PUBLISHED"}
     oid = base.notas_fase2.insert_one({"contenido": NOTA, "estado": "aprobada"}).inserted_id
@@ -131,7 +144,7 @@ def test_borrador_en_hubspot_no_cambia_el_estado(hs, base):
     assert item["estado"] == "aprobada" and item["hubspot"]["estado"] == "DRAFT"
 
 
-def test_endpoint_enviar(hs, api, monkeypatch, base):
+def test_endpoint_enviar(hs, api, monkeypatch, base, publicar_habilitado):
     flask_api, _ = api
     monkeypatch.setattr(db_module, "db", base)
     c = flask_api.app.test_client()

@@ -377,6 +377,11 @@ def destino_hubspot(coleccion: str, item_id: str, base=None) -> dict | None:
     return lugar
 
 
+# Desactivado por ahora (pedido del equipo, 2026-10-27): desde acá solo se sube como borrador
+# y se publica en HubSpot. Para volver a permitirlo, True acá y en historial.js.
+PUBLICAR_DESDE_DASHBOARD = False
+
+
 def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, autor_id: str | None = None) -> dict | None:
     """Manda una Nota aprobada a HubSpot (borrador o publicada) y guarda el resultado.
 
@@ -388,6 +393,8 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
 
     if coleccion not in COLECCIONES_CON_ESTADO:
         raise ErrorHistorial("Solo las notas generadas se pueden enviar a HubSpot.")
+    if publicar and not PUBLICAR_DESDE_DASHBOARD:
+        raise ErrorHistorial("Publicar desde acá está desactivado: subila como borrador y publicala en HubSpot.")
     if autor_id is not None and not re.fullmatch(r"\d{1,20}", str(autor_id)):
         raise ErrorHistorial("Autor inválido.")
     col = _base(base)[coleccion]

@@ -93,21 +93,48 @@ def _unicas(noticias: list) -> list:
     return resultado
 
 
-def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD, extra=None) -> Eleccion:
+def fotos_usadas(dias: int | None = None, base=None) -> set[str]:
+    """URLs de las fotos (destacada y del cuerpo) de las notas de los últimos `dias`.
+
+    Cuando ya se usaron todas las noticias, las notas salen de las mismas
+    noticias y sin esto llevaban siempre las mismas fotos.
+    """
+    import datetime
+
+    from afterdrive.generacion.contexto_noticias import DIAS_SIN_REPETIR
+    if base is None:
+        from afterdrive.db import db as base
+    desde = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=dias or DIAS_SIN_REPETIR)).isoformat()
+    usadas = set()
+    for d in base.notas_fase2.find({"generado_en": {"$gte": desde}}, {"imagen.url": 1, "imagenes_cuerpo.url": 1}):
+        for im in [d.get("imagen") or {}] + (d.get("imagenes_cuerpo") or []):
+            if im.get("url"):
+                usadas.add(im["url"])
+    return usadas
+
+
+def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD, extra=None,
+           excluir: set[str] = frozenset()) -> Eleccion:
     """Elige hasta `cantidad` fotos. Nunca lanza, salvo una cancelación desde el dashboard.
 
     extra: función sin argumentos que devuelve más noticias del mismo tema. Si
     entre las de la nota no hay `cantidad` fotos aptas, se buscan ahí las que faltan.
+    excluir: fotos que ya están en otras notas (ver fotos_usadas): no se repiten.
     """
     from afterdrive.generacion import contexto_noticias
 
-    candidatas = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
-    eleccion = _ronda(candidatas, titulo, angulo, cantidad) if candidatas else \
-        Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
+    con_foto = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
+    candidatas = [n for n in con_foto if n.imagen["url"] not in excluir]
+    if candidatas:
+        eleccion = _ronda(candidatas, titulo, angulo, cantidad)
+    elif con_foto:
+        eleccion = Eleccion([], "ninguna", motivo="Las fotos de sus noticias ya están en otras notas.")
+    else:
+        eleccion = Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
     faltan = cantidad - len(eleccion.imagenes)
     if faltan <= 0 or extra is None or eleccion.metodo == "primera":
         return eleccion
-    vistas = {n.imagen["url"] for n in candidatas} | {id(n) for n in noticias}
+    vistas = {n.imagen["url"] for n in con_foto} | {id(n) for n in noticias} | set(excluir)
     try:
         mas = [n for n in extra() if id(n) not in vistas and n.url not in {x.url for x in noticias}]
     except Exception as e:

@@ -205,6 +205,15 @@ def _pedido(categorias: list[str], tema: str | None) -> str:
     return "Escribí la nota."
 
 
+def _fotos_de_otras_notas() -> set[str]:
+    """Fotos ya usadas en notas recientes. Si Mongo falla, la nota sale igual (puede repetir foto)."""
+    try:
+        return imagen_destacada.fotos_usadas()
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer las fotos de otras notas: {e}", flush=True)
+        return set()
+
+
 def _consulta(categorias: list[str], tema: str | None, regiones: list[str]) -> str:
     """Texto con el que se buscan las noticias de contexto."""
     base = tema or ", ".join(CATEGORIAS.get(s, s) for s in categorias)
@@ -551,7 +560,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     eleccion = imagen_destacada.elegir(
         usadas + [n for n in noticias if id(n) not in usadas_ids], titulo, (plan_nota or {}).get("angulo", ""),
         # Si las fotos de estas noticias no alcanzan, más noticias del mismo tema.
-        extra=lambda: contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=15))
+        extra=lambda: contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=15),
+        excluir=_fotos_de_otras_notas())
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
