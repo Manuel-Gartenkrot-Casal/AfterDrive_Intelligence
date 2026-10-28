@@ -4,8 +4,9 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
    SECCIONES: una a la vez, elegida en la barra lateral.
-   La sección activa vive en el hash (#crear), así andan atrás/adelante y
-   los links directos; también se recuerda para la próxima visita.
+   La sección activa vive en el hash (#crear), así andan atrás/adelante.
+   Al abrir la app siempre se arranca en Inicio, aunque la dirección traiga
+   otra sección; el logo también lleva a Inicio.
    Antes de salir se consultan los guardianes (cambios sin guardar).
    ═══════════════════════════════════════════════════════════════════════ */
 var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'corridas'];
@@ -47,7 +48,6 @@ async function irASeccion(id, opts) {
     if (a.dataset.seccion === id) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  try { localStorage.setItem('ad-seccion', id); } catch(e) {}
   if (!opts.desdeHash && location.hash !== '#' + id) {
     if (anterior) history.pushState(null, '', '#' + id);
     else history.replaceState(null, '', '#' + id);
@@ -70,9 +70,12 @@ function initSecciones() {
   window.addEventListener('popstate', function() {
     irASeccion(seccionDelHash() || 'inicio', { desdeHash: true });
   });
-  var guardada = null;
-  try { guardada = localStorage.getItem('ad-seccion'); } catch(e) {}
-  irASeccion(seccionDelHash() || guardada || 'inicio', { forzar: true });
+  $('ir-inicio').addEventListener('click', function(ev) {
+    ev.preventDefault();
+    irASeccion('inicio');
+  });
+  try { localStorage.removeItem('ad-seccion'); } catch(e) {}   // lo guardaban versiones anteriores
+  irASeccion('inicio', { forzar: true });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

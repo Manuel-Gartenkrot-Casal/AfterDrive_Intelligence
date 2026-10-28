@@ -28,6 +28,8 @@ def test_menu_movil_con_teclado_y_foco(navegador, base_url):
         pg.get_by_role('button', name='Crear una nota', exact=True).click()
         pg.wait_for_url('**/#crear')
         pg.reload()
+        pg.wait_for_url('**/#inicio')   # al abrir la app siempre arranca en Inicio
+        pg.get_by_role('button', name='Crear una nota', exact=True).click()
         pg.wait_for_url('**/#crear')
         expect(pg.locator('#btn-f2-generar')).to_be_visible()
         pg.locator('#menu-movil').press('Enter')

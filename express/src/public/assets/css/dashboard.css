@@ -176,7 +176,9 @@ body {
 .header.active::after { opacity: 1; animation: scanline 1.8s linear infinite; }
 @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-.header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; border-radius: var(--r-md); color: inherit; text-decoration: none; }
+.header-brand:hover .header-title { color: var(--brand); }
+.header-brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
 
 /* Isologo de AfterDrive: el ícono original de Alephee, siempre en su rosa,
    con "afterdrive" y la bajada en el color de texto de cada tema. */

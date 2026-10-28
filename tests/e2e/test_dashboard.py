@@ -47,6 +47,28 @@ def test_navegar_por_todas_las_secciones(pagina):
     assert _visible(pagina, "fuentes")
 
 
+def test_siempre_abre_en_inicio_y_el_logo_lleva_a_inicio(navegador, base_url):
+    pg = abrir(navegador, base_url)
+    try:
+        # Aunque la última vez quedó en Historial y la dirección lo trae, al abrir arranca en Inicio.
+        pg.evaluate("localStorage.setItem('ad-seccion', 'historial')")
+        pg.goto(base_url + "/#historial")
+        pg.reload()
+        pg.wait_for_selector(".sidebar")
+        expect(pg.locator('.nav-link[data-seccion="inicio"]')).to_have_attribute("aria-current", "page")
+        assert _visible(pg, "inicio") and not _visible(pg, "historial")
+        assert pg.evaluate("location.hash") == "#inicio"
+        # El logo vuelve a Inicio desde cualquier sección.
+        pg.click('.sidebar a[data-seccion="fuentes"]')
+        assert _visible(pg, "fuentes")
+        pg.click("#ir-inicio")
+        expect(pg.locator('.nav-link[data-seccion="inicio"]')).to_have_attribute("aria-current", "page")
+        assert _visible(pg, "inicio") and pg.evaluate("location.hash") == "#inicio"
+        assert pg.errores == []
+    finally:
+        pg.context.close()
+
+
 def test_programacion_guarda_con_boton_aparte(pagina):
     pagina.click('.sidebar a[data-seccion="programacion"]')
     barra = pagina.locator("#barra-programacion")

@@ -731,6 +731,7 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
+["Ir al inicio", "Ir para o início", "Go to home"],
 ["Blog de pruebas", "Blog de testes", "Test blog"],
 ["Aprobar con IA", "Aprovar com IA", "Approve with AI"],
 ["Van a blog_test", "Vão para o blog_test", "Go to blog_test"],
