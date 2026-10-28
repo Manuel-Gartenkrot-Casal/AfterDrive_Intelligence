@@ -158,6 +158,12 @@ def test_recorrido_de_revision(pagina):
     expect(lateral.locator("#chequeos-atencion .chequeo").first).to_contain_text("Falta la imagen destacada")
     expect(lateral.locator("#tab-revisar .paso-estado")).to_have_text("1 aviso")
     expect(lateral.locator(".paso-resumen")).to_have_text("1 punto a revisar · 1 en orden")
+    # Criterios del evaluador: el dato en la fila, el detalle con "Cumple" / "No cumple".
+    criterios = lateral.locator("#recorrido-evaluacion")
+    expect(criterios.locator(".acordeon-dato")).to_have_text("1 de 1")
+    criterios.locator("summary").click()
+    expect(criterios.locator(".lista-criterios li")).to_contain_text("Estructura correcta")
+    expect(criterios.locator(".criterio-estado")).to_have_text("Cumple")
     # La acción principal sigue el recorrido.
     acciones.get_by_role("button", name="Siguiente: calificar →").click()
     expect(lateral.locator("#paso-calificar")).to_be_visible()
@@ -307,11 +313,16 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     lineamientos.get_by_role("button", name="Ver detalle").click()
     expect(lineamientos).to_contain_text("Se corrigió porque falló en")
     expect(lateral.locator("#chequeo-imagen")).to_contain_text("1 no servía para la nota")
-    lateral.locator(".como-se-genero summary").click()
-    costo = lateral.locator(".revision-bloque", has_text="Costo de esta nota")
-    expect(costo).to_contain_text("USD 0,231")
-    expect(costo).to_contain_text("redacción: USD 0,18")
-    expect(lateral.locator(".revision-bloque", has_text="Plan de la nota")).to_contain_text("Qué pasó")
+    # "Cómo se generó": filas con su dato a la vista; el detalle se abre al tocarlas.
+    generacion = lateral.locator("#recorrido-generacion")
+    costo = generacion.locator(".acordeon-item", has_text="Costo de esta nota")
+    expect(costo.locator(".acordeon-dato")).to_have_text("USD 0,231")
+    costo.locator("summary").click()
+    expect(costo.locator(".tabla-costo tr", has_text="Redacción")).to_contain_text("USD 0,18")
+    plan = generacion.locator(".acordeon-item", has_text="Plan de la nota")
+    expect(plan.locator(".acordeon-dato")).to_have_text("2 secciones")
+    plan.locator("summary").click()
+    expect(plan.locator(".lista-plan")).to_contain_text("Qué pasó")
 
     lateral.locator("#tab-calificar").click()
     calificar = lateral.locator(".calificar")
@@ -485,7 +496,7 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
     lateral.locator("#tab-revisar").click()
-    lateral.locator(".como-se-genero summary").click()
+    lateral.locator("#recorrido-generacion summary", has_text="Citas a AfterDrive").click()
     expect(lateral).to_contain_text("Cita 1 nota(s) de AfterDrive by Alephee:")
     expect(lateral.get_by_role("link", name="Catálogo y fitment")).to_have_attribute(
         "href", "https://afterdrive.alephee.com/es/blog/catalogo")
@@ -573,6 +584,36 @@ def test_imagen_desde_la_computadora(pagina):
         zona.dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
     }""", list(png))
     expect(pagina.locator(".previa-imagen")).not_to_have_attribute("src", src)
+
+
+def test_elegir_imagen_abre_el_selector_y_la_deja_en_la_nota(pagina):
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    # Los tests comparten servidor: se arranca sin imagen.
+    pagina.evaluate("""async () => {
+        const d = await (await fetch('/api/historial/generados_aprobados?q=Rotación')).json();
+        const it = d.items[0];
+        await fetch('/api/historial/imagen', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                                              body: JSON.stringify({coleccion: it.coleccion, id: it.id, url: ''})});
+    }""")
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral = pagina.locator(".modal-sidebar")
+    lateral.locator("#tab-revisar").click()
+    with pagina.expect_file_chooser() as elegido:
+        lateral.locator("#chequeo-imagen").get_by_role("button", name="Elegir imagen").click()
+    elegido.value.set_files([{"name": "foto.png", "mimeType": "image/png", "buffer": png}])
+    # Queda en Publicar, a la vista, y Revisar ya no la marca como faltante.
+    expect(lateral.locator("#paso-publicar")).to_be_visible()
+    expect(lateral.locator("#paso-publicar .revision-imagen")).to_have_attribute("src", re.compile(r"^/api/imagenes/[0-9a-f]{24}$"))
+    expect(lateral.locator("#paso-publicar")).to_contain_text("Subida desde la computadora: foto.png.")
+    expect(lateral.locator("#chequeo-imagen")).to_contain_text("Tiene imagen destacada.")
+    # También se puede arrastrar sobre el bloque de Publicar.
+    src = lateral.locator("#paso-publicar .revision-imagen").get_attribute("src")
+    pagina.evaluate("""png => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(png)], 'otra.png', {type: 'image/png'}));
+        document.getElementById('zona-imagen-publicar').dispatchEvent(new DragEvent('drop', {dataTransfer: dt, bubbles: true, cancelable: true}));
+    }""", list(png))
+    expect(lateral.locator("#paso-publicar .revision-imagen")).not_to_have_attribute("src", src)
 
 
 def test_la_vista_previa_marca_las_fotos_que_la_ia_descarto(pagina):

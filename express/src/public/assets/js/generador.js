@@ -562,13 +562,11 @@ async function fase2MostrarUltima(id) {
     _recorrido.firma = firma;
     _recorrido.cambiosVistos = _cambiosPropios.total;
 
-    // Criterios del evaluador, dentro de "Cómo se generó".
-    var lugar = $('recorrido-evaluacion');
+    // Criterios del evaluador, dentro de "Cómo se generó" (recorrido.js).
     var evD = { success: false };
     if (nota.evaluacion) {
       evD = { success: true, evaluation: nota.evaluacion };   // guardada al generar
     } else try {
-      lugar.innerHTML = '<div class="evaluando">Evaluando la nota...</div>';
       var evR = await fetch('/api/evaluate-article', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -576,18 +574,8 @@ async function fase2MostrarUltima(id) {
       });
       evD = await evR.json();
     } catch(e) {}
-    if (!lugar.isConnected) return;
-    lugar.innerHTML = '';
-    if (!evD.success) {
-      lugar.appendChild(bloqueRevision('Criterios automáticos', '<p class="revision-sub">La evaluación no está disponible ahora.</p>'));
-      return;
-    }
-    var criterios = Object.entries(evD.evaluation.lineamientos || evD.evaluation).filter(function(e) { return typeof e[1] === 'boolean'; });
-    lugar.appendChild(bloqueRevision('Criterios automáticos', '<div class="criterios">' + criterios.map(function(entry) {
-      var k = entry[0], v = entry[1];
-      return '<div class="check-item ' + (v ? 'ok' : 'fail') + '"><div class="check-dot"></div> '
-        + escHtml(k === 'sin_alucinaciones' ? 'Sin indicios de invención detectados' : k.replace(/_/g, ' ')) + '</div>';
-    }).join('') + '</div>'
-      + (evD.evaluation.comentarios ? '<p class="eval-comments">' + escHtml(evD.evaluation.comentarios) + '</p>' : '')));
+    if (!_notaActual || _notaActual.id !== nota._id) return;
+    pintarCriterios(evD.success ? (evD.evaluation.lineamientos || evD.evaluation) : null,
+                    evD.success ? evD.evaluation.comentarios : '');
   } catch(e) { showToast('Error al cargar nota', 'error'); }
 }

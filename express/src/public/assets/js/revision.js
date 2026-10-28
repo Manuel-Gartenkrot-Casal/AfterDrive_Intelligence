@@ -303,18 +303,6 @@ function lista(items, clase) {
 var NOMBRE_TAREA = { redaccion: 'redacción', correccion: 'corrección', planificacion: 'plan', evaluacion: 'evaluación',
                      clasificacion: 'fichas y fotos', embeddings: 'vectores', traduccion: 'traducción', general: 'otras' };
 
-function pintarCosto(nota, contenedor) {
-  var c = nota.costo;
-  if (!c) return;
-  var usd = function(x) { return 'USD ' + x.toLocaleString(localeUI(), { minimumFractionDigits: 2, maximumFractionDigits: 3 }); };
-  var html = c.llamadas
-    ? '<p><strong>' + usd(c.total_usd) + '</strong>' + (c.estimado ? ' aprox.' : '') + ' en ' + c.llamadas + ' llamadas a la API paga.</p>'
-      + lista(Object.entries(c.por_tarea).sort(function(a, b) { return b[1] - a[1]; })
-          .map(function(e) { return (NOMBRE_TAREA[e[0]] || e[0]) + ': ' + usd(e[1]); }), 'seo')
-    : '<p class="revision-ok">Sin costo: se generó con un proveedor gratuito.</p>';
-  contenedor.appendChild(bloqueRevision('Costo de esta nota', html));
-}
-
 function pintarImagen(nota, contenedor) {
   var im = nota.imagen || {}, html;
   var eleccion = nota.imagen_eleccion || {};
@@ -323,19 +311,21 @@ function pintarImagen(nota, contenedor) {
       + (im.origen ? '<p class="revision-sub">Foto de la noticia: <a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener">'
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
       + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
-      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Cambiar imagen</button></p>';
+      + (im.subida ? '<p class="revision-sub">Subida desde la computadora' + (im.subida.nombre ? ': ' + escHtml(im.subida.nombre) : '') + '.</p>' : '');
   } else if (/muestran personas/.test(eleccion.motivo || '')) {
-    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>'
-      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
+    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>';
   } else if (eleccion.metodo === 'ia') {
     html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
-      + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>'
-      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
+      + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>';
   } else {
-    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto.</p>'
-      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
+    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto.</p>';
   }
-  contenedor.appendChild(bloqueRevision('Imagen destacada', html));
+  // Se elige acá mismo (arrastrando o con el botón); las fotos de las noticias y la URL, en la vista previa.
+  html += zonaImagenHtml('-publicar')
+    + '<button type="button" class="enlace-detalle" onclick="vistaPreviaNota()">Elegir entre las fotos de las noticias o pegar una URL</button>';
+  var bloque = bloqueRevision('Imagen destacada', html);
+  contenedor.appendChild(bloque);
+  prepararZonaImagen(bloque.querySelector('.zona-imagen'));
   pintarImagenesCuerpo(nota, contenedor);
 }
 
@@ -354,19 +344,6 @@ function pintarImagenesCuerpo(nota, contenedor) {
       }).join('') + '</div>'
     : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';
   contenedor.appendChild(bloqueRevision('Imágenes en el texto', html));
-}
-
-/* Notas de AfterDrive by Alephee que la nota cita y enlaza (solo las que encajaban). */
-function pintarCitasBlog(nota, contenedor) {
-  var sugeridas = nota.notas_blog_sugeridas || [], citadas = nota.notas_blog_citadas || [];
-  if (!sugeridas.length && !citadas.length) return;
-  var html = citadas.length
-    ? '<p class="revision-ok">Cita ' + citadas.length + ' nota(s) de AfterDrive by Alephee:</p><ul class="revision-lista">'
-      + citadas.map(function(n) {
-          return '<li><a href="' + urlSegura(n.url) + '" target="_blank" rel="noopener" translate="no">' + escHtml(n.titulo) + '</a></li>';
-        }).join('') + '</ul>'
-    : '<p class="revision-sub">No cita notas de AfterDrive by Alephee: ninguna de las relacionadas encajaba con el texto.</p>';
-  contenedor.appendChild(bloqueRevision('Citas a AfterDrive', html));
 }
 
 var NOMBRE_IDIOMA = { es: 'Español', pt: 'Portugués', en: 'Inglés' };

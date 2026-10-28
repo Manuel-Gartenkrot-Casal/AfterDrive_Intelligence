@@ -323,22 +323,10 @@ async function vistaPreviaNota() {
   try { d = await pedir('/api/historial/vista-previa/' + n.coleccion + '/' + n.id); }
   catch (e) { showToast(e.message, 'error'); return; }
   var propia = d.imagen_propia || {};
+  // El formulario de la imagen va primero: es lo que se viene a cambiar acá.
   $('art-body').innerHTML =
-    '<div class="previa">'
-    + (d.imagen.url ? '<img class="previa-imagen" src="' + urlSegura(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '" referrerpolicy="no-referrer">'
-                    : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
-    + '<h1 translate="no">' + escHtml(d.titulo) + '</h1>'
-    + (d.meta ? '<p class="previa-meta" translate="no">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
-    + (d.etiquetas.length ? '<div class="previa-etiquetas">' + d.etiquetas.map(function(t) { return '<span>' + escHtml(t) + '</span>'; }).join('') + '</div>' : '')
-    + '<div class="previa-url">/' + escHtml(d.slug) + '</div>'
-    + '<div class="previa-cuerpo" translate="no">' + DOMPurify.sanitize(d.html) + '</div>'
-    + '</div>'
-    + '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
-    + '<div class="zona-imagen" id="zona-imagen">'
-    + '<input type="file" id="archivo-imagen" accept="image/jpeg,image/png,image/webp,image/gif" hidden>'
-    + '<p><strong>Arrastrá una imagen acá</strong> o elegila desde tu computadora.</p>'
-    + '<button type="button" class="btn btn-xs" onclick="$(\'archivo-imagen\').click()">Elegir archivo</button>'
-    + '<small>JPG, PNG, WebP o GIF, hasta 5 MB.</small></div>'
+    '<fieldset class="previa-form"><legend>Imagen destacada</legend>'
+    + zonaImagenHtml('')
     + bloqueImagenesNoticias(d, propia)
     + '<label class="control-label" for="previa-img-url">O pegá la URL de una imagen (https)</label>'
     + '<input id="previa-img-url" class="input-field" type="url" placeholder="https://…/imagen.jpg">'
@@ -346,10 +334,19 @@ async function vistaPreviaNota() {
     + '<input id="previa-img-alt" class="input-field" type="text" maxlength="200" placeholder="Qué muestra la imagen">'
     + '<div class="previa-acciones"><button type="button" class="btn btn-xs btn-primary" onclick="guardarImagenNota()">Guardar imagen</button>'
     + (propia.url ? '<button type="button" class="btn btn-xs" onclick="guardarImagenNota(true)">Quitar imagen</button>' : '')
-    + '</div></fieldset>';
+    + '</div></fieldset>'
+    + '<div class="previa">'
+    + (d.imagen.url ? '<img class="previa-imagen" src="' + urlSegura(d.imagen.url) + '" alt="' + escHtml(d.imagen.alt || '') + '" referrerpolicy="no-referrer">'
+                    : '<div class="previa-sin-imagen">Sin imagen destacada</div>')
+    + '<h1 translate="no">' + escHtml(d.titulo) + '</h1>'
+    + (d.meta ? '<p class="previa-meta" translate="no">' + escHtml(d.meta) + '</p>' : '<p class="previa-meta aviso">Sin meta description: la nota no termina con una línea en cursiva.</p>')
+    + (d.etiquetas.length ? '<div class="previa-etiquetas">' + d.etiquetas.map(function(t) { return '<span>' + escHtml(t) + '</span>'; }).join('') + '</div>' : '')
+    + '<div class="previa-url">/' + escHtml(d.slug) + '</div>'
+    + '<div class="previa-cuerpo" translate="no">' + DOMPurify.sanitize(d.html) + '</div>'
+    + '</div>';
   $('previa-img-url').value = propia.subida ? '' : (propia.url || '');   // la subida no tiene URL pública
   $('previa-img-alt').value = propia.alt || '';
-  prepararZonaImagen();
+  prepararZonaImagen($('zona-imagen'));
   $('nota-acciones').innerHTML = '<button type="button" class="btn btn-xs" onclick="cancelarEdicionNota()">Volver al texto</button>';
   $('art-body').scrollTop = 0;
 }
@@ -357,10 +354,19 @@ async function vistaPreviaNota() {
 /* Imagen desde la computadora: se arrastra a la zona o se elige con el botón. */
 var IMAGEN_MAX_BYTES = 5 * 1024 * 1024;
 
-function prepararZonaImagen() {
-  var zona = $('zona-imagen'), input = $('archivo-imagen');
+/* La zona: en la vista previa (sufijo '') y en el paso Publicar ('-publicar'). */
+function zonaImagenHtml(sufijo) {
+  return '<div class="zona-imagen" id="zona-imagen' + sufijo + '">'
+    + '<input type="file" id="archivo-imagen' + sufijo + '" accept="image/jpeg,image/png,image/webp,image/gif" hidden>'
+    + '<p><strong>Arrastrá una imagen acá</strong> o elegila desde tu computadora.</p>'
+    + '<button type="button" class="btn btn-xs" onclick="$(\'archivo-imagen' + sufijo + '\').click()">Elegir archivo</button>'
+    + '<small>JPG, PNG, WebP o GIF, hasta 5 MB.</small></div>';
+}
+
+function prepararZonaImagen(zona) {
   if (!zona) return;
-  input.onchange = function() { if (input.files[0]) subirArchivoImagen(input.files[0]); };
+  var input = zona.querySelector('input[type="file"]');
+  input.onchange = function() { if (input.files[0]) subirArchivoImagen(input.files[0], zona); input.value = ''; };
   ['dragenter', 'dragover'].forEach(function(t) {
     zona.addEventListener(t, function(ev) { ev.preventDefault(); zona.classList.add('activa'); });
   });
@@ -369,21 +375,21 @@ function prepararZonaImagen() {
   });
   zona.addEventListener('drop', function(ev) {
     var f = ev.dataTransfer && ev.dataTransfer.files[0];
-    if (f) subirArchivoImagen(f);
+    if (f) subirArchivoImagen(f, zona);
   });
 }
 
 // Soltar un archivo fuera de la zona no tiene que abrirlo en la pestaña.
 ['dragover', 'drop'].forEach(function(t) {
   document.addEventListener(t, function(ev) {
-    if ($('modal-art').classList.contains('open') && !ev.target.closest('#zona-imagen')) ev.preventDefault();
+    if ($('modal-art').classList.contains('open') && !ev.target.closest('.zona-imagen')) ev.preventDefault();
   });
 });
 
-async function subirArchivoImagen(archivo) {
+async function subirArchivoImagen(archivo, zona) {
   if (!/^image\/(jpeg|png|webp|gif)$/.test(archivo.type)) { showToast('El archivo tiene que ser una imagen JPG, PNG, WebP o GIF.', 'error'); return; }
   if (archivo.size > IMAGEN_MAX_BYTES) { showToast('La imagen pesa más de 5 MB.', 'error'); return; }
-  var n = _notaActual, zona = $('zona-imagen');
+  var n = _notaActual;
   if (zona) zona.classList.add('subiendo');
   var datos = new FormData();
   datos.append('archivo', archivo);
@@ -394,7 +400,7 @@ async function subirArchivoImagen(archivo) {
     var d = await pedir('/api/historial/imagen/archivo', { method: 'POST', body: datos });
     showToast('Imagen guardada', 'success');
     imagenCambiada(d.imagen);
-    vistaPreviaNota();
+    if ($('zona-imagen')) vistaPreviaNota();   // si la vista previa está abierta, se ve con la imagen nueva
   } catch (e) {
     if (zona) zona.classList.remove('subiendo');
     showToast(e.message, 'error');

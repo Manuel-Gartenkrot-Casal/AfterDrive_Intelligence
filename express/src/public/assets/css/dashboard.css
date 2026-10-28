@@ -2311,21 +2311,30 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .modal-footer { grid-column: 1 / -1; margin: 0; padding: 12px 20px; }
 .checklist.recorrido { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; }
 
-/* Pasos: pestañas de texto con el número chico y el estado debajo. */
-.pasos { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 20px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
-.paso {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 0 12px; margin-bottom: -1px;
-  border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; text-align: left; color: var(--text-lo); cursor: pointer;
-  transition: color var(--t-fast), border-color var(--t-fast);
+/* Pasos: un control segmentado. La barra gris agrupa los tres botones; el
+   elegido queda "levantado" (fondo, borde y sombra) y los otros se marcan al
+   pasar el mouse, así se ve que se tocan. */
+.pasos {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; flex-shrink: 0;
+  margin: 14px 16px 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well);
 }
-.paso-nombre { display: flex; align-items: baseline; gap: 6px; font-size: 0.84rem; font-weight: 600; }
-.paso-num { font-size: 0.68rem; font-weight: 500; color: var(--text-lo); font-variant-numeric: tabular-nums; }
-.paso-estado { font-size: 0.7rem; color: var(--text-lo); white-space: nowrap; }
-.paso:hover { color: var(--text-hi); }
-.paso[aria-selected="true"] { color: var(--text-hi); border-bottom-color: var(--text-hi); }
-.paso.hecho:not(.atencion) .paso-estado::before { content: "✓ "; color: var(--ok); }
+.paso {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; padding: 8px 10px;
+  border: 0; border-radius: calc(var(--r-md) - 3px); background: transparent; font: inherit; text-align: left; color: var(--text-mid); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
+}
+.paso-nombre { display: flex; align-items: center; gap: 7px; font-size: 0.84rem; font-weight: 600; }
+.paso-num {
+  width: 18px; height: 18px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%;
+  font-size: 0.66rem; font-weight: 600; color: var(--text-mid); box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.paso-estado { padding-left: 25px; font-size: 0.7rem; color: var(--text-lo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.paso:hover { color: var(--text-hi); background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.paso[aria-selected="true"] { color: var(--text-hi); background: var(--bg); box-shadow: 0 0 0 1px var(--border), 0 1px 3px rgba(0, 0, 0, 0.12); }
+.paso[aria-selected="true"] .paso-num { color: var(--on-brand); background: var(--brand); box-shadow: none; }
+.paso.hecho:not([aria-selected="true"]) .paso-num { color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
 .paso.atencion .paso-estado { color: var(--warn); }
-.paso:focus-visible { outline-offset: -3px; border-radius: var(--r-sm); }
+.paso:focus-visible { outline-offset: 1px; }
 
 .paso-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; }
 .paso-panel[hidden] { display: none; }
@@ -2361,20 +2370,39 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .tabla-revision th { font-weight: 400; text-align: left; color: var(--text-lo); padding-right: 12px; }
 .tabla-revision td { text-align: right; color: var(--text-hi); font-variant-numeric: tabular-nums; }
 
-/* "Cómo se generó": una fila con flecha, como las de una lista de ajustes. */
-.como-se-genero > summary {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px; list-style: none; cursor: pointer;
-  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); font-size: 0.82rem; font-weight: 600; color: var(--text-hi);
-  transition: border-color var(--t-fast);
-}
-.como-se-genero > summary::-webkit-details-marker { display: none; }
-.como-se-genero > summary::after { content: ''; width: 7px; height: 7px; margin-left: auto; border-right: 1.5px solid var(--text-lo); border-bottom: 1.5px solid var(--text-lo); transform: rotate(-45deg); transition: transform var(--t-fast); }
-.como-se-genero[open] > summary::after { transform: rotate(45deg); }
-.como-se-genero > summary:hover { border-color: var(--border-strong); }
-.como-se-genero > summary small { display: block; margin-top: 2px; font-size: 0.74rem; font-weight: 400; color: var(--text-lo); }
-.como-se-genero-cuerpo { padding: 4px 2px 0; }
-.como-se-genero-cuerpo .check-item { padding: 6px 0; font-size: 0.78rem; }
-.noticias-usadas a { color: var(--text-hi); }
+/* "Cómo se generó": filas que se abren, como en una pantalla de ajustes.
+   Toda la fila es el botón: nombre, dato clave y una flecha que gira. */
+.acordeon { display: flex; flex-direction: column; flex-shrink: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); overflow: hidden; }
+.acordeon > * + * { border-top: 1px solid var(--border); }
+.acordeon-item > summary, .acordeon-fijo { display: flex; align-items: center; gap: 10px; padding: 11px 14px; font-size: 0.82rem; }
+.acordeon-item > summary { list-style: none; cursor: pointer; transition: background var(--t-fast); }
+.acordeon-item > summary::-webkit-details-marker { display: none; }
+.acordeon-item > summary:hover { background: var(--well); }
+.acordeon-item > summary:focus-visible { outline-offset: -2px; }
+.acordeon-titulo { font-weight: 600; color: var(--text-hi); }
+.acordeon-dato { margin-left: auto; color: var(--text-mid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.acordeon-flecha { width: 7px; height: 7px; flex-shrink: 0; margin: 0 2px 3px 4px; border-right: 1.5px solid var(--text-lo); border-bottom: 1.5px solid var(--text-lo); transform: rotate(45deg); transition: transform var(--t-fast); }
+.acordeon-item[open] > summary { background: var(--well); }
+.acordeon-item[open] .acordeon-flecha { transform: rotate(-135deg); margin-bottom: -3px; }
+.acordeon-cuerpo { padding: 4px 14px 14px; background: var(--well); font-size: 0.78rem; color: var(--text-mid); }
+.acordeon-nota { margin: 6px 0; font-size: 0.78rem; line-height: 1.5; color: var(--text-mid); }
+.acordeon-nota > span:first-child { font-weight: 600; color: var(--text-hi); }
+.etiquetas-nota { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.etiquetas-nota span { padding: 2px 8px; border-radius: var(--r-sm); background: var(--well); box-shadow: inset 0 0 0 1px var(--border); font-size: 0.72rem; color: var(--text-mid); text-transform: capitalize; }
+.lista-enlaces, .lista-criterios { list-style: none; display: flex; flex-direction: column; }
+.lista-enlaces li + li, .lista-criterios li + li { border-top: 1px solid var(--border); }
+.lista-enlaces a { display: flex; flex-direction: column; gap: 1px; padding: 8px 0; text-decoration: none; color: var(--text-hi); font-size: 0.8rem; line-height: 1.4; }
+.lista-enlaces a small { font-size: 0.7rem; color: var(--text-lo); }
+.lista-enlaces a:hover span { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+.lista-criterios li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 0.8rem; color: var(--text-hi); }
+.criterio-estado { flex-shrink: 0; padding: 1px 8px; border-radius: var(--r-sm); font-size: 0.7rem; font-weight: 600;
+                   color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.criterio-estado[data-ok="false"] { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+.lista-plan { margin: 4px 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: var(--text-hi); }
+.lista-plan small { display: block; font-size: 0.7rem; color: var(--text-lo); }
+.tabla-costo { margin-top: 2px; }
+.tabla-costo th { text-transform: capitalize; }
+.tabla-costo tr.total th, .tabla-costo tr.total td { font-weight: 600; color: var(--text-hi); border-top-color: var(--border-strong); }
 
 /* Bloques de Publicar y de "Cómo se generó" */
 .paso-panel .revision-bloque { padding: 12px 0 0; }
@@ -2440,3 +2468,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .zona-imagen small { font-size: 0.72rem; color: var(--text-lo); }
 .zona-imagen.activa { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, var(--bg)); }
 .zona-imagen.subiendo { opacity: 0.6; pointer-events: none; }
+/* En la vista previa el formulario va primero, separado del post. */
+.modal-body > .previa-form:first-child { margin-top: 0; margin-bottom: var(--s5); }
+.paso-panel .zona-imagen { margin: 10px 0 8px; padding: 14px 12px; gap: 6px; }
+.paso-panel .zona-imagen p { font-size: 0.8rem; }

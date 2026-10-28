@@ -92,14 +92,14 @@ function actualizarPasos() {
                hecho: e !== 'borrador' && e !== 'rechazada' },
     calificar: { texto: nota.calificacion ? 'Calificada' : critica ? 'IA: ' + critica.puntaje + '/10' : 'Sin calificar',
                  hecho: !!nota.calificacion },
-    publicar: { texto: e === 'publicado' ? 'Publicada' : hs && hs.id ? 'Borrador en HubSpot' : e === 'aprobada' ? 'Aprobada' : 'HubSpot',
+    publicar: { texto: e === 'publicado' ? 'Publicada' : hs && hs.id ? 'En HubSpot' : e === 'aprobada' ? 'Aprobada' : 'Sin subir',
                 hecho: e === 'publicado' || !!(hs && hs.id) }
   };
   PASOS.forEach(function(p, i) {
     var tab = $('tab-' + p.id), est = estados[p.id];
     tab.classList.toggle('hecho', est.hecho);
     tab.classList.toggle('atencion', !!est.nivel);
-    tab.querySelector('.paso-num').textContent = String(i + 1);
+    tab.querySelector('.paso-num').textContent = est.hecho && !est.nivel ? '✓' : String(i + 1);
     tab.querySelector('.paso-estado').textContent = est.texto;
   });
 }
@@ -170,7 +170,7 @@ function chequeosDeNota(nota) {
     : { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada',
         linea: eleccion.metodo === 'ia' ? resumenMotivoImagen(eleccion.motivo) : 'Ninguna noticia de la nota tenía foto.',
         detalle: eleccion.metodo === 'ia' && eleccion.motivo ? detalleMotivoImagen(eleccion.motivo) : '',
-        accion: { texto: 'Elegir imagen', onclick: 'vistaPreviaNota()' } });
+        accion: { texto: 'Elegir imagen', onclick: 'elegirImagenNota()' } });
   var hs = nota.hubspot_traducciones || {};
   var fallidas = Object.keys(hs).filter(function(c) { return hs[c] && hs[c].error; });
   if (fallidas.length) {
@@ -252,8 +252,7 @@ function pintarPasoRevisar(nota, panel) {
                        : '<p class="todo-listo">No hay nada que corregir: podés seguir a calificarla.</p>')
     + (bien.length ? '<p class="grupo-titulo">Todo bien</p><ul class="chequeos chequeos-ok" id="chequeos-ok"></ul>' : '')
     + '<p class="grupo-titulo">Cómo se generó</p>'
-    + '<details class="como-se-genero"><summary><span>Plan, noticias y costo<small>' + escHtml(resumenGeneracion(nota)) + '</small></span></summary>'
-    + '<div class="como-se-genero-cuerpo" id="recorrido-generacion"></div></details>';
+    + '<div class="acordeon" id="recorrido-generacion"></div>';
   atencion.forEach(function(c) { $('chequeos-atencion').appendChild(filaChequeo(c)); });
   bien.forEach(function(c) { $('chequeos-ok').appendChild(filaChequeo(c)); });
   pintarGeneracion(nota, $('recorrido-generacion'));
@@ -266,37 +265,94 @@ function resumenChequeos(mal, bien) {
   return partes.map(function(x) { return '<span>' + x + '</span>'; }).join(' · ');
 }
 
-function resumenGeneracion(nota) {
-  var partes = [];
-  if ((nota.fuentes || []).length) partes.push(nota.fuentes.length === 1 ? '1 noticia' : nota.fuentes.length + ' noticias');
-  if ((nota.categorias || []).length) partes.push(nota.categorias.join(', '));
-  if (nota.costo) partes.push(nota.costo.llamadas ? 'USD ' + nota.costo.total_usd.toLocaleString(localeUI(), { maximumFractionDigits: 2 }) : 'sin costo');
-  return partes.join(' · ');
+/* "Cómo se generó": una lista de filas que se abren, como las de una pantalla de
+   ajustes. Cada fila dice qué es y su dato clave (cuántas noticias, cuánto
+   costó, cuántos criterios cumple); al tocarla muestra el detalle. */
+function itemAcordeon(titulo, dato, cuerpo, id) {
+  var d = document.createElement('details');
+  d.className = 'acordeon-item';
+  if (id) d.id = id;
+  d.innerHTML = '<summary><span class="acordeon-titulo">' + escHtml(titulo) + '</span>'
+    + '<span class="acordeon-dato">' + escHtml(dato) + '</span><span class="acordeon-flecha" aria-hidden="true"></span></summary>'
+    + '<div class="acordeon-cuerpo">' + cuerpo + '</div>';
+  return d;
 }
 
-// Lo que antes se apilaba en el lateral: plan, categorías, noticias, citas, costo y criterios.
+function _dominio(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; }
+}
+
+function listaEnlaces(items) {
+  return '<ul class="lista-enlaces">' + items.map(function(x) {
+    return '<li><a href="' + urlSegura(x.url) + '" target="_blank" rel="noopener"><span translate="no">' + escHtml(x.titulo || x.url) + '</span>'
+      + '<small>' + escHtml(_dominio(x.url)) + ' ↗</small></a></li>';
+  }).join('') + '</ul>';
+}
+
+function _usd(x) { return 'USD ' + x.toLocaleString(localeUI(), { minimumFractionDigits: 2, maximumFractionDigits: 3 }); }
+
 function pintarGeneracion(nota, cont) {
+  if ((nota.categorias || []).length) {
+    var fija = document.createElement('div');
+    fija.className = 'acordeon-fijo';
+    fija.innerHTML = '<span class="acordeon-titulo">Categorías</span><span class="etiquetas-nota">'
+      + nota.categorias.map(function(c) { return '<span>' + escHtml(c.replace(/-/g, ' ')) + '</span>'; }).join('') + '</span>';
+    cont.appendChild(fija);
+  }
   if (nota.plan) {
-    var p = nota.plan;
-    cont.appendChild(bloqueRevision('Plan de la nota', (p.angulo ? '<p class="revision-sub">Ángulo: ' + escHtml(p.angulo) + '</p>' : '')
-      + '<ol class="revision-lista">' + (p.secciones || []).map(function(x) {
-          return '<li><span translate="no">' + escHtml(x.titulo) + '</span>' + (x.noticias.length ? ' <small>(noticias ' + x.noticias.join(', ') + ')</small>' : '') + '</li>';
+    var p = nota.plan, secciones = p.secciones || [];
+    cont.appendChild(itemAcordeon('Plan de la nota', secciones.length === 1 ? '1 sección' : secciones.length + ' secciones',
+      (p.angulo ? '<p class="acordeon-nota"><span>Ángulo</span> ' + escHtml(p.angulo) + '</p>' : '')
+      + '<ol class="lista-plan">' + secciones.map(function(x) {
+          return '<li><span translate="no">' + escHtml(x.titulo) + '</span>'
+            + (x.noticias.length ? '<small>' + (x.noticias.length === 1 ? 'noticia ' : 'noticias ') + x.noticias.join(', ') + '</small>' : '') + '</li>';
         }).join('') + '</ol>'));
   }
-  if ((nota.categorias || []).length) {
-    cont.appendChild(bloqueRevision('Categorías', '<p>' + escHtml(nota.categorias.join(', ')) + '</p>'
-      + (nota.puntapie_url ? '<p class="revision-sub">Puntapié: ' + escHtml(nota.puntapie_url) + '</p>' : '')));
-  }
   if ((nota.fuentes || []).length) {
-    cont.appendChild(bloqueRevision('Noticias usadas', '<ul class="revision-lista noticias-usadas">' + nota.fuentes.map(function(f) {
-      return '<li><a href="' + urlSegura(f.url) + '" target="_blank" rel="noopener" translate="no">' + escHtml(f.titulo) + '</a></li>';
-    }).join('') + '</ul>'));
+    cont.appendChild(itemAcordeon('Noticias usadas', String(nota.fuentes.length), listaEnlaces(nota.fuentes)));
   }
-  pintarCitasBlog(nota, cont);
-  pintarCosto(nota, cont);
-  var ev = document.createElement('div');
-  ev.id = 'recorrido-evaluacion';
-  cont.appendChild(ev);
+  var sugeridas = nota.notas_blog_sugeridas || [], citadas = nota.notas_blog_citadas || [];
+  if (sugeridas.length || citadas.length) {
+    cont.appendChild(itemAcordeon('Citas a AfterDrive', citadas.length ? String(citadas.length) : 'Ninguna',
+      citadas.length ? '<p class="acordeon-nota">Cita ' + citadas.length + ' nota(s) de AfterDrive by Alephee:</p>' + listaEnlaces(citadas)
+                     : '<p class="acordeon-nota">No cita notas de AfterDrive by Alephee: ninguna de las relacionadas encajaba con el texto.</p>'));
+  }
+  var c = nota.costo;
+  if (c) {
+    cont.appendChild(itemAcordeon('Costo de esta nota', c.llamadas ? _usd(c.total_usd) + (c.estimado ? ' aprox.' : '') : 'Sin costo',
+      c.llamadas
+        ? '<p class="acordeon-nota">' + c.llamadas + ' llamadas a la API paga.</p><table class="tabla-revision tabla-costo"><tbody>'
+          + Object.entries(c.por_tarea).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) {
+              return '<tr><th scope="row">' + escHtml(NOMBRE_TAREA[e[0]] || e[0]) + '</th><td>' + _usd(e[1]) + '</td></tr>';
+            }).join('')
+          + '<tr class="total"><th scope="row">Total</th><td>' + _usd(c.total_usd) + '</td></tr></tbody></table>'
+        : '<p class="acordeon-nota">Se generó con un proveedor gratuito.</p>'));
+  }
+  // Los criterios del evaluador llegan aparte (generador.js → pintarCriterios). vivo.js conserva este elemento.
+  cont.appendChild(itemAcordeon('Criterios automáticos', 'Cargando…', '<p class="acordeon-nota">Evaluando la nota…</p>', 'recorrido-evaluacion'));
+}
+
+// evaluacion = {criterio: bool, ...} o null si no está disponible.
+function pintarCriterios(evaluacion, comentarios) {
+  var item = $('recorrido-evaluacion');
+  if (!item) return;
+  var dato = item.querySelector('.acordeon-dato'), cuerpo = item.querySelector('.acordeon-cuerpo');
+  if (!evaluacion) {
+    dato.textContent = tr('No disponible');
+    cuerpo.innerHTML = '<p class="acordeon-nota">La evaluación no está disponible ahora.</p>';
+    return;
+  }
+  var criterios = Object.entries(evaluacion).filter(function(e) { return typeof e[1] === 'boolean'; });
+  var cumple = criterios.filter(function(e) { return e[1]; }).length;
+  dato.textContent = cumple + ' de ' + criterios.length;
+  var nombre = function(k) {
+    var t = k === 'sin_alucinaciones' ? 'Sin indicios de invención detectados' : k.replace(/_/g, ' ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  cuerpo.innerHTML = '<ul class="lista-criterios">' + criterios.map(function(e) {
+    return '<li><span>' + escHtml(nombre(e[0])) + '</span><span class="criterio-estado" data-ok="' + e[1] + '">'
+      + (e[1] ? 'Cumple' : 'No cumple') + '</span></li>';
+  }).join('') + '</ul>' + (comentarios ? '<p class="acordeon-nota">' + escHtml(comentarios) + '</p>' : '');
 }
 
 /* ── Paso 2: Calificar ──────────────────────────────────────────────────── */
@@ -318,7 +374,17 @@ function pintarPasoPublicar(nota, panel) {
   pintarTraducciones(nota, panel);
 }
 
-// La imagen se cambió desde la vista previa: Revisar y Publicar se vuelven a armar.
+// "Elegir imagen" desde Revisar: va a Publicar y abre el selector de archivos
+// (en el mismo clic, así el navegador lo permite).
+function elegirImagenNota() {
+  irAPaso('publicar', { sinFoco: true });
+  var input = $('archivo-imagen-publicar');
+  if (input) input.click();
+  var zona = $('zona-imagen-publicar');
+  if (zona) zona.scrollIntoView({ block: 'center' });
+}
+
+// La imagen se cambió (desde la vista previa o Publicar): Revisar y Publicar se vuelven a armar.
 function imagenCambiada(imagen) {
   if (!_recorrido.activo) return;
   var nota = _recorrido.nota;
