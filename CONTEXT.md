@@ -21,8 +21,8 @@ Artículo que la clasificación rechazó; se recuerda solo para no volver a proc
 Paso de un lote de artículos scrapeados a Artículos guardados: clasificar, vectorizar y guardar.
 _Avoid_: clasificar y guardar
 
-**Modo degradado**:
-Estado en que el clasificador no está disponible y los artículos se aprueban sin juicio, para no perderlos por una caída ajena a su contenido.
+**Pendiente**:
+Artículo que no se pudo clasificar porque la IA no respondió. No se guarda ni se descarta: la próxima corrida lo vuelve a clasificar. Reemplaza al viejo "modo degradado", que lo aprobaba sin juicio.
 
 ### Notas
 
@@ -31,10 +31,24 @@ Texto original de blog B2B generado por el pipeline a partir de Artículos o de 
 _Avoid_: artículo generado, post, vlog
 
 **Nota Fase 1**:
-Nota escrita a partir de un tópico de Artículos elegido por similitud.
+Nota escrita a partir de un tópico de Artículos elegido por similitud. El generador se borró; quedan las notas viejas.
 
 **Nota Fase 2**:
 Nota escrita imitando notas reales publicadas de AfterDrive (Ejemplos), según Categorías, Regiones y Clientes elegidos.
+
+**Estado de una Nota**:
+Dónde está en la revisión: borrador (recién generada), aprobada, rechazada (con un motivo, que pasa a ser una Corrección) o publicado (en el blog de HubSpot).
+
+**Corrección**:
+Motivo de rechazo reciente que se le pasa al modelo al escribir notas nuevas, como error a no repetir.
+_Avoid_: status
+
+**Nota descartada**:
+Respuesta del modelo que el Saneo rechazó; se guarda con el motivo, nunca se publica.
+
+**Traducción**:
+Versión de una Nota en otro idioma del blog (español, portugués o inglés), que se sube a HubSpot como borrador vinculado al post original.
+_Avoid_: variante, copia
 
 **Ejemplo**:
 Nota real publicada en el blog de AfterDrive, usada como referencia de tono y estructura.
@@ -58,6 +72,27 @@ Paso que convierte la respuesta cruda del modelo en una Nota publicable, o la re
 Ejecución puntual de una etapa del pipeline (scraping, generación u otro script); nunca corren dos a la vez.
 _Avoid_: job, tarea, ejecución
 
+**Cola**:
+Lista de Corridas esperando su turno; la que llega mientras otra corre espera en vez de rechazarse. Puede estar pendiente, en curso, ok, error, cancelada o interrumpida (el servidor se reinició mientras corría).
+_Avoid_: queue, fila
+
 **Proveedor**:
-Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA u OpenRouter.
+Servicio de IA que responde las llamadas del pipeline: LM Studio local, NVIDIA, OpenRouter o la API paga.
 _Avoid_: provider, backend, modelo
+
+**Ficha**:
+Resumen estructurado de un Artículo (resumen, hechos, cifras, empresas, fecha) que la generación usa en lugar del cuerpo crudo.
+
+**Plan**:
+Ángulo, título, palabra clave y secciones de una Nota, decididos antes de redactarla.
+
+**Calificación**:
+Puntaje de 1 a 5 estrellas, con etiquetas y comentario, que una persona le pone a una Nota.
+_Avoid_: rating, voto
+
+**Calibración**:
+Lo que la generación aprende de calificaciones, rechazos y ediciones: correcciones, referencias propias y el umbral del evaluador.
+
+**Modo pago**:
+Estado en que todo el pipeline usa la API paga por 24 horas como máximo; se prende desde la vista Cliente y se apaga solo.
+_Avoid_: modo premium, API paga activada

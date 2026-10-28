@@ -3,10 +3,9 @@ lm_studio.py — Prompts y tareas de IA del pipeline.
 
 Tareas (todas hablan con el proveedor a través del módulo LLM, llm.py):
   clasificar_articulo   ¿vale la pena guardar este artículo scrapeado?
+  fichar_articulo       resumen, hechos, cifras y empresas de un artículo guardado
   evaluar_lineamientos  checklist de calidad de una nota generada
-  generar_articulo      nota Fase 1 a partir de un contexto
-  extraer_temas         3 temas principales de un lote de artículos
-  research_contexto     brief de datos duros de un contexto
+  generar_articulo      nota a partir de un contexto (lo usa scripts/demo_mode.py)
 
 El nombre del archivo es histórico (empezó como cliente de LM Studio); el
 proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
@@ -15,8 +14,7 @@ proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.
 import json
 import re
 
-from afterdrive.ia import llm
-from afterdrive.ia import redaccion
+from afterdrive.ia import llm, redaccion
 from afterdrive.ia.saneo import sanear
 
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
@@ -40,6 +38,7 @@ APROBAR solo si el contenido trata sobre:
 - CATALOGOS de autopartes con precios y especificaciones tecnicas
 
 RECHAZAR si trata sobre:
+- Noticias generales ajenas al sector automotor (politica, guerras, policiales, protestas, deportes, espectaculos)
 - Ventas de vehiculos 0km (concesionarias, agencias, listados de autos nuevos)
 - Seguros automotrices
 - Anecdotas personales de consumidores
@@ -110,7 +109,7 @@ Analizar el articulo y validar el cumplimiento de lineamientos de estilo y forma
 3. **vocabulario_negocio** - Usa terminos del sector ("parque automotor", "demanda cautiva", "cadena de valor")?
 4. **tono_b2b** - Lenguaje directo, profesional, enfocado al negocio?
 5. **sin_paywall** - Sin frases de suscripcion o paywalls?
-6. **no_repetitivo** - Cada seccion aporta informacion nueva?
+6. **no_repetitivo** - Cada seccion aporta informacion nueva? Las secciones finales de implicancias para el negocio ("Qué significa para tu negocio") y de preguntas frecuentes retoman ideas de la nota a proposito: no cuentan como repeticion.
 7. **sin_alucinaciones** - No inventa conceptos tecnicos que no existen?
 8. **sin_obviedades** - No explica cosas basicas que el lector B2B ya sabe?
 9. **terminologia_correcta** - Usa los terminos correctos (neumaticos vs llantas, pastillas vs balatas)?
@@ -153,27 +152,85 @@ def _extraer_json(texto: str) -> dict:
 def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     """Evalúa si un artículo merece guardarse en la BD.
 
-    Política de fallos: si el proveedor no está o falla la llamada, se aprueba
-    (modo degradado: no perder artículos por una caída ajena al contenido). Si
-    el modelo respondió basura, se rechaza (el juicio existe pero no se lee).
+    Política de fallos: si el proveedor no está o falla la llamada (p. ej. un 429
+    del modelo gratis), el artículo queda pendiente: ni se guarda ni se descarta,
+    así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba
+    cualquier cosa (noticias de guerra de CNN, por ejemplo). Si el modelo
+    respondió basura, se rechaza (el juicio existe pero no se lee).
 
     Returns:
-        {"aprobado": bool, "razon": str}
+        {"aprobado": bool, "razon": str, "pendiente"?: True}
     """
     if not llm.disponible():
-        return {"aprobado": True, "razon": "modo degradado: proveedor de IA no disponible"}
+        return {"aprobado": False, "pendiente": True, "razon": "sin clasificar: proveedor de IA no disponible"}
 
     mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
     try:
-        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1))
+        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1, tarea="clasificacion"))
+        aprobado = data.get("aprobado", False)
+        if isinstance(aprobado, str):  # algunos modelos devuelven "false" entre comillas
+            aprobado = aprobado.strip().lower() in ("true", "si", "sí")
         return {
-            "aprobado": data.get("aprobado", False),
+            "aprobado": aprobado is True,
             "razon": data.get("razon", "Sin razón especificada"),
         }
     except json.JSONDecodeError:
         return {"aprobado": False, "razon": "error: respuesta inválida del modelo"}
     except Exception as e:
-        return {"aprobado": True, "razon": f"modo degradado: {e}"}
+        return {"aprobado": False, "pendiente": True, "razon": f"sin clasificar: {e}"}
+
+
+_SYSTEM_FICHA = """\
+Extraés la ficha de una noticia del aftermarket automotor para que otro redactor la use como fuente.
+
+## Reglas
+- Escribí en español, aunque la noticia esté en otro idioma.
+- Solo lo que dice la noticia. No agregues contexto, opiniones ni datos que no estén.
+- Cifras con su unidad y a qué se refieren ("15% de aumento en ventas de pastillas en 2025").
+- Si no hay cifras, empresas o fecha, dejá la lista vacía o null.
+
+## Formato de salida
+Respondé UNICAMENTE con este JSON:
+{"resumen": "2 o 3 oraciones", "hechos": ["..."], "cifras": ["..."], "empresas": ["..."], "fecha": "AAAA-MM-DD o null"}"""
+
+_FICHA_MAX_ITEMS = 8
+_FICHA_MAX_CHARS = 300
+
+
+def _lista(valor) -> list[str]:
+    if not isinstance(valor, list):
+        return []
+    return [" ".join(str(x).split())[:_FICHA_MAX_CHARS] for x in valor if str(x).strip()][:_FICHA_MAX_ITEMS]
+
+
+def fichar_articulo(titulo: str, cuerpo: str) -> dict | None:
+    """Ficha estructurada de una noticia: resumen, hechos, cifras, empresas y fecha.
+
+    La generación la usa como contexto en lugar del cuerpo crudo: más corto (más
+    barato) y con los datos ya separados (menos lugar para inventar). Si el
+    proveedor falla o responde algo que no es una ficha, devuelve None y la
+    noticia se sigue usando con su cuerpo.
+    """
+    if not (cuerpo or "").strip() or not llm.disponible():
+        return None
+    mensaje = f"Título: {titulo}\n\nNoticia:\n{(cuerpo or '')[:6000]}"
+    try:
+        data = _extraer_json(llm.completar(_SYSTEM_FICHA, mensaje, temperature=0.1, max_tokens=900,
+                                           tarea="clasificacion"))
+    except Exception as e:
+        print(f"    [AVISO] No se pudo armar la ficha: {e}", flush=True)
+        return None
+    resumen = " ".join(str(data.get("resumen") or "").split())[:800]
+    if not resumen:
+        return None
+    fecha = str(data.get("fecha") or "").strip()
+    return {
+        "resumen": resumen,
+        "hechos": _lista(data.get("hechos")),
+        "cifras": _lista(data.get("cifras")),
+        "empresas": _lista(data.get("empresas")),
+        "fecha": fecha if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) else None,
+    }
 
 
 def evaluar_lineamientos(articulo: str) -> dict:
@@ -186,6 +243,7 @@ def evaluar_lineamientos(articulo: str) -> dict:
             f"Analizá el siguiente artículo:\n\n{articulo}",
             temperature=0.1,
             max_tokens=1024,
+            tarea="evaluacion",
         )
         return _extraer_json(texto)
     except Exception as e:
@@ -216,7 +274,7 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
 
     crudo = llm.completar(
         get_system_prompt_redactar(persona), mensaje,
-        temperature=llm.ajustes_redaccion().temperatura, max_tokens=4000, stream=True,
+        temperature=llm.ajustes_redaccion().temperatura, max_tokens=4000, stream=True, tarea="redaccion",
     )
     saneo = sanear(crudo)
     if not saneo.ok:
@@ -228,74 +286,6 @@ def generar_articulo(contexto: str, research: str = "", persona: str = "analitic
         print(saneo.texto.encode("utf-8", errors="replace").decode("utf-8"))
     print("\n[OK]")
     return saneo.texto
-
-
-# ── Prompt para extracción de temas ────────────────────────────────────────────
-
-PROMPT_TEMAS = """\
-Analizá los siguientes artículos y extraé los 3 temas principales que se tratan.
-Cada tema debe ser una frase corta de 2 a 5 palabras que capture el asunto central.
-Tu respuesta debe comenzar con "{" y terminar con "}". No incluyas texto fuera del JSON.
-
-Devolvé exactamente esta estructura:
-{
-  "temas": ["tema1", "tema2", "tema3"]
-}"""
-
-_TEMA_DEFAULT = ["autopartes aftermarket argentina"]
-
-
-def extraer_temas(articulos: list[dict]) -> list[str]:
-    if not articulos or not llm.disponible():
-        return _TEMA_DEFAULT
-
-    texto = ""
-    for i, doc in enumerate(articulos[:5], 1):
-        titulo = doc.get("titulo", "(sin título)")
-        cuerpo = doc.get("cuerpo", doc.get("bajada", ""))
-        texto += f"Artículo {i}: {titulo}\n{cuerpo[:500]}\n\n"
-
-    try:
-        data = _extraer_json(llm.completar(PROMPT_TEMAS, texto, temperature=0.3, max_tokens=512))
-        return data.get("temas", [])[:3] or _TEMA_DEFAULT
-    except Exception:
-        return _TEMA_DEFAULT
-
-
-# ── Research pass ──────────────────────────────────────────────────────────────
-
-PROMPT_RESEARCH = """\
-Analizá el contexto provisto y extraé un research brief con TODOS los datos relevantes.
-Incluí: nombres de empresas, nombres de ejecutivos con sus cargos, cifras exactas,
-porcentajes, fechas, citas textuales entre comillas, y tendencias mencionadas.
-
-Prestá atención especial a:
-- Competencia de importados (China, Brasil) vs producción local de autopartes
-- Oportunidades en el mercado de reposición / aftermarket (parque automotor usado)
-- Desafíos de digitalización, e-commerce y catálogos digitales en el sector
-- Costos locales vs internacionales y su impacto en competitividad
-- Datos sobre marketplaces, venta online, omnicanalidad
-
-Devolvé exactamente esta estructura JSON:
-{
-  "empresas": ["nombre1", "nombre2"],
-  "ejecutivos": [{"nombre": "...", "cargo": "...", "cita": "..."}],
-  "datos": [{"que": "...", "valor": "..."}],
-  "tendencias": ["..."],
-  "tema_principal": "..."
-}"""
-
-_RESEARCH_VACIO = '{"empresas":[],"ejecutivos":[],"datos":[],"tendencias":[],"tema_principal":""}'
-
-
-def research_contexto(contexto: str) -> str:
-    if not llm.disponible():
-        return _RESEARCH_VACIO
-    try:
-        data = _extraer_json(llm.completar(PROMPT_RESEARCH, contexto, temperature=0.1, max_tokens=1024))
-        return json.dumps(data, ensure_ascii=False)
-    except Exception:
-        return _RESEARCH_VACIO
 
 
 # ── Test rápido (python -m afterdrive.ia.lm_studio) ─────────────────────────────────────────

@@ -8,8 +8,8 @@ Clasifica notas reales y filtra ejemplos para la generación usando
 heurísticas por keywords normalizadas (minúsculas y sin acentos).
 """
 
-import unicodedata
 import re
+import unicodedata
 
 REGIONES = {
     "argentina": "Argentina",

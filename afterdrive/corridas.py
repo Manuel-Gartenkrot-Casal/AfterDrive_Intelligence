@@ -2,19 +2,22 @@
 corridas.py — El único camino para ejecutar una Corrida del pipeline.
 
 Una Corrida es una ejecución de scraping, generación o cualquier script del
-pipeline. Todas pasan por acá, la dispare el cron, un botón del dashboard o un
-endpoint con streaming, así que nunca corren dos a la vez (en el plan free de
-Render dos corridas simultáneas se quedan sin RAM).
+pipeline. Todas pasan por acá (casi siempre a través de la Cola), así que nunca
+corren dos a la vez (en el plan free de Render dos corridas simultáneas se
+quedan sin RAM).
 
 Interfaz:
-    scraping(max_articulos=None) -> dict      in-process (cron y botón)
-    generacion(params=None) -> dict           in-process; sin params usa la config guardada
-    script(nombre, argv) -> dict              subprocess, salida capturada
-    stream(nombre, argv) -> Iterator[str]     subprocess, salida línea por línea (SSE)
+    scraping(max_articulos=None) -> dict      in-process, con lock (línea de comandos)
+    generacion(params=None) -> dict           in-process, con lock; sin params usa la config guardada
     en_curso() -> str | None
 
-Si hay otra Corrida en curso, la nueva no espera: devuelve/emite un aviso de
-ocupado. El lock es por proceso; alcanza porque gunicorn corre con --workers 1.
+Si hay otra Corrida en curso, scraping() y generacion() no esperan: devuelven
+un aviso de ocupado. El lock es por proceso; alcanza porque gunicorn corre con
+--workers 1.
+
+La Cola (afterdrive/cola.py) es la que hace esperar: su consumidor toma este
+mismo lock esperando su turno y usa los ejecutores sin lock (_scrapear_fuentes,
+_generar, _subproceso). Ver docs/adr/0002-cola-de-corridas.md.
 """
 
 from __future__ import annotations
@@ -33,10 +36,10 @@ TIMEOUT_S = 1800  # 30 min
 
 _lock = threading.Lock()
 _actual: str | None = None
+_cancelar = threading.Event()  # la Cola lo levanta para cortar el scraping entre fuente y fuente
 
 # Logs de LM Studio / gRPC que ensucian la salida que ve el usuario.
 _LOG_RUIDO = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\[(INFO|DEBUG|WARNING|WARN)\]")
-_ERR_RUIDO = re.compile(r".*Channel Error.*", re.IGNORECASE)
 
 
 def en_curso() -> str | None:
@@ -44,10 +47,10 @@ def en_curso() -> str | None:
 
 
 @contextlib.contextmanager
-def _reservar(nombre: str):
-    """Toma el lock sin esperar. Cede None si está ocupado."""
+def _reservar(nombre: str, esperar: bool = False):
+    """Toma el lock (sin esperar, salvo esperar=True). Cede None si está ocupado."""
     global _actual
-    if not _lock.acquire(blocking=False):
+    if not _lock.acquire(blocking=esperar):
         yield None
         return
     _actual = nombre
@@ -75,6 +78,22 @@ def scraping(max_articulos: int | None = None) -> dict:
 
 
 def _scrapear_fuentes(max_articulos: int | None) -> dict:
+    """Scrapea e ingiere; al final dice cuánto gastó la corrida en la API paga."""
+    from afterdrive.ia import consumo
+
+    with consumo.medir() as costo:
+        resultado = _scrapear(max_articulos)
+    if costo.llamadas:
+        detalle = ", ".join(f"{k} {v:.4f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
+        aprox = " (aproximado)" if costo.estimado else ""
+        print(f"[COSTO] Esta corrida: USD {costo.total:.4f}{aprox} en {costo.llamadas} llamadas ({detalle})",
+              flush=True)
+    else:
+        print("[COSTO] Esta corrida: USD 0 (no usó la API paga)", flush=True)
+    return resultado
+
+
+def _scrapear(max_articulos: int | None) -> dict:
     from afterdrive import config_store
     from afterdrive.db import col_trusted_urls
     from afterdrive.ingesta.ingesta import ingerir
@@ -102,10 +121,13 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
     print(f"Procesando {len(fuentes)} fuentes (max {max_articulos} artículos/fuente)...", flush=True)
     aprobados = 0
     for doc in fuentes:
+        if _cancelar.is_set():
+            print("[CANCELADA] Scraping cortado a pedido del usuario.", flush=True)
+            return {"success": False, "error": "Cancelada.", "aprobados": aprobados}
         url = doc["url"]
         print(f"Scrapeando: {url}", flush=True)
         try:
-            items = start([url], modo="list", max_articulos=max_articulos).items
+            items = start([url], modo="list", max_articulos=max_articulos, omitir=ya_procesadas).items
             if items:
                 res = ingerir(items)
                 aprobados += res["aprobados"]
@@ -120,6 +142,16 @@ def _scrapear_fuentes(max_articulos: int | None) -> dict:
 
     print(f"[{datetime.datetime.now()}] Scraping finalizado.", flush=True)
     return {"success": True, "aprobados": aprobados}
+
+
+def ya_procesadas(urls: list[str]) -> set[str]:
+    """De estas URLs, las que ya están guardadas o fueron descartadas antes."""
+    from afterdrive.db import col_articulos, col_descartados
+
+    conocidas = set()
+    for col in (col_articulos, col_descartados):
+        conocidas |= {d["url"] for d in col.find({"url": {"$in": list(urls)}}, {"url": 1, "_id": 0})}
+    return conocidas
 
 
 def parametros_guardados() -> dict | None:
@@ -137,6 +169,7 @@ def parametros_guardados() -> dict | None:
         "clientes_ids": fase2.get("clientes") or [],
         "puntapie_url": puntapie_url,
         "persona": gen.get("persona") or "comercial",
+        "largo": gen.get("largo") or "medio",
         "tema": gen.get("tema") or None,
         "regiones": fase2.get("regiones") or [],
     }
@@ -148,26 +181,35 @@ def generacion(params: dict | None = None) -> dict:
         if not ok:
             print(f"[{datetime.datetime.now()}] {_ocupado('generacion')}", flush=True)
             return {"success": False, "error": _ocupado("generacion")}
-        try:
-            from afterdrive.generacion.generar_nota_fase2 import generar_nota
-
-            params = params or parametros_guardados()
-            if params is None:
-                print("[Generación] Sin categorías activas guardadas. Se omite.", flush=True)
-                return {"success": False, "error": "Sin categorías activas guardadas."}
-            print(f"[Generación] Categorías: {params['categorias']} | Persona: {params.get('persona')}", flush=True)
-            resultado = generar_nota(**params)
-        except Exception as e:
-            resultado = {"success": False, "error": f"Fallo en generación: {e}"}
-        if resultado.get("success"):
-            print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
-        else:
-            print(f"[Generación] [ERROR] {resultado.get('error')}", flush=True)
-        return resultado
+        return _generar(params)
 
 
-def en_segundo_plano(fn, *args) -> None:
-    threading.Thread(target=fn, args=args, daemon=True).start()
+def _generar(params: dict | None, programada: bool = False) -> dict:
+    try:
+        from afterdrive.generacion.generar_nota_fase2 import generar_nota
+
+        params = params or parametros_guardados()
+        if params is None:
+            print("[Generación] Sin categorías activas guardadas. Se omite.", flush=True)
+            return {"success": False, "error": "Sin categorías activas guardadas."}
+        print(f"[Generación] Categorías: {params['categorias']} | Persona: {params.get('persona')}", flush=True)
+        resultado = generar_nota(**params)
+    except Exception as e:
+        resultado = {"success": False, "error": f"Fallo en generación: {e}"}
+    if _cancelar.is_set():
+        print("[Generación] Cancelada desde el dashboard. No se guardó ninguna nota.", flush=True)
+        return {"success": False, "error": "Cancelada."}
+    if resultado.get("success"):
+        print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
+        if programada and resultado.get("id"):
+            try:
+                from afterdrive import aprobacion_auto
+                resultado["aprobacion_auto"] = aprobacion_auto.procesar("notas_fase2", resultado["id"])
+            except Exception as e:  # la nota ya está guardada: queda en borrador
+                print(f"[Aprobación automática] [AVISO] No se pudo evaluar: {e}", flush=True)
+    else:
+        print(f"[Generación] [ERROR] {resultado.get('error')}", flush=True)
+    return resultado
 
 
 # ── Subprocess ────────────────────────────────────────────────────────────────
@@ -183,69 +225,47 @@ def _env() -> dict:
     return {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
 
 
-def script(nombre: str, argv: list[str] | None = None) -> dict:
-    """Corre un script del pipeline y devuelve su salida completa."""
-    with _reservar(nombre) as ok:
-        if not ok:
-            return {"success": False, "output": "", "error": _ocupado(nombre)}
-        try:
-            r = subprocess.run(
-                _cmd(nombre, argv), capture_output=True, text=True, timeout=TIMEOUT_S,
-                env=_env(), encoding="utf-8", errors="replace",
-            )
-        except subprocess.TimeoutExpired:
-            return {"success": False, "output": "", "error": "Timeout: el proceso tardó más de 30 minutos."}
-        except Exception as e:
-            return {"success": False, "output": "", "error": str(e)}
-        out = [ln for ln in r.stdout.splitlines(True) if not _LOG_RUIDO.match(ln)]
-        err = [ln for ln in r.stderr.splitlines(True) if not _ERR_RUIDO.match(ln)]
-        return {"success": r.returncode == 0, "output": "".join(out), "error": "".join(err) if r.returncode else ""}
+def _subproceso(nombre: str, argv: list[str] | None = None, al_iniciar=None) -> Iterator[str]:
+    """Corre el script sin tomar el lock (el que llama ya lo tiene) y emite su stdout.
 
-
-def stream(nombre: str, argv: list[str] | None = None) -> Iterator[str]:
-    """Corre un script del pipeline y emite su stdout línea por línea.
-
-    Si el cliente corta la conexión (el generador se cierra), el proceso se
-    mata: seguir corriendo sin lector termina bloqueado con el pipe lleno.
+    al_iniciar(proc) le pasa el proceso a la Cola para que pueda cancelarlo.
     """
-    with _reservar(nombre) as ok:
-        if not ok:
-            yield f"[OCUPADO] {_ocupado(nombre)}\n"
-            return
-        inicio = time.time()
-        emitidas = 0
-        try:
-            proc = subprocess.Popen(
-                _cmd(nombre, argv), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                bufsize=1, env=_env(), encoding="utf-8", errors="replace",
-            )
-        except Exception as e:
-            yield f"[ERROR] {e}\n"
-            return
+    inicio = time.time()
+    emitidas = 0
+    try:
+        proc = subprocess.Popen(
+            _cmd(nombre, argv), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            bufsize=1, env=_env(), encoding="utf-8", errors="replace",
+        )
+    except Exception as e:
+        yield f"[ERROR] {e}\n"
+        return
+    if al_iniciar:
+        al_iniciar(proc)
 
-        def _stderr_a_logs():
-            for line in proc.stderr:
-                if line.strip():
-                    print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
+    def _stderr_a_logs():
+        for line in proc.stderr:
+            if line.strip():
+                print(f"[SUBPROCESS STDERR] {line.rstrip()}", flush=True)
 
-        t = threading.Thread(target=_stderr_a_logs, daemon=True)
-        t.start()
-        try:
-            for line in proc.stdout:
-                if time.time() - inicio > TIMEOUT_S:
-                    yield "[TIME OUT] El proceso superó el límite de tiempo.\n"
-                    return
-                if _LOG_RUIDO.match(line):
-                    continue
-                emitidas += 1
-                yield line
-            proc.wait(timeout=10)
-            t.join(timeout=3)
-            if proc.returncode != 0 and not emitidas:
-                yield f"[ERROR] El proceso terminó con código {proc.returncode} sin output.\n"
-                yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
-        except Exception as e:
-            yield f"[ERROR] {e}\n"
-        finally:
-            if proc.poll() is None:
-                proc.kill()
+    t = threading.Thread(target=_stderr_a_logs, daemon=True)
+    t.start()
+    try:
+        for line in proc.stdout:
+            if time.time() - inicio > TIMEOUT_S:
+                yield "[TIME OUT] El proceso superó el límite de tiempo.\n"
+                return
+            if _LOG_RUIDO.match(line):
+                continue
+            emitidas += 1
+            yield line
+        proc.wait(timeout=10)
+        t.join(timeout=3)
+        if proc.returncode != 0 and not emitidas:
+            yield f"[ERROR] El proceso terminó con código {proc.returncode} sin output.\n"
+            yield "[ERROR] Revisá los logs del servidor para más detalles.\n"
+    except Exception as e:
+        yield f"[ERROR] {e}\n"
+    finally:
+        if proc.poll() is None:
+            proc.kill()

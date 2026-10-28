@@ -1,0 +1,458 @@
+/* revision.js — Calificación de notas, lo que se revisó al generarlas y el panel de calibración.
+   Parte del dashboard (index.html): scripts clásicos que comparten el ámbito
+   global y se cargan en orden; ver el final de index.html. */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CALIFICACIÓN
+   Estrellas (1 a 5), etiquetas y un comentario. Lo que se califica entra en
+   la próxima nota: ver afterdrive/calibracion.py.
+   ═══════════════════════════════════════════════════════════════════════ */
+var _cal = { catalogo: null, puntaje: 0, etiquetas: [] };
+
+async function catalogoEtiquetas() {
+  if (_cal.catalogo) return _cal.catalogo;
+  try { _cal.catalogo = (await pedir('/api/calibracion')).catalogo_etiquetas; }
+  catch (e) { _cal.catalogo = []; }
+  return _cal.catalogo;
+}
+
+function estrellas(n) {
+  return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
+}
+
+async function pintarCalificacion(nota, contenedor) {
+  var juicio = nota.juicio && !nota.juicio.error ? nota.juicio : null;
+  // Sin calificación guardada, se precarga la que sugiere la IA: se edita y recién al guardar cuenta.
+  var sugerida = !nota.calificacion && juicio;
+  var previa = nota.calificacion
+    || (sugerida ? { puntaje: juicio.calificacion, etiquetas: juicio.etiquetas, comentario: juicio.comentario } : {});
+  _cal.puntaje = previa.puntaje || 0;
+  _cal.etiquetas = (previa.etiquetas || []).slice();
+  _cal.tocada = false;   // true en cuanto se toca: la actualización automática no la pisa (vivo.js)
+  var catalogo = await catalogoEtiquetas();
+  var caja = document.createElement('section');
+  caja.className = 'calificar';
+  caja.setAttribute('aria-labelledby', 'calificar-titulo');
+  caja.innerHTML = '<h4 id="calificar-titulo">Tu calificación</h4>'
+    + '<p class="calificar-ayuda">Enseña a la generación qué funciona y qué no.</p>'
+    + juicioHtml(nota, sugerida)
+    + '<div class="estrellas" role="radiogroup" aria-label="Calificación de 1 a 5">'
+    + [1, 2, 3, 4, 5].map(function(i) {
+        return '<button type="button" role="radio" class="estrella" data-n="' + i + '" aria-label="' + i + ' de 5">★</button>';
+      }).join('') + '</div>'
+    + '<div class="chips calificar-etiquetas" role="group" aria-label="Qué tiene">'
+    + catalogo.map(function(e) {
+        return '<button type="button" class="chip' + (e.negativa ? ' negativa' : '') + '" data-etiqueta="' + e.clave + '">'
+          + escHtml(e.nombre) + '</button>';
+      }).join('') + '</div>'
+    + '<label class="sr-only" for="calificar-comentario">Comentario</label>'
+    + '<textarea id="calificar-comentario" class="input-field" rows="2" maxlength="300" placeholder="Comentario (opcional): qué cambiarías o qué estuvo bien"></textarea>'
+    + '<div class="calificar-pie"><button type="button" class="btn btn-xs btn-primary" id="calificar-guardar">Guardar calificación</button>'
+    + '<span class="calificar-estado" id="calificar-estado" aria-live="polite"></span></div>';
+  contenedor.appendChild(caja);
+  var comentario = $('calificar-comentario');
+  comentario.value = previa.comentario || '';
+  comentario.oninput = function() { _cal.tocada = true; ajustarAlto(comentario); };
+  ajustarAlto(comentario);
+  caja.querySelectorAll('.estrella').forEach(function(b) {
+    b.onclick = function() { _cal.puntaje = +b.dataset.n; _cal.tocada = true; marcarCalificacion(); };
+  });
+  caja.querySelectorAll('[data-etiqueta]').forEach(function(b) {
+    b.onclick = function() {
+      var k = b.dataset.etiqueta, i = _cal.etiquetas.indexOf(k);
+      if (i >= 0) _cal.etiquetas.splice(i, 1); else _cal.etiquetas.push(k);
+      _cal.tocada = true;
+      marcarCalificacion();
+    };
+  });
+  $('calificar-guardar').onclick = function() { guardarCalificacion(nota); };
+  if (previa.calificado_en) $('calificar-estado').textContent = 'Calificada el ' + fechaCorta(previa.calificado_en);
+  marcarCalificacion();
+}
+
+// Lo que dijo el juez de IA: si la aprobó sola, o por qué la frenó, y si la calificación es sugerida.
+function juicioHtml(nota, sugerida) {
+  var j = nota.juicio, a = nota.aprobacion_auto, html = '';
+  if (nota.aprobada_por === 'ia') {
+    html += '<p class="revision-ok">Aprobada por la IA y subida a HubSpot como borrador.</p>';
+  } else if (a && !a.pasa) {
+    html += '<p class="revision-sub">La IA no la aprobó sola: ' + escHtml(a.motivos.join('; ')) + '</p>';
+  }
+  if (j && j.error) html += '<p class="revision-sub">' + escHtml(j.error) + '</p>';
+  if (sugerida) {
+    html += '<p class="revision-sub"><span class="marca">Sugerida por IA</span> Revisala y cambiala si hace falta: '
+      + 'solo cuenta para el aprendizaje cuando la guardás.</p>';
+  }
+  return html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CALIFICACIÓN DE LA IA
+   Un corrector de estilo revisa la redacción (gramática, ortografía, tono y
+   estructura) y dice en qué se equivocó la IA al escribirla. Es automática:
+   se hace al generar la nota y, si una nota no la tiene (anterior a esto, o
+   editada después), se pide sola al abrirla. Es solo información: la
+   calificación que cuenta es la de una persona, en "Calificar esta nota".
+   Ver afterdrive/generacion/critica.py.
+   ═══════════════════════════════════════════════════════════════════════ */
+var _TIPOS_CRITICA = { gramatica: 'Gramática', ortografia: 'Ortografía', redaccion: 'Redacción', tono: 'Tono', estructura: 'Estructura' };
+var ERRORES_A_LA_VISTA = 3;
+var _criticasEnCurso = {};   // id de nota → pedido en curso: abrirla de nuevo no repite la llamada
+var _traduccionesEnCurso = {};   // id de nota + idioma → traducción en curso
+
+function pintarCriticaIA(nota, contenedor) {
+  var caja = document.createElement('section');
+  caja.className = 'critica-ia';
+  caja.setAttribute('aria-labelledby', 'critica-titulo');
+  caja.setAttribute('aria-live', 'polite');
+  contenedor.appendChild(caja);
+  var c = nota.critica, vigente = c && !c.error && c.puntaje && !(nota.editado_en && c.fecha && nota.editado_en > c.fecha);
+  if (vigente) llenarCriticaIA(caja, c, nota);
+  else pedirCriticaIA(nota, caja);
+}
+
+/* La crítica se escribe en español; lo que explica la IA (resumen y problemas)
+   se muestra en el idioma del dashboard. El fragmento y su corrección quedan en
+   el idioma de la nota. null = falta traducirla (ver traducirCriticaIA). */
+function textosCritica(c, cod) {
+  if (c.idioma === cod) return { resumen: c.resumen, problemas: (c.errores || []).map(function(e) { return e.problema; }) };
+  return (c.traducciones || {})[cod] || null;
+}
+
+function nivelCritica(n) { return n >= 8 ? 'bien' : n >= 6 ? 'medio' : 'mal'; }
+
+function cabeceraCritica(c) {
+  return '<div class="critica-cabecera"><h4 id="critica-titulo">Calificación de la IA</h4>'
+    + (c ? '<span class="critica-puntaje" data-nivel="' + nivelCritica(c.puntaje) + '"><strong>' + c.puntaje + '</strong>/10</span>' : '')
+    + '</div>';
+}
+
+function llenarCriticaIA(caja, c, nota) {
+  caja.classList.remove('cargando');
+  var cod = idiomaUI(), t = textosCritica(c, cod), traducir = !t;
+  // Mientras llega la traducción se ve lo que hay, con un aviso.
+  t = t || { resumen: c.resumen, problemas: (c.errores || []).map(function(e) { return e.problema; }) };
+  var html = cabeceraCritica(c);
+  if (traducir) html += '<p class="critica-esperando critica-traduciendo"><span class="critica-spinner" aria-hidden="true"></span>Traduciendo la calificación…</p>';
+  if (t.resumen) html += '<p class="critica-resumen" translate="no">' + escHtml(t.resumen) + '</p>';
+  var aspectos = ['gramatica', 'redaccion', 'tono', 'estructura'].filter(function(k) { return c.aspectos && c.aspectos[k]; });
+  if (aspectos.length) {
+    html += '<ul class="critica-aspectos">' + aspectos.map(function(k) {
+      var v = c.aspectos[k];
+      return '<li data-nivel="' + nivelCritica(v) + '"><span class="critica-valor">' + v + '</span>'
+        + '<span>' + _TIPOS_CRITICA[k] + '</span></li>';
+    }).join('') + '</ul>';
+  }
+  var errores = c.errores || [];
+  if (!errores.length) {
+    html += '<p class="revision-ok">No encontró errores de redacción.</p>';
+  } else {
+    html += '<p class="critica-subtitulo">En qué se equivocó (' + errores.length + ')</p>'
+      + '<ol class="critica-errores">' + errores.map(function(e, i) {
+        return '<li' + (i >= ERRORES_A_LA_VISTA ? ' hidden' : '') + '>'
+          + '<span class="critica-tipo" data-tipo="' + escHtml(e.tipo) + '">' + (_TIPOS_CRITICA[e.tipo] || _TIPOS_CRITICA.redaccion) + '</span>'
+          + '<div>'
+          + '<p class="critica-problema" translate="no">' + escHtml(t.problemas[i] || e.problema) + '</p>'
+          + (e.fragmento ? '<q class="critica-fragmento" translate="no">' + escHtml(e.fragmento) + '</q>' : '')
+          + (e.sugerencia ? '<p class="critica-sugerencia"><span>Sugerencia</span> <span translate="no">' + escHtml(e.sugerencia) + '</span></p>' : '')
+          + '</div></li>';
+      }).join('') + '</ol>';
+    if (errores.length > ERRORES_A_LA_VISTA) {
+      html += '<button type="button" class="critica-mas">Ver ' + (errores.length - ERRORES_A_LA_VISTA) + ' más</button>';
+    }
+  }
+  if (c.fecha) html += '<p class="calificar-estado">Revisada el ' + fechaCorta(c.fecha) + '</p>';
+  caja.innerHTML = html;
+  var mas = caja.querySelector('.critica-mas');
+  if (mas) mas.onclick = function() {
+    caja.querySelectorAll('.critica-errores li[hidden]').forEach(function(li) { li.hidden = false; });
+    mas.remove();
+  };
+  caja.dataset.idioma = cod;
+  if (traducir && nota) traducirCriticaIA(nota, caja, cod);
+}
+
+async function traducirCriticaIA(nota, caja, cod) {
+  var clave = nota._id + ':' + cod;
+  var pedido = _traduccionesEnCurso[clave] || (_traduccionesEnCurso[clave] = pedir('/api/historial/critica/traduccion', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id, idioma: cod })
+  }));
+  try {
+    var d = await pedido;
+    nota.critica.traducciones = nota.critica.traducciones || {};
+    nota.critica.traducciones[cod] = d.traduccion;
+    if (caja.isConnected && caja.dataset.idioma === cod) llenarCriticaIA(caja, nota.critica, nota);
+  } catch (e) {
+    var aviso = caja.querySelector('.critica-traduciendo');
+    if (aviso && caja.dataset.idioma === cod) {
+      aviso.classList.remove('critica-esperando');
+      aviso.className = 'revision-sub';
+      aviso.textContent = 'No se pudo traducir la calificación: ' + e.message;
+    }
+  } finally {
+    delete _traduccionesEnCurso[clave];
+  }
+}
+
+
+async function pedirCriticaIA(nota, caja) {
+  caja.classList.add('cargando');
+  caja.innerHTML = cabeceraCritica(null)
+    + '<p class="critica-esperando"><span class="critica-spinner" aria-hidden="true"></span>La IA está revisando la redacción…</p>';
+  var pedido = _criticasEnCurso[nota._id] || (_criticasEnCurso[nota._id] = pedir('/api/historial/critica', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id })
+  }));
+  try {
+    var d = await pedido;
+    nota.critica = d.critica;
+    if (caja.isConnected) llenarCriticaIA(caja, d.critica, nota);
+    if (_seccion === 'historial') cargarHistorial(_hist.pagina);   // la lista muestra la calificación nueva
+  } catch (e) {
+    if (!caja.isConnected) return;
+    caja.classList.remove('cargando');
+    caja.innerHTML = cabeceraCritica(null)
+      + '<p class="revision-sub">No se pudo revisar la redacción: ' + escHtml(e.message) + '</p>'
+      + '<p class="calificar-ayuda">Se vuelve a intentar la próxima vez que abras la nota.</p>';
+  } finally {
+    delete _criticasEnCurso[nota._id];
+  }
+}
+
+function marcarCalificacion() {
+  document.querySelectorAll('.calificar .estrella').forEach(function(b) {
+    var n = +b.dataset.n;
+    b.classList.toggle('on', n <= _cal.puntaje);
+    b.setAttribute('aria-checked', n === _cal.puntaje);
+  });
+  document.querySelectorAll('.calificar [data-etiqueta]').forEach(function(b) {
+    b.setAttribute('aria-pressed', _cal.etiquetas.indexOf(b.dataset.etiqueta) >= 0);
+  });
+  var g = $('calificar-guardar');
+  if (g) g.disabled = !_cal.puntaje;
+}
+
+// El comentario crece con el texto en vez de mostrar barra de scroll.
+function ajustarAlto(area) {
+  area.style.height = 'auto';
+  area.style.height = area.scrollHeight + 'px';
+}
+
+// Deja el formulario vacío, listo para otra calificación.
+function vaciarCalificacion() {
+  _cal.puntaje = 0;
+  _cal.etiquetas = [];
+  var comentario = $('calificar-comentario');
+  if (comentario) { comentario.value = ''; ajustarAlto(comentario); }
+  marcarCalificacion();
+}
+
+// Confirmación visual: el botón pasa a verde con un tilde y el recuadro destella.
+function marcarGuardado() {
+  var caja = document.querySelector('.calificar'), btn = $('calificar-guardar');
+  if (!caja || !btn) return;
+  caja.classList.remove('exito'); void caja.offsetWidth;   // reinicia la animación
+  caja.classList.add('exito');
+  btn.classList.add('guardado');
+  btn.textContent = 'Guardada';
+  clearTimeout(marcarGuardado._t);
+  marcarGuardado._t = setTimeout(function() {
+    caja.classList.remove('exito');
+    btn.classList.remove('guardado');
+    btn.textContent = 'Guardar calificación';
+  }, 2200);
+}
+
+async function guardarCalificacion(nota) {
+  var est = $('calificar-estado'), btn = $('calificar-guardar');
+  btn.disabled = true;
+  try {
+    var d = await pedir('/api/historial/calificacion', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ coleccion: 'notas_fase2', id: nota._id, puntaje: _cal.puntaje,
+                             etiquetas: _cal.etiquetas, comentario: $('calificar-comentario').value.trim() })
+    });
+    nota.calificacion = d.calificacion;
+    actualizarPasos();
+    est.textContent = 'Guardada. La próxima nota la tiene en cuenta.';
+    showToast('Calificación guardada', 'success');
+    vaciarCalificacion();
+    _cal.tocada = false;
+    marcarGuardado();
+    if (_seccion === 'historial') { cargarHistorial(_hist.pagina); cargarCalibracion(); }
+  } catch (e) { est.textContent = ''; marcarCalificacion(); showToast(e.message, 'error'); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LO QUE SE REVISÓ AL GENERAR
+   Datos contra las noticias, estilo, SEO y el plan de la nota.
+   ═══════════════════════════════════════════════════════════════════════ */
+function bloqueRevision(titulo, html, clase) {
+  var b = document.createElement('section');
+  b.className = 'revision-bloque' + (clase ? ' ' + clase : '');
+  b.innerHTML = '<h4>' + escHtml(titulo) + '</h4>' + html;
+  return b;
+}
+
+function lista(items, clase) {
+  return '<ul class="revision-lista' + (clase ? ' ' + clase : '') + '">'
+    + items.map(function(x) { return '<li>' + escHtml(x) + '</li>'; }).join('') + '</ul>';
+}
+
+var NOMBRE_TAREA = { redaccion: 'redacción', correccion: 'corrección', planificacion: 'plan', evaluacion: 'evaluación',
+                     clasificacion: 'fichas y fotos', embeddings: 'vectores', traduccion: 'traducción', general: 'otras' };
+
+function pintarImagen(nota, contenedor) {
+  var im = nota.imagen || {}, html;
+  var eleccion = nota.imagen_eleccion || {};
+  if (im.url) {
+    html = '<img class="revision-imagen" src="' + urlSegura(im.url) + '" alt="' + escHtml(im.alt || '') + '" referrerpolicy="no-referrer">'
+      + (im.origen ? '<p class="revision-sub">Foto de la noticia: <a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener">'
+                     + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
+      + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
+      + (im.subida ? '<p class="revision-sub">Subida desde la computadora' + (im.subida.nombre ? ': ' + escHtml(im.subida.nombre) : '') + '.</p>' : '');
+  } else if (/muestran personas/.test(eleccion.motivo || '')) {
+    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>';
+  } else if (eleccion.metodo === 'ia') {
+    html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
+      + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>';
+  } else {
+    html = '<p class="revision-sub">Sin imagen: ninguna noticia de la nota tenía foto.</p>';
+  }
+  // Se elige acá mismo (arrastrando o con el botón); las fotos de las noticias y la URL, en la vista previa.
+  html += zonaImagenHtml('-publicar')
+    + '<button type="button" class="enlace-detalle" onclick="vistaPreviaNota()">Elegir entre las fotos de las noticias o pegar una URL</button>';
+  var bloque = bloqueRevision('Imagen destacada', html);
+  contenedor.appendChild(bloque);
+  prepararZonaImagen(bloque.querySelector('.zona-imagen'));
+  pintarImagenesCuerpo(nota, contenedor);
+}
+
+/* Las fotos que van dentro del texto (hasta 2), con la noticia de la que salió cada una. */
+function pintarImagenesCuerpo(nota, contenedor) {
+  var imgs = (nota.imagenes_cuerpo || []).filter(function(im) {
+    return im && urlSegura(im.hubspot_url || im.url || '') !== '#';
+  }).slice(0, 2);
+  var html = imgs.length
+    ? '<div class="revision-imagenes">' + imgs.map(function(im) {
+        return '<figure><img class="revision-imagen" src="' + urlSegura(im.hubspot_url || im.url) + '" alt="' + escHtml(im.alt || '') + '"'
+          + ' referrerpolicy="no-referrer" loading="lazy">'
+          + (im.origen ? '<figcaption class="revision-sub"><a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
+                         + escHtml(im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
+          + '</figure>';
+      }).join('') + '</div>'
+    : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';
+  contenedor.appendChild(bloqueRevision('Imágenes en el texto', html));
+}
+
+var NOMBRE_IDIOMA = { es: 'Español', pt: 'Portugués', en: 'Inglés' };
+
+/* Versiones en los otros idiomas del blog: una fila por idioma con su estado en
+   HubSpot y botones para ver el texto o abrir el borrador. */
+function pintarTraducciones(nota, contenedor) {
+  var hs = nota.hubspot_traducciones || {}, tr_ = nota.traducciones || {};
+  var codigos = Object.keys(NOMBRE_IDIOMA).filter(function(c) { return hs[c] || tr_[c]; });
+  var subida = nota.hubspot && nota.hubspot.id;
+  if (!codigos.length && !subida) return;
+  var html = codigos.length ? '<ul class="idiomas-lista">' : '<p class="revision-sub">Todavía no se subieron las versiones en los otros idiomas.</p>';
+  codigos.forEach(function(c) {
+    var h = hs[c] || {}, t = tr_[c], id = 'traduccion-' + c;
+    var estado = h.error ? '<small class="revision-mal">' + escHtml(h.error) + '</small>'
+      : '<small>' + (h.id ? (h.vinculada ? 'Borrador en HubSpot, vinculado al original' : 'Borrador en HubSpot, sin vincular')
+                          : t && t.contenido ? 'Traducida, sin subir' : 'Sin traducir') + '</small>';
+    html += '<li class="revision-traduccion"><div><strong>' + escHtml(NOMBRE_IDIOMA[c]) + '</strong>' + estado
+      + (h.aviso ? '<small>' + escHtml(h.aviso) + '</small>' : '') + '</div><div class="idioma-botones">'
+      + (t && t.contenido ? '<button type="button" class="btn btn-xs" aria-expanded="false" aria-controls="' + id + '"'
+                            + ' onclick="alternarTraduccion(this)">Ver traducción</button>' : '')
+      + (h.url ? '<a class="btn btn-xs" href="' + urlSegura(h.url) + '" target="_blank" rel="noopener">Abrir en HubSpot</a>' : '')
+      + '</div>'
+      + (t && t.contenido ? '<div class="revision-traduccion-texto" id="' + id + '" translate="no" hidden>' + DOMPurify.sanitize(marked.parse(t.contenido)) + '</div>' : '')
+      + '</li>';
+  });
+  if (codigos.length) html += '</ul>';
+  if (subida) {
+    html += '<p><button type="button" class="btn btn-xs" id="btn-traducciones" onclick="subirTraducciones(\'' + escHtml(nota._id) + '\')">'
+      + (codigos.length ? 'Volver a subir las traducciones' : 'Traducir y subir') + '</button></p>';
+  }
+  contenedor.appendChild(bloqueRevision('Otros idiomas', html));
+}
+
+function alternarTraduccion(btn) {
+  var texto = $(btn.getAttribute('aria-controls')), abrir = texto.hidden;
+  texto.hidden = !abrir;
+  btn.setAttribute('aria-expanded', abrir);
+  btn.textContent = tr(abrir ? 'Ocultar traducción' : 'Ver traducción');
+}
+
+/* Traduce (si cambió el texto) y sube las versiones en la Cola; al terminar, recarga la nota. */
+async function subirTraducciones(id) {
+  var btn = $('btn-traducciones');
+  if (btn) setBtnLoading(btn, true);
+  var errores = [];
+  try {
+    var fin = await correrEnCola('/api/hubspot/traducciones', { coleccion: 'notas_fase2', id: id }, function(l) {
+      var m = l.match(/\[ERROR\]\s*(.+)/);
+      if (m) errores.push(m[1].trim());
+      log(l, m ? 'error' : l.indexOf('[OK]') >= 0 ? 'success' : 'info');
+    }, function(d) { if (btn) btn.textContent = textoEnCola(d) || tr('Procesando…'); });
+    if (fin.estado === 'ok') showToast('Traducciones subidas a HubSpot como borrador', 'success');
+    else showToast(errores[errores.length - 1] || fin.error || 'No se pudieron subir las traducciones. Mirá el registro en Actividad.', 'error');
+  } catch (e) { showToast(e.message, 'error'); }
+  if (_notaActual && _notaActual.id === id) fase2MostrarUltima(id);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PANEL DE CALIBRACIÓN (sección Historial)
+   ═══════════════════════════════════════════════════════════════════════ */
+async function cargarCalibracion() {
+  var panel = $('calibracion-cuerpo'), resumen = $('calibracion-resumen');
+  if (!panel) return;
+  var d;
+  try { d = await pedir('/api/calibracion'); }
+  catch (e) { resumen.textContent = 'No se pudo leer la calibración.'; return; }
+  _cal.catalogo = d.catalogo_etiquetas;
+  resumen.textContent = d.calificadas
+    ? d.calificadas + (d.calificadas === 1 ? ' nota calificada' : ' notas calificadas') + ' · promedio ' + d.promedio + ' ★'
+      + (d.sin_calificar ? ' · ' + d.sin_calificar + ' sin calificar' : '')
+    : 'Todavía no calificaste notas. Abrí una nota y calificala: la generación aprende de eso.';
+  var html = '';
+  if (d.calificadas) {
+    var max = Math.max.apply(null, Object.values(d.distribucion).concat([1]));
+    html += '<div class="cal-col"><h4>Calificaciones</h4><div class="cal-barras">'
+      + [5, 4, 3, 2, 1].map(function(i) {
+          var n = d.distribucion[i] || 0;
+          return '<div class="cal-barra"><span>' + i + ' ★</span><div><i style="width:' + (n / max * 100) + '%"></i></div><b>' + n + '</b></div>';
+        }).join('') + '</div>';
+    var grupos = function(titulo, arr) {
+      return arr.length > 1 || (arr[0] && arr[0].nombre !== '—')
+        ? '<p class="revision-sub">' + titulo + '</p>' + lista(arr.map(function(g) { return g.nombre + ': ' + g.promedio + ' ★ (' + g.notas + ')'; }), 'seo') : '';
+    };
+    html += grupos('Por estilo', d.por_persona) + grupos('Por proveedor', d.por_proveedor) + '</div>';
+  }
+  html += '<div class="cal-col"><h4>Lo que la próxima nota tiene en cuenta</h4>'
+    + (d.reglas.length ? lista(d.reglas) : '<p class="revision-sub">Nada todavía: aparecen correcciones cuando rechazás, calificás bajo o editás notas.</p>')
+    + (d.aciertos.length ? '<p class="revision-sub">Lo que el equipo valoró:</p>' + lista(d.aciertos, 'ok') : '')
+    + (d.ejemplos_propios.length ? '<p class="revision-sub">Notas propias usadas como referencia:</p>'
+        + lista(d.ejemplos_propios.map(function(e) { return e.titulo + ' (' + e.puntaje + ' ★)'; }), 'ok') : '')
+    + '</div>';
+  var ev = d.evaluador;
+  var jz = d.juez;
+  if (jz && (jz.pares || jz.aprobadas_ia)) {
+    html += '<div class="cal-col"><h4>Juez de IA</h4>'
+      + (jz.pares ? '<p>Su calificación sugerida quedó a ±1 estrella de la tuya en el <strong>' + Math.round(jz.acierto * 100)
+          + '%</strong> de ' + jz.pares + ' notas (diferencia media ' + jz.diferencia_media + ' ★).</p>' : '')
+      + (jz.aprobadas_ia ? '<p class="revision-sub">Aprobó sola ' + jz.aprobadas_ia + ' notas calificadas; '
+          + jz.aprobadas_ia_mal + ' con 1 o 2 estrellas.</p>' : '')
+      + '</div>';
+  }
+  html += '<div class="cal-col"><h4>Evaluador automático</h4>'
+    + (ev.umbral !== null
+        ? '<p>Con tus calificaciones, una nota necesita al menos <strong>' + ev.umbral + ' de 9</strong> lineamientos o se reescribe. '
+          + 'Coincide con tu criterio en el ' + Math.round(ev.coincidencia * 100) + '% de las notas.</p>'
+        : '<p class="revision-sub">Se calibra cuando haya ' + ev.minimo + ' notas calificadas con evaluación automática (hay ' + ev.pares + ').</p>')
+    + (d.etiquetas.length ? '<p class="revision-sub">Etiquetas que se repiten (activan una regla):</p>'
+        + lista(d.etiquetas.map(function(e) { return e.nombre + ' ×' + e.veces; }), 'dudoso') : '')
+    + '</div>';
+  panel.innerHTML = html;
+}

@@ -6,6 +6,8 @@ import pytest
 import requests
 
 from afterdrive.ingesta import scraper
+from afterdrive.ingesta.resource_detector import PERFIL_BAJO
+
 HTML = "<html><body>" + ("<p>contenido real del sitio</p>" * 40) + "</body></html>"
 
 
@@ -34,7 +36,7 @@ def red(monkeypatch):
         raise requests.exceptions.ReadTimeout("origen colgado")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     # Estos tests no prueban la validación de URLs: sin esto harían DNS real.
     monkeypatch.setattr(scraper, "_direcciones", lambda url: ["93.184.216.34"])
@@ -61,7 +63,7 @@ def test_wayback_que_redirige_a_otra_pagina_se_descarta(monkeypatch):
         raise requests.exceptions.ReadTimeout("x")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     assert scraper._fetch("https://www.aftermarketinternational.com/nota.html") is None
 
@@ -73,7 +75,7 @@ def test_articulo_no_archivado_devuelve_none(monkeypatch):
         raise requests.exceptions.ReadTimeout("x")
 
     monkeypatch.setattr(scraper.requests, "get", fake_get)
-    monkeypatch.setattr(scraper, "_PERFIL", scraper.PERFIL_BAJO)
+    monkeypatch.setattr(scraper, "_PERFIL", PERFIL_BAJO)
     monkeypatch.setattr(scraper, "_ORIGEN_CAIDO", set())
     assert scraper._fetch("https://www.aftermarketinternational.com/nota.html") is None
 
@@ -151,3 +153,53 @@ def test_dominio_que_no_resuelve_va_a_wayback(dns, monkeypatch):
     monkeypatch.setattr(scraper, "_wayback_get", lambda url: "COPIA:" + url)
     assert scraper._fetch("http://no-resuelve.invalid/nota") == "COPIA:http://no-resuelve.invalid/nota"
     assert "no-resuelve.invalid" in scraper._ORIGEN_CAIDO
+
+
+# ── Entre corridas ────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def listado(monkeypatch):
+    """Un listado con tres artículos; cada descarga de artículo queda anotada."""
+    links = ["https://sitio.com/2026/10/01/a", "https://sitio.com/2026/10/02/b", "https://sitio.com/2026/10/03/c"]
+    bajados = []
+    monkeypatch.setattr(scraper, "_fetch", lambda url: HTML)
+    monkeypatch.setattr(scraper, "_encontrar_links", lambda html, base: list(links))
+
+    def extraer(link):
+        bajados.append(link)
+        return {"titulo": link[-1], "cuerpo": "x" * 200, "url": link}
+
+    monkeypatch.setattr(scraper, "_fetch_and_extract", extraer)
+    return links, bajados
+
+
+def test_un_origen_caido_no_se_arrastra_a_la_corrida_siguiente(listado):
+    scraper._ORIGEN_CAIDO.add("sitio.com")
+    scraper.start(["https://sitio.com/noticias"], max_articulos=3)
+    assert "sitio.com" not in scraper._ORIGEN_CAIDO
+
+
+def test_los_articulos_ya_procesados_no_se_vuelven_a_bajar(listado):
+    links, bajados = listado
+    r = scraper.start(["https://sitio.com/noticias"], max_articulos=3, omitir=lambda urls: {links[0], links[2]})
+    assert bajados == [links[1]] and [i["url"] for i in r.items] == [links[1]]
+
+
+def test_si_todo_es_conocido_no_baja_nada(listado):
+    links, bajados = listado
+    assert scraper.start(["https://sitio.com/noticias"], max_articulos=3, omitir=lambda urls: set(urls)).items == []
+    assert bajados == []
+
+
+def test_ya_procesadas_mira_guardadas_y_descartadas(monkeypatch):
+    import mongomock
+
+    from afterdrive import corridas, db
+    base = mongomock.MongoClient().db
+    base.articulos.insert_one({"url": "https://s.com/a"})
+    base.articulos_descartados.insert_one({"url": "https://s.com/b"})
+    monkeypatch.setattr(db, "col_articulos", base.articulos)
+    monkeypatch.setattr(db, "col_descartados", base.articulos_descartados)
+    assert corridas.ya_procesadas(["https://s.com/a", "https://s.com/b", "https://s.com/c"]) == {
+        "https://s.com/a", "https://s.com/b"}

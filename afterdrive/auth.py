@@ -34,16 +34,29 @@ _fallos: dict[str, tuple[int, float]] = {}  # ip -> (cantidad, instante del últ
 _lock = threading.Lock()
 _ahora = time.monotonic
 
-_ABIERTAS = ("/", "/health", "/api/login")
+_ABIERTAS = ("/", "/ayuda", "/health", "/api/login")   # "/" y "/ayuda" deciden ellas qué mostrar sin sesión
 _CRON = {("POST", "/api/run-automation"), ("POST", "/api/run-generacion")}
 
 
+def _credencial(nombre: str) -> str:
+    """Valor de ADMIN_USER / ADMIN_PASSWORD_HASH sin espacios ni comillas envolventes.
+
+    En el .env el hash va entre comillas simples (por los "$"); pegado así en el
+    panel de Render, las comillas quedaban dentro del valor y ninguna contraseña
+    coincidía. Un salto de línea al final hacía lo mismo.
+    """
+    valor = os.getenv(nombre, "").strip()
+    if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in "'\"":
+        valor = valor[1:-1].strip()
+    return valor
+
+
 def _configurado() -> bool:
-    return bool(current_app.secret_key and os.getenv("ADMIN_USER") and os.getenv("ADMIN_PASSWORD_HASH"))
+    return bool(current_app.secret_key and _credencial("ADMIN_USER") and _credencial("ADMIN_PASSWORD_HASH"))
 
 
 def hay_sesion() -> bool:
-    return _configurado() and session.get("usuario") == os.getenv("ADMIN_USER")
+    return _configurado() and session.get("usuario") == _credencial("ADMIN_USER")
 
 
 def _bearer_valido() -> bool:
@@ -74,8 +87,8 @@ def _credenciales_ok(usuario, password) -> bool:
     # El hash se verifica siempre, coincida o no el usuario, para que el tiempo
     # de respuesta no delate cuál de los dos falló.
     try:
-        clave_ok = check_password_hash(os.environ["ADMIN_PASSWORD_HASH"], password if son_texto else "")
-        usuario_ok = son_texto and hmac.compare_digest(usuario.encode(), os.environ["ADMIN_USER"].encode())
+        clave_ok = check_password_hash(_credencial("ADMIN_PASSWORD_HASH"), password if son_texto else "")
+        usuario_ok = son_texto and hmac.compare_digest(usuario.encode(), _credencial("ADMIN_USER").encode())
     except Exception:
         # Hash mal formado en el entorno o texto que no se puede codificar
         # (un sustituto suelto): es un intento fallido, nunca un 500.
@@ -110,8 +123,21 @@ def _logout():
     return jsonify({"success": True})
 
 
+def _avisar_configuracion(secret_key) -> None:
+    """Deja en el log de arranque por qué el login no va a andar, sin mostrar valores."""
+    faltan = [n for n, v in (("SECRET_KEY", secret_key), ("ADMIN_USER", _credencial("ADMIN_USER")),
+                             ("ADMIN_PASSWORD_HASH", _credencial("ADMIN_PASSWORD_HASH"))) if not v]
+    if faltan:
+        print(f"[LOGIN] Faltan {', '.join(faltan)}: nadie puede entrar al dashboard.", flush=True)
+        return
+    if not _credencial("ADMIN_PASSWORD_HASH").startswith(("scrypt:", "pbkdf2:")):
+        print("[LOGIN] ADMIN_PASSWORD_HASH no parece un hash de werkzeug (tiene que empezar con "
+              "'scrypt:'): ninguna contraseña va a coincidir. Regeneralo (ver .env.example).", flush=True)
+
+
 def init_app(app) -> None:
     app.secret_key = os.getenv("SECRET_KEY") or None
+    _avisar_configuracion(app.secret_key)
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",  # también es la defensa contra CSRF

@@ -1,0 +1,62 @@
+# Tests y lint en cada push y pull request. Render despliega cada push a
+# Render_Testing: este check es el aviso de que algo se rompió antes de que
+# llegue a producción.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check afterdrive tests scripts
+
+      - name: Tests (pytest)
+        # Los tests no tocan Mongo ni proveedores de IA: usan fakes y mongomock.
+        env:
+          MONGO_URI: mongodb://localhost:27017/afterdrive
+        run: python -m pytest -q
+
+  dashboard:
+    # El dashboard en un Chromium real: login, secciones, guardado, fuentes,
+    # revisión de notas y la cola. Mongo en memoria, sin internet.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias y Chromium
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Tests e2e (Playwright)
+        run: python -m pytest -m e2e tests/e2e -q

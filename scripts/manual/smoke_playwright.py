@@ -19,8 +19,8 @@ def test_api_cerrada() -> bool:
     try:
         r = requests.get(f"{BASE}/health", timeout=5)
         print(f"Health: {r.status_code} - {r.json()}")
-        r = requests.get(f"{BASE}/api/check-volume?keyword=autopartes", timeout=10)
-        print(f"Sin sesión, /api/check-volume: {r.status_code} (se espera 401)")
+        r = requests.get(f"{BASE}/api/scraping-config", timeout=10)
+        print(f"Sin sesión, /api/scraping-config: {r.status_code} (se espera 401)")
         return r.status_code == 401
     except Exception as e:
         print(f"API FAILED: {e}")

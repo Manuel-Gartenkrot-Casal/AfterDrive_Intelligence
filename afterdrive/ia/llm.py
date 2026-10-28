@@ -2,8 +2,12 @@
 llm.py — Módulo LLM: el único lugar que sabe hablar con un proveedor de IA.
 
 Interfaz:
-    completar(system, user, temperature=..., max_tokens=..., stream=False) -> str
+    completar(system, user, temperature=..., max_tokens=..., stream=False, tarea="", imagenes=None) -> str
+    ve_imagenes() -> bool
     embeber(textos, tipo="passage") -> list[vector | None]
+    modelo_embeddings() -> str
+    usa_api_paga() -> bool
+    proveedor_activo() / proveedor_base() -> str
     disponible() -> bool
     ajustes_redaccion() -> Redaccion
     estado() -> dict
@@ -23,18 +27,41 @@ también a los subprocesos (que heredan os.environ).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from urllib.parse import quote
 
 import requests
 from dotenv import load_dotenv
 
+from afterdrive.ia import consumo, modo_pago
+
 load_dotenv()
 
-PROVEEDORES = ("local", "nvidia", "openrouter")
+PROVEEDORES = ("local", "nvidia", "openrouter", "paga")
+
+# Tareas del pipeline que llaman al chat. Solo la API paga las separa en
+# modelos distintos (PAGA_MODEL_<TAREA>); el resto usa un modelo para todo.
+TAREAS = ("clasificacion", "planificacion", "redaccion", "correccion", "evaluacion", "traduccion")
+
+# Tareas que, sin modelo propio, usan el de otra tarea en lugar de PAGA_MODEL.
+# El plan y la corrección escriben poco o retocan texto: no necesitan el modelo
+# caro de la redacción, alcanza con el de evaluación.
+# La traducción reescribe un texto ya revisado: alcanza con el de evaluación.
+RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion", "traduccion": "evaluacion"}
+
+# Formatos de imagen que aceptan Bedrock Converse y Chat Completions.
+_FORMATOS_IMAGEN = {"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+def paga_configurada(*extra: str) -> bool:
+    """True si la API paga tiene key, URL y las variables extra pedidas (p. ej. PAGA_MODEL)."""
+    return all(os.getenv(v) for v in ("PAGA_API_KEY", "PAGA_BASE_URL", *extra))
 
 # Códigos que significan "este modelo ya no existe": reintentar no lo revive.
 # 404 = nunca existió con ese id; 410 = fue dado de baja por el proveedor.
@@ -43,6 +70,64 @@ _MODELO_CAIDO = (404, 410)
 
 class ErrorLLM(RuntimeError):
     """Fallo del proveedor con un mensaje accionable para el usuario."""
+
+
+class Cancelada(ErrorLLM):
+    """La Corrida se canceló desde el dashboard.
+
+    Se revisa antes de cada llamada y cada CANCELAR_CADA_S mientras se espera
+    la respuesta (ver _interrumpible), con o sin streaming, y durante las
+    esperas por 429. La request abandonada termina sola en segundo plano: lo
+    que el proveedor ya haya cobrado no se recupera.
+    """
+
+
+def _nunca() -> bool:
+    return False
+
+
+_cancelada: Callable[[], bool] = _nunca
+
+
+def al_cancelar(consulta: Callable[[], bool]) -> None:
+    """Registra la función que dice si la Corrida en curso se canceló (la conecta cola.py)."""
+    global _cancelada
+    _cancelada = consulta
+
+
+def verificar_cancelacion() -> None:
+    if _cancelada():
+        raise Cancelada("Cancelada desde el dashboard.")
+
+
+CANCELAR_CADA_S = 0.5
+
+
+def _interrumpible(fn):
+    """Corre fn() en otro hilo y espera revisando si cancelaron la Corrida.
+
+    Una request a la IA puede tardar minutos (Bedrock no usa streaming): sin
+    esto, cancelar desde el dashboard esperaba a que volviera.
+    """
+    if _cancelada is _nunca:   # nada puede cancelarla: sin hilo extra
+        return fn()
+    caja: dict = {}
+    listo = threading.Event()
+
+    def correr():
+        try:
+            caja["r"] = fn()
+        except BaseException as e:  # se relanza en el hilo que llamó
+            caja["e"] = e
+        finally:
+            listo.set()
+
+    threading.Thread(target=correr, name="llm-request", daemon=True).start()
+    while not listo.wait(CANCELAR_CADA_S):
+        verificar_cancelacion()
+    if "e" in caja:
+        raise caja["e"]
+    return caja["r"]
 
 
 _ANTI_RAZONAMIENTO = (
@@ -78,6 +163,11 @@ class Perfil:
     modelo_emb: str = ""
     emb_max_chars: int = 8000
     emb_input_type: bool = False  # NVIDIA exige input_type en /embeddings
+    modelos_tarea: dict = field(default_factory=dict)  # tarea -> modelo (solo API paga)
+    campo_max_tokens: str = "max_tokens"  # OpenAI pide max_completion_tokens
+    enviar_temperatura: bool = True       # los modelos que razonan de OpenAI pueden rechazarla
+    api: str = "chat"                     # "chat" (/chat/completions) o "converse" (Bedrock)
+    tarea: str = ""                       # tarea de la llamada en curso: precio en el registro de consumo
     redaccion: Redaccion = field(default_factory=Redaccion)
 
     @property
@@ -97,8 +187,10 @@ def _perfil(nombre: str) -> Perfil:
             nombre="nvidia",
             base_url=env("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1"),
             api_key=env("NVIDIA_API_KEY", ""),
-            modelo=env("NVIDIA_MODEL", "moonshotai/kimi-k3"),
-            modelo_fallback=env("NVIDIA_FALLBACK_MODEL", "openai/gpt-oss-20b"),
+            # kimi-k3 fue dado de baja (410): el default pasa a gpt-oss, que ya
+            # era el respaldo y es el que venía escribiendo las notas.
+            modelo=env("NVIDIA_MODEL", "openai/gpt-oss-20b"),
+            modelo_fallback=env("NVIDIA_FALLBACK_MODEL", ""),
             variable_modelo="NVIDIA_MODEL",
             modelo_emb=env("NVIDIA_EMB_MODEL", "nvidia/nemotron-3-embed-1b"),
             emb_max_chars=1500,
@@ -124,6 +216,29 @@ def _perfil(nombre: str) -> Perfil:
             # temperatura reduce datos "creativos" sin volver rígido el texto.
             redaccion=Redaccion(temperatura=0.55),
         )
+    if nombre == "paga" and paga_configurada():
+        # API paga: el proveedor concreto se elige solo con variables de entorno.
+        # Sin defaults de URL/modelo a propósito. PAGA_API=converse para Bedrock
+        # (application inference profiles: Chat Completions los rechaza).
+        return Perfil(
+            nombre="paga",
+            base_url=env("PAGA_BASE_URL", ""),
+            api_key=env("PAGA_API_KEY", ""),
+            modelo=env("PAGA_MODEL", ""),
+            modelo_fallback=env("PAGA_FALLBACK_MODEL", ""),
+            variable_modelo="PAGA_MODEL",
+            modelo_emb=env("PAGA_EMB_MODEL", ""),
+            # Un modelo por tarea; la que no tenga variable usa PAGA_MODEL.
+            modelos_tarea={t: env(f"PAGA_MODEL_{t.upper()}") for t in TAREAS if env(f"PAGA_MODEL_{t.upper()}")},
+            # ponytail: sin probar contra la API real. Si OpenAI rechaza un
+            # parámetro, se corrige desde estas variables sin tocar código.
+            campo_max_tokens=env("PAGA_CAMPO_MAX_TOKENS", "max_completion_tokens"),
+            enviar_temperatura=env("PAGA_TEMPERATURA", "1") != "0",
+            api="converse" if env("PAGA_API", "").strip().lower() == "converse" else "chat",
+            # Los modelos de OpenAI que razonan descuentan el razonamiento de este
+            # presupuesto: con 4000 pueden agotarlo y no escribir (como kimi-k3).
+            redaccion=Redaccion(max_tokens=16000),
+        )
     return Perfil(
         nombre="local",
         base_url=env("LMSTUDIO_URL", "http://localhost:1234/v1"),
@@ -137,12 +252,42 @@ def _perfil(nombre: str) -> Perfil:
     )
 
 
-def proveedor_activo() -> str:
+def ve_imagenes() -> bool:
+    """True si se le pueden mandar imágenes al modelo: solo con la API paga en uso.
+
+    Los modelos pagos configurados (GPT-6 Luna, GPT-5.6 Luna y Kimi K3 en
+    Bedrock) aceptan imágenes; los gratuitos de NVIDIA y LM Studio no
+    necesariamente. IMAGENES_CON_IA=0 lo apaga.
+    """
+    return usa_api_paga() and os.getenv("IMAGENES_CON_IA", "1").strip() != "0"
+
+
+def proveedor_base() -> str:
+    """El proveedor elegido en la vista Desarrollador (o por AI_PROVIDER)."""
     return os.getenv("AI_PROVIDER", "local")
 
 
+def proveedor_activo() -> str:
+    """El proveedor que usa el pipeline ahora: el modo pago, mientras dure, manda sobre el base."""
+    if modo_pago.vigente() and paga_configurada("PAGA_MODEL"):
+        return "paga"
+    return proveedor_base()
+
+
 def _perfil_chat() -> Perfil:
-    return _perfil(proveedor_activo())
+    nombre = proveedor_activo()
+    if nombre == "paga" and not paga_configurada("PAGA_MODEL"):
+        nombre = "local"  # mismo criterio que un proveedor cloud sin key
+    elif nombre == "paga" and (motivo := consumo.motivo_tope()):
+        # Tope mensual de la API paga: se sigue con NVIDIA (o local sin su key).
+        print(f"[CONSUMO] API paga en pausa: {motivo}. Se usa NVIDIA.", flush=True)
+        nombre = "nvidia"
+    return _perfil(nombre)
+
+
+def usa_api_paga() -> bool:
+    """True si el chat va hoy por la API paga (activa, configurada y bajo el tope)."""
+    return _perfil_chat().nombre == "paga"
 
 
 def _perfil_emb() -> Perfil:
@@ -152,11 +297,31 @@ def _perfil_emb() -> Perfil:
     así que si terminara elegido se cae a LM Studio: es preferible fallar contra
     un endpoint local que mandar la request a un proveedor que devuelve 404.
     """
-    nombre = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower() or proveedor_activo()
-    if nombre == "openrouter":
+    explicito = os.getenv("EMBEDDINGS_PROVIDER", "").strip().lower()
+    nombre = explicito or proveedor_activo()
+    # La API paga vectoriza solo si se la pide explícitamente: elegirla para el
+    # chat desde el dashboard no debe cambiar el modelo de los vectores guardados.
+    paga_emb = (explicito == "paga" and paga_configurada("PAGA_EMB_MODEL")
+                and os.getenv("PAGA_API", "").strip().lower() != "converse"  # Converse no hace embeddings
+                and consumo.motivo_tope() is None)
+    if nombre == "openrouter" or (nombre == "paga" and not paga_emb):
         # OpenRouter no tiene /embeddings. NVIDIA si hay key; si no, LM Studio.
         nombre = "nvidia" if os.getenv("NVIDIA_API_KEY") else "local"
     return _perfil(nombre)
+
+
+def modelo_embeddings() -> str:
+    """Id del modelo que produce los vectores hoy ("proveedor/modelo").
+
+    Se guarda junto a cada embedding: vectores de modelos distintos no se
+    pueden comparar, aunque tengan el mismo largo.
+    """
+    p = _perfil_emb()
+    return f"{p.nombre}/{p.modelo_emb}"
+
+
+def _variable_emb(perfil: Perfil) -> str:
+    return "LMSTUDIO_EMB_MODEL" if perfil.nombre == "local" else f"{perfil.nombre.upper()}_EMB_MODEL"
 
 
 def _stream_read_timeout() -> int:
@@ -180,25 +345,42 @@ _transporte = {"post": _http_post, "get": _http_get}
 
 
 def _dormir(segundos: float) -> None:
-    time.sleep(segundos)
+    """Espera (backoff de 429) cortando enseguida si cancelan la Corrida."""
+    fin = time.monotonic() + segundos
+    while (resto := fin - time.monotonic()) > 0:
+        verificar_cancelacion()
+        time.sleep(min(CANCELAR_CADA_S, resto))
+    verificar_cancelacion()
 
 
 # ── Disponibilidad ────────────────────────────────────────────────────────────
 
-_disponible_cache: dict[str, bool] = {}
+# proveedor -> (responde, cuándo se chequeó). El resultado vence: un "no
+# responde" cacheado para siempre dejaba el clasificador en modo degradado
+# (aprobando todo) hasta reiniciar el servidor, que en Render vive días.
+_disponible_cache: dict[str, tuple[bool, float]] = {}
+MAX_TOKENS_REINTENTO = 6000   # tope del reintento cuando un modelo solo razonó
+VIGENCIA_OK_S = 600       # si respondió, no se vuelve a preguntar por 10 min
+VIGENCIA_CAIDO_S = 60     # si no respondió, se reintenta al minuto
+_reloj = time.monotonic   # seam para los tests
 
 
 def disponible() -> bool:
-    """True si el proveedor activo responde. Se chequea una vez por proveedor."""
+    """True si el proveedor activo responde. El resultado se cachea un rato."""
     perfil = _perfil_chat()
-    if perfil.nombre not in _disponible_cache:
-        try:
-            _transporte["get"](f"{perfil.base_url}/models", headers=perfil.headers, timeout=5)
-            _disponible_cache[perfil.nombre] = True
-        except Exception:
-            _disponible_cache[perfil.nombre] = False
-            print(f"[AVISO] Proveedor '{perfil.nombre}' ({perfil.base_url}) no disponible.", flush=True)
-    return _disponible_cache[perfil.nombre]
+    cache = _disponible_cache.get(perfil.nombre)
+    if cache is not None:
+        ok, cuando = cache
+        if _reloj() - cuando < (VIGENCIA_OK_S if ok else VIGENCIA_CAIDO_S):
+            return ok
+    try:
+        _transporte["get"](f"{perfil.base_url}/models", headers=perfil.headers, timeout=5)
+        ok = True
+    except Exception:
+        ok = False
+        print(f"[AVISO] Proveedor '{perfil.nombre}' ({perfil.base_url}) no disponible.", flush=True)
+    _disponible_cache[perfil.nombre] = (ok, _reloj())
+    return ok
 
 
 def ajustes_redaccion() -> Redaccion:
@@ -220,23 +402,39 @@ def estado() -> dict:
         local = False
     return {
         "provider": proveedor_activo(),
+        "provider_base": proveedor_base(),
+        **modo_pago.estado(),
         "local_available": local,
         "nvidia_available": bool(os.getenv("NVIDIA_API_KEY")),
         "openrouter_available": bool(os.getenv("OPENROUTER_API_KEY")),
+        "paga_available": paga_configurada("PAGA_MODEL"),
+        **_estado_consumo(),
         "model": chat.modelo,
         "emb_model": emb.modelo_emb,
         "emb_provider": emb.nombre,
     }
 
 
+def _estado_consumo() -> dict:
+    # Con la API paga configurada aunque no esté en uso: el aviso del modo pago
+    # muestra cuánto se gastó en el mes antes de prenderlo.
+    if not paga_configurada("PAGA_MODEL"):
+        return {}
+    motivo = consumo.motivo_tope()
+    return {"paga_gastado_mes_usd": round(consumo.gastado_mes(), 4), "paga_tope_usd": consumo.tope(),
+            "paga_tope_alcanzado": motivo is not None, "paga_motivo_pausa": motivo or ""}
+
+
 def set_proveedor(nombre: str) -> dict:
     """Cambia el proveedor de chat en runtime (y para los subprocesos)."""
     if nombre not in PROVEEDORES:
-        return {"success": False, "error": "Proveedor inválido. Usá 'local', 'nvidia' u 'openrouter'."}
+        return {"success": False, "error": "Proveedor inválido. Usá 'local', 'nvidia', 'openrouter' o 'paga'."}
     if nombre == "nvidia" and not os.getenv("NVIDIA_API_KEY"):
         return {"success": False, "error": "No hay API key de NVIDIA configurada."}
     if nombre == "openrouter" and not os.getenv("OPENROUTER_API_KEY"):
         return {"success": False, "error": "No hay API key de OpenRouter configurada."}
+    if nombre == "paga" and not paga_configurada("PAGA_MODEL"):
+        return {"success": False, "error": "La API paga necesita PAGA_API_KEY, PAGA_BASE_URL y PAGA_MODEL."}
     if nombre == "local":
         # La elección se persiste: aceptar "local" donde no hay LM Studio (p. ej.
         # en Render) deja fallando la generación programada hasta que alguien lo note.
@@ -256,6 +454,9 @@ def set_proveedor(nombre: str) -> dict:
 
 def _error_modelo_caido(perfil: Perfil, modelo: str, status: int, variable: str) -> str:
     """Mensaje accionable: qué variable cambiar y qué modelos hay hoy."""
+    if perfil.api == "converse":  # Bedrock runtime no tiene catálogo en /models
+        return (f"El modelo '{modelo}' devolvió HTTP {status}: no existe o no está disponible en esa región. "
+                f"Revisá {variable}.")
     try:
         r = _transporte["get"](f"{perfil.base_url}/models", headers=perfil.headers, timeout=15)
         r.raise_for_status()
@@ -273,49 +474,91 @@ def _error_modelo_caido(perfil: Perfil, modelo: str, status: int, variable: str)
     )
 
 
-def _post_chat(perfil: Perfil, payload: dict, *, timeout, stream: bool, reintentos: int = 5) -> requests.Response:
-    """POST a /chat/completions con fallback de modelo y backoff para 429.
+# (proveedor, modelo) -> cuándo devolvió 404/410. Mientras dure, se va directo
+# al de respaldo: antes cada llamada (ficha, plan, redacción…) gastaba un pedido
+# en el modelo dado de baja antes de probar el otro.
+_modelos_caidos: dict[tuple[str, str], float] = {}
+CAIDO_VIGENCIA_S = 6 * 3600
+
+# Modelos gpt-oss: razonan antes de escribir y el razonamiento sale del mismo
+# presupuesto de tokens. "Reasoning: low" en el system (su formato oficial)
+# acorta ese razonamiento: con 900 tokens la ficha salía vacía.
+_RAZONAMIENTO_BAJO = "Reasoning: low"
+
+
+def _mensajes_para(modelo: str, messages: list[dict]) -> list[dict]:
+    if "gpt-oss" not in modelo:
+        return messages
+    if messages and messages[0].get("role") == "system":
+        return [{**messages[0], "content": f"{_RAZONAMIENTO_BAJO}\n\n{messages[0]['content']}"}, *messages[1:]]
+    return [{"role": "system", "content": _RAZONAMIENTO_BAJO}, *messages]
+
+
+def _post_chat(perfil: Perfil, payload: dict, *, timeout, stream: bool,
+               reintentos: int = 5) -> tuple[requests.Response, str]:
+    """POST a /chat/completions con fallback de modelo y backoff para 429 (ver _con_respaldo)."""
+    url = f"{perfil.base_url}/chat/completions"
+
+    def enviar(modelo: str) -> requests.Response:
+        cuerpo = {**payload, "model": modelo, "messages": _mensajes_para(modelo, payload["messages"])}
+        return _transporte["post"](url, json=cuerpo, headers=perfil.headers, timeout=timeout, stream=stream)
+
+    return _con_respaldo(perfil, payload["model"], enviar, reintentos)
+
+
+def _con_respaldo(perfil: Perfil, modelo: str, enviar, reintentos: int = 5) -> tuple[requests.Response, str]:
+    """Envía con `enviar(modelo)`, con fallback de modelo y backoff para 429.
+
+    Devuelve (respuesta, modelo que contestó): el costo depende de cuál fue.
 
     - 404/410 (modelo dado de baja): se prueba el fallback una vez; reintentar
       el mismo modelo es inútil.
     - 429: en el primer intento se prueba el fallback; después, backoff.
     """
-    url = f"{perfil.base_url}/chat/completions"
-    post = _transporte["post"]
-    fallback = perfil.modelo_fallback if perfil.modelo_fallback != payload["model"] else ""
+    fallback = perfil.modelo_fallback if perfil.modelo_fallback != modelo else ""
+    caido = _modelos_caidos.get((perfil.nombre, modelo))
+    if fallback and caido is not None and _reloj() - caido < CAIDO_VIGENCIA_S:
+        modelo, fallback = fallback, ""
 
     def _probar_fallback(motivo: str):
-        print(f"[FALLBACK] '{payload['model']}' {motivo} -> probando {fallback}", flush=True)
-        return post(url, json={**payload, "model": fallback}, headers=perfil.headers, timeout=timeout, stream=stream)
+        print(f"[FALLBACK] '{modelo}' {motivo} -> probando {fallback}", flush=True)
+        return _interrumpible(lambda: enviar(fallback))
 
     resp = None
     for intento in range(reintentos):
-        resp = post(url, json=payload, headers=perfil.headers, timeout=timeout, stream=stream)
+        resp = _interrumpible(lambda: enviar(modelo))
         if resp.status_code in _MODELO_CAIDO:
             if fallback:
+                _modelos_caidos[(perfil.nombre, modelo)] = _reloj()
+                print(f"[MODELO] '{modelo}' ya no está disponible en {perfil.nombre}: se usa '{fallback}' "
+                      f"directo. Actualizá {perfil.variable_modelo}.", flush=True)
                 resp_fb = _probar_fallback(f"devolvió {resp.status_code} (modelo dado de baja)")
                 if resp_fb.status_code == 200:
-                    return resp_fb
-            return resp
+                    return resp_fb, fallback
+            return resp, modelo
         if resp.status_code != 429:
-            return resp
+            return resp, modelo
         if intento == 0 and fallback:
             resp_fb = _probar_fallback("rate-limited (429)")
             if resp_fb.status_code == 200:
-                return resp_fb
+                return resp_fb, fallback
         espera = min(5 * (2**intento), 60)
         print(f"[RETRY] 429 - esperando {espera}s (intento {intento + 1}/{reintentos})", flush=True)
         _dormir(espera)
-    return resp
+    return resp, modelo
 
 
 def _levantar_si_falla(perfil: Perfil, resp: requests.Response) -> None:
     if resp.ok:
         return
     if resp.status_code == 429:
-        raise ErrorLLM(f"Rate limit de {perfil.nombre} (429). Esperá unos minutos y reintentá.")
+        cuota = " (ThrottlingException: revisá la cuota del perfil en Bedrock)" if perfil.api == "converse" else ""
+        raise ErrorLLM(f"Rate limit de {perfil.nombre} (429){cuota}. Esperá unos minutos y reintentá.")
     if resp.status_code in _MODELO_CAIDO:
         raise ErrorLLM(_error_modelo_caido(perfil, perfil.modelo, resp.status_code, perfil.variable_modelo))
+    if resp.status_code in (401, 403):
+        raise ErrorLLM(f"{perfil.nombre} rechazó la key para el modelo '{perfil.modelo}' (HTTP {resp.status_code}): "
+                       f"revisá la key y {perfil.variable_modelo}. Detalle: {resp.text[:500]}")
     raise ErrorLLM(f"HTTP {resp.status_code}: {resp.text[:1000]}")
 
 
@@ -347,6 +590,7 @@ class _Stream:
     texto: str = ""
     razonamiento: int = 0         # chars de reasoning_content recibidos (se descartan)
     fin: str | None = None        # finish_reason del último chunk
+    uso: dict = field(default_factory=dict)  # "usage" del último chunk (stream_options.include_usage)
 
 
 def _leer_stream(perfil: Perfil, resp: requests.Response) -> _Stream:
@@ -355,6 +599,7 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> _Stream:
     t0 = last = time.time()
     try:
         for line in resp.iter_lines():
+            verificar_cancelacion()
             if not line:
                 continue
             text = line.decode("utf-8") if isinstance(line, bytes) else line
@@ -370,6 +615,7 @@ def _leer_stream(perfil: Perfil, resp: requests.Response) -> _Stream:
                 print(f"[ERROR del modelo] {chunk.get('message', chunk['error'])}", flush=True)
                 continue
             partes.append(_contenido_de_chunk(chunk))
+            info.uso = chunk.get("usage") or info.uso
             choices = chunk.get("choices") or []
             if choices:
                 delta = choices[0].get("delta") or {}
@@ -400,8 +646,17 @@ def completar(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     stream: bool = False,
+    tarea: str = "",
+    imagenes: list[tuple[bytes, str]] | None = None,
 ) -> str:
     """Envía un system + user prompt al proveedor activo y devuelve el texto.
+
+    imagenes: [(bytes, mime)] que acompañan al pedido (ver ve_imagenes()). Van
+    antes del texto: Kimi K3 responde mejor así y a los demás les da igual.
+
+    tarea (ver TAREAS) elige el modelo cuando el proveedor separa modelos por
+    tarea (API paga): PAGA_MODEL_<TAREA>; si no está, el de RESPALDO_TAREA; si
+    tampoco, PAGA_MODEL. Los demás proveedores la ignoran.
 
     stream=True es para generaciones largas: agrega heartbeat y corta si el
     proveedor queda mudo STREAM_READ_TIMEOUT segundos, pero la interfaz es la
@@ -411,25 +666,61 @@ def completar(
         ErrorLLM con un mensaje accionable (rate limit, modelo dado de baja,
         proveedor mudo, HTTP inesperado).
     """
-    perfil = _perfil_chat()
+    verificar_cancelacion()
+    perfil = replace(_perfil_chat(), tarea=tarea)
+    for t in (tarea, RESPALDO_TAREA.get(tarea)):
+        if t and perfil.modelos_tarea.get(t):
+            perfil = replace(perfil, modelo=perfil.modelos_tarea[t], variable_modelo=f"PAGA_MODEL_{t.upper()}")
+            break
+    imagenes = [(b, m) for b, m in imagenes or [] if m in _FORMATOS_IMAGEN]
+    if perfil.api == "converse":
+        return _completar_converse(perfil, system, user, max_tokens=max_tokens, stream=stream, imagenes=imagenes)
     messages = [{"role": "system", "content": system}] if system else []
-    messages.append({"role": "user", "content": user})
+    if imagenes:
+        stream = False   # la respuesta es corta y así el registro de consumo no mide el base64
+        contenido_user = [{"type": "image_url", "image_url": {"url": f"data:{m};base64,{base64.b64encode(b).decode()}"}}
+                          for b, m in imagenes] + [{"type": "text", "text": user}]
+        messages.append({"role": "user", "content": contenido_user})
+    else:
+        messages.append({"role": "user", "content": user})
     payload = {
         "model": perfil.modelo,
         "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        perfil.campo_max_tokens: max_tokens,
         "stream": stream,
         **perfil.extra_payload,
     }
+    if perfil.enviar_temperatura:
+        payload["temperature"] = temperature
+    if perfil.nombre != "local" and stream:
+        payload["stream_options"] = {"include_usage": True}  # tokens para el registro de consumo
 
     if not stream:
         try:
-            resp = _post_chat(perfil, payload, timeout=120, stream=False)
+            resp, modelo = _post_chat(perfil, payload, timeout=120, stream=False)
+        except requests.exceptions.Timeout as e:
+            _registrar_estimado(perfil, payload["model"], system + user, max_tokens)
+            raise ErrorLLM(f"{perfil.nombre} no respondió a tiempo: {e}") from e
         except requests.exceptions.RequestException as e:
             raise ErrorLLM(f"No se pudo contactar a {perfil.nombre}: {e}") from e
         _levantar_si_falla(perfil, resp)
-        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
+        data = resp.json()
+        choices = data.get("choices") or [{}]
+        contenido = (choices[0].get("message") or {}).get("content") or ""
+        cortada = choices[0].get("finish_reason") == "length"
+        _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=system + user, salida=contenido,
+                       truncado=cortada, max_tokens=max_tokens)
+        if cortada and not contenido.strip() and max_tokens < MAX_TOKENS_REINTENTO:
+            # Un modelo que razona gastó todo en pensar: la ficha o el plan
+            # salían vacíos ("sin objeto JSON"). Un intento más con margen.
+            mas = min(max_tokens * 4, MAX_TOKENS_REINTENTO)
+            print(f"  [AVISO] '{modelo}' usó los {max_tokens} tokens razonando sin responder: "
+                  f"se reintenta con {mas}.", flush=True)
+            return completar(system, user, temperature=temperature, max_tokens=mas, stream=False, tarea=tarea,
+                             imagenes=imagenes)
+        if not data.get("choices"):
+            raise ErrorLLM(f"{perfil.nombre} respondió sin 'choices': {resp.text[:500]}")
+        return contenido.strip()
 
     info = _completar_stream(perfil, payload)
     if info.texto.strip() or not info.razonamiento:
@@ -452,8 +743,9 @@ def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
     stop = threading.Event()
     threading.Thread(target=_heartbeat, args=(f"esperando respuesta de {payload['model']}...", stop), daemon=True).start()
     try:
-        resp = _post_chat(perfil, payload, timeout=(15, _stream_read_timeout()), stream=True)
+        resp, modelo = _post_chat(perfil, payload, timeout=(15, _stream_read_timeout()), stream=True)
     except requests.exceptions.Timeout as e:
+        _registrar_estimado(perfil, payload["model"], json.dumps(payload["messages"]), payload.get(perfil.campo_max_tokens, 0))
         raise ErrorLLM(
             f"El proveedor no respondió en {_stream_read_timeout()}s usando el modelo '{perfil.modelo}'. "
             f"Probá con otro modelo o subí STREAM_READ_TIMEOUT."
@@ -462,8 +754,146 @@ def _completar_stream(perfil: Perfil, payload: dict) -> _Stream:
         raise ErrorLLM(f"No se pudo contactar a {perfil.nombre}: {e}") from e
     finally:
         stop.set()
+    if resp.status_code == 400 and "stream_options" in payload and "stream_options" in (resp.text or ""):
+        # Un modelo que no acepta pedir los tokens en el stream: sin ese campo
+        # la nota sale igual y el consumo se estima.
+        print(f"  [AVISO] '{modelo}' no acepta stream_options: se pide sin los tokens.", flush=True)
+        sin_opciones = {k: v for k, v in payload.items() if k != "stream_options"}
+        return _completar_stream(perfil, sin_opciones)
     _levantar_si_falla(perfil, resp)
-    return _leer_stream(perfil, resp)
+    try:
+        info = _interrumpible(lambda: _leer_stream(perfil, resp))
+    except Cancelada:
+        cerrar = getattr(resp, "close", None)
+        if cerrar:
+            cerrar()   # corta la conexión: el hilo que leía termina solo
+        raise
+    except ErrorLLM:
+        # Aceptó y no mandó nada: pudo haber razonado (y cobrado) sin transmitirlo.
+        _registrar_estimado(perfil, modelo, json.dumps(payload["messages"]), payload.get(perfil.campo_max_tokens, 0))
+        raise
+    # Sin usage (stream cortado) se estima con lo que llegó: texto y razonamiento.
+    _registrar_uso(perfil, modelo, info.uso, entrada=json.dumps(payload["messages"]),
+                   salida=info.texto, chars_razonamiento=info.razonamiento,
+                   truncado=info.fin == "length", max_tokens=payload.get(perfil.campo_max_tokens))
+    return info
+
+
+def _tokens_estimados(chars: int) -> int:
+    # ~4 caracteres por token en español; se divide por 3 para estimar por lo alto.
+    return chars // 3 + 1
+
+
+def _registrar_uso(perfil: Perfil, modelo: str, uso: dict, *, entrada: str = "", salida: str = "",
+                   chars_razonamiento: int = 0, truncado: bool = False, max_tokens: int | None = None) -> None:
+    """Suma la llamada al registro de consumo, de cualquier proveedor.
+
+    Solo la API paga tiene costo y cuenta para el tope; del resto se guardan
+    los tokens para ver cuánto consume cada llamada. Sin tokens informados se
+    registra una estimación por lo alto: una llamada paga nunca queda fuera
+    del tope. truncado: la respuesta llegó a max_tokens y se cortó.
+    """
+    registro = {"proveedor": perfil.nombre, "truncado": truncado, "max_tokens": max_tokens}
+    t_entrada = uso.get("prompt_tokens", uso.get("inputTokens", 0)) or 0
+    t_salida = uso.get("completion_tokens", uso.get("outputTokens", 0)) or 0
+    if t_entrada or t_salida:
+        # Bedrock informó inputTokens=2 con prompts de ~1100 tokens: la entrada
+        # cacheada se informa aparte (o solo en totalTokens). Se cuenta lo más
+        # alto entre lo informado, total - salida y un piso por caracteres, todo
+        # al precio de entrada completo (el cache suele ser más barato: sobreestima).
+        cache = (uso.get("cacheReadInputTokens") or 0) + (uso.get("cacheWriteInputTokens") or 0)
+        total = uso.get("totalTokens", uso.get("total_tokens")) or 0
+        piso = len(entrada) // 4
+        contada = max(t_entrada + cache, total - t_salida if total else 0, piso)
+        if contada != t_entrada:
+            crudo = {k: v for k, v in uso.items() if isinstance(v, int | float)}
+            print(f"  [CONSUMO] usage informado {crudo}: se cuentan {contada} tokens de entrada.", flush=True)
+        consumo.registrar(perfil.tarea, modelo, int(contada), int(t_salida), **registro)
+        return
+    print(f"  [CONSUMO] '{modelo}' no informó tokens: se registra una estimación.", flush=True)
+    consumo.registrar(perfil.tarea, modelo, _tokens_estimados(len(entrada)),
+                      _tokens_estimados(len(salida) + chars_razonamiento), estimado=True, **registro)
+
+
+def _registrar_estimado(perfil: Perfil, modelo: str, entrada: str, max_tokens: int) -> None:
+    """Llamada cortada por timeout: el proveedor puede cobrarla entera, se cuenta el máximo.
+
+    El corte pudo pasar en el modelo de respaldo: se valúa con el más caro de los dos.
+    """
+    if perfil.nombre != "paga":
+        return
+    candidatos = [m for m in (modelo, perfil.modelo_fallback) if m]
+    modelo = max(candidatos, key=lambda m: consumo.precio_de_modelo(m)[1])
+    consumo.registrar(perfil.tarea, modelo, _tokens_estimados(len(entrada)), int(max_tokens), estimado=True)
+
+
+# ── Converse (Bedrock) ────────────────────────────────────────────────────────
+
+
+def _converse_timeout() -> int:
+    # Converse sin streaming entrega todo al final: un modelo que razona con
+    # 16000 tokens puede tardar varios minutos.
+    return int(os.getenv("CONVERSE_TIMEOUT", "600"))
+
+
+def _completar_converse(perfil: Perfil, system: str, user: str, *, max_tokens: int, stream: bool,
+                        imagenes: list[tuple[bytes, str]] | None = None) -> str:
+    """Una llamada a la API Converse de Bedrock.
+
+    POST {base}/model/{modelo URL-encoded}/converse. El modelo puede ser un ARN
+    de application inference profile. No se manda temperature: los Luna
+    rechazan el campo entero, aunque valga 0.
+    """
+    # ponytail: sin streaming (ConverseStream usa el formato binario de AWS, no
+    # SSE). Para stream=True se mantiene el heartbeat mientras se espera.
+    # Las imágenes van como bytes en base64 (la API REST de Converse no acepta URLs).
+    bloques_imagen = [{"image": {"format": _FORMATOS_IMAGEN[m], "source": {"bytes": base64.b64encode(b).decode()}}}
+                      for b, m in imagenes or []]
+    cuerpo = {
+        "messages": [{"role": "user", "content": [*bloques_imagen, {"text": user}]}],
+        "inferenceConfig": {"maxTokens": max_tokens},
+    }
+    if system:
+        cuerpo["system"] = [{"text": system}]
+
+    def enviar(modelo: str) -> requests.Response:
+        return _transporte["post"](f"{perfil.base_url}/model/{quote(modelo, safe='')}/converse", json=cuerpo,
+                                   headers=perfil.headers, timeout=(15, _converse_timeout()), stream=False)
+
+    stop = threading.Event()
+    if stream:
+        threading.Thread(target=_heartbeat, args=(f"esperando respuesta de {perfil.variable_modelo}...", stop),
+                         daemon=True).start()
+    entrada = system + user
+    try:
+        resp, modelo = _con_respaldo(perfil, perfil.modelo, enviar)
+    except requests.exceptions.ConnectTimeout as e:
+        raise ErrorLLM(f"No se pudo conectar con Bedrock en {perfil.base_url} (15 s). Revisá PAGA_BASE_URL.") from e
+    except requests.exceptions.Timeout as e:
+        _registrar_estimado(perfil, perfil.modelo, entrada, max_tokens)
+        raise ErrorLLM(f"Bedrock no respondió en {_converse_timeout()}s ({perfil.variable_modelo}). "
+                       "Subí CONVERSE_TIMEOUT o probá con otro perfil.") from e
+    except requests.exceptions.RequestException as e:
+        raise ErrorLLM(f"No se pudo contactar a {perfil.nombre}: {e}") from e
+    finally:
+        stop.set()
+    _levantar_si_falla(perfil, resp)
+
+    data = resp.json()
+    bloques = ((data.get("output") or {}).get("message") or {}).get("content") or []
+    # Solo los bloques de texto: los de "reasoningContent" son el razonamiento.
+    texto = "".join(b["text"] for b in bloques if isinstance(b, dict) and isinstance(b.get("text"), str)).strip()
+    razono = any(isinstance(b, dict) and "reasoningContent" in b for b in bloques)
+    corte = data.get("stopReason")
+    _registrar_uso(perfil, modelo, data.get("usage") or {}, entrada=entrada, salida=json.dumps(bloques),
+                   truncado=corte == "max_tokens", max_tokens=max_tokens)
+    if not texto and (razono or corte == "max_tokens"):
+        raise ErrorLLM(f"El modelo de {perfil.variable_modelo} razonó y no escribió la respuesta (stopReason={corte}, "
+                       f"presupuesto {max_tokens} tokens). Probá con otro perfil o subí max_tokens.")
+    if texto and corte == "max_tokens":
+        print(f"  [AVISO] La respuesta de {perfil.variable_modelo} se cortó por max_tokens ({max_tokens}): "
+              "puede estar incompleta.", flush=True)
+    return texto
 
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
@@ -473,9 +903,16 @@ def _post_emb(perfil: Perfil, entrada, tipo: str, timeout: int) -> requests.Resp
     payload = {"model": perfil.modelo_emb, "input": entrada}
     if perfil.emb_input_type:
         payload["input_type"] = tipo
-    return _transporte["post"](
+    resp = _transporte["post"](
         f"{perfil.base_url}/embeddings", json=payload, headers=perfil.headers, timeout=timeout, stream=False
     )
+    if resp.status_code == 200:
+        try:
+            uso = resp.json().get("usage") or {}
+        except Exception:
+            uso = {}
+        _registrar_uso(replace(perfil, tarea="embeddings"), perfil.modelo_emb, uso, entrada=json.dumps(entrada))
+    return resp
 
 
 def _embeber_uno(perfil: Perfil, texto: str, tipo: str) -> list[float] | None:
@@ -485,7 +922,7 @@ def _embeber_uno(perfil: Perfil, texto: str, tipo: str) -> list[float] | None:
             resp = _post_emb(perfil, texto, tipo, timeout=30)
             if resp.status_code in _MODELO_CAIDO:
                 print("[ERROR] " + _error_modelo_caido(perfil, perfil.modelo_emb, resp.status_code,
-                                                       "NVIDIA_EMB_MODEL"), flush=True)
+                                                       _variable_emb(perfil)), flush=True)
                 return None
             # NVIDIA a veces devuelve 400 en vez de 429 para rate limit.
             if resp.status_code in (400, 429):
@@ -538,7 +975,7 @@ def embeber(textos: list[str], tipo: str = "passage") -> list[list[float] | None
             if resp.status_code in _MODELO_CAIDO:
                 # Caer al uno-por-uno fallaría igual N veces seguidas.
                 print("[ERROR] " + _error_modelo_caido(perfil, perfil.modelo_emb, resp.status_code,
-                                                       "NVIDIA_EMB_MODEL"), flush=True)
+                                                       _variable_emb(perfil)), flush=True)
                 return resultado
             if resp.status_code in (400, 429):
                 print(f"  [AVISO] Embedding batch rate-limited ({resp.status_code}), retry en {espera}s...", flush=True)

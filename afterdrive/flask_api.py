@@ -3,23 +3,23 @@ import re
 import threading
 import time
 
-from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+from flask import Flask, jsonify, request, send_from_directory
 
-from afterdrive import auth
-from afterdrive import config_store
-from afterdrive import corridas
-from afterdrive.ia import llm
-from afterdrive import scheduler
+from afterdrive import auth, cola, config_store, scheduler
 from afterdrive.db import col_articulos, db
+from afterdrive.ia import llm, modo_pago
 
-# Aplicar el proveedor elegido en el dashboard. llm lee AI_PROVIDER en cada
-# llamada y los subprocesos heredan os.environ, así que alcanza con setearlo.
+# Aplicar el proveedor elegido en el dashboard (y el modo pago, si quedó
+# prendido). llm lee AI_PROVIDER y MODO_PAGO_HASTA en cada llamada y los
+# subprocesos heredan os.environ, así que alcanza con setearlos.
 try:
     _p = config_store.get_provider_config()
     if _p and not os.getenv("AI_PROVIDER_OVERRIDE"):
         os.environ["AI_PROVIDER"] = _p
 except Exception:
     pass
+if not os.getenv("AI_PROVIDER_OVERRIDE"):
+    modo_pago.restaurar()
 
 app = Flask(__name__)
 auth.init_app(app)
@@ -76,6 +76,83 @@ def root():
     return resp
 
 
+@app.route("/ayuda")
+def ayuda():
+    """Documentación dentro de la app. Sin sesión, al login."""
+    from flask import redirect
+    if not auth.hay_sesion():
+        return redirect("/")
+    resp = send_from_directory(_STATIC_DIR, "ayuda.html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# Documentos que se pueden leer desde Ayuda: lista blanca (el slug llega del
+# navegador). slug -> (archivo relativo a la raíz, título, grupo).
+DOCUMENTOS = {
+    "guia-de-uso": ("docs/guia-de-uso.md", "Guía de uso", "Usar la aplicación"),
+    "glosario": ("CONTEXT.md", "Glosario", "Usar la aplicación"),
+    "indice": ("docs/README.md", "Índice técnico", "Documentación técnica"),
+    "01-arquitectura": ("docs/01-arquitectura.md", "Arquitectura", "Documentación técnica"),
+    "02-instalacion": ("docs/02-instalacion.md", "Instalación", "Documentación técnica"),
+    "03-pipelines": ("docs/03-pipelines.md", "Pipelines", "Documentación técnica"),
+    "04-ia": ("docs/04-ia.md", "IA", "Documentación técnica"),
+    "05-base-de-datos": ("docs/05-base-de-datos.md", "Base de datos", "Documentación técnica"),
+    "06-dashboard": ("docs/06-dashboard.md", "Dashboard", "Documentación técnica"),
+    "07-api": ("docs/07-api.md", "API", "Documentación técnica"),
+    "08-despliegue": ("docs/08-despliegue.md", "Despliegue", "Documentación técnica"),
+    "09-deuda-y-mejoras": ("docs/09-deuda-y-mejoras.md", "Deuda y mejoras", "Documentación técnica"),
+    "hubspot-integration": ("docs/hubspot-integration.md", "HubSpot", "Documentación técnica"),
+}
+
+
+# Idiomas con traducción posible de un documento (archivo.<idioma>.md al lado del original).
+IDIOMAS_DOCS = ("pt", "en")
+
+
+@app.route("/api/docs", methods=["GET"])
+def listar_docs():
+    return jsonify({"success": True, "documentos": [
+        {"slug": s, "titulo": t, "grupo": g} for s, (a, t, g) in DOCUMENTOS.items()
+        if os.path.isfile(os.path.join(_RAIZ, a))
+    ]})
+
+
+@app.route("/api/docs/<slug>", methods=["GET"])
+def leer_doc(slug: str):
+    if slug not in DOCUMENTOS:
+        return jsonify({"success": False, "error": "Documento no encontrado."}), 404
+    archivo, titulo, _ = DOCUMENTOS[slug]
+    # ?idioma=pt|en: la traducción (docs/guia-de-uso.pt.md) si existe; si no, el original en español.
+    idioma = "es"
+    pedido = request.args.get("idioma", "es")
+    if pedido in IDIOMAS_DOCS:
+        raiz_archivo, ext = os.path.splitext(archivo)
+        traducido = f"{raiz_archivo}.{pedido}{ext}"
+        if os.path.isfile(os.path.join(_RAIZ, traducido)):
+            archivo, idioma = traducido, pedido
+    try:
+        with open(os.path.join(_RAIZ, archivo), encoding="utf-8") as f:
+            texto = f.read()
+    except OSError:
+        return jsonify({"success": False, "error": "Documento no disponible en este servidor."}), 404
+    return jsonify({"success": True, "slug": slug, "titulo": titulo, "idioma": idioma, "markdown": texto})
+
+
+@app.route("/assets/<path:archivo>")
+def assets(archivo: str):
+    """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
+
+    no-cache: el navegador revalida con el ETag, así un deploy nuevo se ve sin
+    tener que forzar la recarga.
+    """
+    if not archivo.endswith((".css", ".js")):
+        return jsonify({"success": False, "error": "Recurso no encontrado"}), 404
+    resp = send_from_directory(os.path.join(_STATIC_DIR, "assets"), archivo)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 # ── Manejadores Globales de Errores ────────────────────────────────────────────
 
 
@@ -123,23 +200,19 @@ def _listas(body: dict, *claves: str):
 
 def _url_publica_o_400(body: dict):
     """(url, None), o (None, respuesta 400) si no es una URL http(s) pública."""
-    from afterdrive.ingesta.scraper import url_publica
+    from afterdrive.ingesta.scraper import _direcciones, url_publica
 
     url = body.get("url")
     url = url.strip() if isinstance(url, str) else ""
     if not url:
         return None, (jsonify({"success": False, "error": "Se requiere la URL."}), 400)
     if not url_publica(url):
+        if _direcciones(url) == []:
+            # Dirección válida, pero el dominio no resuelve (no existe o su DNS está caído).
+            return None, (jsonify({"success": False, "error": "No se encontró el sitio: el dominio no responde. "
+                                   "Revisá la dirección o probá más tarde."}), 400)
         return None, (jsonify({"success": False, "error": "La URL debe ser http(s) y pública."}), 400)
     return url, None
-
-
-def _sse(lineas):
-    return Response(
-        stream_with_context(lineas),
-        mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 # ── Endpoints de Gestión de Datos ────────────────────────────────────────────────
@@ -194,89 +267,14 @@ def db_check():
 
 @app.route("/api/articulos-stats", methods=["GET"])
 def articulos_stats():
-    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'.
-
-    Cuenta documentos en vez de reutilizar /api/check-volume, que resuelve
-    con una búsqueda $text. Esa búsqueda exige un índice de texto que solo
-    se crea al generar un artículo, así que en una base donde todavía no se
-    generó ninguno devolvía 500 y la tarjeta quedaba vacía.
-    """
+    """Cantidad de artículos guardados, para la tarjeta 'Artículos en DB'."""
     try:
         return jsonify({"success": True, "total": col_articulos.count_documents({})})
     except Exception as e:
         return _error_interno(e)
 
 
-@app.route("/api/check-volume", methods=["GET"])
-def check_volume():
-    keyword = request.args.get("keyword", "")
-    if not keyword:
-        return jsonify({"success": False, "error": "Se requiere el parámetro 'keyword'."}), 400
-
-    try:
-        count = col_articulos.count_documents({"$text": {"$search": keyword}})
-        return jsonify({"success": True, "count": count})
-    except Exception as e:
-        return _error_interno(e)
-
-
-# ── Endpoints de Generación ───────────────────────────────────────────────────────
-
-
-@app.route("/ultimo-articulo", methods=["GET"])
-def ultimo_articulo():
-    col_generados = db["articulos_generados"]
-    doc = col_generados.find_one({}, sort=[("generado_en", -1)])
-    if not doc:
-        return jsonify({"success": False, "error": "Todavía no hay artículos generados."}), 404
-    return jsonify(
-        {
-            "success": True,
-            "articulo": {
-                "contenido": doc.get("contenido", ""),
-                "tema": doc.get("tema", ""),
-                "fuentes": doc.get("fuentes", []),
-                "generado_en": doc.get("generado_en", ""),
-                "docs_usados": doc.get("docs_usados", []),
-            },
-        }
-    )
-
-
-def _parse_request_args(body: dict) -> list[str]:
-    """Extrae argumentos de tema/persona del request body."""
-    # Siempre "--opcion=valor": así argparse nunca toma el valor como otra opción.
-    args_list = []
-    tema = str(body.get("tema") or "").strip()
-    persona = str(body.get("persona") or "").strip()
-    if tema:
-        args_list.append(f"--tema={tema}")
-    if persona in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
-        args_list.append(f"--persona={persona}")
-    return args_list
-
-
-@app.route("/generar", methods=["POST"])
-def generar():
-    body = request.get_json(silent=True) or {}
-    args_list = _parse_request_args(body)
-    result = corridas.script("afterdrive.generacion.generar_articulo", args_list)
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
-# ── Endpoints streaming (SSE) ─────────────────────────────────────────────────
-
-
-@app.route("/stream/generar", methods=["POST"])
-@app.route("/api/stream/generar", methods=["POST"])
-def stream_generar():
-    body = request.get_json(silent=True) or {}
-    args_list = _parse_request_args(body)
-    return _sse(corridas.stream("afterdrive.generacion.generar_articulo", args_list))
-
-
-# ── Endpoints para URLs Custom (Nuevas) ──────────────────────────────────────────
+# ── Configuración de scraping y generación ────────────────────────────────────
 
 
 @app.route("/api/scraping-config", methods=["GET"])
@@ -337,6 +335,9 @@ def set_scraping_config():
     return jsonify({"success": True, "message": message})
 
 
+_LARGOS = ("corto", "medio", "largo")   # redaccion.LARGOS, sin importar el módulo de prompts acá
+
+
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
     cfg = config_store.get_generacion_config()
@@ -352,6 +353,9 @@ def set_generacion_config():
 
     if persona is not None and persona not in ("analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"):
         return jsonify({"success": False, "error": "Persona inválida."}), 400
+    largo = body.get("largo")
+    if largo is not None and largo not in _LARGOS:
+        return jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400
     if days is not None and not _entero_valido(days):
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
     if hora is not None and not _hora_valida(hora):
@@ -364,6 +368,7 @@ def set_generacion_config():
         tema=body.get("tema"),
         puntapie_url=body.get("puntapie_url"),
         hora=hora,
+        largo=largo,
     )
     scheduler.aplicar()
     return jsonify({"success": True, "message": "Configuración de generación actualizada."})
@@ -371,44 +376,492 @@ def set_generacion_config():
 
 @app.route("/api/fase2/config", methods=["GET"])
 def get_fase2_config():
-    return jsonify({"success": True, **config_store.get_fase2_config()})
+    from afterdrive.ia.redaccion import idioma_principal
+    return jsonify({"success": True, **config_store.get_fase2_config(), "idioma_principal": idioma_principal()})
 
 
 @app.route("/api/fase2/config", methods=["POST"])
 def set_fase2_config():
+    """Guarda la config de la Nota automática. Solo cambia las claves que vienen."""
     body = request.get_json(silent=True) or {}
+    presentes = [c for c in ("categorias", "regiones", "clientes") if c in body]
+    listas, error = _listas(body, *presentes)
+    if error:
+        return error
+    activo = body.get("puntapie_activo")
+    if activo is not None and not isinstance(activo, bool):
+        return jsonify({"success": False, "error": "Parámetro 'puntapie_activo' inválido."}), 400
+    puntapie_url = body.get("puntapie_url")
+    if puntapie_url is not None:
+        if not isinstance(puntapie_url, str):
+            return jsonify({"success": False, "error": "Parámetro 'puntapie_url' inválido."}), 400
+        puntapie_url = puntapie_url.strip()
+        if puntapie_url:
+            _, error = _url_publica_o_400({"url": puntapie_url})
+            if error:
+                return error
     cfg = config_store.set_fase2_config(
-        categorias=body.get("categorias"),
-        regiones=body.get("regiones"),
-        clientes=body.get("clientes"),
-        puntapie_activo=body.get("puntapie_activo"),
-        puntapie_url=body.get("puntapie_url"),
+        categorias=listas.get("categorias"),
+        regiones=listas.get("regiones"),
+        clientes=listas.get("clientes"),
+        puntapie_activo=activo,
+        puntapie_url=puntapie_url,
     )
     return jsonify({"success": True, **cfg})
 
 
+def _encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None):
+    """202 con el id y la posición en la Cola, o 429 si la cola está llena."""
+    try:
+        r = cola.encolar(tipo, params, origen=origen, etiqueta=etiqueta)
+    except cola.ColaLlena as e:
+        return jsonify({"success": False, "error": str(e)}), 429
+    return jsonify({"success": True, **r}), 202
+
+
+def _origen() -> str:
+    """cron si la llamada vino con el token de las corridas automáticas."""
+    return "cron" if request.headers.get("Authorization", "").startswith("Bearer ") else "manual"
+
+
 @app.route("/api/run-automation", methods=["POST"])
 def run_automation():
-    """Dispara ya el scraping de URLs confiables (en background)."""
-    if corridas.en_curso():
-        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
-    corridas.en_segundo_plano(corridas.scraping)
-    return jsonify({"success": True, "message": "Scraping automatizado iniciado manualmente."})
+    """Encola el scraping de URLs confiables."""
+    return _encolar("scraping", origen=_origen())
 
 
 @app.route("/api/run-generacion", methods=["POST"])
 def run_generacion():
-    """Dispara ya la generación de una Nota Fase 2 con la config guardada (en background)."""
-    if corridas.en_curso():
-        return jsonify({"success": False, "error": f"Otra corrida en curso ({corridas.en_curso()})."}), 409
-    corridas.en_segundo_plano(corridas.generacion)
-    return jsonify({"success": True, "message": "Generación automática iniciada."})
+    """Encola la generación de una Nota Fase 2 con la config guardada."""
+    return _encolar("generacion", origen=_origen())
 
 
-@app.route("/api/stream/run-automation", methods=["POST"])
-def stream_run_automation():
-    """Streaming SSE con el output en vivo del scraping de URLs confiables."""
-    return _sse(corridas.stream("afterdrive.ingesta.run_automation"))
+# ── Historial y revisión de notas ─────────────────────────────────────────────
+# La lógica vive en historial.py; acá solo se traducen parámetros y errores.
+
+
+@app.route("/api/historial/resumen", methods=["GET"])
+def historial_resumen():
+    from afterdrive import historial
+    try:
+        return jsonify({"success": True, **historial.resumen()})
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/historial/<seccion>", methods=["GET"])
+def historial_listar(seccion: str):
+    from afterdrive import historial
+    try:
+        datos = historial.listar(
+            seccion,
+            pagina=request.args.get("pagina", 1, type=int),
+            por_pagina=request.args.get("por_pagina", 20, type=int),
+            q=request.args.get("q", ""),
+            estado=request.args.get("estado", "todos"),
+        )
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    return jsonify({"success": True, **datos})
+
+
+@app.route("/api/historial/<seccion>/<coleccion>/<item_id>", methods=["GET"])
+def historial_detalle(seccion: str, coleccion: str, item_id: str):
+    from afterdrive import historial
+    try:
+        item = historial.detalle(seccion, coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "No encontrado."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/estado", methods=["POST"])
+def historial_estado():
+    from afterdrive import historial, hubspot
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.cambiar_estado(body.get("coleccion", ""), body.get("id", ""), body.get("estado", ""),
+                                        motivo=body.get("motivo"))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 502
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/contenido", methods=["PATCH"])
+def historial_editar():
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.editar(body.get("coleccion", ""), body.get("id", ""), body.get("contenido"))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/traduccion", methods=["PATCH"])
+def historial_editar_traduccion():
+    """Guarda la versión editada de una traducción: {"coleccion", "id", "idioma", "contenido"}."""
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        t = historial.editar_traduccion(body.get("coleccion", ""), body.get("id", ""), body.get("idioma", ""),
+                                        body.get("contenido"))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if t is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "traduccion": t})
+
+
+@app.route("/api/historial/retraducir", methods=["POST"])
+def historial_retraducir():
+    """Encola volver a traducir una nota a un idioma: {"coleccion", "id", "idioma"}."""
+    from afterdrive import historial, traducciones
+    body = request.get_json(silent=True) or {}
+    coleccion, item_id, cod = body.get("coleccion", ""), body.get("id", ""), body.get("idioma", "")
+    if coleccion not in historial.COLECCIONES_CON_ESTADO or cod not in traducciones.IDIOMAS \
+            or not re.fullmatch(r"[0-9a-f]{24}", str(item_id)):
+        return jsonify({"success": False, "error": "Pedido inválido."}), 400
+    try:
+        r = traducciones.encolar_retraduccion(coleccion, item_id, cod)
+    except cola.ColaLlena as e:
+        return jsonify({"success": False, "error": str(e)}), 429
+    return jsonify({"success": True, **r}), 202
+
+
+@app.route("/api/historial/calificacion", methods=["POST"])
+def historial_calificar():
+    """Calificación de una Nota: {"coleccion", "id", "puntaje": 1-5, "etiquetas": [...], "comentario"}."""
+    from afterdrive import calibracion
+
+    body = request.get_json(silent=True) or {}
+    try:
+        cal = calibracion.calificar(body.get("coleccion", ""), body.get("id", ""), body.get("puntaje"),
+                                    body.get("etiquetas") or [], body.get("comentario") or "")
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    if cal is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "calificacion": cal})
+
+
+@app.route("/api/historial/critica", methods=["POST"])
+def historial_criticar():
+    """Crítica de la redacción de una Nota hecha por la IA: {"coleccion", "id"}. Se guarda en la nota."""
+    from afterdrive import calibracion
+    from afterdrive.generacion import critica
+
+    body = request.get_json(silent=True) or {}
+    try:
+        resultado = critica.criticar_guardada(body.get("coleccion", ""), body.get("id", ""))
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if resultado is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    if resultado.get("error"):
+        return jsonify({"success": False, "error": resultado["error"]}), 503
+    return jsonify({"success": True, "critica": resultado})
+
+
+@app.route("/api/historial/critica/traduccion", methods=["POST"])
+def historial_critica_traducida():
+    """La calificación de la IA en el idioma del dashboard: {"coleccion", "id", "idioma": es|pt|en}."""
+    from afterdrive import calibracion
+    from afterdrive.generacion import critica
+
+    body = request.get_json(silent=True) or {}
+    try:
+        resultado = critica.traducir_guardada(body.get("coleccion", ""), body.get("id", ""), body.get("idioma", ""))
+    except calibracion.ErrorCalibracion as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if resultado is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    if resultado.get("error"):
+        return jsonify({"success": False, "error": resultado["error"]}), 503
+    return jsonify({"success": True, "traduccion": resultado})
+
+
+@app.route("/api/calibracion", methods=["GET"])
+def calibracion_resumen():
+    """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""
+    from afterdrive import calibracion
+
+    try:
+        return jsonify({"success": True, **calibracion.resumen()})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"No se pudo leer la calibración: {e}"}), 500
+
+
+@app.route("/api/metricas", methods=["GET"])
+def metricas_resumen():
+    """Números del pipeline para el tablero de la vista Desarrollador."""
+    from afterdrive import metricas
+
+    try:
+        return jsonify({"success": True, **metricas.resumen(request.args.get("dias", 14, type=int))})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"No se pudieron calcular las métricas: {e}"}), 500
+
+
+@app.route("/api/historial/imagen", methods=["PATCH"])
+def historial_imagen():
+    """{coleccion, id, url, alt}: imagen destacada de una nota (url vacía la saca)."""
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.cambiar_imagen(body.get("coleccion", ""), body.get("id", ""), body.get("url", ""), body.get("alt", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/historial/imagen/archivo", methods=["POST"])
+def historial_imagen_archivo():
+    """Imagen destacada desde la computadora: multipart con "archivo", "coleccion", "id" y "alt"."""
+    from afterdrive import historial
+
+    archivo = request.files.get("archivo")
+    if not archivo:
+        return jsonify({"success": False, "error": "Falta el archivo de la imagen."}), 400
+    contenido = archivo.read(historial.IMAGEN_SUBIDA_MAX + 1)
+    try:
+        r = historial.subir_imagen(request.form.get("coleccion", ""), request.form.get("id", ""), contenido,
+                                   archivo.filename or "", request.form.get("alt", ""))
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if r is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **r})
+
+
+@app.route("/api/imagenes/<imagen_id>", methods=["GET"])
+def imagen_subida(imagen_id: str):
+    """Una imagen subida desde la computadora (solo con sesión, como todo /api)."""
+    from afterdrive import historial
+
+    local = historial.imagen_subida(imagen_id)
+    if not local:
+        return jsonify({"success": False, "error": "Imagen no encontrada."}), 404
+    contenido, mime = local
+    return app.response_class(contenido, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.route("/api/historial/vista-previa/<coleccion>/<item_id>", methods=["GET"])
+def historial_vista_previa(coleccion: str, item_id: str):
+    from afterdrive import historial
+    try:
+        previa = historial.vista_previa(coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+    if previa is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **previa})
+
+
+@app.route("/api/hubspot/estado", methods=["GET"])
+def hubspot_estado():
+    from afterdrive import hubspot
+    return jsonify({"success": True, "configurado": hubspot.configurado()})
+
+
+@app.route("/api/hubspot/blog-pruebas", methods=["GET"])
+def hubspot_blog_pruebas():
+    """Si los borradores van al blog de pruebas (HUBSPOT_BLOG_PRUEBAS) o a los de cada idioma."""
+    from afterdrive import hubspot
+    cargado = os.getenv("HUBSPOT_BLOG_PRUEBAS", "").strip()
+    return jsonify({"success": True, "disponible": bool(cargado), "blog_id": cargado,
+                    "activo": bool(hubspot.blog_pruebas())})
+
+
+@app.route("/api/hubspot/blog-pruebas", methods=["POST"])
+def set_hubspot_blog_pruebas():
+    """Prende o apaga el envío al blog de pruebas. Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    config_store.set_blog_pruebas_config(body["activo"])
+    return hubspot_blog_pruebas()
+
+
+@app.route("/api/aprobacion-auto", methods=["GET"])
+def get_aprobacion_auto():
+    """Si las notas de la generación programada se aprueban solas (con el juez de IA)."""
+    from afterdrive.generacion import juez
+    return jsonify({"success": True, "activo": config_store.get_aprobacion_auto_config(),
+                    "confianza_min": juez.CONFIANZA_MIN})
+
+
+@app.route("/api/aprobacion-auto", methods=["POST"])
+def set_aprobacion_auto():
+    """Prende o apaga la aprobación automática. Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    config_store.set_aprobacion_auto_config(body["activo"])
+    return get_aprobacion_auto()
+
+
+@app.route("/api/hubspot/destino/<coleccion>/<item_id>", methods=["GET"])
+def hubspot_destino(coleccion, item_id):
+    """Blog, etiquetas y autor que le tocan a la nota, y los autores para elegir."""
+    from afterdrive import historial, hubspot
+    try:
+        lugar = historial.destino_hubspot(coleccion, item_id)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 422
+    except Exception as e:
+        return _error_interno(e)
+    if lugar is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    return jsonify({"success": True, **lugar})
+
+
+@app.route("/api/hubspot/enviar", methods=["POST"])
+def hubspot_enviar():
+    """Envía una nota aprobada a HubSpot: {"coleccion", "id", "publicar": bool, "autor_id"?}."""
+    from afterdrive import historial, hubspot
+    body = request.get_json(silent=True) or {}
+    try:
+        item = historial.enviar_a_hubspot(body.get("coleccion", ""), body.get("id", ""), body.get("publicar") is True,
+                                          autor_id=body.get("autor_id") or None)
+    except historial.ErrorHistorial as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except hubspot.ErrorHubSpot as e:
+        return jsonify({"success": False, "error": str(e)}), 502
+    except Exception as e:
+        return _error_interno(e)
+    if item is None:
+        return jsonify({"success": False, "error": "Nota no encontrada."}), 404
+    # Las versiones en los otros idiomas se traducen y suben en la Cola (tardan).
+    return jsonify({"success": True, "item": item,
+                    "traducciones": _encolar_traducciones(body.get("coleccion", ""), body.get("id", ""))})
+
+
+def _encolar_traducciones(coleccion: str, item_id: str) -> dict | None:
+    from afterdrive import traducciones
+    return traducciones.encolar(coleccion, item_id)
+
+
+@app.route("/api/hubspot/traducciones", methods=["POST"])
+def hubspot_traducciones():
+    """Vuelve a traducir y subir las otras versiones de una nota ya subida: {"coleccion", "id"}."""
+    from bson import ObjectId
+
+    from afterdrive import historial
+    body = request.get_json(silent=True) or {}
+    coleccion, item_id = body.get("coleccion", ""), body.get("id", "")
+    if coleccion not in historial.COLECCIONES_CON_ESTADO or not isinstance(item_id, str) or not ObjectId.is_valid(item_id):
+        return jsonify({"success": False, "error": "Nota inválida."}), 400
+    r = _encolar_traducciones(coleccion, item_id)
+    if r is None:
+        return jsonify({"success": False, "error": "Esta nota no tiene versiones para subir: subila primero a "
+                                                   "HubSpot en su idioma."}), 400
+    if r.get("error"):
+        return jsonify({"success": False, "error": r["error"]}), 429
+    return jsonify({"success": True, **r}), 202
+
+
+# ── Cola de Corridas ──────────────────────────────────────────────────────────
+
+
+@app.route("/api/corridas", methods=["GET"])
+def listar_corridas():
+    try:
+        return jsonify({"success": True, **cola.listar()})
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/corridas/<id_>/log", methods=["GET"])
+def log_corrida(id_: str):
+    desde = request.args.get("desde", "0")
+    r = cola.log(id_, int(desde) if desde.isdigit() else 0)
+    if r is None:
+        return jsonify({"success": False, "error": "Corrida no encontrada."}), 404
+    return jsonify({"success": True, **r})
+
+
+@app.route("/api/corridas/<id_>/cancelar", methods=["POST"])
+def cancelar_corrida(id_: str):
+    try:
+        return jsonify({"success": True, **cola.cancelar(id_)})
+    except KeyError:
+        return jsonify({"success": False, "error": "Corrida no encontrada."}), 404
+    except cola.NoCancelable as e:
+        return jsonify({"success": False, "error": str(e)}), 409
+
+
+@app.route("/api/corridas/scraping", methods=["POST"])
+def encolar_scraping():
+    return _encolar("scraping")
+
+
+@app.route("/api/corridas/generacion", methods=["POST"])
+def encolar_generacion():
+    """Encola una Nota Fase 2 con los parámetros del formulario (no los guardados)."""
+    argv, error = _argv_generar(request.get_json(silent=True) or {})
+    if error:
+        return error
+    return _encolar("script", {"modulo": "afterdrive.generacion.generar_nota_fase2", "argv": argv},
+                    etiqueta="Generar nota")
+
+
+@app.route("/api/corridas/probar-fuente", methods=["POST"])
+def encolar_probar_fuente():
+    """Encola 'Probar y agregar': scrapea la URL y la da de alta si aprueba algún artículo."""
+    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
+    if error:
+        return error
+    from urllib.parse import urlparse
+    return _encolar("script", {"modulo": "afterdrive.ingesta.add_url", "argv": [url]},
+                    etiqueta=f"Probar fuente {urlparse(url).netloc}")
+
+
+@app.route("/api/corridas/recomendaciones", methods=["POST"])
+def encolar_recomendaciones():
+    return _encolar("script", {"modulo": "afterdrive.ingesta.discover_sources", "argv": []},
+                    etiqueta="Buscar recomendaciones")
+
+
+@app.route("/api/corridas/ejemplos", methods=["POST"])
+def encolar_ejemplos():
+    argv, error = _args_scrape(request.get_json(silent=True) or {})
+    if error:
+        return error
+    return _encolar("script", {"modulo": "afterdrive.generacion.scraper_afterdrive", "argv": argv},
+                    etiqueta="Sincronizar ejemplos")
 
 
 @app.route("/api/trusted-urls-stats", methods=["GET"])
@@ -464,7 +917,7 @@ def get_providers():
 
 @app.route("/api/providers", methods=["POST"])
 def set_provider():
-    """Cambiar proveedor de IA (local / nvidia / openrouter)."""
+    """Cambiar proveedor de IA (local / nvidia / openrouter / paga)."""
     body = request.get_json(silent=True) or {}
     provider = body.get("provider", "")
     if not provider:
@@ -473,6 +926,22 @@ def set_provider():
     result = llm.set_proveedor(provider)
     if result.get("success"):
         config_store.set_provider_config(provider)
+        if provider != "paga" and modo_pago.vigente():
+            # Elegir otro proveedor a mano es más explícito que el modo pago: lo apaga.
+            modo_pago.desactivar()
+            result = {"success": True, **llm.estado()}
+    return jsonify(result), 200 if result["success"] else 400
+
+
+@app.route("/api/modo-pago", methods=["POST"])
+def set_modo_pago():
+    """Prende o apaga el modo API paga (como máximo un día). Body: {"activo": bool}."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("activo"), bool):
+        return jsonify({"success": False, "error": "Se requiere el campo 'activo' (true o false)."}), 400
+    result = modo_pago.activar() if body["activo"] else modo_pago.desactivar()
+    if result.get("success"):
+        result = {"success": True, **llm.estado()}
     return jsonify(result), 200 if result["success"] else 400
 
 
@@ -514,13 +983,6 @@ def descartar_suggested_url():
     return jsonify({"success": True})
 
 
-@app.route("/api/discover-sources", methods=["POST"])
-def discover_sources():
-    result = corridas.script("afterdrive.ingesta.discover_sources")
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
 @app.route("/api/trusted-urls", methods=["GET"])
 def list_trusted_urls():
     """Lista todas las URLs confiables registradas."""
@@ -560,9 +1022,25 @@ def add_trusted_url_direct():
         return _error_interno(e)
 
 
+@app.route("/api/trusted-urls/<path:url>", methods=["PATCH"])
+def set_estado_trusted_url(url):
+    """Pausa o reactiva una Fuente confiable sin borrarla."""
+    from afterdrive.db import col_trusted_urls
+    estado = (request.get_json(silent=True) or {}).get("estado")
+    if estado not in ("activo", "inactivo"):
+        return jsonify({"success": False, "error": "Se requiere 'estado': 'activo' o 'inactivo'."}), 400
+    try:
+        result = col_trusted_urls.update_one({"url": url}, {"$set": {"estado": estado}})
+        if result.matched_count == 0:
+            return jsonify({"success": False, "error": "URL no encontrada."}), 404
+        return jsonify({"success": True, "estado": estado})
+    except Exception as e:
+        return _error_interno(e)
+
+
 @app.route("/api/trusted-urls/<path:url>", methods=["DELETE"])
 def delete_trusted_url(url):
-    """Elimina o desactiva una URL confiable."""
+    """Elimina una URL confiable. Para dejar de scrapearla sin perderla, PATCH con estado."""
     from afterdrive.db import col_trusted_urls
     try:
         result = col_trusted_urls.delete_one({"url": url})
@@ -571,27 +1049,6 @@ def delete_trusted_url(url):
         return jsonify({"success": True, "message": "URL eliminada."})
     except Exception as e:
         return _error_interno(e)
-
-
-@app.route("/api/add-url", methods=["POST"])
-def add_url():
-    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
-    if error:
-        return error
-
-    # Ejecutamos el nuevo script add_url.py
-    result = corridas.script("afterdrive.ingesta.add_url", [url])
-    status = 200 if result["success"] else 500
-    return jsonify(result), status
-
-
-@app.route("/stream/add-url", methods=["POST"])
-def stream_add_url():
-    url, error = _url_publica_o_400(request.get_json(silent=True) or {})
-    if error:
-        return error
-
-    return _sse(corridas.stream("afterdrive.ingesta.add_url", [url]))
 
 
 # ── Fase 2: Endpoints ─────────────────────────────────────────────────────────
@@ -628,23 +1085,6 @@ def _args_scrape(body: dict):
     return (["--tags", *tags] if tags else []) + [f"--max={max_por_tag}"], None
 
 
-@app.route("/api/fase2/scrape", methods=["POST"])
-def fase2_scrape():
-    argv, error = _args_scrape(request.get_json(silent=True) or {})
-    if error:
-        return error
-    result = corridas.script("afterdrive.generacion.scraper_afterdrive", argv)
-    return jsonify(result), 200 if result["success"] else 500
-
-
-@app.route("/api/fase2/stream/scrape", methods=["POST"])
-def fase2_stream_scrape():
-    argv, error = _args_scrape(request.get_json(silent=True) or {})
-    if error:
-        return error
-    return _sse(corridas.stream("afterdrive.generacion.scraper_afterdrive", argv))
-
-
 @app.route("/api/fase2/clientes", methods=["GET"])
 def fase2_get_clientes():
     from afterdrive.db import col_clientes
@@ -678,41 +1118,29 @@ def fase2_eliminar_cliente(slug: str):
     return jsonify({"success": True})
 
 
-@app.route("/api/fase2/generar", methods=["POST"])
-def fase2_generar():
-    body = request.get_json(silent=True) or {}
+def _nota_para_dashboard(doc: dict) -> dict:
+    """La nota con su idioma (las viejas lo deducen de las regiones) y si cada traducción está al día."""
+    from afterdrive import hubspot, traducciones
+    doc["idioma"] = hubspot.idioma(doc)
+    for t in (doc.get("traducciones") or {}).values():
+        if isinstance(t, dict) and t.get("contenido"):
+            t["al_dia"] = traducciones.al_dia(t, doc.get("contenido", ""))
+    return doc
+
+
+def _argv_generar(body: dict):
+    """(argv de generar_nota_fase2, None), o (None, respuesta 400)."""
     listas, error = _listas(body, "categorias", "clientes", "regiones")
     if error:
-        return error
-    categorias, clientes, regiones = listas["categorias"], listas["clientes"], listas["regiones"]
-    puntapie_url = body.get("puntapie_url", None)
-    persona = body.get("persona", "comercial")
-    tema = body.get("tema", None)
-
-    if not categorias:
-        return jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400
-
-    resultado = corridas.generacion({
-        "categorias": categorias,
-        "clientes_ids": clientes,
-        "puntapie_url": puntapie_url,
-        "persona": persona,
-        "tema": tema,
-        "regiones": regiones,
-    })
-    status = 200 if resultado["success"] else 500
-    return jsonify(resultado), status
-
-
-@app.route("/api/fase2/stream/generar", methods=["POST"])
-def fase2_stream_generar():
-    body = request.get_json(silent=True) or {}
-    listas, error = _listas(body, "categorias", "clientes", "regiones")
-    if error:
-        return error
+        return None, error
+    if not listas["categorias"]:
+        return None, (jsonify({"success": False, "error": "Se requiere al menos una categoría."}), 400)
     puntapie_url = body.get("puntapie_url", "") or ""
     persona = body.get("persona", "comercial")
     tema = body.get("tema", "") or ""
+    largo = body.get("largo") or ""
+    if largo and largo not in _LARGOS:
+        return None, (jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400)
 
     extra = []
     for clave in ("categorias", "clientes", "regiones"):
@@ -725,8 +1153,9 @@ def fase2_stream_generar():
         extra.append(f"--persona={persona}")
     if tema:
         extra.append(f"--tema={tema}")
-
-    return _sse(corridas.stream("afterdrive.generacion.generar_nota_fase2", extra))
+    if largo:
+        extra.append(f"--largo={largo}")
+    return extra, None
 
 
 @app.route("/api/fase2/ultima-nota", methods=["GET"])
@@ -737,25 +1166,14 @@ def fase2_ultima_nota():
         return jsonify({"success": False, "error": "No hay notas generadas aún."}), 404
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
-    return jsonify({"success": True, "nota": doc})
-
-
-@app.route("/api/fase2/notas", methods=["GET"])
-def fase2_notas():
-    import re
-    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
-    notas = []
-    for d in col_notas_fase2.find({}, {"contenido": 1, "generado_en": 1}).sort("generado_en", -1).limit(100):
-        m = re.search(r"^#{1,2}\s+(.+)$", d.get("contenido") or "", re.M)
-        notas.append({"id": str(d["_id"]), "titulo": m.group(1).strip("*_ ") if m else "Nota sin título",
-                      "generado_en": d.get("generado_en")})
-    return jsonify({"success": True, "notas": notas})
+    return jsonify({"success": True, "nota": _nota_para_dashboard(doc)})
 
 
 @app.route("/api/fase2/notas/<nota_id>", methods=["GET"])
 def fase2_nota(nota_id: str):
     from bson import ObjectId
     from bson.errors import InvalidId
+
     from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
     try:
         doc = col_notas_fase2.find_one({"_id": ObjectId(nota_id)})
@@ -765,7 +1183,7 @@ def fase2_nota(nota_id: str):
         return jsonify({"success": False, "error": "Nota no encontrada."}), 404
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
-    return jsonify({"success": True, "nota": doc})
+    return jsonify({"success": True, "nota": _nota_para_dashboard(doc)})
 
 
 def _keep_alive():

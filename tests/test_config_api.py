@@ -44,46 +44,48 @@ def test_la_config_informa_la_zona_horaria(client):
 
 
 def _sin_corridas(monkeypatch):
-    from afterdrive import corridas
-    for nombre in ("stream", "script", "generacion"):
-        monkeypatch.setattr(corridas, nombre, lambda *a, **k: pytest.fail("no debe ejecutarse"))
+    """Nada se encola: estos tests solo miran la validación."""
+    from afterdrive import cola
+    monkeypatch.setattr(cola, "encolar", lambda *a, **k: pytest.fail("no debe encolarse"))
 
 
-@pytest.mark.parametrize("ruta", ["/api/fase2/stream/generar", "/api/fase2/generar"])
 @pytest.mark.parametrize("categorias", ["autopartes", ["autopartes", "--puntapie", "http://x"], [1], [{}]])
-def test_listas_invalidas_son_400(client, monkeypatch, ruta, categorias):
+def test_listas_invalidas_son_400(client, monkeypatch, categorias):
     _sin_corridas(monkeypatch)
-    assert client[0].post(ruta, json={"categorias": categorias}).status_code == 400
+    assert client[0].post("/api/corridas/generacion", json={"categorias": categorias}).status_code == 400
 
 
-@pytest.mark.parametrize("ruta", ["/api/fase2/stream/generar", "/api/fase2/generar"])
 @pytest.mark.parametrize("clave", ["clientes", "regiones"])
-def test_las_otras_listas_tambien_se_validan(client, monkeypatch, ruta, clave):
+def test_las_otras_listas_tambien_se_validan(client, monkeypatch, clave):
     _sin_corridas(monkeypatch)
-    assert client[0].post(ruta, json={"categorias": ["autopartes"], clave: ["--tema", "x"]}).status_code == 400
+    body = {"categorias": ["autopartes"], clave: ["--tema", "x"]}
+    assert client[0].post("/api/corridas/generacion", json=body).status_code == 400
 
 
-@pytest.mark.parametrize("ruta", ["/api/fase2/scrape", "/api/fase2/stream/scrape"])
 @pytest.mark.parametrize("body", [{"tags": ["--max", "9"]}, {"max": "5; rm"}, {"max": 0}, {"tags": "x"}])
-def test_scrape_fase2_valida_parametros(client, monkeypatch, ruta, body):
+def test_sincronizar_ejemplos_valida_parametros(client, monkeypatch, body):
     _sin_corridas(monkeypatch)
-    assert client[0].post(ruta, json=body).status_code == 400
+    assert client[0].post("/api/corridas/ejemplos", json=body).status_code == 400
 
 
 def test_escalares_viajan_como_opcion_igual_valor(client, monkeypatch):
-    from afterdrive import corridas
+    """Un valor que empieza con '-' no puede convertirse en otra opción del argv."""
+    from afterdrive import cola
     visto = {}
-    monkeypatch.setattr(corridas, "stream", lambda nombre, argv=None: visto.update({nombre: argv}) or iter(()))
+
+    def encolar(tipo, params=None, origen="manual", etiqueta=None):
+        visto[params["modulo"]] = params["argv"]
+        return {"id": "x", "posicion": 1, "duplicada": False}
+
+    monkeypatch.setattr(cola, "encolar", encolar)
     c = client[0]
-    c.post("/api/fase2/stream/generar",
+    c.post("/api/corridas/generacion",
            json={"categorias": ["autopartes"], "tema": "--persona", "puntapie_url": "-x", "persona": "comercial"})
     argv = visto["afterdrive.generacion.generar_nota_fase2"]
     assert "--tema=--persona" in argv and "--puntapie=-x" in argv and "--persona=comercial" in argv
     assert argv[:2] == ["--categorias", "autopartes"]
-    c.post("/api/fase2/stream/scrape", json={"tags": ["autopartes"], "max": 5})
+    c.post("/api/corridas/ejemplos", json={"tags": ["autopartes"], "max": 5})
     assert visto["afterdrive.generacion.scraper_afterdrive"] == ["--tags", "autopartes", "--max=5"]
-    c.post("/api/stream/generar", json={"tema": "--fuente", "persona": "ejecutivo"})
-    assert visto["afterdrive.generacion.generar_articulo"] == ["--tema=--fuente", "--persona=ejecutivo"]
 
 
 # ── Fugas de información ──────────────────────────────────────────────────────
@@ -120,7 +122,7 @@ def test_errores_no_filtran_la_excepcion(client, monkeypatch):
     monkeypatch.setattr(flask_api, "col_articulos", Rota())
     monkeypatch.setattr(db, "col_trusted_urls", Rota())
     c = client[0]
-    for ruta in ("/api/articulos-stats", "/api/check-volume?keyword=x", "/api/db-check"):
+    for ruta in ("/api/articulos-stats", "/api/db-check"):
         r = c.get(ruta)
         assert r.status_code == 500 and "host-interno" not in r.get_data(as_text=True), ruta
         assert r.json["error"] == "Error interno del servidor"
@@ -129,7 +131,7 @@ def test_errores_no_filtran_la_excepcion(client, monkeypatch):
 # ── Alta de fuentes: solo URLs http(s) públicas ───────────────────────────────
 
 
-@pytest.mark.parametrize("ruta", ["/api/trusted-urls", "/api/add-url", "/stream/add-url"])
+@pytest.mark.parametrize("ruta", ["/api/trusted-urls", "/api/corridas/probar-fuente"])
 @pytest.mark.parametrize("url", ["http://127.0.0.1/", {"$ne": ""}, 7])
 def test_alta_de_url_interna_o_rara_es_400(client, monkeypatch, ruta, url):
     from afterdrive import db
@@ -140,8 +142,18 @@ def test_alta_de_url_interna_o_rara_es_400(client, monkeypatch, ruta, url):
     assert client[0].post(ruta, json={"url": url}).status_code == 400
 
 
+@pytest.mark.parametrize("ruta", ["/api/trusted-urls", "/api/corridas/probar-fuente"])
+def test_alta_de_un_dominio_que_no_resuelve_lo_dice_claro(client, monkeypatch, ruta):
+    from afterdrive.ingesta import scraper
+    _sin_corridas(monkeypatch)
+    monkeypatch.setattr(scraper, "url_publica", lambda u: False)
+    monkeypatch.setattr(scraper, "_direcciones", lambda u: [])   # DNS sin respuesta
+    r = client[0].post(ruta, json={"url": "https://mundoaftermarket.com/"})
+    assert r.status_code == 400 and "No se encontró el sitio" in r.json["error"]
+
+
 def test_alta_de_url_publica_sigue_andando(client, monkeypatch):
-    from afterdrive import corridas, db
+    from afterdrive import cola, db
     from afterdrive.ingesta import scraper
     guardadas = []
 
@@ -151,9 +163,136 @@ def test_alta_de_url_publica_sigue_andando(client, monkeypatch):
 
     monkeypatch.setattr(scraper, "url_publica", lambda u: True)
     monkeypatch.setattr(db, "col_trusted_urls", Col())
-    monkeypatch.setattr(corridas, "script", lambda nombre, argv=None: {"success": True, "output": argv[0], "error": ""})
+    monkeypatch.setattr(cola, "encolar", lambda tipo, params=None, **k: {"id": params["argv"][0], "posicion": 1, "duplicada": False})
     c = client[0]
     assert c.post("/api/trusted-urls", json={"url": " https://sitio.com/noticias "}).status_code == 200
     assert guardadas == ["https://sitio.com/noticias"]
-    assert c.post("/api/add-url", json={"url": "https://sitio.com/noticias"}).json["output"] == "https://sitio.com/noticias"
+    assert c.post("/api/corridas/probar-fuente", json={"url": "https://sitio.com/noticias"}).json["id"] == "https://sitio.com/noticias"
 
+
+
+@pytest.fixture
+def fuentes(client, monkeypatch):
+    """Colección trusted_urls en memoria con una fuente activa."""
+    import mongomock
+
+    from afterdrive import db
+    col = mongomock.MongoClient().db.trusted_urls
+    col.insert_one({"url": "https://sitio.com/noticias", "estado": "activo", "nombre_fuente": "Sitio"})
+    monkeypatch.setattr(db, "col_trusted_urls", col)
+    return client[0], col
+
+
+def test_pausar_y_reactivar_una_fuente(fuentes):
+    c, col = fuentes
+    r = c.patch("/api/trusted-urls/https://sitio.com/noticias", json={"estado": "inactivo"})
+    assert r.status_code == 200
+    doc = col.find_one({"url": "https://sitio.com/noticias"})
+    assert doc["estado"] == "inactivo" and doc["nombre_fuente"] == "Sitio"
+    assert c.patch("/api/trusted-urls/https://sitio.com/noticias", json={"estado": "activo"}).status_code == 200
+    assert col.find_one({"url": "https://sitio.com/noticias"})["estado"] == "activo"
+
+
+@pytest.mark.parametrize("body", [{}, {"estado": "borrado"}, {"estado": True}])
+def test_estado_invalido_es_400(fuentes, body):
+    c, col = fuentes
+    assert c.patch("/api/trusted-urls/https://sitio.com/noticias", json=body).status_code == 400
+    assert col.find_one({"url": "https://sitio.com/noticias"})["estado"] == "activo"
+
+
+def test_pausar_una_fuente_inexistente_es_404(fuentes):
+    c, _ = fuentes
+    assert c.patch("/api/trusted-urls/https://otro.com", json={"estado": "inactivo"}).status_code == 404
+
+
+# ── Config de la Nota automática (Fase 2) ─────────────────────────────────────
+
+
+def test_config_fase2_cambia_solo_lo_que_viene(client, monkeypatch):
+    from afterdrive.ingesta import scraper
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    c, store = client
+    assert c.post("/api/fase2/config", json={"categorias": ["autopartes"], "clientes": ["acme"]}).status_code == 200
+    assert c.post("/api/fase2/config", json={"puntapie_activo": True, "puntapie_url": " https://alephee.com "}).status_code == 200
+    cfg = store["fase2"]
+    assert cfg["categorias"] == ["autopartes"] and cfg["clientes"] == ["acme"]
+    assert cfg["puntapie_activo"] is True and cfg["puntapie_url"] == "https://alephee.com"
+
+
+@pytest.mark.parametrize("body", [
+    {"categorias": "autopartes"},
+    {"regiones": ["--tema", "x"]},
+    {"clientes": [1]},
+    {"puntapie_activo": "si"},
+    {"puntapie_url": 5},
+    {"puntapie_url": "javascript:alert(1)"},
+    {"puntapie_url": "http://127.0.0.1/admin"},
+])
+def test_config_fase2_invalida_es_400(client, body):
+    c, store = client
+    assert c.post("/api/fase2/config", json=body).status_code == 400
+    assert "fase2" not in store
+
+
+def test_config_fase2_permite_vaciar_el_puntapie(client):
+    c, store = client
+    assert c.post("/api/fase2/config", json={"puntapie_url": ""}).status_code == 200
+    assert store["fase2"]["puntapie_url"] == ""
+
+
+def test_largo_de_la_nota(client):
+    c, store = client
+    assert c.post("/api/generacion-config", json={"largo": "corto"}).status_code == 200
+    assert store["generacion"]["largo"] == "corto"
+    assert c.post("/api/generacion-config", json={"largo": "enorme"}).status_code == 400
+
+
+def test_el_largo_llega_al_argv_de_la_generacion(client, monkeypatch):
+    from afterdrive import cola
+    c, _ = client
+    encolado = {}
+    monkeypatch.setattr(cola, "encolar", lambda tipo, params=None, **k: encolado.update(params) or
+                        {"id": "1", "posicion": 0, "duplicada": False})
+    assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "largo"}).status_code == 202
+    assert "--largo=largo" in encolado["argv"]
+    assert c.post("/api/corridas/generacion", json={"categorias": ["autopartes"], "largo": "x"}).status_code == 400
+
+
+def test_documentacion_en_ayuda(client, api):
+    c, _ = client
+    docs = c.get("/api/docs").json["documentos"]
+    assert docs[0] == {"slug": "guia-de-uso", "titulo": "Guía de uso", "grupo": "Usar la aplicación"}
+    assert any(d["slug"] == "glosario" for d in docs)
+    d = c.get("/api/docs/guia-de-uso").json
+    assert d["success"] and d["markdown"].startswith("# Guía de uso")
+    assert c.get("/api/docs/..%2F..%2Fetc%2Fpasswd").status_code == 404     # solo la lista blanca
+    assert c.get("/api/docs/no-existe").status_code == 404
+    # En portugués o inglés, la traducción; un documento sin traducir llega en español.
+    assert c.get("/api/docs/guia-de-uso?idioma=pt").json["markdown"].startswith("# Guia de uso")
+    en = c.get("/api/docs/guia-de-uso?idioma=en").json
+    assert en["idioma"] == "en" and en["markdown"].startswith("# User guide")
+    glosario = c.get("/api/docs/glosario?idioma=en").json
+    assert glosario["success"] and glosario["idioma"] == "es"
+    assert c.get("/api/docs/guia-de-uso?idioma=../x").json["idioma"] == "es"
+    flask_api, _ = api
+    anonimo = flask_api.app.test_client()
+    assert anonimo.get("/api/docs").status_code == 401
+    r = anonimo.get("/ayuda")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/")
+    assert c.get("/ayuda").status_code == 200
+
+
+def test_switch_del_blog_de_pruebas(client, monkeypatch):
+    from afterdrive import config_store
+    c, store = client
+    monkeypatch.setattr(config_store, "get_blog_pruebas_config",
+                        lambda: store.get("blog_pruebas", {"activo": True})["activo"])
+    monkeypatch.setenv("HUBSPOT_BLOG_PRUEBAS", "123")
+    assert c.get("/api/hubspot/blog-pruebas").get_json()["activo"] is True
+    d = c.post("/api/hubspot/blog-pruebas", json={"activo": False}).get_json()
+    assert d["activo"] is False and d["disponible"] is True
+    assert store["blog_pruebas"] == {"activo": False}
+    assert c.post("/api/hubspot/blog-pruebas", json={"activo": "no"}).status_code == 400
+    monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS")
+    assert c.get("/api/hubspot/blog-pruebas").get_json() == {
+        "success": True, "disponible": False, "blog_id": "", "activo": False}

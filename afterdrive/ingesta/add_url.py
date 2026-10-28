@@ -41,6 +41,8 @@ def add_custom_url(url: str):
             upsert=True,
         )
         print("[OK] URL agregada exitosamente a la lista de URLs Confiables.", flush=True)
+    elif res.get("pendientes"):
+        print("[WARN] La IA no respondio y no se pudo clasificar. La URL no se agrego a Confiables: probá de nuevo en un rato.", flush=True)
     else:
         print("[WARN] Ningun articulo fue aprobado por el clasificador. La URL no se agrego a Confiables.", flush=True)
 

@@ -29,6 +29,7 @@ DEFAULT_GENERACION = {
     "hora": "11:00",
     "interval_days": 1,
     "persona": "comercial",
+    "largo": "medio",
     "tema": "",
     "puntapie_url": "",
 }
@@ -66,6 +67,18 @@ def _set_section(key: str, value: dict):
         {"key": key, "value": value, "updated_at": datetime.datetime.now(datetime.UTC).isoformat()},
         upsert=True,
     )
+
+
+# ── Ejecutor externo (GitHub Actions) ─────────────────────────────────────────
+
+
+def get_ejecutor_externo() -> dict:
+    """{tipo: iso} de la última vez que GitHub Actions revisó qué tocaba correr."""
+    return _get_section("ejecutor_externo", {})
+
+
+def set_ejecutor_externo(revisado: dict) -> None:
+    _set_section("ejecutor_externo", revisado)
 
 
 # ── Scraping ──────────────────────────────────────────────────────────────────
@@ -108,8 +121,11 @@ def set_generacion_config(
     tema: str | None = None,
     puntapie_url: str | None = None,
     hora: str | None = None,
+    largo: str | None = None,
 ):
     cfg = get_generacion_config()
+    if largo is not None:
+        cfg["largo"] = largo
     if hora is not None:
         cfg["hora"] = hora
     if enabled is not None:
@@ -164,3 +180,45 @@ def get_provider_config() -> str:
 
 def set_provider_config(provider: str):
     _set_section("provider", {"provider": provider})
+
+
+# ── Modo API paga (vista Cliente) ─────────────────────────────────────────────
+
+DEFAULT_MODO_PAGO = {"hasta": ""}  # ISO UTC; vacío = apagado. Ver afterdrive/ia/modo_pago.py
+
+
+def get_modo_pago_config() -> dict:
+    return _get_section("modo_pago", DEFAULT_MODO_PAGO)
+
+
+def set_modo_pago_config(hasta: str):
+    _set_section("modo_pago", {"hasta": hasta})
+
+
+# ── Blog de pruebas de HubSpot (vista Desarrollador) ──────────────────────────
+
+# Prendido = los borradores van al blog de HUBSPOT_BLOG_PRUEBAS (si está cargado).
+DEFAULT_BLOG_PRUEBAS = {"activo": True}
+
+
+def get_blog_pruebas_config() -> bool:
+    return bool(_get_section("blog_pruebas", DEFAULT_BLOG_PRUEBAS)["activo"])
+
+
+def set_blog_pruebas_config(activo: bool):
+    _set_section("blog_pruebas", {"activo": bool(activo)})
+
+
+# ── Aprobación automática (vista Desarrollador) ───────────────────────────────
+
+# Prendido = las notas de la generación programada que pasan el filtro y el
+# juez se aprueban solas y suben a HubSpot como borrador. Ver aprobacion_auto.py
+DEFAULT_APROBACION_AUTO = {"activo": False}
+
+
+def get_aprobacion_auto_config() -> bool:
+    return bool(_get_section("aprobacion_auto", DEFAULT_APROBACION_AUTO)["activo"])
+
+
+def set_aprobacion_auto_config(activo: bool):
+    _set_section("aprobacion_auto", {"activo": bool(activo)})

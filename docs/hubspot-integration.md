@@ -1,243 +1,95 @@
-# Enviar artículos a HubSpot: Guía completa
+# Publicación en HubSpot
 
-HubSpot ofrece dos formas de crear artículos de blog, dependiendo del tipo de cuenta y el tipo de contenido:
+Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive de su idioma. El equipo la revisa y la publica desde HubSpot. El código está en `afterdrive/hubspot.py` y el flujo en `afterdrive/historial.py` (`enviar_a_hubspot`, `destino_hubspot`).
 
-## 1. Endpoints de la API de HubSpot
+## Cómo se usa
 
-### Opción A: Blog clásico (recomendado para la mayoría)
-```
-POST https://api.hubapi.com/blogs/v3/blog/{blog_guid}/posts
-```
-- Requiere: `blog_guid` (ID único del blog)
-- Auth: `access_token` o `hapikey` como parámetro de query
+1. **Historial → Notas → Para revisar**: abrí la nota, revisala y, si hace falta, editala.
+2. En el bloque **Publicación en HubSpot** se ve a qué blog va y con qué etiqueta. Ahí se elige el **autor** (por defecto, Gastón Zelerteins).
+3. **Vista previa** (opcional): cómo va a salir en el blog. Ahí se elige la imagen destacada.
+4. **Aprobar y subir a HubSpot**: queda aprobada acá y como borrador allá. Además se encola la traducción a los otros dos idiomas: cada versión queda como borrador en su blog (ver [Otros idiomas](#otros-idiomas)).
 
-### Opción B: HubSpot CMS Hub (para sitios propios)
-```
-POST https://api.hubapi.com/cms/v3/blogs/{blog_guid}/posts
-```
-- Requiere: `blog_guid` y permisos de CMS
-- Auth: `access_token` OAuth 2.0
+- Si la subida falla, la nota igual queda aprobada. **Subir borrador a HubSpot** la reintenta.
+- Reenviar una nota ya enviada (**Actualizar borrador en HubSpot**) **actualiza el mismo post**, no crea otro. No cambian ni el slug ni el blog, así no se rompen links.
+- **Publicar en HubSpot** sigue disponible para publicar desde acá. **Despublicar** vuelve el post a borrador.
+- Una nota sin aprobar **no se puede enviar**: nada llega al blog sin que una persona la haya revisado.
+- Sin `HUBSPOT_TOKEN`, el botón es "Aprobar" a secas y no se sube nada.
 
-## 2. Parámetros obligatorios
+## Configuración (una sola vez)
 
-Para crear un artículo, envía un JSON con estos campos:
+1. En HubSpot: **Configuración → Integraciones → Apps privadas → Crear app privada**.
+2. En **Scopes**, agregá **`content`** y **`files`** (este último para subir las imágenes destacadas). Creá la app y copiá el token (empieza con `pat-`).
+3. Cargá las variables en `.env` (local) o en **Environment** de Render:
 
-```json
-{
-  "title": "Título del artículo",
-  "author": "Nombre del autor (opcional)",
-  "slug": "título-en-minúsculas-con-guiones",  // opcional, se genera automáticamente
-  "publish_date": "2026-01-15T14:30:00Z",  // opcional, si no se envía se publica al instante
-  "meta_description": "Descripción meta de 150 caracteres (opcional)",
-  "content": "Cuerpo del artículo en HTML o formato de Markdown (opcional, dependiendo del modo)",
-  "tags": ["etiqueta1", "etiqueta2"],  // opcional
-  "status": "PUBLISHED", "DRAFT", "UNPUBLISHED"  // por defecto: PUBLISHED
-}
-```
+| Variable | Obligatoria | Qué es |
+|---|---|---|
+| `HUBSPOT_TOKEN` | Sí | Token de la app privada |
+| `HUBSPOT_BLOG_PRUEBAS` | No | Manda **todas** las notas a este blog. Para probar: `114283349257` (Blog test). Vacío en producción |
 
-## 3. Autenticación
+> **Migración:** `HUBSPOT_BLOG_ID` ya no se usa (antes era el blog de producción). Borrala del Environment de Render: el blog ahora sale del idioma de cada nota.
+| `HUBSPOT_IMAGEN_DEFAULT` | No | URL https de la imagen destacada para las notas que no tienen una propia |
+| `HUBSPOT_TRADUCCIONES` | No | `0` apaga las versiones en los otros idiomas |
+| `HUBSPOT_LENGUAJES` | No | Código de idioma de cada blog si no es `es`, `pt-br`, `en`. Ej.: `es=es-ar,pt=pt-br,en=en` |
 
-Hay dos formas de autenticar:
+Para probar la API a mano hay una colección de Postman en [hubspot-postman/](hubspot-postman/README.md).
 
-### A. API Key (más simple)
-```
-?hapikey=tu-api-key-aqui
-```
-En el query string de la URL.
+## A dónde va cada nota
 
-### B. OAuth 2.0 (recomendado para producción)
-- Obtener `access_token` mediante el flujo de OAuth
-- Enviar en header: `Authorization: Bearer {access_token}`
+**Blog**: sale del idioma de la nota (`idioma`). Las notas nuevas se escriben todas en portugués, así que el post principal va al blog PT y el español y el inglés son sus traducciones. Las notas anteriores a este cambio lo deducen de sus regiones (`redaccion.voz`).
 
-## 4. Ejemplo práctidad con Python (requests)
+| Idioma de la nota | Blog | Autor por defecto (Gastón Zelerteins) |
+|---|---|---|
+| Español (Argentina, neutro) | After Drive ES `41065736183` | `37798507784` |
+| Portugués (Brasil) | After Drive PT `43859303259` | `192904642075` |
+| Inglés (Asia) | After Drive EN `43859745706` | `194508336788` |
+| Chino | No se sube: no hay blog en chino | — |
 
-### Ejemplo 1: Blog clásico con API Key
+**Etiquetas**: una por categoría de la nota, **la que ya existe en HubSpot en el idioma del blog** (tabla `ETIQUETAS` en `hubspot.py`; por ejemplo, autopartes → Autopartes, Autopeças, Auto Parts). Nunca se crean etiquetas nuevas, porque son compartidas por toda la cuenta. Si se agrega una categoría a `CATEGORIAS`, hay que sumar sus 3 ids a `ETIQUETAS`; un test lo controla.
 
-```python
-import requests
+**Autor**: los autores de HubSpot son por idioma. El selector muestra solo los del idioma de la nota, y el elegido se guarda en la nota (`hubspot_autor_id`).
 
-API_KEY = "tu-hubspot-api-key"
-BLOG_GUID = "tu-blog-guid-aqui"  # Ejemplo: "623456789012345678"
+## Qué se manda
 
-url = f"https://api.hubapi.com/blogs/v3/blog/{BLOG_GUID}/posts"
+API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/posts/{id}` para actualizar, con `Authorization: Bearer <HUBSPOT_TOKEN>`.
 
-article_data = {
-    "title": "Nuevo artículo sobre autopartes aftermarket",
-    "content": "<h1> artículo sobre pastillas de freno </h1><p>Contenido del artículo...</p>",
-    "slug": "pastillas-freno-aftermarket-2026",
-    "publish_date": "2026-01-15T14:30:00Z",
-    "meta_description": "Pastillas de freno de alto rendimiento para el aftermarket automotriz",
-    "tags": ["autopartes", "aftermarket", "frenos"],
-    "status": "PUBLISHED"
-}
+| Campo de HubSpot | Sale de |
+|---|---|
+| `contentGroupId` | El blog del idioma (o `HUBSPOT_BLOG_PRUEBAS`). Solo al crear |
+| `name`, `htmlTitle` | El título de la nota (la línea `# …`), que se saca del cuerpo para que no salga dos veces |
+| `postBody` | El resto de la nota, de Markdown a HTML. Los subtítulos `##` salen como `<h3>`, igual que en los posts del blog |
+| `metaDescription` | La última línea en cursiva de la nota, recortada a 155 caracteres sin cortar palabras |
+| `blogAuthorId` | El autor elegido o, si no, el autor por defecto del idioma |
+| `tagIds` | Las etiquetas de las categorías, en el idioma del blog |
+| `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
+| `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
+| `postBody` (imágenes) | Las 2 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Van también en las traducciones |
+| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias, copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
-params = {
-    "hapikey": API_KEY
-}
+En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 
-response = requests.post(url, json=article_data, params=params)
+## Otros idiomas
 
-if response.status_code == 200:
-    print("¡Artículo publicado exitosamente!")
-    print("URL del artículo:", response.json().get("url"))
-else:
-    print(f"Error: {response.status_code}")
-    print(response.text)
-```
+Cada nota se escribe en portugués y **se traduce al crearla** al español rioplatense y al inglés (`afterdrive/traducciones.py`). Las traducciones se ven y se editan en el historial. Al subir la nota, una corrida de la Cola (aparece en Actividad) sube cada versión **como borrador**, con el texto guardado. Nunca se publica sola.
 
-### Ejemplo 2: CMS Hub con OAuth token
+1. **Variación de idioma** (`POST /cms/v3/blogs/posts/multi-language/create-language-variation`): HubSpot clona el post original como su traducción, en el blog de ese idioma, y después se le carga el texto traducido, la meta, las etiquetas y el autor de ese idioma. Así quedan vinculadas (selector de idioma y hreflang).
+2. Si HubSpot no la crea (por ejemplo, porque los tres blogs no están configurados como versiones de un mismo blog multilenguaje, o porque el código de idioma no coincide), se crea un **borrador normal** en el blog del idioma y se intenta vincularlo con `attach-to-lang-group`.
+3. Si tampoco se puede vincular, queda como **borrador suelto**, con un aviso en la nota.
 
-```python
-import requests
+- La traducción queda guardada con la huella del texto original: subir o reenviar sin editar el original **no vuelve a pagar** la traducción, solo actualiza el borrador (con los cambios hechos a mano en esa versión). Si editaste el original, la traducción queda desactualizada y al subir se traduce de nuevo (se pierden los cambios a mano de esa versión).
+- La traducción mantiene el Markdown, las cifras, los nombres y los enlaces del original (un enlace nuevo se quita). Si sale cortada o sin título, esa versión no se sube y el error se ve al abrir la nota.
+- Con `HUBSPOT_BLOG_PRUEBAS`, las versiones van a ese blog sin vincular.
+- Al abrir la nota, el bloque **Otros idiomas** muestra cada versión, su link y el texto traducido. **Volver a subir las traducciones** reintenta.
+- Los enlaces a notas de AfterDrive dentro de la traducción siguen apuntando a la nota original (en su idioma).
+- **Pendiente de confirmar en la cuenta**: que los blogs ES, PT y EN estén configurados como versiones de un mismo blog multilenguaje y sus códigos de idioma. Probalo primero con una nota.
 
-ACCESS_TOKEN = "tu-access-token-oauth"
-BLOG_GUID = "tu-blog-guid-aqui"
+## Errores
 
-url = f"https://api.hubapi.com/cms/v3/blogs/{BLOG_GUID}/posts"
+| Mensaje | Qué hacer |
+|---|---|
+| "HubSpot rechazó el token" (401/403) | Revisá `HUBSPOT_TOKEN` y que la app tenga el scope `content` |
+| "No se pudo copiar la imagen a HubSpot… scope 'files'" | Agregá el scope `files` a la app privada. Mientras tanto, la nota se sube con el link original de la foto |
+| "No encontró el blog, el post o el autor" (404) | Revisá `HUBSPOT_BLOG_PRUEBAS` (si está cargado) y el autor elegido |
+| "No hay un blog de After Drive en el idioma de esta nota" | La nota es en chino: no hay blog para ese idioma |
+| "Está limitando las llamadas" (429) | Esperá un minuto |
 
-article_data = {
-    "title": "Nuevo artículo sobre autopartes aftermarket",
-    "content": "<h1> artículo sobre pastillas de freno </h1><p>Contenido del artículo...</p>",
-    "slug": "pastillas-freno-aftermarket-2026",
-    "publish_date": "2026-01-15T14:30:00Z",
-    "meta_description": "Pastillas de freno de alto rendimiento para el aftermarket automotriz",
-    "tags": ["autopartes", "aftermarket", "frenos"],
-    "status": "PUBLISHED"
-}
-
-headers = {
-    "Authorization": f"Bearer {ACCESS_TOKEN}",
-    "Content-Type": "application/json"
-}
-
-response = requests.post(url, json=article_data, headers=headers)
-
-if response.status_code == 200:
-    print("¡Artículo publicado exitosamente!")
-else:
-    print(f"Error: {response.status_code}")
-    print(response.text)
-```
-
-## 5. Consideraciones importantes
-
-### Límites de tasa:
-- HubSpot limita las requests según el plan
-- Typical: 100-1000 requests por minuto
-- Implementa backoff exponencial ante errores 429
-
-### Validaciones comunes:
-- El `slug` debe ser único por blog
-- El `title` no puede estar vacío
-- El `content` debe tener al menos 50 caracteres (según modo)
-- Las `tags` deben existir en la cuenta o crearse primero
-
-### Formato del contenido:
-- **Modo "classic"**: HTML aceptado directamente
-- **Modo "markdown"**: Usar `content_mode: "markdown"` y el contenido en formato Markdown
-- **Modo "wysiwyg"**: Contenido Rich Text con formateo
-
-### Props adicionales para después Drive:
-
-Dado que trabajas con el sector automotriz aftermarket, te recomiendo añadir:
-
-1. **`categories`**: `["autopartes", "aftermarket"]` (asegúrate de que existan en HubSpot)
-2. **`hubspot_associations`**: Para asociar el artículo con empresas específicas (proveedores, talleres)
-3. **`localization`**: Para versiones en múltiples idiomas (`"lang": "es"`)
-
-## 6. Flujo recomendado en AfterDrive
-
-Dado tu pipeline actual, el flujo ideal sería:
-
-1. **Scrapeo** → `scraper.py` extrae artículos
-2. **Clasificación** → `jev_clasificador.py` (o LLM) filtra relevancia
-3. **Enriquecimiento** → Enriquecer con datos adicionales si es necesario
-4. **Publicación en HubSpot** → Script/python que itera sobre los artículos aprobados y los envía a HubSpot
-5. **Sincronización** → Opcional: mantener IDs en la base de MongoDB para evitar duplicados
-
-### Script wrapper recomendado:
-
-Podrías crear un script `publicar_hubspot.py` que:
-
-1. Obtiene los artículos aprobados de MongoDB (`col_articulos` donde `aprobado=True`)
-2. Para cada artículo, llama al endpoint correspondiente de HubSpot
-3. Guarda el `hubspot_article_id` en el artículo MongoDB para futuras actualizaciones
-4. Genera un reporte con: publicados, errores, duplicados
-
-**Ejemplo de flujo en tu repositorio:**
-
-Podrías añadir en `scheduler.py` o crear un nuevo script `publicar_hubspot.py`:
-
-```python
-import json
-import requests
-from pymongo import MongoClient
-
-MONGO_URI = "mongodb://localhost:27017/afterdrive"
-HUBSPOT_API_KEY = "tu-api-key"
-BLOG_GUID = "tu-blog-guid"
-
-client = MongoClient(MONGO_URI)
-col_articulos = client.afterdrive.articulos
-
-# Obtener artículos aprobados sin publicar en HubSpot
-articulos = col_articulos.find({
-    "hubspot_published": False,
-    "aprobado": True
-})
-
-for articulo in articulos:
-    url = f"https://api.hubapi.com/blogs/v3/blog/{BLOG_GUID}/posts"
-    params = {"hapikey": HUBSPOT_API_KEY}
-    
-    article_data = {
-        "title": articulo["titulo"],
-        "content": articulo.get("contenido_html", articulo.get("cuerpo", "")),
-        "slug": articulo.get("slug", articulo["titulo"].lower().replace(" ", "-").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")),
-        "tags": ["autopartes", "aftermarket"],
-        "status": "PUBLISHED"
-    }
-    
-    response = requests.post(url, json=article_data, params={"hapikey": HUBSPOT_API_KEY})
-    
-    if response.status_code == 200:
-        hubspot_id = response.json().get("id")
-        # Actualizar MongoDB con el ID de HubSpot
-        col_articulos.update_one(
-            {"_id": articulo["_id"]},
-            {"$set": {"hubspot_published": True, "hubspot_article_id": hubspot_id}}
-        )
-        print(f"Publicado: {articulo['titulo']} -> {hubspot_id}")
-    else:
-        print(f"Error al publicar {articulo['titulo']}: {response.status_code} - {response.text}")
-```
-
-## 7. Pasos para configurar en AfterDrive
-
-1. **Crear un blog en HubSpot**:
-   - Ve a Marketing > Blog > New blog
-   - Anota el `blog_guid` (aparece en la URL o mediante API)
-
-2. **Obtener API Key**:
-   - Configuración > Cuentas y usuarios > API keys
-   - Create API key
-   - Copia el `hapikey`
-
-3. **Configurar en AfterDrive**:
-   - Agregar `HUBSPOT_API_KEY` y `HUBSPOT_BLOG_GUID` a tu `.env`
-   - Modificar `scheduler.py` o crear `publicar_hubspot.py` según el script anterior
-
-4. **Probar con un artículo**:
-   - Ejecuta el script manualmente con 1-2 artículos para verificar
-   - Revisa el resultado en HubSpot antes de automatizar
-
-## 8. Próximos pasos en tu proyecto
-
-Dado que ya integraste Jev AI para la clasificación, el siguiente paso lógico sería:
-
-1. ✅ Integrar Jev AI (hecho)
-2. 📤 **Integrar publicación en HubSpot** (siguiente paso)
-3. 🔄 Automatizar la sincronización entre MongoDB y HubSpot
-4. 📊 Agregar reporting de artículos publicados vs. rechazados
-
-¿Te gustaría que desarrolle el script `publicar_hubspot.py` completo y lo añada al repositorio, o prefieres implementarlo tú mismo con la guía anterior?
+Referencia oficial: [Blog posts API](https://developers.hubspot.com/docs/api-reference/latest/cms/blogs/posts/guide).

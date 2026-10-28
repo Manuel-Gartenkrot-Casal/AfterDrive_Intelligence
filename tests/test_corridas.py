@@ -4,6 +4,8 @@
 import pytest
 
 from afterdrive import corridas
+
+
 @pytest.fixture
 def script_lento(tmp_path):
     p = tmp_path / "lento.py"
@@ -18,32 +20,19 @@ def script_rapido(tmp_path):
     return str(p)
 
 
-def test_stream_emite_la_salida_y_libera(script_rapido):
-    assert list(corridas.stream(script_rapido)) == ["hola\n", "chau\n"]
+def test_subproceso_emite_la_salida(script_rapido):
+    assert list(corridas._subproceso(script_rapido)) == ["hola\n", "chau\n"]
+
+
+def test_con_otra_corrida_en_curso_se_rechaza():
+    with corridas._reservar("otra"):
+        assert corridas.en_curso() == "otra"
+        assert not corridas.generacion({"categorias": ["x"]})["success"]
+        assert not corridas.scraping()["success"]
     assert corridas.en_curso() is None
 
 
-def test_script_captura_la_salida(script_rapido):
-    r = corridas.script(script_rapido)
-    assert r["success"] and r["output"] == "hola\nchau\n"
-
-
-def test_segunda_corrida_mientras_hay_otra_se_rechaza(script_lento, script_rapido):
-    gen = corridas.stream(script_lento)
-    assert next(gen) == "uno\n"
-    assert corridas.en_curso() == script_lento
-
-    ocupado = list(corridas.stream(script_rapido))
-    assert len(ocupado) == 1 and ocupado[0].startswith("[OCUPADO]")
-    assert not corridas.script(script_rapido)["success"]
-    assert not corridas.generacion({"categorias": ["x"]})["success"]
-    assert not corridas.scraping()["success"]
-
-    gen.close()  # el cliente cortó la conexión
-    assert corridas.en_curso() is None
-
-
-def test_cortar_el_stream_mata_el_proceso(script_lento, monkeypatch):
+def test_cortar_la_lectura_mata_el_proceso(script_lento, monkeypatch):
     procesos = []
     popen = corridas.subprocess.Popen
 
@@ -52,8 +41,8 @@ def test_cortar_el_stream_mata_el_proceso(script_lento, monkeypatch):
         return procesos[-1]
 
     monkeypatch.setattr(corridas.subprocess, "Popen", espiar)
-    gen = corridas.stream(script_lento)
-    next(gen)
+    gen = corridas._subproceso(script_lento)
+    assert next(gen) == "uno\n"
     gen.close()
     assert procesos[0].wait(timeout=5) is not None
 
@@ -74,7 +63,7 @@ def test_generacion_sin_params_usa_la_config_guardada(monkeypatch):
     assert corridas.generacion()["success"]
     assert recibido == {
         "categorias": ["autopartes"], "clientes_ids": ["acme"], "puntapie_url": "https://alephee.com",
-        "persona": "ejecutivo", "tema": None, "regiones": ["brasil"],
+        "persona": "ejecutivo", "tema": None, "regiones": ["brasil"], "largo": "medio",
     }
 
 
@@ -95,3 +84,25 @@ def test_generacion_que_explota_libera_el_lock(monkeypatch):
     r = corridas.generacion({"categorias": ["x"]})
     assert not r["success"] and "boom" in r["error"]
     assert corridas.en_curso() is None
+
+
+def test_el_scraping_dice_cuanto_gasto_de_la_api_paga(monkeypatch, capsys):
+    from afterdrive.ia import consumo
+
+    gastos = []
+
+    def scrapear(max_articulos):
+        gastos.append(consumo.registrar("clasificacion", "m", 1_000_000, 0, proveedor="paga"))
+        gastos.append(consumo.registrar("embeddings", "m", 1000, 0, proveedor="paga"))
+        consumo.registrar("clasificacion", "m", 1_000_000, 0, proveedor="local")   # gratis: no suma
+        return {"success": True, "aprobados": 1}
+    monkeypatch.setattr(corridas, "_scrapear", scrapear)
+    assert corridas._scrapear_fuentes(None) == {"success": True, "aprobados": 1}
+    assert f"[COSTO] Esta corrida: USD {sum(gastos):.4f} en 2 llamadas" in capsys.readouterr().out
+    assert sum(gastos) > 0
+
+
+def test_el_scraping_sin_api_paga_dice_que_no_gasto(monkeypatch, capsys):
+    monkeypatch.setattr(corridas, "_scrapear", lambda m: {"success": True})
+    corridas._scrapear_fuentes(None)
+    assert "[COSTO] Esta corrida: USD 0 (no usó la API paga)" in capsys.readouterr().out

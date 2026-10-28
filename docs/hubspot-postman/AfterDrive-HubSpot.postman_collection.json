@@ -1,0 +1,141 @@
+{
+  "info": {
+    "name": "AfterDrive - HubSpot Blogs",
+    "description": "Pruebas manuales de la API de HubSpot que usa AfterDrive Intelligence (afterdrive/hubspot.py). Correr en orden: 1 Lectura, 2 Ciclo de un post de prueba. Las escrituras van al blog de pruebas (blogId) por defecto.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Responde sin error', () => pm.expect(pm.response.code).to.be.below(300));",
+          "pm.test('Tarda menos de 5 s', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1 Lectura",
+      "item": [
+        {
+          "name": "Listar blogs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blog-settings/{{version}}/settings" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const r = pm.response.json().results;",
+            "pm.test('Hay blogs', () => pm.expect(r.length).to.be.above(0));",
+            "pm.test('Existe el blog configurado (blogId)', () => pm.expect(r.map(b => b.id)).to.include(pm.collectionVariables.get('blogId')));",
+            "console.table(r.map(b => ({ id: b.id, idioma: b.language, nombre: b.name, url: b.absoluteUrl })));"
+          ] } }]
+        },
+        {
+          "name": "Listar autores",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blogs/{{version}}/authors?limit=100" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const r = pm.response.json().results;",
+            "pm.test('Hay autores', () => pm.expect(r.length).to.be.above(0));",
+            "console.table(r.map(a => ({ id: a.id, idioma: a.language, nombre: a.fullName })));"
+          ] } }]
+        },
+        {
+          "name": "Listar etiquetas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blogs/{{version}}/tags?limit=100" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const r = pm.response.json().results;",
+            "console.table(r.map(t => ({ id: t.id, idioma: t.language, nombre: t.name })));"
+          ] } }]
+        },
+        {
+          "name": "Últimos posts de un blog",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blogs/{{version}}/posts?contentGroupId={{blogId}}&sort=-created&limit=10" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const r = pm.response.json().results;",
+            "pm.test('Todos son del blog pedido', () => r.forEach(p => pm.expect(p.contentGroupId).to.eql(pm.collectionVariables.get('blogId'))));",
+            "console.table(r.map(p => ({ id: p.id, estado: p.state, autor: p.authorName, titulo: p.name })));"
+          ] } }]
+        },
+        {
+          "name": "Ver un post de referencia (copiar su estructura)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blogs/{{version}}/posts/{{postReferenciaId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const p = pm.response.json();",
+            "console.log({ blog: p.contentGroupId, autor: p.blogAuthorId, idioma: p.language, tags: p.tagIds, imagen: p.featuredImage, meta: p.metaDescription });"
+          ] } }]
+        },
+        {
+          "name": "Chequear scope files (imágenes)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/files/v3/files/search?limit=1" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "// 403 = la app privada no tiene el scope 'files': AfterDrive no va a poder subir imágenes destacadas."
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "2 Ciclo de un post de prueba",
+      "description": "Crear borrador -> leerlo -> editarlo -> borrarlo. Usa blogId (por defecto el Blog test). No cambies blogId a un blog público para estas pruebas.",
+      "item": [
+        {
+          "name": "Crear borrador",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/cms/blogs/{{version}}/posts",
+            "body": { "mode": "raw", "raw": "{\n  \"contentGroupId\": \"{{blogId}}\",\n  \"name\": \"[PRUEBA] Nota de AfterDrive Intelligence {{$timestamp}}\",\n  \"htmlTitle\": \"[PRUEBA] Nota de AfterDrive Intelligence\",\n  \"slug\": \"prueba-afterdrive-{{$timestamp}}\",\n  \"blogAuthorId\": \"{{authorId}}\",\n  \"metaDescription\": \"Post de prueba creado desde Postman. Se puede borrar.\",\n  \"postBody\": \"<p>Cuerpo de prueba con <strong>negrita</strong> y una lista:</p><ul><li>Uno</li><li>Dos</li></ul>\",\n  \"state\": \"DRAFT\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const p = pm.response.json();",
+            "pm.test('Quedó como borrador', () => pm.expect(p.state).to.eql('DRAFT'));",
+            "pm.test('Quedó en el blog pedido', () => pm.expect(p.contentGroupId).to.eql(pm.collectionVariables.get('blogId')));",
+            "pm.collectionVariables.set('postId', p.id);",
+            "console.log('postId guardado:', p.id);"
+          ] } }]
+        },
+        {
+          "name": "Leer el borrador",
+          "request": { "method": "GET", "url": "{{baseUrl}}/cms/blogs/{{version}}/posts/{{postId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Es el post creado', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('postId')));"
+          ] } }]
+        },
+        {
+          "name": "Editar borrador (título, meta, etiqueta)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/cms/blogs/{{version}}/posts/{{postId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"[PRUEBA] Título editado\",\n  \"metaDescription\": \"Meta editada desde Postman\",\n  \"tagIds\": [{{tagId}}]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const p = pm.response.json();",
+            "pm.test('Se cambió el título', () => pm.expect(p.name).to.eql('[PRUEBA] Título editado'));",
+            "pm.test('Sigue en borrador', () => pm.expect(p.state).to.eql('DRAFT'));"
+          ] } }]
+        },
+        {
+          "name": "Borrar el post de prueba",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/cms/blogs/{{version}}/posts/{{postId}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Borrado (204)', () => pm.response.to.have.status(204));"
+          ] } }]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.hubapi.com" },
+    { "key": "version", "value": "2026-09" },
+    { "key": "token", "value": "" },
+    { "key": "blogId", "value": "114283349257" },
+    { "key": "authorId", "value": "37798507784" },
+    { "key": "tagId", "value": "193208803411" },
+    { "key": "postReferenciaId", "value": "41066128552" },
+    { "key": "postId", "value": "" }
+  ]
+}

@@ -44,6 +44,14 @@ def test_credenciales_malas_son_401(api, body):
     assert api[0].app.test_client().post("/api/login", json=body).status_code == 401
 
 
+@pytest.mark.parametrize("como_se_pego", ["'{h}'", '"{h}"', "{h}\n", "  '{h}'  "])
+def test_hash_pegado_con_comillas_o_espacios_igual_loguea(api, monkeypatch, como_se_pego):
+    import os
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", como_se_pego.format(h=os.environ["ADMIN_PASSWORD_HASH"]))
+    monkeypatch.setenv("ADMIN_USER", "admin ")
+    assert api[0].app.test_client().post("/api/login", json=OK).status_code == 200
+
+
 def test_body_no_json_es_401(api):
     assert api[0].app.test_client().post("/api/login", data="hola").status_code == 401
 
@@ -110,10 +118,13 @@ def test_hash_mal_formado_es_401(api, monkeypatch):
 
 def test_cron_token_solo_en_sus_dos_endpoints(api, monkeypatch):
     fa = api[0]
-    monkeypatch.setattr(fa.corridas, "en_segundo_plano", lambda *a: None)
+    encoladas = []
+    monkeypatch.setattr(fa.cola, "encolar", lambda tipo, params=None, origen="manual", etiqueta=None:
+                        encoladas.append((tipo, origen)) or {"id": "x", "posicion": 1, "duplicada": False})
     c, h = fa.app.test_client(), {"Authorization": "Bearer cron-test"}
-    assert c.post("/api/run-automation", headers=h).status_code == 200
-    assert c.post("/api/run-generacion", headers=h).status_code == 200
+    assert c.post("/api/run-automation", headers=h).status_code == 202
+    assert c.post("/api/run-generacion", headers=h).status_code == 202
+    assert encoladas == [("scraping", "cron"), ("generacion", "cron")]
     assert c.get("/api/scraping-config", headers=h).status_code == 401
     assert c.post("/api/run-automation", headers={"Authorization": "Bearer otro"}).status_code == 401
 
@@ -171,20 +182,57 @@ def test_cabeceras_tambien_en_el_401(api):
     assert h["X-Frame-Options"] == "DENY" and "Content-Security-Policy" in h
 
 
+def _dashboard() -> tuple[str, str]:
+    """(index.html, todo el JS del dashboard concatenado)."""
+    publico = Path("express/src/public")
+    html = (publico / "index.html").read_text(encoding="utf-8")
+    js = "\n".join(p.read_text(encoding="utf-8") for p in sorted((publico / "assets" / "js").glob("*.js")))
+    return html, js
+
+
 def test_dashboard_sanitiza_y_fija_versiones():
-    html = Path("express/src/public/index.html").read_text(encoding="utf-8")
+    html, js = _dashboard()
+    externos = re.findall(r'<script src="https://cdn\.jsdelivr\.net[^>]*>', html)
+    html = html + js
     assert "DOMPurify.sanitize(marked.parse(" in html
     assert "innerHTML = marked.parse(" not in html
-    externos = re.findall(r'<script src="https://cdn\.jsdelivr\.net[^>]*>', html)
     assert len(externos) == 2
     for tag in externos:
         assert re.search(r"@\d+\.\d+\.\d+/", tag) and 'integrity="sha384-' in tag and "crossorigin" in tag
     # Datos del servidor que antes entraban a innerHTML sin escapar.
     assert "+u.url+" not in html and "' + k.replace(" not in html
     # encodeURIComponent deja pasar la comilla simple: no alcanza para un onclick='...'.
-    assert "encodeURIComponent(u.url)" not in html and html.count("encArg(u.url)") == 3
+    assert "encodeURIComponent(u.url)" not in html and html.count("encArg(u.url)") == 4
     # escHtml también tiene que servir dentro de atributos (title="...", href="...").
     assert "&quot;" in html and "&#39;" in html
     # Un link de fuente solo puede ser http(s), nunca javascript:.
     assert "escHtml(f.url || '#')" not in html and "urlSegura(f.url)" in html
+
+
+
+def test_los_assets_del_dashboard_piden_sesion(api):
+    c = api[0].app.test_client()
+    assert c.get("/assets/js/base.js").status_code == 401
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    r = c.get("/assets/js/base.js")
+    assert r.status_code == 200 and "function confirmar" in r.get_data(as_text=True)
+    assert r.headers["Cache-Control"] == "no-cache"
+    assert c.get("/assets/css/dashboard.css").status_code == 200
+
+
+@pytest.mark.parametrize("ruta", ["/assets/../index.html", "/assets/%2e%2e/login.html", "/assets/js/no-existe.js",
+                                  "/assets/../../afterdrive/auth.py", "/assets/js/../../index.html"])
+def test_assets_no_sirve_otra_cosa(api, ruta):
+    c = api[0].app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    assert c.get(ruta).status_code == 404
+
+
+def test_index_carga_todos_los_js_que_existen():
+    html, _ = _dashboard()
+    cargados = re.findall(r'<script src="/assets/js/([a-z]+\.js)"></script>', html)
+    en_disco = sorted(p.name for p in Path("express/src/public/assets/js").glob("*.js"))
+    assert sorted(cargados) == en_disco and cargados[0] == "base.js" and cargados[-1] == "arranque.js"
 
