@@ -417,12 +417,13 @@ function bloqueImagenesNoticias(d, propia) {
   }
   return html + '<p class="previa-ayuda">Elegí la foto de una de sus noticias:</p><div class="previa-fotos">'
     + _fotosNoticias.map(function(f, i) {
-        var descartada = f.apta === false;
+        var descartada = f.apta === false, personas = !descartada && f.personas === true;
         var detalle = f.titulo + (f.motivo ? ' — ' + (descartada ? 'La IA la descartó: ' : 'IA: ') + f.motivo : '');
-        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada ? ' descartada' : '') + '"'
+        var marca = descartada ? 'IA: no apta' : personas ? 'Tiene personas: no va de portada' : '';
+        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada || personas ? ' descartada' : '') + '"'
           + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(detalle) + '" aria-label="' + escHtml(f.titulo) + '">'
           + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
-          + (descartada ? '<span class="previa-foto-marca">IA: no apta</span>' : '') + '</button>';
+          + (marca ? '<span class="previa-foto-marca">' + marca + '</span>' : '') + '</button>';
       }).join('')
     + '</div></div>';
 }

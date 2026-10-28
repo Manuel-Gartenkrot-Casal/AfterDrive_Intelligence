@@ -565,12 +565,12 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
-        # Las siguientes van dentro del texto (hubspot.py las reparte entre las secciones).
-        doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.imagenes[1:]]
-        if doc["imagenes_cuerpo"]:
-            print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
     else:
         print(f"  [AVISO] La nota se guarda sin imagen destacada: {eleccion.motivo}", flush=True)
+    # Las otras van dentro del texto (hubspot.py las reparte entre las secciones).
+    doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.cuerpo]
+    if doc["imagenes_cuerpo"]:
+        print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
     doc["imagen_eleccion"] = eleccion.como_dict()
 
     def _fuente(n) -> dict:
@@ -580,6 +580,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             veredicto = eleccion.veredictos.get(n.imagen["url"])
             if veredicto:
                 f["imagen_apta"], f["imagen_motivo"] = veredicto["apta"], veredicto["motivo"]
+                f["imagen_personas"] = veredicto.get("personas", False)
         return f
     doc["fuentes"] = [_fuente(n) for n in noticias]
     # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.

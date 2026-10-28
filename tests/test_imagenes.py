@@ -272,9 +272,10 @@ def ia_fotos(monkeypatch):
     def responder(texto):
         def completar(system, user, **kw):
             pedidos.append({"user": user, **kw})
-            if isinstance(texto, Exception):
-                raise texto
-            return texto
+            r = texto.pop(0) if isinstance(texto, list) else texto   # una lista: una respuesta por pedido
+            if isinstance(r, Exception):
+                raise r
+            return r
         monkeypatch.setattr(llm, "completar", completar)
     return responder, descargas, pedidos
 
@@ -290,7 +291,7 @@ def test_la_ia_elige_la_foto_mas_apta(ia_fotos):
               ' "elegida": 2}')
     e = imagen_destacada.elegir(_con_fotos(2), "Stock en el depósito", "La rotación manda")
     assert e.metodo == "ia" and e.imagen["url"] == "https://n.com/2.jpg"
-    assert e.veredictos["https://n.com/1.jpg"] == {"apta": False, "motivo": "Es un logo."}
+    assert e.veredictos["https://n.com/1.jpg"] == {"apta": False, "personas": False, "motivo": "Es un logo."}
     assert pedidos[0]["tarea"] == "clasificacion" and len(pedidos[0]["imagenes"]) == 2
     assert "Stock en el depósito" in pedidos[0]["user"] and "Noticia 2" in pedidos[0]["user"]
 
@@ -429,6 +430,56 @@ def test_no_repite_fotos_que_ya_estan_en_otras_notas(ia_fotos):
     assert [i["url"] for i in e.imagenes] == ["https://n.com/3.jpg"] and len(pedidos[0]["imagenes"]) == 1
     sin = imagen_destacada.elegir(_con_fotos(1), "T", excluir={"https://n.com/1.jpg"})
     assert sin.imagenes == [] and "otras notas" in sin.motivo
+
+
+def _foto(n, personas, apta=True):
+    return f'{{"n": {n}, "apta": {str(apta).lower()}, "personas": {str(personas).lower()}, "motivo": "m"}}'
+
+
+def test_la_portada_nunca_tiene_personas(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    # Las dos primeras elegidas tienen personas: la portada es la tercera y ellas van al texto.
+    responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, False)}], "elegidas": [1, 2, 3]}}')
+    e = imagen_destacada.elegir(_con_fotos(3), "T")
+    assert e.imagen["url"] == "https://n.com/3.jpg"
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+    assert e.veredictos["https://n.com/1.jpg"]["personas"] is True
+    # Una apta sin personas que la IA no eligió entra igual como portada.
+    responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, False)}], "elegidas": [1, 2]}}')
+    e = imagen_destacada.elegir(_con_fotos(3), "T", cantidad=2)
+    assert e.imagen["url"] == "https://n.com/3.jpg" and [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg"]
+
+
+def test_si_todas_tienen_personas_no_hay_portada_pero_si_fotos_en_el_texto(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, True)}], "elegidas": [1, 2, 3]}}')
+    e = imagen_destacada.elegir(_con_fotos(3), "T")
+    assert e.imagen is None and e.motivo == imagen_destacada.SIN_PORTADA
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+
+
+def test_busca_la_portada_sin_personas_en_otras_noticias_del_tema(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder([f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, True)}], "elegidas": [1, 2, 3]}}',
+               f'{{"fotos": [{_foto(1, False)}], "elegidas": [1]}}'])
+    otra = [_noticia(9, "https://n.com/9.jpg")]
+    e = imagen_destacada.elegir(_con_fotos(3), "T", extra=lambda: otra)
+    assert len(pedidos) == 2 and e.imagen["url"] == "https://n.com/9.jpg"
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+
+
+def test_la_foto_elegida_a_mano_de_portada_sale_del_texto():
+    from afterdrive import historial
+    base = mongomock.MongoClient().db
+    oid = base.notas_fase2.insert_one({"imagenes_cuerpo": [{"url": "https://n.com/1.jpg"}, {"url": "https://n.com/2.jpg"}],
+                                       "fuentes": [{"imagen": "https://n.com/1.jpg", "imagen_apta": True,
+                                                    "imagen_personas": True}]}).inserted_id
+    historial.cambiar_imagen("notas_fase2", str(oid), "https://n.com/1.jpg", base=base)
+    doc = base.notas_fase2.find_one({"_id": oid})
+    assert doc["imagen"]["url"] == "https://n.com/1.jpg" and doc["imagenes_cuerpo"] == [{"url": "https://n.com/2.jpg"}]
 
 
 def test_fotos_usadas_lee_destacadas_y_del_cuerpo_de_notas_recientes():

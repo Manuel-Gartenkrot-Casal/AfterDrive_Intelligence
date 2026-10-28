@@ -163,6 +163,10 @@ function chequeosDeNota(nota) {
   var im = nota.imagen || {}, eleccion = nota.imagen_eleccion || {};
   out.push(im.url
     ? { c: 'ok', id: 'imagen', titulo: 'Imagen destacada', linea: 'Tiene imagen destacada.' }
+    : /muestran personas/.test(eleccion.motivo || '')
+    ? { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada',
+        linea: 'Las fotos aptas muestran personas y la portada no puede tenerlas.',
+        accion: { texto: 'Elegir imagen', onclick: 'vistaPreviaNota()' } }
     : { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada',
         linea: eleccion.metodo === 'ia' ? resumenMotivoImagen(eleccion.motivo) : 'Ninguna noticia de la nota tenía foto.',
         detalle: eleccion.metodo === 'ia' && eleccion.motivo ? detalleMotivoImagen(eleccion.motivo) : '',

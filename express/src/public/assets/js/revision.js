@@ -324,6 +324,9 @@ function pintarImagen(nota, contenedor) {
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
       + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
       + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Cambiar imagen</button></p>';
+  } else if (/muestran personas/.test(eleccion.motivo || '')) {
+    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>'
+      + '<p><button type="button" class="btn btn-xs" onclick="vistaPreviaNota()">Elegir imagen</button></p>';
   } else if (eleccion.metodo === 'ia') {
     html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
       + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>'

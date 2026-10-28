@@ -652,7 +652,7 @@ def test_lo_que_opino_la_ia_de_cada_foto_queda_en_las_fuentes(entorno, monkeypat
     guardada = col.docs[0]
     assert "imagen" not in guardada and guardada["imagen_eleccion"]["metodo"] == "ia"
     assert guardada["fuentes"][0] == {"titulo": "Frasle amplía su planta", "url": "https://n/1", "imagen": "https://n/1.jpg",
-                                      "imagen_apta": False, "imagen_motivo": "Es un logo."}
+                                      "imagen_apta": False, "imagen_motivo": "Es un logo.", "imagen_personas": False}
 
 
 def test_la_nota_puede_citar_y_enlazar_notas_de_afterdrive(entorno, monkeypatch):

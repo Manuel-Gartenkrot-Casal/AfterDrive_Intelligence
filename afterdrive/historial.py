@@ -509,7 +509,9 @@ def cambiar_imagen(coleccion: str, item_id: str, url: str, alt: str = "", base=N
                    for f in doc.get("fuentes") or [] if url and f.get("imagen") == url), None)
     if origen:
         nueva["origen"] = origen
-    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}} if url else {"$unset": {"imagen": ""}})
+    # La que pasa a portada sale del texto: no se repite.
+    col.update_one({"_id": doc["_id"]}, {"$set": {"imagen": nueva}, "$pull": {"imagenes_cuerpo": {"url": url}}}
+                   if url else {"$unset": {"imagen": ""}})
     return _normalizar(col.find_one({"_id": _oid(item_id)}, _SIN_EMBEDDING), coleccion, "generados_aprobados")
 
 
@@ -582,7 +584,8 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
         return None
     # Fotos de las noticias de la nota, para elegir otra destacada (con lo que opinó la IA, si las miró).
     de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", ""),
-                    **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", "")} if "imagen_apta" in f else {})}
+                    **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", ""),
+                        "personas": f.get("imagen_personas", False)} if "imagen_apta" in f else {})}
                    for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
         previa = hubspot.vista_previa(doc)

@@ -47,11 +47,16 @@ logística, fábricas, ferias, comercio de autopartes). NO es apta una foto ajen
 una noticia usada: billetes o cotizaciones, políticos, deportes, catástrofes, personas sin contexto.
 - Se ve nítida y no tiene marcas de agua grandes ni texto sobreimpreso que la tape.
 
+En cada foto indicá "personas": true si se ve una persona o parte de una (cara, cuerpo, manos), aunque sea \
+chica o de fondo. Una foto con personas puede ser apta (va dentro del texto), pero la portada no puede tenerlas.
+
 Ordená las aptas: primero las que muestran el tema y después las del sector ("elegidas", como mucho \
 {cantidad}). Si ninguna es apta, "elegidas" es [].
 
 Respondé solo con este JSON, una entrada por foto en el orden recibido:
-{{"fotos": [{{"n": 1, "apta": true, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
+{{"fotos": [{{"n": 1, "apta": true, "personas": false, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
+
+SIN_PORTADA = "Las fotos aptas muestran personas y la portada no puede tenerlas."
 
 _SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
                   "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa.\n\n" + _CRITERIOS)
@@ -68,12 +73,31 @@ _SYSTEM_TEXTO = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephe
 class Eleccion:
     imagenes: list[dict]                # campo `imagen` de cada una, en orden (la primera es la destacada)
     metodo: str                         # "ia", "ia-texto", "primera" o "ninguna"
-    veredictos: dict = field(default_factory=dict)   # url -> {"apta": bool, "motivo": str}
+    veredictos: dict = field(default_factory=dict)   # url -> {"apta": bool, "personas": bool, "motivo": str}
     motivo: str = ""                    # por qué no hay imagen o por qué no decidió la IA
+
+    def _personas(self, im: dict) -> bool:
+        return bool(self.veredictos.get(im["url"], {}).get("personas"))
 
     @property
     def imagen(self) -> dict | None:
-        return self.imagenes[0] if self.imagenes else None
+        """La portada: la primera foto, salvo que muestre personas."""
+        return self.imagenes[0] if self.imagenes and not self._personas(self.imagenes[0]) else None
+
+    @property
+    def cuerpo(self) -> list[dict]:
+        """Las que van dentro del texto (pueden tener personas)."""
+        return self.imagenes[1:] if self.imagen else self.imagenes[:CANTIDAD - 1]
+
+    def ordenar(self, cantidad: int) -> Eleccion:
+        """Pone primero la primera foto sin personas (la portada) y deja `cantidad`."""
+        libres = [im for im in self.imagenes if not self._personas(im)]
+        if libres:
+            self.imagenes = [libres[0]] + [im for im in self.imagenes if im is not libres[0]]
+        elif self.imagenes:
+            self.motivo = SIN_PORTADA
+        self.imagenes = self.imagenes[:cantidad]
+        return self
 
     def como_dict(self) -> dict:
         return {"metodo": self.metodo, "motivo": self.motivo, "cantidad": len(self.imagenes)}
@@ -131,7 +155,9 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         eleccion = Eleccion([], "ninguna", motivo="Las fotos de sus noticias ya están en otras notas.")
     else:
         eleccion = Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
-    faltan = cantidad - len(eleccion.imagenes)
+    eleccion.ordenar(cantidad)
+    # Faltan fotos, o todas tienen personas y falta una para la portada.
+    faltan = max(cantidad - len(eleccion.imagenes), 0 if eleccion.imagen or not eleccion.imagenes else 1)
     if faltan <= 0 or extra is None or eleccion.metodo == "primera":
         return eleccion
     vistas = {n.imagen["url"] for n in con_foto} | {id(n) for n in noticias} | set(excluir)
@@ -152,7 +178,7 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
     if not imagenes:
         motivo = eleccion.motivo + " Tampoco sirvió ninguna foto de otras noticias del tema."
         return Eleccion([], segunda.metodo, veredictos, motivo=motivo.strip())
-    return Eleccion(imagenes, eleccion.metodo if eleccion.imagenes else segunda.metodo, veredictos)
+    return Eleccion(imagenes, eleccion.metodo if eleccion.imagenes else segunda.metodo, veredictos).ordenar(cantidad)
 
 
 def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
@@ -238,6 +264,13 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
         veredictos[n.imagen["url"]] = respuesta["fotos"].get(i, {"apta": False, "motivo": "La IA no la evaluó."})
     metodo = "ia" if con_vista else "ia-texto"
     elegidas = respuesta["elegidas"][:cantidad]
+    fotos = respuesta["fotos"]
+    if elegidas and all(fotos.get(i, {}).get("personas") for i in elegidas):
+        # Ninguna elegida sirve de portada: entra una apta sin personas, si la IA marcó alguna.
+        libre = next((i for i in sorted(fotos) if fotos[i]["apta"] and not fotos[i]["personas"]
+                      and i not in elegidas), None)
+        if libre:
+            elegidas = [libre] + elegidas[:cantidad - 1]
     if not elegidas:
         motivos = "; ".join(v["motivo"] for v in veredictos.values() if v.get("motivo"))
         print("  [AVISO] La IA descartó todas las fotos.", flush=True)
@@ -255,7 +288,8 @@ def _leer(crudo: str, total: int) -> dict:
     fotos = {}
     for f in data["fotos"]:
         if isinstance(f, dict) and isinstance(f.get("n"), int | float) and 1 <= int(f["n"]) <= total:
-            fotos[int(f["n"])] = {"apta": f.get("apta") is True, "motivo": " ".join(str(f.get("motivo") or "").split())[:200]}
+            fotos[int(f["n"])] = {"apta": f.get("apta") is True, "personas": f.get("personas") is True,
+                                  "motivo": " ".join(str(f.get("motivo") or "").split())[:200]}
     crudas = data.get("elegidas")
     if crudas is None:   # formato anterior: una sola
         crudas = [data.get("elegida")] if data.get("elegida") is not None else []
