@@ -2472,3 +2472,30 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .modal-body > .previa-form:first-child { margin-top: 0; margin-bottom: var(--s5); }
 .paso-panel .zona-imagen { margin: 10px 0 8px; padding: 14px 12px; gap: 6px; }
 .paso-panel .zona-imagen p { font-size: 0.8rem; }
+
+/* Ajustes de la barra lateral (vista Desarrollador): una fila con el nombre,
+   lo que pasa ahora debajo y un interruptor chico a la derecha. Mismo borde y
+   fondo que el selector de proveedor, para que el bloque se vea parejo. */
+.ajuste {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg);
+  cursor: pointer; user-select: none; transition: border-color var(--t-fast), background var(--t-fast);
+}
+.ajuste:hover { border-color: var(--border-strong); }
+.ajuste:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ajuste-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ajuste-nombre { font-size: 0.8rem; font-weight: 600; color: var(--text-hi); }
+.ajuste-estado { font-size: 0.7rem; line-height: 1.35; color: var(--text-lo); }
+.ajuste.active .ajuste-estado { color: var(--brand); }
+.ajuste-switch {
+  position: relative; flex-shrink: 0; width: 30px; height: 18px; border-radius: var(--r-pill);
+  background: var(--well); box-shadow: inset 0 0 0 1px var(--border-strong); transition: background var(--t-fast), box-shadow var(--t-fast);
+}
+.ajuste-switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--text-lo); transition: transform var(--t-fast) var(--ease-out), background var(--t-fast);
+}
+.ajuste.active .ajuste-switch { background: var(--brand); box-shadow: none; }
+.ajuste.active .ajuste-switch::after { transform: translateX(12px); background: #FFFFFF; }
+.ajuste.no-disponible { cursor: not-allowed; }
+.ajuste.no-disponible .ajuste-switch, .ajuste.no-disponible .ajuste-nombre { opacity: 0.5; }

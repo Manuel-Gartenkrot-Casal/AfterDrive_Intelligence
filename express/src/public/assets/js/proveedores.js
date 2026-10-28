@@ -103,9 +103,11 @@ function pintarBlogPruebas(d) {
   var sw = $('sw-blog-pruebas');
   if (!sw) return;
   sw.classList.toggle('active', !!d.activo);
+  sw.classList.toggle('no-disponible', !d.disponible);
   sw.setAttribute('aria-checked', !!d.activo);
   sw.setAttribute('aria-disabled', !d.disponible);
-  sw.style.opacity = d.disponible ? '' : '0.5';
+  sw.querySelector('.ajuste-estado').textContent = !d.disponible ? 'Falta HUBSPOT_BLOG_PRUEBAS'
+    : d.activo ? 'Van a blog_test' : 'Al blog de cada idioma';
   sw.title = !d.disponible
     ? 'Falta cargar HUBSPOT_BLOG_PRUEBAS en el Environment de Render.'
     : (d.activo ? 'Los borradores se suben a blog_test (' + d.blog_id + ').'
@@ -162,7 +164,7 @@ function pintarAprobacionAuto(d) {
   if (!sw) return;
   sw.classList.toggle('active', !!d.activo);
   sw.setAttribute('aria-checked', !!d.activo);
-  sw.querySelector('span').textContent = d.activo ? 'Prendida' : 'Apagada';
+  sw.querySelector('.ajuste-estado').textContent = d.activo ? 'Prendida' : 'Apagada';
 }
 
 async function checkAprobacionAuto() {
