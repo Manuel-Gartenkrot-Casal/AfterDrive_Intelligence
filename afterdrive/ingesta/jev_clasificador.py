@@ -31,7 +31,9 @@ def clasificar(titulo: str, cuerpo: str) -> dict | None:
         "questions": {
             "relevante": {
                 "type": "noul",
-                "instructions": "¿Este artículo trata sobre la industria de autopartes y aftermarket (repuestos, catálogos, fitment, e-commerce B2B de repuestos)? Responde con probabilidad alta (cerca de 1) si trata de repuestos y 0 si trata de ventas de vehículos 0km, seguros, contenido B2C genérico o alucinaciones."
+                # Mismo criterio que lm_studio._SYSTEM_EVALUAR: antes solo aceptaba repuestos y catálogos
+                # y rechazaba casi toda noticia del sector.
+                "instructions": "¿Esta noticia le sirve al negocio de distribuidoras de repuestos, fabricantes de autopartes, talleres o lubricentros de Latinoamérica? Probabilidad alta (cerca de 1) si trata de autopartes, repuestos, mercado de reposición/posventa, talleres, neumáticos, lubricantes, industria automotriz o autopartista, parque automotor, logística o e-commerce del sector. Cerca de 0 solo si es de otro tema (política, policiales, deportes, espectáculos), una review de un auto nuevo para consumidores, seguros o trámites del conductor, o contenido vacío."
             },
             "motivo": {
                 "type": "choice",
