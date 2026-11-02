@@ -139,11 +139,21 @@ def fotos_usadas(dias: int | None = None, base=None) -> set[str]:
         from afterdrive.db import db as base
     desde = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=dias or DIAS_SIN_REPETIR)).isoformat()
     usadas = set()
-    for d in base.notas_fase2.find({"generado_en": {"$gte": desde}}, {"imagen.url": 1, "imagenes_cuerpo.url": 1}):
+    campos = {f"{c}.{k}": 1 for c in ("imagen", "imagenes_cuerpo") for k in ("url", "banco", "origen.url")}
+    for d in base.notas_fase2.find({"generado_en": {"$gte": desde}}, campos):
         for im in [d.get("imagen") or {}] + (d.get("imagenes_cuerpo") or []):
             if im.get("url"):
                 usadas.add(im["url"])
+            # Las de bancos también por su página: el link de Pixabay cambia en cada búsqueda y,
+            # guardada en la base, la foto queda con una URL interna.
+            if im.get("banco") and (im.get("origen") or {}).get("url"):
+                usadas.add(im["origen"]["url"])
     return usadas
+
+
+def _vista(n, vistas: set[str]) -> bool:
+    """La foto ya está en otra nota o ya se miró: por su URL o, si es de un banco, por su página."""
+    return n.imagen["url"] in vistas or (n.id is None and n.url in vistas)
 
 
 def _faltan(eleccion: Eleccion, cantidad: int) -> int:
@@ -204,7 +214,7 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         # Están todas pero ninguna sirve de portada: una foto que pide crédito tampoco serviría.
         solo_portada = len(eleccion.imagenes) >= cantidad and not eleccion.imagen
         try:
-            nuevas = [n for n in _unicas(buscar()) if n.imagen["url"] not in vistas
+            nuevas = [n for n in _unicas(buscar()) if not _vista(n, vistas)
                       and not (solo_portada and n.imagen.get("atribucion"))][:MAX_FOTOS]
         except llm.Cancelada:
             raise
@@ -213,7 +223,7 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
             continue
         if not nuevas:
             continue
-        vistas |= {n.imagen["url"] for n in nuevas}
+        vistas |= {n.imagen["url"] for n in nuevas} | {n.url for n in nuevas if n.id is None}
         que = "la portada" if solo_portada else f"{faltan} imagen(es) apta(s)"
         print(f"  Falta {que}: se busca entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
         eleccion = _sumar(eleccion, _ronda(nuevas, titulo, angulo, faltan, portada=solo_portada), cantidad)

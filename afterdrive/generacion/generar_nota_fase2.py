@@ -575,6 +575,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.cuerpo]
     if doc["imagenes_cuerpo"]:
         print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
+    # Las de Pixabay no se pueden enlazar para siempre: se guardan en la base ahora, mientras el link vale.
+    imagenes_respaldo.guardar_las_que_caducan([doc.get("imagen"), *doc["imagenes_cuerpo"]])
     doc["imagen_eleccion"] = eleccion.como_dict()
 
     def _fuente(n) -> dict:

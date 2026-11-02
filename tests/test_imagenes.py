@@ -609,3 +609,52 @@ def test_si_la_ia_elige_una_que_pide_credito_entra_de_portada_una_apta_que_no(ia
     banco = [_de_banco(1, credito=True), _de_banco(2, credito=False)]
     e = imagen_destacada.elegir([], "T", cantidad=1, respaldo=lambda r: banco)
     assert e.imagen["url"] == "https://banco/2.jpg"
+
+
+def test_pixabay_con_clave_trae_fotos_sin_credito_que_hay_que_descargar(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    pedidos = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"hits": [{"largeImageURL": "https://pixabay.com/get/abc_1280.jpg", "pageURL": "https://pixabay.com/photos/frenos-1/",
+                              "tags": "brake, disc", "user": "Leo"}]}
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda url, **kw: pedidos.append((url, kw)) or Resp()})
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    assert imagenes_respaldo._pixabay("brake disc", 12, 1) == [] and pedidos == []
+    monkeypatch.setenv("PIXABAY_API_KEY", "clave")
+    fotos = imagenes_respaldo._pixabay("brake disc", 12, 1)
+    assert pedidos[0][0] == "https://pixabay.com/api/" and pedidos[0][1]["params"]["key"] == "clave"
+    assert pedidos[0][1]["params"]["image_type"] == "photo"
+    im = fotos[0].imagen
+    assert im["caduca"] is True and "atribucion" not in im and im["banco"] == "Pixabay"
+    assert fotos[0].id is None and fotos[0].url == "https://pixabay.com/photos/frenos-1/"
+
+
+def test_las_fotos_que_caducan_se_guardan_en_la_base_con_url_interna(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    from afterdrive.historial import PREFIJO_IMAGEN_SUBIDA
+    base = mongomock.MongoClient().db
+    monkeypatch.setattr(imagen_web, "descargar", lambda url, max_bytes=None: (JPG, "image/jpeg"))
+    pixabay = {"url": "https://pixabay.com/get/abc.jpg", "alt": "frenos", "banco": "Pixabay", "caduca": True}
+    noticia = {"url": "https://n.com/1.jpg", "alt": ""}
+    imagenes_respaldo.guardar_las_que_caducan([None, pixabay, noticia], base=base)
+    assert pixabay["url"].startswith(PREFIJO_IMAGEN_SUBIDA) and pixabay["url_banco"] == "https://pixabay.com/get/abc.jpg"
+    assert "caduca" not in pixabay and noticia == {"url": "https://n.com/1.jpg", "alt": ""}
+    assert bytes(base.imagenes_subidas.find_one()["contenido"]) == JPG
+
+
+def test_una_foto_de_banco_ya_usada_no_se_repite_aunque_cambie_su_link():
+    from afterdrive.generacion import imagen_destacada
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_one({"generado_en": "2099-01-01T00:00:00+00:00", "imagenes_cuerpo": [
+        {"url": "/api/imagenes/abc", "banco": "Pixabay", "origen": {"titulo": "x", "url": "https://pixabay.com/photos/frenos-1/"}}]})
+    usadas = imagen_destacada.fotos_usadas(base=base)
+    assert "https://pixabay.com/photos/frenos-1/" in usadas
+    otra_vez = _de_banco(1, credito=False)
+    otra_vez.url = "https://pixabay.com/photos/frenos-1/"   # mismo banco y página, link nuevo
+    assert imagen_destacada._vista(otra_vez, usadas)
+    assert not imagen_destacada._vista(_con_fotos(1)[0], {"https://n.com/1"})   # una noticia, solo por su foto

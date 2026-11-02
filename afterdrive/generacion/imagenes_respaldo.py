@@ -5,6 +5,7 @@ Interfaz:
     buscador(titulo, angulo="") -> función(ronda) -> list[Noticia]
     buscar(consulta, por_banco=PIDE_POR_BANCO, pagina=1) -> list[Noticia]
     consultas(titulo, angulo="") -> list[str]
+    guardar_las_que_caducan(imagenes, base=None) -> None   descarga a la base las de Pixabay
 
 Una nota lleva imagen_destacada.CANTIDAD fotos y no repite las de otras notas:
 cuando las fotos de las noticias se agotan, imagen_destacada.elegir pide más
@@ -13,6 +14,11 @@ Noticia (sin cuerpo) para que la IA la juzgue igual que a las de las noticias.
 
 Bancos, en orden:
 - Pexels (si está PEXELS_API_KEY): fotos de stock de uso libre, sin atribución.
+- Pixabay (si está PIXABAY_API_KEY, gratis con una cuenta en pixabay.com):
+  su licencia permite uso comercial sin atribución, así que sirven de portada.
+  Sus links no se pueden usar para siempre (y algunos vencen a las 24 h): la
+  foto elegida lleva `caduca: True` y guardar_las_que_caducan() la descarga a
+  la base, como una imagen subida desde la computadora.
 - Wikimedia Commons (siempre, sin clave): solo licencias que permiten uso
   comercial (dominio público, CC0, CC BY y CC BY-SA). Las CC BY/BY-SA piden
   atribución: llevan `credito` y `atribucion: True`, van con su crédito dentro
@@ -99,9 +105,9 @@ def buscador(titulo: str, angulo: str = ""):
 
 
 def buscar(consulta: str, por_banco: int = PIDE_POR_BANCO, pagina: int = 1) -> list[Noticia]:
-    """Fotos de los bancos para la búsqueda: primero las de Pexels (si hay clave), después las de Commons."""
+    """Fotos de los bancos para la búsqueda: primero las de Pexels y Pixabay (si hay clave), después las de Commons."""
     fotos = []
-    for banco in (_pexels, _commons):
+    for banco in (_pexels, _pixabay, _commons):
         try:
             fotos += banco(consulta, por_banco, pagina)
         except Exception as e:
@@ -137,6 +143,53 @@ def _pexels(consulta: str, cantidad: int, pagina: int) -> list[Noticia]:
                                p.get("url") or "https://www.pexels.com", "Pexels",
                                f"Foto: {autor} / Pexels", atribucion=False))
     return fotos
+
+
+def _pixabay(consulta: str, cantidad: int, pagina: int) -> list[Noticia]:
+    clave = os.getenv("PIXABAY_API_KEY", "").strip()
+    if not clave:
+        return []
+    resp = _transporte["get"]("https://pixabay.com/api/", timeout=TIMEOUT, headers={"User-Agent": USER_AGENT},
+                              params={"key": clave, "q": consulta[:100], "image_type": "photo",
+                                      "orientation": "horizontal", "safesearch": "true", "min_width": 1200,
+                                      "per_page": max(3, min(cantidad, 200)), "page": pagina})
+    resp.raise_for_status()
+    fotos = []
+    for p in resp.json().get("hits") or []:
+        url = p.get("largeImageURL") or ""
+        if url.startswith("https://"):
+            autor = p.get("user") or "Pixabay"
+            foto = _foto(consulta, url, " ".join(str(p.get("tags") or "").split())[:200],
+                         p.get("pageURL") or "https://pixabay.com", "Pixabay", f"Foto: {autor} / Pixabay",
+                         atribucion=False)
+            foto.imagen["caduca"] = True   # hay que descargarla: ver guardar_las_que_caducan
+            fotos.append(foto)
+    return fotos
+
+
+def guardar_las_que_caducan(imagenes: list[dict], base=None) -> None:
+    """Descarga a la base (imagenes_subidas) las fotos elegidas cuyo link vence (Pixabay) y les pone
+    la URL interna, como a una imagen subida desde la computadora: al enviar a HubSpot se copia de ahí.
+    El link del banco queda en `url_banco`. Si una no se puede guardar, sigue con su link y avisa."""
+    import datetime
+
+    from afterdrive import imagen_web
+    from afterdrive.historial import PREFIJO_IMAGEN_SUBIDA
+
+    for im in imagenes:
+        if not im or not im.pop("caduca", False):
+            continue
+        try:
+            contenido, mime = imagen_web.descargar(im["url"])
+            if base is None:
+                from afterdrive.db import db as base
+            guardada = base.imagenes_subidas.insert_one({
+                "contenido": contenido, "mime": mime, "nombre": f"{im.get('banco', 'banco')}: {im.get('alt', '')}"[:120],
+                "origen": im.get("banco"), "fecha": datetime.datetime.now(datetime.UTC).isoformat()})
+        except Exception as e:
+            print(f"  [AVISO] No se pudo guardar la foto de {im.get('banco')} ({e}): su link puede vencer.", flush=True)
+            continue
+        im["url_banco"], im["url"] = im["url"], PREFIJO_IMAGEN_SUBIDA + str(guardada.inserted_id)
 
 
 def _texto(valor) -> str:
