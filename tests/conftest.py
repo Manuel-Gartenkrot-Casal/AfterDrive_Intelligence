@@ -41,6 +41,17 @@ def consumo_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def prompts_en_memoria(monkeypatch):
+    """Los prompts editados se leen de un Mongo en memoria (vacío: los textos originales)."""
+    from afterdrive import prompts_editables
+    col = mongomock.MongoClient().db.prompts
+    monkeypatch.setattr(prompts_editables, "_col", lambda base=None: col if base is None else base["prompts"])
+    prompts_editables.invalidar_cache()
+    yield col
+    prompts_editables.invalidar_cache()
+
+
+@pytest.fixture(autouse=True)
 def sin_buscar_imagenes(monkeypatch):
     """Los tests no descargan páginas de noticias para buscarles la imagen ni buscan en bancos de imágenes."""
     from afterdrive.generacion import contexto_noticias, imagenes_respaldo

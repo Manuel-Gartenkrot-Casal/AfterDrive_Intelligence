@@ -61,6 +61,10 @@ col_clientes = db["clientes"]                        # Clientes para mencionar e
 # rechazó). Antes solo se imprimían en la consola y se perdían.
 col_notas_descartadas = db["notas_descartadas"]
 
+# Piezas del prompt de redacción editadas desde el dashboard, una versión por
+# documento (borrador, en revisión, activa o archivada). Ver prompts_editables.py.
+col_prompts = db["prompts"]
+
 # Estado editorial de una Nota guardada. Las notas anteriores a este campo no
 # lo tienen y cuentan como borrador. "publicado" (y no "publicada") por
 # compatibilidad con lo que ya guardó la rama Front-Testing.
@@ -91,6 +95,7 @@ INDICES = {
     "notas_descartadas": [[("descartado_en", -1)]],
     "afterdrive_ejemplos": [[("tag_slug", 1)]],
     "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],
+    "prompts": [[("clave", 1), ("estado", 1)], [("clave", 1), ("version", -1)]],
 }
 
 

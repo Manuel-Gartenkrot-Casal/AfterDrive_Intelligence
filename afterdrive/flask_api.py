@@ -603,6 +603,108 @@ def historial_critica_traducida():
     return jsonify({"success": True, "traduccion": resultado})
 
 
+# ── Prompts de redacción editables (Borrador → Revisión → Activo) ─────────────
+
+
+def _prompts(accion):
+    """Corre una acción de prompts_editables: ErrorPrompt es un 400 con su mensaje."""
+    from afterdrive import prompts_editables
+
+    try:
+        return accion(prompts_editables)
+    except prompts_editables.ErrorPrompt as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/prompts", methods=["GET"])
+def prompts_listar():
+    """Las piezas editables con su versión activa y lo que tienen pendiente."""
+    return _prompts(lambda pe: jsonify({"success": True, "piezas": pe.listar()}))
+
+
+@app.route("/api/prompts/<clave>", methods=["GET"])
+def prompts_detalle(clave):
+    """Activa, pendiente, original e historial de una pieza."""
+    return _prompts(lambda pe: jsonify({"success": True, **pe.detalle(clave)}))
+
+
+@app.route("/api/prompts/<clave>/validar", methods=["POST"])
+def prompts_validar(clave):
+    """Errores que impiden aprobar y avisos de un texto, sin guardarlo: {"contenido"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, **pe.validar(clave, body.get("contenido", ""))}))
+
+
+@app.route("/api/prompts/<clave>/borrador", methods=["POST"])
+def prompts_guardar(clave):
+    """Guarda un borrador: {"contenido", "motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.guardar_borrador(
+        clave, body.get("contenido", ""), body.get("motivo", "")), **pe.validar(clave, body.get("contenido", ""))}))
+
+
+@app.route("/api/prompts/<clave>/borrador", methods=["DELETE"])
+def prompts_descartar(clave):
+    return _prompts(lambda pe: pe.descartar_borrador(clave) or jsonify({"success": True}))
+
+
+@app.route("/api/prompts/<clave>/enviar", methods=["POST"])
+def prompts_enviar(clave):
+    """Borrador -> en revisión (si pasa la validación)."""
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.enviar(clave)}))
+
+
+@app.route("/api/prompts/<clave>/aprobar", methods=["POST"])
+def prompts_aprobar(clave):
+    """En revisión -> activa: {"version"} que se vio en la confirmación."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "activo": pe.aprobar(clave, body.get("version"))}))
+
+
+@app.route("/api/prompts/<clave>/rechazar", methods=["POST"])
+def prompts_rechazar(clave):
+    """En revisión -> borrador: {"motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.rechazar(clave, body.get("motivo", ""))}))
+
+
+@app.route("/api/prompts/<clave>/restaurar", methods=["POST"])
+def prompts_restaurar(clave):
+    """Una versión archivada (0 = original) vuelve a revisión: {"version", "motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.restaurar(
+        clave, body.get("version"), body.get("motivo", ""))}))
+
+
+@app.route("/api/prompts/vista-previa", methods=["POST"])
+def prompts_vista_previa():
+    """El system prompt completo, con un texto sin aprobar en lugar de la pieza activa.
+
+    {"persona", "clave", "contenido", "largo", "compacto"}: sin clave, el prompt activo.
+    """
+    from afterdrive.ia import redaccion
+
+    body = request.get_json(silent=True) or {}
+
+    def armar(pe):
+        clave = body.get("clave") or ""
+        piezas = {}
+        if clave:
+            if clave not in pe.CLAVES:
+                raise pe.ErrorPrompt("Pieza del prompt desconocida.")
+            piezas[clave] = body.get("contenido") or ""
+        persona = body.get("persona") or (clave.removeprefix("persona_") if clave.startswith("persona_") else "comercial")
+        if persona not in redaccion.PERSONAS:
+            raise pe.ErrorPrompt("Persona desconocida.")
+        prompt = redaccion.system_prompt(
+            persona, compacto=bool(body.get("compacto")), extension=redaccion.extension(body.get("largo")),
+            idioma=redaccion.idioma_principal(), piezas=piezas)
+        return jsonify({"success": True, "persona": persona, "prompt": prompt})
+    return _prompts(armar)
+
+
 @app.route("/api/calibracion", methods=["GET"])
 def calibracion_resumen():
     """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""

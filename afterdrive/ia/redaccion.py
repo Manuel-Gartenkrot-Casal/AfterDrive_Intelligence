@@ -8,7 +8,9 @@ Interfaz:
     idioma_principal() -> "pt"         en el que se escriben las notas (IDIOMA_PRINCIPAL)
     extension(largo) -> str          "corto" | "medio" | "largo" -> rango de palabras
     alephee_url() -> str
-    PERSONAS
+    persona(slug) -> dict              rol, tarea, estructura (lista) y estilo de la versión activa
+    texto(clave) -> str                el Markdown activo de una pieza editable
+    PIEZAS, PERSONAS (textos originales)
 
 Toda nota cierra igual: la sección de implicancias para el negocio, las
 preguntas frecuentes (salvo en modo compacto), la llamada a la acción y la
@@ -20,6 +22,13 @@ formato, cierre) y el bloque propio de cada persona (tarea, estructura,
 estilo). Antes cada persona repetía las reglas a mano y se contradecían
 entre sí; además estaban escritas sin tildes, y el modelo imitaba eso.
 
+Las piezas (identidad, audiencia, reglas de datos, oficio, enfoque Alephee,
+formato, SEO, respuesta y las 5 personas) se editan como Markdown desde el
+dashboard y pasan por aprobación (prompts_editables.py). Acá se lee la versión
+activa; si no hay o Mongo falla, se usan los textos originales de este archivo.
+Las personas se escriben como: el rol, y después `## Tu tarea`, `## Estructura`
+(lista numerada) y `## Estilo`.
+
 Reglas de diseño:
 - Sin casos ni cifras de ejemplo con marcas reales: el modelo los copiaba en
   cada nota. Los hechos salen de las noticias que se pasan como contexto.
@@ -29,6 +38,7 @@ Reglas de diseño:
 """
 
 import os
+import re
 from dataclasses import dataclass
 
 # ── Voz por región ────────────────────────────────────────────────────────────
@@ -148,8 +158,7 @@ no "una plataforma" o "un marketplace".
 - Cada sección aporta información nueva. No repitas frases ni ideas, sobre todo en el cierre."""
 
 
-def _formato(extension: str) -> str:
-    return f"""\
+_FORMATO = """\
 ## Formato
 - Markdown. El título va con "# " y las secciones con "## ".
 - Títulos de sección descriptivos, que nombren un dolor o un beneficio del negocio. Nunca \
@@ -157,6 +166,18 @@ def _formato(extension: str) -> str:
 - **Negrita** en cifras y nombres de empresas. Oraciones cortas, voz activa.
 - Ortografía, tildes y puntuación impecables.
 - Extensión: {extension}."""
+
+# Cómo entra Alephee en la nota. Bloque nuevo, pedido en la reunión del equipo:
+# hasta ahora Alephee solo aparecía en el CTA y en "Nombrá las plataformas reales".
+_ENFOQUE_ALEPHEE = """\
+## Enfoque Alephee
+- Alephee conecta el catálogo de autopartes de distribuidores y repuesteros con los \
+principales marketplaces. Cuando la nota hable de catálogo, marketplaces o venta online, \
+mostrá dónde encaja, en una o dos oraciones y donde resuelva un problema que la nota planteó.
+- La nota informa primero: Alephee no es el tema salvo que el pedido lo diga. Nada de \
+tono publicitario en el cuerpo; la invitación va en la llamada a la acción.
+- No le atribuyas funciones, precios, cifras ni clientes que no estén en este bloque, en \
+las noticias o en el pedido."""
 
 
 _SEO = """\
@@ -302,6 +323,95 @@ def _bloque_persona(p: dict) -> str:
 {p["estilo"]}"""
 
 
+# ── Piezas editables ──────────────────────────────────────────────────────────
+# Cada pieza es Markdown. El orden es el del prompt completo.
+
+def persona_a_markdown(p: dict) -> str:
+    """Una persona como se edita en el dashboard."""
+    pasos = "\n".join(f"{i}. {paso}" for i, paso in enumerate(p["estructura"], 1))
+    return f"{p['rol']}\n\n## Tu tarea\n{p['tarea']}\n\n## Estructura\n{pasos}\n\n## Estilo\n{p['estilo']}"
+
+
+_SECCIONES_PERSONA = {"tu tarea": "tarea", "tarea": "tarea", "estructura": "estructura", "estilo": "estilo"}
+
+
+def parsear_persona(md: str) -> dict:
+    """{"rol", "tarea", "estructura": [...], "estilo"} desde el Markdown de una persona.
+
+    El rol es el texto antes del primer "## ". Las secciones se reconocen por el
+    comienzo del título ("## Estructura (lo que sea)" también vale). La
+    estructura es la lista numerada; una línea sin número sigue el punto anterior.
+    """
+    partes: dict[str, list[str]] = {"rol": []}
+    actual = "rol"
+    for linea in (md or "").replace("\r\n", "\n").split("\n"):
+        titulo = re.match(r"^##\s+(.+?)\s*$", linea)
+        if titulo:
+            nombre = titulo.group(1).lower().strip(" :")
+            actual = next((v for k, v in _SECCIONES_PERSONA.items() if nombre.startswith(k)), "_otra")
+            partes.setdefault(actual, [])
+            continue
+        partes.setdefault(actual, []).append(linea)
+
+    def junto(clave):
+        return " ".join(" ".join(partes.get(clave, [])).split())
+
+    pasos: list[str] = []
+    for linea in partes.get("estructura", []):
+        item = re.match(r"^\s*\d+[.)]\s+(.*)$", linea)
+        if item:
+            pasos.append(item.group(1).strip())
+        elif linea.strip() and pasos:
+            pasos[-1] = f"{pasos[-1]} {linea.strip()}"
+    rol = re.sub(r"^#\s+\S.*$", "", "\n".join(partes["rol"]), flags=re.M)   # un "# Título" arriba no es parte del rol
+    return {"rol": " ".join(rol.split()), "tarea": junto("tarea"), "estructura": pasos, "estilo": junto("estilo")}
+
+
+PIEZAS = {
+    "identidad": _IDENTIDAD,
+    "audiencia": _AUDIENCIA,
+    "reglas_datos": _REGLAS_DATOS,
+    "oficio": _REGLAS_OFICIO,
+    "enfoque_alephee": _ENFOQUE_ALEPHEE,
+    "formato": _FORMATO,
+    "seo": _SEO,
+    "salida": _SALIDA,
+    **{f"persona_{slug}": persona_a_markdown(p) for slug, p in PERSONAS.items()},
+}
+
+
+def _activas() -> dict:
+    """Las piezas aprobadas en el dashboard. Nunca falla: sin Mongo, {}."""
+    try:
+        from afterdrive import prompts_editables
+        return prompts_editables.activos()
+    except Exception as e:
+        print(f"[AVISO] No se pudieron leer los prompts editados: {e}", flush=True)
+        return {}
+
+
+def texto(clave: str, piezas: dict | None = None) -> str:
+    """El Markdown activo de una pieza (o el original). `piezas` pisa lo activo (vista previa)."""
+    if piezas and clave in piezas:
+        return piezas[clave]
+    return _activas().get(clave) or PIEZAS[clave]
+
+
+def persona(slug: str, piezas: dict | None = None) -> dict:
+    """Rol, tarea, estructura y estilo de una persona; una desconocida es la analítica.
+
+    Si la versión activa no se puede leer como persona (le falta una sección),
+    se usa la original: un prompt roto nunca llega al modelo.
+    """
+    slug = slug if slug in PERSONAS else "analitico"
+    clave = f"persona_{slug}"
+    if (piezas and clave in piezas) or clave in _activas():
+        p = parsear_persona(texto(clave, piezas))
+        if p["rol"] and p["tarea"] and p["estructura"] and p["estilo"]:
+            return p
+    return dict(PERSONAS[slug])
+
+
 def system_prompt(
     persona: str = "analitico",
     region: list[str] | None = None,
@@ -310,15 +420,21 @@ def system_prompt(
     puntapie_url: str | None = None,
     directiva: str = "",
     idioma: str | None = None,
+    piezas: dict | None = None,
 ) -> str:
-    """System prompt de redacción para una persona. `idioma` (es, pt, en) fija la voz; si no, sale de la región."""
-    p = PERSONAS.get(persona) or PERSONAS["analitico"]
+    """System prompt de redacción para una persona. `idioma` (es, pt, en) fija la voz; si no, sale de la región.
+
+    `piezas` ({clave: markdown}) reemplaza las piezas activas: es para la vista
+    previa de un borrador en el dashboard.
+    """
+    p = _persona(persona, piezas)
     v = voz_de_idioma(idioma) if idioma else voz(region)
     extension = extension or _EXTENSION_DEFAULT
+    identidad = texto("identidad", piezas)
 
     if compacto:
         partes = [
-            f"{p['rol']} {_IDENTIDAD}",
+            f"{p['rol']} {identidad}",
             "Lectores: repuesteros, distribuidores y gerentes de e-commerce automotor (no consumidores).",
             _bloque_persona(p),
             "## Reglas\n"
@@ -330,21 +446,26 @@ def system_prompt(
             f"- Extensión: {extension}. Sin repetir ideas.",
             _secciones_fijas(v, compacto=True),
             _cierre(v, puntapie_url),
-            _SALIDA,
+            texto("salida", piezas),
         ]
     else:
         partes = [
-            f"{p['rol']} {_IDENTIDAD}",
-            _AUDIENCIA,
+            f"{p['rol']} {identidad}",
+            texto("audiencia", piezas),
             _bloque_persona(p),
-            _REGLAS_DATOS,
-            _REGLAS_OFICIO,
-            _formato(extension),
-            _SEO,
+            texto("reglas_datos", piezas),
+            texto("oficio", piezas),
+            texto("enfoque_alephee", piezas),
+            # replace y no format: el texto lo escribe una persona y puede traer otras llaves.
+            texto("formato", piezas).replace("{extension}", extension),
+            texto("seo", piezas),
             _secciones_fijas(v, compacto=False),
             _cierre(v, puntapie_url),
-            _SALIDA,
+            texto("salida", piezas),
         ]
     if directiva:
         partes.append(directiva)
     return "\n\n".join(partes)
+
+
+_persona = persona   # system_prompt tiene un parámetro que se llama igual

@@ -70,7 +70,7 @@ Solo un JSON, sin texto alrededor:
 
 
 def _pedido(persona: str, regiones, idioma: str | None = None) -> str:
-    p = redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["comercial"]
+    p = redaccion.persona(persona if persona in redaccion.PERSONAS else "comercial")
     # La voz en que se escribió: el idioma guardado (portugués en las nuevas) o, en las viejas, sus regiones.
     voz = redaccion.voz_de_idioma(idioma) if idioma else redaccion.voz(regiones)
     return (f"## Lo que se le pidió a la IA\n- Rol: {p['rol']}\n- Tarea: {p['tarea']}\n"

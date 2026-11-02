@@ -429,7 +429,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
 
     recientes = _recientes()
     print("  Planificando la nota...", flush=True)
-    estructura = (redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["analitico"])["estructura"]
+    estructura = redaccion.persona(persona)["estructura"]
     plan_nota = plan.planificar(
         noticias, _pedido(categorias, tema), estructura,
         publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
