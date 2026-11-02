@@ -787,6 +787,17 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
+["Estados", "Estados", "States"],
+["Original", "Original", "Original"],
+["Editada", "Editada", "Edited"],
+["Escribí el cambio", "Escreva a alteração", "Write the change"],
+["Sin errores", "Sem erros", "No errors"],
+["Esperando tu aprobación", "Aguardando sua aprovação", "Waiting for your approval"],
+["La usa la IA", "A IA a usa", "Used by the AI"],
+["La usa la IA · texto original", "A IA a usa · texto original", "Used by the AI · original text"],
+["Corregí lo marcado abajo", "Corrija o que está marcado abaixo", "Fix what is marked below"],
+["Hay 1 error", "Há 1 erro", "There is 1 error"],
+["Falta enviarla", "Falta enviá-la", "Not sent yet"],
 ["Prompts", "Prompts", "Prompts"],
 ["Instrucciones", "Instruções", "Instructions"],
 ["Cambios para revisar", "Alterações para revisar", "Changes to review"],
@@ -1054,6 +1065,8 @@ function _fotosDescartadas(x, cod) {
 
 var PATRONES = {
   pt: [
+    [/^Hay (\d+) errores$/, 'Há $1 erros'],
+    [/^La usa la IA · v(\d+)$/, 'A IA a usa · v$1'],
     [/^(Activa|En revisión|Borrador) · v(\d+)$/, function(m, e, v) { return {'Activa': 'Ativa', 'En revisión': 'Em revisão', 'Borrador': 'Rascunho'}[e] + ' · v' + v; }],
     [/^¿Restaurar la versión (\d+)\?$/, 'Restaurar a versão $1?'],
     [/^Supera el largo máximo: (\d+) de (\d+) caracteres\.$/, 'Ultrapassa o tamanho máximo: $1 de $2 caracteres.'],
@@ -1166,6 +1179,8 @@ var PATRONES = {
     [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
+    [/^Hay (\d+) errores$/, 'There are $1 errors'],
+    [/^La usa la IA · v(\d+)$/, 'Used by the AI · v$1'],
     [/^(Activa|En revisión|Borrador) · v(\d+)$/, function(m, e, v) { return {'Activa': 'Active', 'En revisión': 'In review', 'Borrador': 'Draft'}[e] + ' · v' + v; }],
     [/^¿Restaurar la versión (\d+)\?$/, 'Restore version $1?'],
     [/^Supera el largo máximo: (\d+) de (\d+) caracteres\.$/, 'Over the maximum length: $1 of $2 characters.'],

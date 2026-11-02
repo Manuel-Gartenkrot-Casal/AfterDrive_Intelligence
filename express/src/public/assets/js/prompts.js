@@ -80,18 +80,22 @@ async function cargarPiezasPrompt(soloAviso) {
 
 function pintarListaPrompts() {
   var grupos = { base: 'Base del prompt', persona: 'Personas' };
-  var html = '';
+  var html = '<ul class="prompts-leyenda" aria-label="' + escHtml(tr('Estados')) + '">'
+    + '<li class="estado-original">' + escHtml(tr('Original')) + '</li><li class="estado-editada">' + escHtml(tr('Editada')) + '</li>'
+    + '<li class="estado-borrador">' + escHtml(tr('Borrador')) + '</li><li class="estado-en_revision">' + escHtml(tr('En revisión')) + '</li></ul>';
   Object.keys(grupos).forEach(function(g) {
     html += '<p class="prompts-grupo">' + escHtml(grupos[g]) + '</p>';
     PROMPTS.piezas.filter(function(p) { return p.grupo === g; }).forEach(function(p) {
       var pend = p.pendiente;
-      html += '<button type="button" class="prompts-item' + (p.clave === PROMPTS.clave ? ' activo' : '') + '" data-clave="' + escHtml(p.clave) + '"'
+      // Una sola etiqueta: lo pendiente manda; si no, si la activa es la original o una editada.
+      var estado = pend ? pend.estado : (p.version_activa ? 'editada' : 'original');
+      var etiqueta = pend ? _ESTADOS_PROMPT[pend.estado] : (p.version_activa ? 'v' + p.version_activa : 'Original');
+      html += '<button type="button" class="prompts-item estado-' + estado + (p.clave === PROMPTS.clave ? ' activo' : '') + '" data-clave="' + escHtml(p.clave) + '"'
         + (p.clave === PROMPTS.clave ? ' aria-current="true"' : '') + '>'
+        + '<span class="prompts-item-punto" aria-hidden="true"></span>'
         + '<span class="prompts-item-nombre">' + escHtml(p.titulo) + '</span>'
-        + '<span class="prompts-item-meta">'
-        + (pend ? '<span class="prompts-chip ' + pend.estado + '">' + escHtml(_ESTADOS_PROMPT[pend.estado]) + '</span>' : '')
-        + '<span class="prompts-version">' + (p.version_activa ? 'v' + p.version_activa : escHtml(tr('original'))) + '</span>'
-        + '</span></button>';
+        + '<span class="prompts-chip ' + estado + '">' + escHtml(etiqueta) + '</span>'
+        + '</button>';
     });
   });
   $('prompts-lista').innerHTML = html;
@@ -129,6 +133,7 @@ function cargarEditorPrompt(d) {
   var item = PROMPTS.piezas.filter(function(x) { return x.clave === d.clave; })[0];
   $('pe-titulo').textContent = d.titulo;
   $('pe-descripcion').textContent = item ? item.descripcion : '';
+  $('pe-grupo').textContent = tr(item && item.grupo === 'persona' ? 'Persona' : 'Base del prompt');
   var esPersona = d.clave.indexOf('persona_') === 0;
   $('pe-persona').disabled = esPersona;
   if (esPersona) $('pe-persona').value = d.clave.slice(8);
@@ -198,11 +203,28 @@ function pintarAccionesPrompt() {
   chip.textContent = estado === 'activo'
     ? (d.activo.version ? tr('Activa') + ' · v' + d.activo.version : tr('Activa · texto original'))
     : (sucio ? tr('Cambios sin guardar') : tr(_ESTADOS_PROMPT[estado]) + ' · v' + p.version);
-  var actual = estado === 'activo' ? 3 : estado === 'en_revision' ? 2 : (valido && !igualActiva ? 1 : 0);
+  var errores = PROMPTS.validacion ? PROMPTS.validacion.errores.length : 0;
+  var pasos = ['', '', '', ''], notas = ['Escribí el cambio', 'Sin errores', 'Esperando tu aprobación', 'La usa la IA'];
+  if (estado === 'activo') {
+    pasos = ['hecho', 'hecho', 'hecho', 'actual'];
+    notas[3] = d.activo.version ? tr('La usa la IA') + ' · v' + d.activo.version : 'La usa la IA · texto original';
+  } else if (estado === 'en_revision') {
+    pasos = ['hecho', 'hecho', 'actual', ''];
+  } else if (errores) {
+    pasos = ['actual', 'error', '', ''];
+    notas[0] = 'Corregí lo marcado abajo';
+    notas[1] = errores === 1 ? 'Hay 1 error' : 'Hay ' + errores + ' errores';
+  } else if (igualActiva || !PROMPTS.validacion) {
+    pasos = ['actual', '', '', ''];
+  } else {
+    // Escrito y sin errores: falta enviarlo. El paso 3 queda marcado como el próximo.
+    pasos = ['hecho', 'hecho', 'siguiente', ''];
+    notas[2] = 'Falta enviarla';
+  }
   document.querySelectorAll('#pe-pasos li').forEach(function(li, i) {
-    li.classList.toggle('hecho', i < actual || (estado === 'activo' && i === 3));
-    li.classList.toggle('actual', i === actual);
-    if (i === actual) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+    li.className = pasos[i];
+    li.querySelector('small').textContent = tr(notas[i]);
+    if (pasos[i] === 'actual') li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
   });
 
   // Aviso del momento.
@@ -214,7 +236,7 @@ function pintarAccionesPrompt() {
   else if (!p) aviso = tr('Al guardar se crea un borrador: la versión activa sigue igual hasta que apruebes el cambio.');
   $('pe-aviso').textContent = aviso;
   $('pe-aviso').hidden = !aviso;
-  $('pe-aviso').classList.toggle('rechazo', !!(p && p.rechazo && estado === 'borrador'));
+  $('pe-aviso').className = 'prompts-aviso ' + (p && p.rechazo && estado === 'borrador' ? 'rechazo' : estado);
 
   // Botones.
   $('pe-descartar').hidden = !p;
