@@ -13,6 +13,24 @@ from afterdrive.ia import consumo
 HASH = generate_password_hash("secreta123")
 
 
+def _mongomock_acepta_sort():
+    """pymongo >= 4.11 le pasa `sort` a add_update en bulk_write (UpdateOne/ReplaceOne)
+    y mongomock 4.3, la última versión, no lo conoce. Solo importa con un filtro que
+    matchee varios documentos; los tests no lo usan, así que se descarta."""
+    builder = mongomock.collection.BulkOperationBuilder
+    original = builder.add_update
+    if getattr(original, "_acepta_sort", False):
+        return
+
+    def add_update(self, *args, sort=None, **kwargs):
+        return original(self, *args, **kwargs)
+    add_update._acepta_sort = True
+    builder.add_update = add_update
+
+
+_mongomock_acepta_sort()
+
+
 @pytest.fixture(autouse=True)
 def consumo_en_memoria(monkeypatch):
     """El registro de consumo de la API paga va a un Mongo en memoria, nunca al real."""
