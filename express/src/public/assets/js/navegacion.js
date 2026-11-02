@@ -41,6 +41,7 @@ async function irASeccion(id, opts) {
   }
   var anterior = _seccion;
   _seccion = id;
+  pintarMiga(id);
   document.querySelectorAll('#contenido [data-seccion]').forEach(function(el) {
     el.classList.toggle('activa', el.dataset.seccion === id);
   });
@@ -95,6 +96,7 @@ function setModo(modo) {
     if (!el.classList.contains('loading')) el.textContent = modo === 'cliente' ? el.dataset.cliente : el.dataset.dev;
   });
   if (typeof pintarDia === 'function') pintarDia();   // el día de Programación nombra las tareas
+  ajustarMarcoCliente();
   // Si la sección actual no existe en esta vista, se vuelve al inicio.
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
   // Una nota abierta se vuelve a abrir en la vista nueva (en Cliente se lee como documento).
@@ -182,3 +184,48 @@ document.addEventListener('keydown', function(e) {
     toggleNavegacion(); $('menu-movil').focus();
   }
 });
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MARCO DE LA VISTA CLIENTE (escritorio)
+   Arriba una barra fina con el logo y la sección actual ("Inicio", "Notas"…) y
+   "+ Nueva nota"; a la izquierda una barra de íconos. Idioma, tema, ayuda y
+   salir bajan al pie de esa barra (se mueven los mismos elementos, así sus
+   botones siguen funcionando igual). En Desarrollador y en el celular vuelven
+   al encabezado y a la barra lateral de siempre.
+   ═══════════════════════════════════════════════════════════════════════ */
+var NOMBRE_SECCION = { inicio: 'Inicio', crear: 'Nueva nota', historial: 'Notas', programacion: 'Programación',
+                       fuentes: 'Fuentes', prompts: 'Prompts', corridas: 'Actividad' };
+var _escritorio = window.matchMedia('(min-width: 901px)');
+
+function pintarMiga(id) {
+  document.documentElement.dataset.seccion = id;
+  var miga = $('header-miga');
+  if (miga) miga.textContent = tr(NOMBRE_SECCION[id] || '');
+}
+
+function ajustarMarcoCliente() {
+  var pie = $('rail-pie'), der = document.querySelector('.header-right');
+  if (!pie || !der) return;
+  var enRiel = document.documentElement.getAttribute('data-modo') === 'cliente' && _escritorio.matches;
+  var idioma = document.querySelector('.selector-idioma'), tema = $('themeBtn'), salir = $('btn-salir');
+  var ayuda = document.querySelector('.sidebar-ayuda'), dev = pie.querySelector('.rail-dev'), estado = der.querySelector('.status-pill');
+  if (enRiel) {
+    pie.insertBefore(idioma, dev);
+    pie.insertBefore(tema, dev);
+    pie.insertBefore(ayuda, dev);
+    pie.appendChild(salir);
+  } else if (idioma.parentNode !== der) {
+    der.insertBefore(idioma, estado);
+    der.appendChild(tema);
+    der.appendChild(salir);
+    pie.parentNode.insertBefore(ayuda, pie);
+  }
+  // En la barra de íconos, cada uno dice qué es al pasar el mouse.
+  document.querySelectorAll('.nav-link').forEach(function(a) {
+    if (enRiel) a.title = tr(NOMBRE_SECCION[a.dataset.seccion] || '');
+    else a.removeAttribute('title');
+  });
+}
+(_escritorio.addEventListener ? _escritorio.addEventListener('change', ajustarMarcoCliente) : _escritorio.addListener(ajustarMarcoCliente));
+document.addEventListener('idioma', function() { if (_seccion) pintarMiga(_seccion); ajustarMarcoCliente(); });

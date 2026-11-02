@@ -3133,3 +3133,59 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
     white-space: normal; line-height: 1.2; text-align: center; font-size: 0.8rem; }
   .lp-fila { grid-template-columns: 96px minmax(0, 1fr) auto; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MARCO DE LA VISTA CLIENTE EN ESCRITORIO (navegacion.js: ajustarMarcoCliente)
+   Barra superior fina (logo, sección actual, "+ Nueva nota") y barra de íconos a
+   la izquierda con idioma, tema, ayuda, vista Desarrollador y salir abajo.
+   ═══════════════════════════════════════════════════════════════════════ */
+.header-miga, .header-nueva, .rail-pie { display: none; }
+@media (min-width: 901px) {
+  [data-modo="cliente"] .app-container { padding: 0; }
+  [data-modo="cliente"] .header { height: 52px; flex: 0 0 52px; margin: 0; padding: 0 20px; gap: 10px; border-radius: 0; box-shadow: none;
+    border-bottom: 1px solid var(--border); justify-content: flex-start; }
+  [data-modo="cliente"] .header::after { left: 0; right: 0; bottom: 0; height: 2px; }
+  [data-modo="cliente"] .header-brand { gap: 0; }
+  [data-modo="cliente"] .header-logo { height: 27px; }
+  [data-modo="cliente"] .header-title { display: none; }
+  [data-modo="cliente"] .header-miga { display: inline; font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
+  [data-modo="cliente"] .header-right { margin-left: auto; gap: 8px; }
+  [data-modo="cliente"] .header-right .status-pill { display: none; }
+  [data-modo="cliente"] .header-nueva { display: inline-flex; min-height: 34px; padding: 6px 14px; }
+  [data-seccion="crear"][data-modo="cliente"] .header-nueva { display: none; }
+
+  [data-modo="cliente"] .layout { grid-template-columns: 56px minmax(0, 1fr); gap: 0; }
+  [data-modo="cliente"] .sidebar { width: 56px; padding: 14px 0; gap: 6px; align-items: center; border-radius: 0; box-shadow: none;
+    background: var(--bg); border-right: 1px solid var(--border); }
+  [data-modo="cliente"] .nav-lista { align-items: center; gap: 6px; }
+  [data-modo="cliente"] .nav-link { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; gap: 0;
+    font-size: 0; border-radius: 9px; color: var(--text-lo); }
+  [data-modo="cliente"] .nav-link svg { width: 18px; height: 18px; opacity: 1; }
+  [data-modo="cliente"] .nav-link[aria-current="page"] { background: var(--brand-soft); color: var(--brand); }
+  [data-modo="cliente"] .nav-link[aria-current="page"]::before { display: none; }
+  [data-modo="cliente"] .nav-badge { position: absolute; top: 2px; right: 0; margin: 0; min-width: 15px; height: 15px; padding: 0 3px;
+    font-size: 9.5px; line-height: 15px; }
+  [data-modo="cliente"] .nav-actividad { display: none; }
+  [data-modo="cliente"] .sidebar-pie { display: none; }
+  [data-modo="cliente"] .rail-pie { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: auto; }
+  [data-modo="cliente"] .rail-pie .selector-idioma { flex-direction: column; gap: 2px; padding: 2px; border-radius: 9px; box-shadow: none; border: 1px solid var(--border); }
+  [data-modo="cliente"] .rail-pie .selector-idioma button { width: 30px; padding: 3px 0; font-size: 0.66rem; }
+  [data-modo="cliente"] .rail-pie .theme-toggle, [data-modo="cliente"] .rail-dev { width: 36px; height: 36px; box-shadow: none; border: 0;
+    border-radius: 9px; background: transparent; color: var(--text-lo); display: grid; place-items: center; cursor: pointer; }
+  [data-modo="cliente"] .rail-pie .theme-toggle:hover, [data-modo="cliente"] .rail-dev:hover { background: var(--well); color: var(--text-hi); }
+  [data-modo="cliente"] .rail-pie .sidebar-ayuda { padding: 0; border: 0; }
+  [data-modo="cliente"] .rail-pie .ayuda-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  [data-modo="cliente"] .rail-pie .ayuda-btn span { display: none; }
+  [data-modo="cliente"] .rail-pie .ayuda-menu { left: calc(100% + 12px); }
+
+  [data-modo="cliente"] .contenido { margin: 0; padding: 24px 32px var(--shell-pie); }
+  /* En la barra, Notas antes que Nueva nota (como en las maquetas). */
+  [data-modo="cliente"] .nav-lista > li:nth-child(3) { order: 1; }
+  [data-modo="cliente"] .nav-lista > li:nth-child(2) { order: 2; }
+  [data-modo="cliente"] .nav-lista > li:nth-child(n+4) { order: 3; }
+  /* Con una nota abierta, la ruta de la sección no asoma junto al logo. */
+  [data-modo="cliente"] body.modal-abierto .header-miga, body.modal-abierto [data-modo="cliente"] .header-miga { visibility: hidden; }
+  /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
+  [data-modo="cliente"] .modal-overlay:has(> .modal.lectura) { left: 56px; }
+  [data-modo="cliente"] .modal.lectura { width: calc(100vw - 56px); }
+}

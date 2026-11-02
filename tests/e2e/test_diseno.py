@@ -16,7 +16,7 @@ def test_idioma_informativo_segun_region(pagina):
     pagina.click('#btn-mas-opciones')
     pagina.locator('#f2-regiones-grid button[data-slug="brasil"]').click()
     expect(pagina.locator('#idioma-nota-valor')).to_have_text('Português do Brasil')
-    pagina.locator('.header-right [data-idioma="en"]').click()
+    pagina.locator('.selector-idioma [data-idioma="en"]').click()
     expect(pagina.locator('#idioma-nota-valor')).to_have_text('Português do Brasil')
     expect(pagina.locator('#crear-resumen')).to_contain_text('Português do Brasil')
 
@@ -53,9 +53,10 @@ def test_espacio_y_adaptacion(navegador, base_url, ancho):
         for modo in ["cliente", "dev"]:
             if ancho <= 640 and not pg.locator(".sidebar").is_visible():
                 pg.click("#menu-movil")
-            pg.locator(f'button[data-modo="{modo}"]').click()
-            if modo == "dev":                     # cambiar de vista pide confirmación
-                pg.click("#confirmar-si")
+            # En escritorio, la vista Cliente pasa a Desarrollador con el ícono </> de la barra.
+            if pg.evaluate("document.documentElement.getAttribute('data-modo')") != modo:
+                pg.locator(f'button[data-modo="{modo}"]:visible').click()
+                pg.click("#confirmar-si")         # cambiar de vista pide confirmación
             for seccion in SECCIONES:
                 if ancho <= 640 and not pg.locator(".sidebar").is_visible():
                     pg.click("#menu-movil")

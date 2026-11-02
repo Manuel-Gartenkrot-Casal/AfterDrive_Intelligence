@@ -275,7 +275,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
         ruta.fulfill(json={"success": True, "provider": "paga", "model": "modelo-e2e"})
 
     pagina.route("**/api/providers", cambiar)
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click('button[data-modo="dev"]:visible')
     pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
@@ -472,12 +472,12 @@ def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
     # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click('button[data-modo="dev"]:visible')
     expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
     pagina.click("#confirmar-no")
     assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
     expect(tablero).to_be_hidden()
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pagina.click('button[data-modo="dev"]:visible')
     pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
@@ -753,12 +753,12 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     assert pg.evaluate("document.documentElement.lang") == "en"
 
     # Desde el encabezado, a portugués; queda elegido al recargar.
-    pg.locator(".header-right .selector-idioma").get_by_role("button", name="PT").click()
+    pg.locator(".selector-idioma").get_by_role("button", name="PT").click()
     expect(nav).to_contain_text("Criar post")
     pg.reload()
     pg.wait_for_selector(".sidebar")
     expect(nav).to_contain_text("Histórico")
-    assert pg.locator(".header-right [data-idioma='pt']").get_attribute("aria-pressed") == "true"
+    assert pg.locator(".selector-idioma [data-idioma='pt']").get_attribute("aria-pressed") == "true"
 
     # Lo que el JS pinta después también sale traducido.
     pg.goto(base_url + "/#crear")
