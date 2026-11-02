@@ -80,8 +80,8 @@ def base(monkeypatch):
     return b
 
 
-def render_falso(htmls):
-    return [f"png{i}".encode() for i in range(len(htmls))], b"%PDF-falso"
+def render_falso(htmls, solo=None):
+    return [None if solo and i + 1 not in solo else f"png{i}".encode() for i in range(len(htmls))], b"%PDF-falso"
 
 
 def ia_por_idioma(monkeypatch):
@@ -120,18 +120,43 @@ def test_si_no_sale_ninguno_falla(base):
         carrusel.generar(str(oid), ["en"], base=base, render=render_falso)
 
 
-def test_editar_un_idioma_lo_redibuja_sin_ia_y_borra_sus_imagenes_viejas(base, monkeypatch):
+def test_corregir_un_texto_redibuja_solo_su_diapositiva(base, monkeypatch):
     ia_por_idioma(monkeypatch)
     oid = base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "es",
                                        "hubspot": {"url": "https://blog/es/frenos"}}).inserted_id
-    carrusel.generar(str(oid), base=base, render=render_falso)
+    antes = carrusel.generar(str(oid), base=base, render=render_falso)["es"]
     monkeypatch.setattr(llm, "completar", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no debe llamar a la IA")))
-    carrusel.guardar_textos(str(oid), "es", {"titulo": "Mi título", "puntos": ["uno"], "cta": "Vamos"}, base=base)
-    hechos = carrusel.generar(str(oid), ["es"], solo_imagenes=True, base=base, render=render_falso)
-    assert hechos["es"]["textos"]["titulo"] == "Mi título" and hechos["es"]["origen_textos"] == "editado"
-    assert hechos["es"]["url"] == "https://blog/es/frenos"                     # el post en HubSpot, si ya se subió
+    textos, cambiadas = carrusel.guardar_textos(str(oid), "es", {**antes["textos"], "cta": "Vamos"}, base=base)
+    assert cambiadas == [3]
+    pedidas = []
+    def render(htmls, solo=None):
+        pedidas.append(solo)
+        return render_falso(htmls, solo)
+    despues = carrusel.generar(str(oid), ["es"], solo_imagenes=True, base=base, render=render, diapositivas=cambiadas)["es"]
+    assert pedidas == [[3]] and despues["redibujadas"] == [3]
+    assert despues["diapositivas"][:2] == antes["diapositivas"][:2] and despues["diapositivas"][2] != antes["diapositivas"][2]
+    assert despues["pdf_id"] != antes["pdf_id"] and despues["textos"]["cta"] == "Vamos"
+    assert despues["url"] == "https://blog/es/frenos"                    # el post en HubSpot, si ya se subió
+    viejas = [ObjectId(antes["diapositivas"][2].rsplit("/", 1)[1]), ObjectId(antes["pdf_id"])]
+    assert base.imagenes_subidas.count_documents({"_id": {"$in": viejas}}) == 0   # la vieja y el PDF viejo se borran
     assert base.imagenes_subidas.count_documents({"carrusel": True}) == 12
     assert base.notas_fase2.find_one({"_id": oid})["carruseles"]["pt"]["textos"]["titulo"] == "Título pt"
+
+
+@pytest.mark.parametrize("cambio, esperado", [
+    ({"titulo": "Otro"}, [1]), ({"subtitulo": "Otro"}, [1]), ({"puntos": ["a", "b"]}, [2]),
+    ({"cta": "Otra"}, [3]), ({"titulo": "Otro", "cta": "Otra"}, [1, 3]), ({}, []),
+])
+def test_diapositivas_cambiadas(cambio, esperado):
+    antes = {"titulo": "T", "subtitulo": "S", "puntos": ["a", "b", "c"], "cta": "C"}
+    assert carrusel.diapositivas_cambiadas(antes, {**antes, **cambio}) == esperado
+
+
+def test_sin_las_otras_hechas_redibuja_las_3(base, monkeypatch):
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "es",
+                                       "carruseles": {"es": {"textos": {"titulo": "T", "puntos": ["a"]}}}}).inserted_id
+    hecho = carrusel.generar(str(oid), ["es"], solo_imagenes=True, base=base, render=render_falso, diapositivas=[2])["es"]
+    assert hecho["redibujadas"] == [1, 2, 3] and len(hecho["diapositivas"]) == 3
 
 
 def test_el_formato_viejo_se_migra(base, monkeypatch):
@@ -190,8 +215,13 @@ def test_editar_textos_de_un_idioma(cliente, base):
     c, encoladas = cliente
     oid = str(base.notas_fase2.insert_one({"contenido": NOTA, "carruseles": {"pt": {"idioma": "pt"}}}).inserted_id)
     r = c.post(f"/api/carrusel/{oid}/textos", json={"idioma": "pt", "titulo": "Novo", "puntos": ["a", "b"]})
-    assert r.status_code == 202 and r.json["textos"]["titulo"] == "Novo"
-    assert encoladas[-1][1]["argv"] == [f"--nota={oid}", "--idiomas", "pt", "--solo-imagenes"]
+    assert r.status_code == 202 and r.json["textos"]["titulo"] == "Novo" and r.json["diapositivas"] == [1, 2, 3]
+    assert encoladas[-1][1]["argv"] == [f"--nota={oid}", "--idiomas", "pt", "--solo-imagenes", "--diapositivas", "1", "2", "3"]
+    r = c.post(f"/api/carrusel/{oid}/textos", json={"idioma": "pt", "titulo": "Novo", "puntos": ["a", "c"]})
+    assert r.status_code == 202 and encoladas[-1][1]["argv"][-2:] == ["--diapositivas", "2"]
+    n = len(encoladas)
+    r = c.post(f"/api/carrusel/{oid}/textos", json={"idioma": "pt", "titulo": "Novo", "puntos": ["a", "c"]})
+    assert r.status_code == 200 and r.json["diapositivas"] == [] and len(encoladas) == n   # sin cambios no encola
     assert c.post(f"/api/carrusel/{oid}/textos", json={"idioma": "pt", "titulo": "", "puntos": ["a"]}).status_code == 400
     assert c.post(f"/api/carrusel/{oid}/textos", json={"titulo": "T", "puntos": ["a"]}).status_code == 400   # sin idioma
     assert c.post(f"/api/carrusel/{ObjectId()}/textos", json={"idioma": "es", "titulo": "T", "puntos": ["a"]}).status_code == 404

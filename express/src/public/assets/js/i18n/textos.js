@@ -6,6 +6,15 @@
 
 var _FILAS_TEXTOS = [
   // ── Carrusel para redes ───────────────────────────────────────────────────
+  ['Mostrar el carrusel también dentro de la nota en el blog', 'Mostrar o carrossel também dentro do post no blog', 'Also show the carousel inside the blog post'],
+  ['Además de descargarlo para redes, las 3 imágenes aparecen dentro de la nota publicada en el blog, antes de las fuentes. La nota en español muestra el carrusel en español, la de portugués el de portugués y la de inglés el de inglés. Si la nota ya está en HubSpot, volvé a subirla para que aparezca.', 'Além de baixá-lo para as redes, as 3 imagens aparecem dentro do post publicado no blog, antes das fontes. O post em espanhol mostra o carrossel em espanhol, o de português o de português e o de inglês o de inglês. Se o post já está no HubSpot, suba de novo para que apareça.', 'Besides downloading it for social media, the 3 images appear inside the published blog post, before the sources. The Spanish post shows the Spanish carousel, the Portuguese one the Portuguese carousel and the English one the English carousel. If the post is already in HubSpot, upload it again for it to appear.'],
+  ['Al guardar se redibuja solo la diapositiva cuyo texto cambiaste.', 'Ao salvar, só o slide cujo texto você mudou é redesenhado.', 'When you save, only the slide whose text you changed is redrawn.'],
+  ['No cambiaste ningún texto.', 'Você não mudou nenhum texto.', 'You didn’t change any text.'],
+  ['El carrusel se va a mostrar dentro de la nota en el blog', 'O carrossel vai aparecer dentro do post no blog', 'The carousel will show inside the blog post'],
+  ['La nota en el blog va sin el carrusel', 'O post no blog vai sem o carrossel', 'The blog post goes without the carousel'],
+  ['Diapositiva anterior', 'Slide anterior', 'Previous slide'],
+  ['Diapositiva siguiente', 'Próximo slide', 'Next slide'],
+  ['Vista previa del carrusel como post de Instagram', 'Prévia do carrossel como post do Instagram', 'Carousel preview as an Instagram post'],
   ['Carruseles para redes', 'Carrosséis para redes', 'Social carousels'],
   ['Un carrusel por idioma: 3 imágenes de 1080×1350 para Instagram y un PDF para LinkedIn. Las diapositivas se dibujan con el diseño de AfterDrive; la portada usa la imagen destacada de la nota y los textos los escribe la IA a partir de la nota. Se descargan para publicarlas: no se suben solas a las redes.', 'Um carrossel por idioma: 3 imagens de 1080×1350 para o Instagram e um PDF para o LinkedIn. Os slides são desenhados com o design da AfterDrive; a capa usa a imagem destacada do post e os textos são escritos pela IA a partir do post. São baixados para publicar: não sobem sozinhos às redes.', 'One carousel per language: three 1080×1350 images for Instagram and a PDF for LinkedIn. Slides are drawn with the AfterDrive design; the cover uses the post’s featured image and the AI writes the copy from the post. You download them to publish: they aren’t posted to social networks automatically.'],
   ['Volver a crear los 3 con IA', 'Criar os 3 de novo com IA', 'Recreate all 3 with AI'],

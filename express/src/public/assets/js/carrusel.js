@@ -51,20 +51,48 @@ function llenarCarrusel(nota) {
         }).join('') + '</div>';
     html += carruselIdiomaHtml(nota, todos[_carruselVista], _carruselVista);
     html += '<label class="carrusel-en-post"><input type="checkbox" id="carrusel-en-post"' + (carruselEnPostActivo(nota) ? ' checked' : '')
-      + ' onchange="carruselEnPost(this)"> Sumar la galería a los posts de HubSpot</label>'
-      + '<p class="revision-sub">Cada post (el original y sus traducciones) lleva el carrusel de su idioma, antes de las fuentes. Se aplica al subir la nota a HubSpot (si ya está subida, volvé a subirla).</p>';
+      + ' onchange="carruselEnPost(this)"> Mostrar el carrusel también dentro de la nota en el blog</label>'
+      + '<p class="revision-sub">Además de descargarlo para redes, las 3 imágenes aparecen dentro de la nota publicada en el blog, antes de las fuentes. La nota en español muestra el carrusel en español, la de portugués el de portugués y la de inglés el de inglés. Si la nota ya está en HubSpot, volvé a subirla para que aparezca.</p>';
   }
   cont.innerHTML = html;
   cont._nota = nota;
+  if (_carruselIr) { var ir = _carruselIr; _carruselIr = 0; requestAnimationFrame(function() { igIr(ir, false); igAlDeslizar(); }); }
 }
 
+var _carruselIr = 0;   // diapositiva a mostrar al redibujar (la que se corrigió)
+
+/* Vista previa como un post de Instagram: una imagen por vez que se desliza (o con las
+   flechas y el teclado), el contador 1/3, los puntitos y el pie del post. Debajo, las descargas. */
 function carruselIdiomaHtml(nota, c, cod) {
-  var html = '<div class="carrusel-tira">' + (c.diapositivas || []).map(function(url, i) {
-      var src = urlSegura(url) + '?v=' + encodeURIComponent(c.generado_en || '');
-      return '<figure><a href="' + src + '" target="_blank" rel="noopener"><img src="' + src + '" alt="Diapositiva ' + (i + 1) + ' del carrusel" loading="lazy"></a>'
-        + '<figcaption><a href="' + src + '" download="carrusel-' + cod + '-' + (i + 1) + '.png">Descargar ' + (i + 1) + '</a></figcaption></figure>';
-    }).join('') + '</div>'
-    + '<p><a class="btn btn-sm" href="/api/carrusel/' + encodeURIComponent(nota._id) + '/pdf?idioma=' + cod + '">Descargar PDF para LinkedIn</a></p>';
+  var t0 = c.textos || {}, v = encodeURIComponent(c.generado_en || '');
+  var diapositivas = c.diapositivas || [];
+  var html = '<div class="ig-post" aria-label="Vista previa del carrusel como post de Instagram">'
+    + '<div class="ig-cabeza"><span class="ig-avatar" aria-hidden="true">' + (((document.querySelector('#logoEl svg') || {}).outerHTML) || 'A') + '</span>'
+    + '<span class="ig-cuenta"><strong translate="no">AfterDrive</strong><small>' + escHtml(NOMBRE_IDIOMA[cod] || cod) + '</small></span>'
+    + '<span class="ig-mas" aria-hidden="true">•••</span></div>'
+    + '<div class="ig-marco">'
+    + '<div class="ig-pista" id="ig-pista" tabindex="0" role="group" aria-roledescription="carrusel" aria-label="Diapositivas" onscroll="igAlDeslizar()" onkeydown="igTecla(event)">'
+    + diapositivas.map(function(url, i) {
+        return '<img src="' + urlSegura(url) + '?v=' + v + '" alt="Diapositiva ' + (i + 1) + ' de ' + diapositivas.length + '" draggable="false">';
+      }).join('')
+    + '</div>'
+    + '<span class="ig-contador" id="ig-contador" aria-live="polite">1/' + diapositivas.length + '</span>'
+    + '<button type="button" class="ig-flecha ig-ant" id="ig-ant" aria-label="Diapositiva anterior" onclick="igMover(-1)" hidden>‹</button>'
+    + '<button type="button" class="ig-flecha ig-sig" id="ig-sig" aria-label="Diapositiva siguiente" onclick="igMover(1)">›</button>'
+    + '</div>'
+    + '<div class="ig-acciones" aria-hidden="true">'
+    + '<span class="ig-iconos"><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C1 8.4 3.2 5 6.6 5c2 0 3.4 1.1 4.4 2.6C12 6.1 13.4 5 15.4 5 18.8 5 21 8.4 19.6 11.7 17.5 16.4 12 21 12 21z"/></svg>'
+    + '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3L21 4l-1.2 4.4A8 8 0 0 1 20 12z"/></svg>'
+    + '<svg viewBox="0 0 24 24"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></svg></span>'
+    + '<span class="ig-puntos" id="ig-puntos">' + diapositivas.map(function(_, i) { return '<i' + (i ? '' : ' class="activo"') + '></i>'; }).join('') + '</span>'
+    + '<span class="ig-guardar"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></span></div>'
+    + '<p class="ig-pie"><strong translate="no">AfterDrive</strong> ' + escHtml(t0.titulo || '') + (t0.subtitulo ? ' — ' + escHtml(t0.subtitulo) : '') + '</p>'
+    + '</div>'
+    + '<p class="carrusel-descargas">Descargar: '
+    + diapositivas.map(function(url, i) {
+        return '<a href="' + urlSegura(url) + '?v=' + v + '" download="carrusel-' + cod + '-' + (i + 1) + '.png">imagen ' + (i + 1) + '</a>';
+      }).join(' · ')
+    + ' · <a href="/api/carrusel/' + encodeURIComponent(nota._id) + '/pdf?idioma=' + cod + '">PDF para LinkedIn</a></p>';
   var t = c.textos || {};
   var puntos = (t.puntos || []).concat(['', '', '']).slice(0, 3);
   return html + '<details class="carrusel-textos"><summary>Editar los textos</summary>'
@@ -78,8 +106,39 @@ function carruselIdiomaHtml(nota, c, cod) {
       }).join('')
     + '<label class="control-label" for="carrusel-cta">Llamada a la acción (diapositiva 3)</label>'
     + '<input id="carrusel-cta" class="input-field" maxlength="70" value="' + escHtml(t.cta || '') + '">'
+    + '<p class="revision-sub">Al guardar se redibuja solo la diapositiva cuyo texto cambiaste.</p>'
     + '<button type="button" class="btn btn-primary" id="btn-carrusel-guardar" onclick="guardarTextosCarrusel()">Guardar y redibujar</button>'
     + '</details>';
+}
+
+function igActual() {
+  var p = $('ig-pista');
+  return p ? Math.round(p.scrollLeft / Math.max(1, p.clientWidth)) : 0;
+}
+
+function igIr(i, suave) {
+  var p = $('ig-pista');
+  if (!p) return;
+  var total = p.children.length;
+  i = Math.max(0, Math.min(total - 1, i));
+  p.scrollTo({ left: i * p.clientWidth, behavior: suave === false ? 'auto' : 'smooth' });
+}
+
+function igMover(paso) { igIr(igActual() + paso); }
+
+function igTecla(ev) {
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); igMover(1); }
+  if (ev.key === 'ArrowLeft') { ev.preventDefault(); igMover(-1); }
+}
+
+function igAlDeslizar() {
+  var p = $('ig-pista');
+  if (!p) return;
+  var i = igActual(), total = p.children.length;
+  $('ig-contador').textContent = (i + 1) + '/' + total;
+  Array.from($('ig-puntos').children).forEach(function(el, k) { el.classList.toggle('activo', k === i); });
+  $('ig-ant').hidden = i === 0;
+  $('ig-sig').hidden = i === total - 1;
 }
 
 function verCarrusel(cod) {
@@ -136,13 +195,23 @@ async function guardarTextosCarrusel() {
     puntos: [0, 1, 2].map(function(i) { return $('carrusel-punto-' + i).value.trim(); }).filter(Boolean),
     cta: $('carrusel-cta').value.trim()
   };
+  var st = $('carrusel-estado');
   if (!body.titulo || !body.puntos.length) {
-    $('carrusel-estado').className = 'feedback err';
-    $('carrusel-estado').textContent = 'Hacen falta el título y al menos un punto.';
+    st.className = 'feedback err';
+    st.textContent = 'Hacen falta el título y al menos un punto.';
     return;
   }
-  await _seguirCarrusel('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/textos', body,
-                        $('btn-carrusel-guardar'), 'Redibujando las imágenes…');
+  // Cuáles cambian (igual que carrusel.diapositivas_cambiadas en el servidor): 1 título y subtítulo, 2 puntos, 3 llamada a la acción.
+  var cont = $('carrusel-cuerpo'), antes = ((carruselesDe(cont._nota)[_carruselVista] || {}).textos) || {};
+  var cambian = [];
+  if ((antes.titulo || '') !== body.titulo || (antes.subtitulo || '') !== body.subtitulo) cambian.push(1);
+  if (JSON.stringify(antes.puntos || []) !== JSON.stringify(body.puntos)) cambian.push(2);
+  if ((antes.cta || '') !== body.cta) cambian.push(3);
+  if (!cambian.length) { st.className = 'feedback info'; st.textContent = 'No cambiaste ningún texto.'; return; }
+  _carruselIr = cambian[0] - 1;
+  await _seguirCarrusel('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/textos', body, $('btn-carrusel-guardar'),
+                        cambian.length === 1 ? 'Redibujando la diapositiva ' + cambian[0] + '…'
+                                             : 'Redibujando las diapositivas ' + cambian.join(' y ') + '…');
 }
 
 async function carruselEnPost(caja) {
@@ -154,7 +223,7 @@ async function carruselEnPost(caja) {
     });
     var cont = $('carrusel-cuerpo');
     if (cont && cont._nota) cont._nota.carrusel_en_post = activo;
-    showToast(activo ? 'La galería va en los posts de HubSpot' : 'Los posts de HubSpot van sin la galería', 'success');
+    showToast(activo ? 'El carrusel se va a mostrar dentro de la nota en el blog' : 'La nota en el blog va sin el carrusel', 'success');
   } catch (e) {
     caja.checked = !activo;
     showToast('No se pudo cambiar: ' + e.message, 'error');

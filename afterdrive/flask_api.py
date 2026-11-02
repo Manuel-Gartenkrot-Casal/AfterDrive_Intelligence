@@ -889,15 +889,18 @@ def editar_carrusel(nota_id: str):
     if idioma not in carrusel.IDIOMAS:
         return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
     try:
-        textos = carrusel.guardar_textos(nota_id, idioma,
-                                         {k: body.get(k) for k in ("titulo", "subtitulo", "puntos", "cta")})
+        textos, cambiadas = carrusel.guardar_textos(nota_id, idioma,
+                                                    {k: body.get(k) for k in ("titulo", "subtitulo", "puntos", "cta")})
     except carrusel.ErrorCarrusel as e:
         return jsonify({"success": False, "error": str(e)}), 404 if "no encontrada" in str(e) else 400
-    respuesta, status = _encolar("script", {"modulo": "afterdrive.carrusel",
-                                            "argv": [f"--nota={nota_id}", "--idiomas", idioma, "--solo-imagenes"]},
+    if not cambiadas:
+        return jsonify({"success": True, "textos": textos, "diapositivas": [], "mensaje": "No cambió ningún texto."})
+    # Solo las diapositivas cuyo texto cambió (1: título y subtítulo, 2: puntos, 3: llamada a la acción).
+    argv = [f"--nota={nota_id}", "--idiomas", idioma, "--solo-imagenes", "--diapositivas", *map(str, cambiadas)]
+    respuesta, status = _encolar("script", {"modulo": "afterdrive.carrusel", "argv": argv},
                                  etiqueta="Redibujar carrusel")
     if status == 202:
-        respuesta = jsonify({**respuesta.get_json(), "textos": textos})
+        respuesta = jsonify({**respuesta.get_json(), "textos": textos, "diapositivas": cambiadas})
     return respuesta, status
 
 
