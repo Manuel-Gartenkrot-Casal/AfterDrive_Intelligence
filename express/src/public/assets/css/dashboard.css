@@ -1855,7 +1855,6 @@ body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 5
 .carrusel-textos { margin-top: var(--s2); }
 .carrusel-idiomas { display: inline-flex; margin: var(--s2) 0; }
 .carrusel-idiomas button:disabled { opacity: .45; cursor: not-allowed; }
-.carrusel-en-post { display: flex; align-items: center; gap: 8px; margin-top: var(--s2); cursor: pointer; }
 .carrusel-textos summary { cursor: pointer; }
 .carrusel-textos .input-field { width: 100%; margin-bottom: var(--s2); }
 .carrusel-textos .control-label { margin-top: var(--s2); }
