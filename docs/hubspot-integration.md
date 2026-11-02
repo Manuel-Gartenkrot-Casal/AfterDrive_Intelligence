@@ -62,8 +62,8 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `tagIds` | Las etiquetas de las categorías, en el idioma del blog |
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
 | `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
-| `postBody` (imágenes) | Las 2 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Van también en las traducciones |
-| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias, copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
+| `postBody` (imágenes) | Las 4 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Una foto de Wikimedia Commons con licencia CC BY/BY-SA lleva su crédito debajo, en letra chica, como pide la licencia. Van también en las traducciones |
+| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias o de un banco de imágenes, nunca una que pida crédito; copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 
