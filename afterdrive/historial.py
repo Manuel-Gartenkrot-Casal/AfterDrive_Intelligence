@@ -444,32 +444,40 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
 
 
 def copiar_carrusel_a_hubspot(col, doc: dict) -> str:
-    """Copia las diapositivas del carrusel (carrusel.py) a los archivos de HubSpot, para la galería del post.
+    """Copia las diapositivas de los carruseles (uno por idioma, carrusel.py) a los archivos de HubSpot.
 
-    Solo si el carrusel va en el post (`en_post`) y no se copió ya. Si falla, el post se
-    sube sin la galería y se devuelve un aviso: el carrusel nunca frena una publicación.
+    Para la galería de cada post. Solo las que no se copiaron ya, y nada si las galerías
+    están apagadas. Si falla, ese post se sube sin su galería y se devuelve un aviso: el
+    carrusel nunca frena una publicación.
     """
-    from afterdrive import hubspot
+    from afterdrive import carrusel, hubspot
 
-    c = doc.get("carrusel") or {}
-    diapositivas = c.get("diapositivas") or []
-    if not diapositivas or c.get("en_post") is False or len(c.get("hubspot_urls") or []) == len(diapositivas):
+    migrada = carrusel.migrar(col, doc)
+    doc.pop("carrusel", None)
+    doc.update(migrada)
+    if not carrusel.en_post_activo(doc):
         return ""
-    urls = []
-    try:
-        for i, url in enumerate(diapositivas, 1):
-            local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database) \
-                if url.startswith(PREFIJO_IMAGEN_SUBIDA) else None
-            if not local:
-                return "Faltan imágenes del carrusel: volvé a crearlo. El post se subió sin la galería."
-            urls.append(hubspot.subir_imagen(local[0], local[1], f"carrusel-{doc['_id']}-{i}.png"))
-    except hubspot.ErrorHubSpot as e:
-        return f"No se pudo copiar el carrusel a HubSpot ({e}): el post se subió sin la galería."
-    # Solo si sigue siendo el mismo carrusel (no se regeneró mientras se copiaba).
-    col.update_one({"_id": doc["_id"], "carrusel.generado_en": c.get("generado_en")},
-                   {"$set": {"carrusel.hubspot_urls": urls}})
-    doc["carrusel"] = {**c, "hubspot_urls": urls}
-    return ""
+    avisos = []
+    for cod, c in carrusel.carruseles(doc).items():
+        diapositivas = c.get("diapositivas") or []
+        if not diapositivas or len(c.get("hubspot_urls") or []) == len(diapositivas):
+            continue
+        urls = []
+        try:
+            for i, url in enumerate(diapositivas, 1):
+                local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database) \
+                    if url.startswith(PREFIJO_IMAGEN_SUBIDA) else None
+                if not local:
+                    raise hubspot.ErrorHubSpot("faltan imágenes: volvé a crearlo")
+                urls.append(hubspot.subir_imagen(local[0], local[1], f"carrusel-{doc['_id']}-{cod}-{i}.png"))
+        except hubspot.ErrorHubSpot as e:
+            avisos.append(f"No se pudo copiar a HubSpot el carrusel en {cod} ({e}): ese post va sin la galería.")
+            continue
+        # Solo si sigue siendo el mismo carrusel (no se regeneró mientras se copiaba).
+        col.update_one({"_id": doc["_id"], f"carruseles.{cod}.generado_en": c.get("generado_en")},
+                       {"$set": {f"carruseles.{cod}.hubspot_urls": urls}})
+        doc.setdefault("carruseles", {})[cod] = {**c, "hubspot_urls": urls}
+    return " ".join(avisos)
 
 
 def _copiar_imagen_a_hubspot(col, doc: dict) -> str:

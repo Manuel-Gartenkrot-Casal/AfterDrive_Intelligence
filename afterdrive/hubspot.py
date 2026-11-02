@@ -390,16 +390,21 @@ _FUENTES_HTML = re.compile(r"<h3>(?:Fuentes|Fontes|Sources)</h3>")
 
 
 def galeria_carrusel(nota: dict, cod: str, vista: bool = False) -> list[dict]:
-    """[{url, alt}] de las diapositivas del carrusel que van en el post en el idioma `cod`.
+    """[{url, alt}] de las diapositivas del carrusel en el idioma `cod`, para la galería de ese post.
 
-    Solo si el carrusel es de ese idioma y no se sacó del post (`en_post`). Al blog van
-    las copias en los archivos de HubSpot (`hubspot_urls`, ver historial.copiar_carrusel_a_hubspot):
-    las originales son rutas de este servidor. `vista=True` (la vista previa del dashboard)
-    acepta las originales mientras no se copiaron.
+    Cada post (el original y sus traducciones) lleva el carrusel de su idioma, si existe y las
+    galerías no se apagaron (`carrusel_en_post`). Al blog van las copias en los archivos de
+    HubSpot (`hubspot_urls`, ver historial.copiar_carrusel_a_hubspot): las originales son
+    rutas de este servidor. `vista=True` (la vista previa del dashboard) acepta las originales
+    mientras no se copiaron.
     """
-    c = nota.get("carrusel") or {}
+    from afterdrive import carrusel
+
+    if not carrusel.en_post_activo(nota):
+        return []
+    c = carrusel.carruseles(nota).get(cod) or {}
     diapositivas = c.get("diapositivas") or []
-    if not diapositivas or c.get("en_post") is False or c.get("idioma") != cod:
+    if not diapositivas:
         return []
     urls = c.get("hubspot_urls") or []
     if len(urls) != len(diapositivas):

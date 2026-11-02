@@ -1,5 +1,5 @@
 """
-carrusel.py — Un carrusel de 3 imágenes para redes a partir de una Nota.
+carrusel.py — Carruseles de 3 imágenes para redes a partir de una Nota, uno por idioma.
 
 Interfaz:
     textos_con_ia(nota_md, idioma) -> dict | None      {"titulo", "subtitulo", "puntos", "cta"}
@@ -7,29 +7,39 @@ Interfaz:
     validar(textos) -> dict                            recorta y completa; ErrorCarrusel si falta lo esencial
     html_diapositivas(textos, fondo=None, url="") -> [str]   una página HTML por diapositiva
     renderizar(htmls) -> ([png], pdf)                  con Chromium (Playwright)
-    generar(nota_id, idioma=None, solo_imagenes=False, base=None) -> dict   todo junto, y lo guarda
+    carruseles(nota) -> {idioma: carrusel}             los guardados (entiende el formato viejo)
+    generar(nota_id, idiomas=None, solo_imagenes=False, base=None) -> {idioma: carrusel}
+    guardar_textos(nota_id, idioma, textos) / en_post(nota_id, activo)
 
-Las tres diapositivas (1080x1350, el formato vertical de Instagram):
-    1. Gancho: título corto y subtítulo, sobre la imagen destacada de la nota.
+De dónde sale cada cosa:
+- Las diapositivas son plantillas HTML con los colores y el logo de AfterDrive que Chromium
+  pasa a PNG (1080x1350, el formato vertical de Instagram). No son fotos de un banco ni
+  imágenes hechas por IA.
+- La única foto es el fondo de la portada: la imagen destacada de la nota (la misma que va a
+  HubSpot). Sin ella, la portada va con el color oscuro de la marca.
+- Los textos los escribe el modelo barato (tarea "carrusel" → el de evaluación) solo con lo
+  que dice la nota, directo en cada idioma: parte de la traducción de la nota si ya existe, y
+  si no, del original. Si la IA falla, salen del texto en ese idioma (título, meta description
+  y viñetas de implicancias). Se pueden editar en el dashboard: al guardarlos se vuelve a
+  dibujar ese idioma sin llamar a la IA.
+
+Las tres diapositivas:
+    1. Gancho: título corto y subtítulo, sobre la imagen destacada.
     2. Valor: 3 puntos clave.
-    3. Llamada a la acción: leer la nota completa en el blog.
+    3. Llamada a la acción: leer la nota completa en el blog (el post de ese idioma si ya está en HubSpot).
 
-Los textos los escribe el modelo barato (tarea "carrusel" → el de evaluación) solo con lo
-que dice la nota; si falla, salen del texto (título, meta description y las viñetas de
-implicancias). Se pueden editar en el dashboard: al guardarlos se vuelven a dibujar las
-imágenes sin llamar a la IA.
+Por defecto se arman los 3 idiomas de los blogs (es, pt, en), así hay uno listo para cada
+post. Las imágenes y el PDF de cada idioma (las 3 páginas, para LinkedIn) van a
+`imagenes_subidas` y se sirven en /api/imagenes/<id>. La nota guarda `carruseles`
+({idioma: textos, URLs, id del PDF, cuándo}) y `carrusel_en_post`.
 
-Las imágenes y el PDF (las 3 páginas, para subir a LinkedIn como documento) se guardan en
-`imagenes_subidas` y se sirven en /api/imagenes/<id>. La nota guarda en `carrusel` los
-textos, las URLs, el id del PDF, el idioma y cuándo se generó.
-
-Al subir la nota a HubSpot, las diapositivas se copian a sus archivos y van como galería
-en el post del idioma del carrusel, antes de las fuentes (`en_post`, prendido por defecto;
-ver hubspot.con_galeria). No publica en ninguna red social: eso necesita las apps y tokens
-de Meta y LinkedIn.
+Al subir la nota a HubSpot, las diapositivas se copian a sus archivos y cada post (el original
+y sus traducciones) lleva como galería el carrusel de su idioma, antes de las fuentes (ver
+hubspot.con_galeria). No publica en ninguna red social: eso necesita las apps y tokens de
+Meta y LinkedIn.
 
 Uso (lo encola el dashboard):
-    python -m afterdrive.carrusel --nota <id> [--idioma pt] [--solo-imagenes]
+    python -m afterdrive.carrusel --nota <id> [--idiomas es pt en] [--solo-imagenes]
 """
 
 from __future__ import annotations
@@ -333,13 +343,46 @@ def url_blog(nota: dict, idioma: str) -> str:
     return os.getenv("CARRUSEL_URL_BLOG", f"https://afterdrive.alephee.com/{idioma}/blog/").strip()
 
 
-def _texto_en(nota: dict, idioma: str) -> str:
-    if idioma == nota.get("idioma") or not idioma:
-        return nota.get("contenido") or ""
+IDIOMAS = ("es", "pt", "en")   # los de los blogs de HubSpot
+
+
+def carruseles(nota: dict) -> dict:
+    """{idioma: carrusel} de la nota. Las de antes tenían uno solo en `carrusel`."""
+    guardados = {k: v for k, v in (nota.get("carruseles") or {}).items() if isinstance(v, dict)}
+    viejo = nota.get("carrusel")
+    if isinstance(viejo, dict) and viejo.get("idioma") and viejo["idioma"] not in guardados:
+        guardados[viejo["idioma"]] = viejo
+    return guardados
+
+
+def migrar(col, nota: dict) -> dict:
+    """Pasa el formato viejo (un solo `carrusel`) a `carruseles` + `carrusel_en_post`. Devuelve la nota al día."""
+    viejo = nota.get("carrusel")
+    if not isinstance(viejo, dict):
+        return nota
+    nuevos = carruseles(nota)
+    activo = en_post_activo(nota)
+    col.update_one({"_id": nota["_id"]}, {"$set": {"carruseles": nuevos, "carrusel_en_post": activo},
+                                          "$unset": {"carrusel": ""}})
+    nota = {k: v for k, v in nota.items() if k != "carrusel"}
+    return {**nota, "carruseles": nuevos, "carrusel_en_post": activo}
+
+
+def en_post_activo(nota: dict) -> bool:
+    """Si las galerías van en los posts de HubSpot (prendido salvo que se haya apagado)."""
+    if "carrusel_en_post" in nota:
+        return nota["carrusel_en_post"] is not False
+    return (nota.get("carrusel") or {}).get("en_post") is not False
+
+
+def _texto_base(nota: dict, idioma: str) -> tuple[str, bool]:
+    """(texto del que salen los textos, si ya está en ese idioma). Sin traducción, el original."""
+    if idioma == nota.get("idioma"):
+        return nota.get("contenido") or "", True
     traduccion = (nota.get("traducciones") or {}).get(idioma) or {}
-    if not traduccion.get("contenido"):
-        raise ErrorCarrusel(f"La nota todavía no tiene versión en {idioma}: traducila antes de armar el carrusel.")
-    return traduccion["contenido"]
+    if traduccion.get("contenido"):
+        return traduccion["contenido"], True
+    return nota.get("contenido") or "", False
 
 
 def _base(base):
@@ -349,15 +392,7 @@ def _base(base):
     return db.db
 
 
-def generar(nota_id: str, idioma: str | None = None, solo_imagenes: bool = False, base=None,
-            render=renderizar) -> dict:
-    """Arma el carrusel de la nota y lo guarda en ella. Devuelve lo guardado en `carrusel`.
-
-    solo_imagenes: usa los textos ya guardados (los editó una persona) y no llama a la IA.
-    """
-    from afterdrive import hubspot
-
-    b = _base(base)
+def _nota(b, nota_id: str) -> dict:
     try:
         oid = ObjectId(nota_id)
     except (InvalidId, TypeError) as e:
@@ -365,92 +400,118 @@ def generar(nota_id: str, idioma: str | None = None, solo_imagenes: bool = False
     nota = b.notas_fase2.find_one({"_id": oid}, {"embedding": 0})
     if not nota:
         raise ErrorCarrusel("Nota no encontrada.")
+    from afterdrive import hubspot
     nota["idioma"] = hubspot.idioma(nota) or nota.get("idioma") or "pt"
-    anterior = nota.get("carrusel") or {}
-    idioma = idioma or anterior.get("idioma") or nota["idioma"]
-    if idioma not in CTA_DEFAULT:
-        raise ErrorCarrusel("Idioma inválido: es, pt o en.")
+    return migrar(b.notas_fase2, nota)
 
+
+def _textos(nota: dict, idioma: str, anterior: dict, solo_imagenes: bool) -> tuple[dict, str]:
     if solo_imagenes and anterior.get("textos"):
-        textos, origen = validar(anterior["textos"], idioma), anterior.get("origen_textos", "editado")
-    else:
-        texto = _texto_en(nota, idioma)
-        print("  Escribiendo los textos del carrusel...", flush=True)
-        textos = textos_con_ia(texto, idioma)
-        origen = "ia" if textos else "nota"
-        textos = textos or textos_sin_ia(texto, idioma)
-    print(f"  Título: {textos['titulo']}", flush=True)
+        return validar(anterior["textos"], idioma), anterior.get("origen_textos", "editado")
+    texto, ya_traducido = _texto_base(nota, idioma)
+    print(f"  [{idioma}] Escribiendo los textos del carrusel...", flush=True)
+    textos = textos_con_ia(texto, idioma)
+    if textos:
+        return textos, "ia"
+    if not ya_traducido:
+        raise ErrorCarrusel(f"la IA no respondió y la nota no tiene versión en {idioma} para sacar los textos")
+    return textos_sin_ia(texto, idioma), "nota"
 
-    url = url_blog(nota, idioma)
-    print("  Dibujando las 3 diapositivas...", flush=True)
-    pngs, pdf = render(html_diapositivas(textos, _fondo(nota, b), url, idioma))
 
-    from afterdrive import historial
-    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+def _guardar_archivos(b, nota_id, oid, idioma, pngs, pdf, ahora) -> list:
     ids = []
     for i, (contenido, mime) in enumerate([(x, "image/png") for x in pngs] + [(pdf, "application/pdf")], 1):
         ids.append(b.imagenes_subidas.insert_one({
-            "contenido": contenido, "mime": mime, "nombre": f"carrusel-{nota_id}-{i}", "coleccion": "notas_fase2",
-            "nota_id": oid, "carrusel": True, "fecha": ahora}).inserted_id)
-    # Las del carrusel anterior ya no se usan.
-    viejos = [ObjectId(u.rsplit("/", 1)[-1]) for u in anterior.get("diapositivas") or [] if u.rsplit("/", 1)[-1]]
-    if anterior.get("pdf_id"):
-        viejos.append(ObjectId(anterior["pdf_id"]))
-    if viejos:
-        b.imagenes_subidas.delete_many({"_id": {"$in": viejos}, "carrusel": True})
-
-    carrusel = {
-        "textos": textos, "origen_textos": origen, "idioma": idioma, "url": url,
-        "diapositivas": [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]],
-        "pdf_id": str(ids[-1]), "generado_en": ahora,
-        # La galería en el post de HubSpot: se mantiene lo que se eligió para el carrusel anterior.
-        "en_post": anterior.get("en_post", True),
-    }
-    b.notas_fase2.update_one({"_id": oid}, {"$set": {"carrusel": carrusel}})
-    return carrusel
+            "contenido": contenido, "mime": mime, "nombre": f"carrusel-{nota_id}-{idioma}-{i}",
+            "coleccion": "notas_fase2", "nota_id": oid, "carrusel": True, "idioma": idioma, "fecha": ahora,
+        }).inserted_id)
+    return ids
 
 
-def guardar_textos(nota_id: str, textos: dict, base=None) -> dict:
-    """Guarda los textos editados en el dashboard (después se vuelven a dibujar las imágenes)."""
+def _borrar_archivos(b, carrusel: dict) -> None:
+    viejos = [u.rsplit("/", 1)[-1] for u in carrusel.get("diapositivas") or []]
+    viejos += [carrusel["pdf_id"]] if carrusel.get("pdf_id") else []
+    oids = [ObjectId(v) for v in viejos if ObjectId.is_valid(v)]
+    if oids:
+        b.imagenes_subidas.delete_many({"_id": {"$in": oids}, "carrusel": True})
+
+
+def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, render=renderizar) -> dict:
+    """Arma el carrusel de cada idioma (por defecto los 3) y lo guarda. Devuelve {idioma: carrusel}.
+
+    Un idioma que falla no frena a los otros; si fallan todos, ErrorCarrusel.
+    solo_imagenes: usa los textos ya guardados (los editó una persona) y no llama a la IA.
+    """
+    from afterdrive import historial
+
     b = _base(base)
-    try:
-        oid = ObjectId(nota_id)
-    except (InvalidId, TypeError) as e:
-        raise ErrorCarrusel("Nota inválida.") from e
-    nota = b.notas_fase2.find_one({"_id": oid}, {"carrusel": 1})
-    if not nota:
-        raise ErrorCarrusel("Nota no encontrada.")
-    idioma = (nota.get("carrusel") or {}).get("idioma") or "pt"
+    nota = _nota(b, nota_id)
+    idiomas = [i for i in (idiomas or IDIOMAS)]
+    if any(i not in IDIOMAS for i in idiomas):
+        raise ErrorCarrusel("Idioma inválido: es, pt o en.")
+    guardados = carruseles(nota)
+    fondo = _fondo(nota, b)   # una sola descarga para los 3
+    hechos, errores = {}, []
+    for idioma in idiomas:
+        anterior = guardados.get(idioma) or {}
+        try:
+            textos, origen = _textos(nota, idioma, anterior, solo_imagenes)
+            print(f"  [{idioma}] Título: {textos['titulo']}", flush=True)
+            url = url_blog(nota, idioma)
+            print(f"  [{idioma}] Dibujando las 3 diapositivas...", flush=True)
+            pngs, pdf = render(html_diapositivas(textos, fondo, url, idioma))
+        except ErrorCarrusel as e:
+            print(f"  [AVISO] [{idioma}] No se armó el carrusel: {e}", flush=True)
+            errores.append(f"{idioma}: {e}")
+            continue
+        ahora = datetime.datetime.now(datetime.UTC).isoformat()
+        ids = _guardar_archivos(b, nota_id, nota["_id"], idioma, pngs, pdf, ahora)
+        _borrar_archivos(b, anterior)
+        hechos[idioma] = {
+            "textos": textos, "origen_textos": origen, "idioma": idioma, "url": url,
+            "diapositivas": [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]],
+            "pdf_id": str(ids[-1]), "generado_en": ahora,
+        }
+        b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {f"carruseles.{idioma}": hechos[idioma]}})
+    if not hechos:
+        raise ErrorCarrusel("No se pudo armar ningún carrusel. " + "; ".join(errores))
+    return hechos
+
+
+def guardar_textos(nota_id: str, idioma: str, textos: dict, base=None) -> dict:
+    """Guarda los textos editados de un idioma (después se vuelven a dibujar sus imágenes)."""
+    if idioma not in IDIOMAS:
+        raise ErrorCarrusel("Idioma inválido: es, pt o en.")
+    b = _base(base)
+    nota = _nota(b, nota_id)
     limpios = validar(textos, idioma)
-    b.notas_fase2.update_one({"_id": oid}, {"$set": {"carrusel.textos": limpios, "carrusel.idioma": idioma,
-                                                     "carrusel.origen_textos": "editado"}})
+    actual = carruseles(nota).get(idioma) or {"idioma": idioma}
+    b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {
+        f"carruseles.{idioma}": {**actual, "textos": limpios, "origen_textos": "editado"}}})
     return limpios
 
 
 def en_post(nota_id: str, activo: bool, base=None) -> None:
-    """Si la galería del carrusel va en el post de HubSpot (se aplica al subir o volver a subir la nota)."""
+    """Si las galerías de los carruseles van en los posts de HubSpot (se aplica al subir o volver a subir)."""
     b = _base(base)
-    try:
-        oid = ObjectId(nota_id)
-    except (InvalidId, TypeError) as e:
-        raise ErrorCarrusel("Nota inválida.") from e
-    if not b.notas_fase2.update_one({"_id": oid, "carrusel": {"$exists": True}},
-                                    {"$set": {"carrusel.en_post": bool(activo)}}).matched_count:
+    nota = _nota(b, nota_id)
+    if not carruseles(nota):
         raise ErrorCarrusel("La nota no tiene carrusel.")
+    b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {"carrusel_en_post": bool(activo)}})
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Carrusel de 3 imágenes a partir de una nota")
+    parser = argparse.ArgumentParser(description="Carruseles de 3 imágenes a partir de una nota, uno por idioma")
     parser.add_argument("--nota", required=True)
-    parser.add_argument("--idioma", choices=list(CTA_DEFAULT), default=None)
+    parser.add_argument("--idiomas", nargs="+", choices=list(IDIOMAS), default=None)
     parser.add_argument("--solo-imagenes", action="store_true", help="Usa los textos guardados, sin IA")
     args = parser.parse_args(argv)
     try:
-        carrusel = generar(args.nota, args.idioma, args.solo_imagenes)
+        hechos = generar(args.nota, args.idiomas, args.solo_imagenes)
     except ErrorCarrusel as e:
         print(f"[ERROR] {e}", flush=True)
         return 1
-    print(f"[OK] Carrusel listo: {len(carrusel['diapositivas'])} imágenes y PDF.", flush=True)
+    print(f"[OK] Carruseles listos: {', '.join(hechos)}.", flush=True)
     return 0
 
 

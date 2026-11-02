@@ -6,6 +6,20 @@
 
 var _FILAS_TEXTOS = [
   // ── Carrusel para redes ───────────────────────────────────────────────────
+  ['Carruseles para redes', 'Carrosséis para redes', 'Social carousels'],
+  ['Un carrusel por idioma: 3 imágenes de 1080×1350 para Instagram y un PDF para LinkedIn. Las diapositivas se dibujan con el diseño de AfterDrive; la portada usa la imagen destacada de la nota y los textos los escribe la IA a partir de la nota. Se descargan para publicarlas: no se suben solas a las redes.', 'Um carrossel por idioma: 3 imagens de 1080×1350 para o Instagram e um PDF para o LinkedIn. Os slides são desenhados com o design da AfterDrive; a capa usa a imagem destacada do post e os textos são escritos pela IA a partir do post. São baixados para publicar: não sobem sozinhos às redes.', 'One carousel per language: three 1080×1350 images for Instagram and a PDF for LinkedIn. Slides are drawn with the AfterDrive design; the cover uses the post’s featured image and the AI writes the copy from the post. You download them to publish: they aren’t posted to social networks automatically.'],
+  ['Volver a crear los 3 con IA', 'Criar os 3 de novo com IA', 'Recreate all 3 with AI'],
+  ['Crear carruseles (español, portugués e inglés)', 'Criar carrosséis (espanhol, português e inglês)', 'Create carousels (Spanish, Portuguese and English)'],
+  ['Crear los que faltan', 'Criar os que faltam', 'Create the missing ones'],
+  ['Sumar la galería a los posts de HubSpot', 'Adicionar a galeria aos posts do HubSpot', 'Add the gallery to the HubSpot posts'],
+  ['Cada post (el original y sus traducciones) lleva el carrusel de su idioma, antes de las fuentes. Se aplica al subir la nota a HubSpot (si ya está subida, volvé a subirla).', 'Cada post (o original e suas traduções) leva o carrossel do seu idioma, antes das fontes. Vale ao subir o post para o HubSpot (se já foi subido, suba de novo).', 'Each post (the original and its translations) gets the carousel in its language, before the sources. It applies when the post is uploaded to HubSpot (if it already is, upload it again).'],
+  ['Armando los carruseles…', 'Montando os carrosséis…', 'Building the carousels…'],
+  ['¿Volver a crear los 3 carruseles?', 'Criar os 3 carrosséis de novo?', 'Recreate all 3 carousels?'],
+  ['La IA escribe textos nuevos en los 3 idiomas y se pierden los que editaste.', 'A IA escreve textos novos nos 3 idiomas e os que você editou se perdem.', 'The AI writes new copy in all 3 languages and your edits are lost.'],
+  ['Todavía no se creó', 'Ainda não foi criado', 'Not created yet'],
+  ['Listo.', 'Pronto.', 'Done.'],
+  ['La galería va en los posts de HubSpot', 'A galeria vai nos posts do HubSpot', 'The gallery goes in the HubSpot posts'],
+  ['Los posts de HubSpot van sin la galería', 'Os posts do HubSpot vão sem a galeria', 'The HubSpot posts go without the gallery'],
   ['Va antes de las fuentes, solo en la versión de ese idioma. Se aplica al subir la nota a HubSpot (si ya está subida, volvé a subirla).', 'Vai antes das fontes, só na versão desse idioma. Vale ao subir o post para o HubSpot (se já foi subido, suba de novo).', 'It goes before the sources, only in that language’s version. It applies when the post is uploaded to HubSpot (if it already is, upload it again).'],
   ['La galería va en el post de HubSpot', 'A galeria vai no post do HubSpot', 'The gallery goes in the HubSpot post'],
   ['El post de HubSpot va sin la galería', 'O post do HubSpot vai sem a galeria', 'The HubSpot post goes without the gallery'],
