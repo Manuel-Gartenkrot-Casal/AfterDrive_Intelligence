@@ -2816,24 +2816,46 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .prompts-aviso.en_revision { --st: var(--st-en_revision); }
 .prompts-aviso.rechazo { --st: var(--st-rechazo); }
 
-/* Área de trabajo: barra con las pestañas y el editor, en un bloque propio. */
+/* Área de trabajo: el prompt completo como un archivo (barra arriba, líneas numeradas). */
 .prompts-trabajo { display: flex; flex-direction: column; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; background: var(--well); }
-.prompts-barra { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: 6px; border-bottom: 1px solid var(--border); background: var(--bg); }
-.prompts-tabs { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-md); background: var(--well); }
-.prompts-tabs button {
-  padding: 6px 14px; border: 0; border-radius: calc(var(--r-md) - 2px); background: none;
-  font: inherit; font-size: 0.82rem; font-weight: 500; color: var(--text-lo); cursor: pointer;
+.prompts-barra { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.pa-nombre { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.84rem; color: var(--text-hi); }
+.pa-nombre svg { flex-shrink: 0; color: var(--text-lo); }
+.pa-meta { font: 0.72rem var(--mono); color: var(--text-lo); white-space: nowrap; }
+.pa-herramientas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pa-herramientas .select-field { width: auto; min-height: 32px; padding-top: 3px; padding-bottom: 3px; font-size: 0.8rem; }
+.pa-herramientas .btn[aria-pressed="true"]:not(.btn-primary) { background: var(--well); border-color: var(--border-strong); }
+.prompt-archivo { position: relative; max-height: min(68vh, 760px); overflow: auto; padding: 6px 0 10px; font: 0.8rem/1.6 var(--mono); }
+.prompt-archivo[hidden] { display: none; }
+.pa-bloque { position: relative; border-left: 3px solid transparent; }
+.pa-bloque + .pa-bloque { margin-top: 6px; }
+.pa-bloque-cabeza { display: flex; align-items: center; gap: 8px; padding: 6px 14px 2px 58px; font-family: var(--font); }
+.pa-abrir {
+  padding: 1px 8px; border: 1px solid transparent; border-radius: var(--r-pill); background: none; cursor: pointer;
+  font: 600 0.68rem var(--font); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo);
 }
-.prompts-tabs button:hover { color: var(--text-hi); }
-.prompts-tabs button[aria-selected="true"] { background: var(--bg); color: var(--text-hi); font-weight: 600; box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.12); }
-.prompts-largo { padding-right: 8px; font: 0.72rem var(--mono); color: var(--text-lo); }
-.prompts-panel { display: flex; flex-direction: column; min-width: 0; }
-.prompts-panel[hidden] { display: none; }
+.pa-abrir:hover { border-color: var(--border); color: var(--text-hi); }
+.pa-auto { font-size: 0.68rem; letter-spacing: 0.04em; color: var(--text-lo); opacity: 0.8; }
+.pa-bloque.automatico .pa-txt { color: var(--text-lo); }
+.pa-bloque.elegido { border-left-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.pa-bloque.elegido .pa-abrir { color: var(--brand); }
+.pa-linea { display: grid; grid-template-columns: 44px 14px minmax(0, 1fr); padding-right: 16px; }
+.pa-num { padding-right: 10px; text-align: right; color: var(--text-lo); opacity: 0.7; user-select: none; }
+.pa-marca { color: var(--text-lo); user-select: none; }
+.pa-txt { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-mid); }
+.pa-linea.pone { background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.pa-linea.pone .pa-marca { color: var(--ok); }
+.pa-linea.pone .pa-txt { color: var(--text-hi); }
+.pa-linea.quita { background: color-mix(in srgb, var(--err) 13%, transparent); }
+.pa-linea.quita .pa-marca { color: var(--err); }
+.pa-linea.quita .pa-txt { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 55%, transparent); }
+.pa-editor { padding: 4px 14px 8px 58px; }
 .prompts-texto {
-  width: 100%; min-height: 320px; padding: 16px 18px; resize: vertical; border: 0; border-radius: 0;
-  background: var(--well); color: var(--text-hi); font: 0.84rem/1.65 var(--mono); tab-size: 2;
+  display: block; width: 100%; min-height: 120px; padding: 10px 12px; resize: vertical; overflow: hidden;
+  border: 1px solid var(--brand); border-radius: var(--r-sm); background: var(--bg); color: var(--text-hi);
+  font: 0.8rem/1.6 var(--mono); tab-size: 2;
 }
-.prompts-texto:focus { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 45%, transparent); }
+.prompts-texto:focus { outline: none; box-shadow: 0 0 0 3px var(--brand-soft); }
 .prompts-validacion { list-style: none; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg); font-size: 0.78rem; }
 .prompts-validacion:empty { display: none; }
 .prompts-validacion li { display: flex; gap: 8px; }
@@ -2844,19 +2866,8 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .prompts-validacion .aviso::before { content: "!"; }
 .prompts-validacion .ok { color: var(--st-editada); }
 .prompts-validacion .ok::before { content: "✓"; }
-.prompts-md { min-height: 320px; padding: 14px 20px; font-size: 0.9rem; line-height: 1.65; color: var(--text-mid); background: var(--bg); }
-.prompts-md h1, .prompts-md h2 { margin: 14px 0 6px; font-size: 1rem; color: var(--text-hi); }
-.prompts-md ul, .prompts-md ol { padding-left: 1.3em; }
-.prompts-md li { margin: 3px 0; }
-.prompts-panel[data-panel="completo"], .prompts-panel[data-panel="historial"] { gap: var(--s3); padding: var(--s4); background: var(--bg); }
-.prompts-completo-opciones { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-.prompts-completo-opciones .control-label { margin: 0; }
-.prompts-completo-opciones .select-field { width: auto; min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
-.prompts-nota { font-size: 0.76rem; color: var(--text-lo); }
-.prompts-completo {
-  max-height: 460px; overflow: auto; margin: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--well); color: var(--text-mid); font: 0.78rem/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
-}
+.prompts-panel { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; padding: var(--s4); background: var(--bg); }
+.prompts-panel[hidden] { display: none; }
 .prompts-historial { list-style: none; display: flex; flex-direction: column; gap: var(--s2); margin: 0; padding: 0; }
 .prompts-version-fila { padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: var(--r-md); }
 .prompts-version-fila.activa { border-left-color: var(--st-editada); background: color-mix(in srgb, var(--st-editada) 6%, var(--bg)); }
@@ -2867,6 +2878,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .prompts-version-fila .prompts-diff { margin-top: var(--s3); }
 
 .prompts-motivo { display: flex; flex-direction: column; gap: 6px; }
+.prompts-motivo[hidden] { display: none; }
 .prompts-motivo .control-label { margin: 0; }
 .prompts-acciones { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding-top: var(--s4); border-top: 1px solid var(--border); }
 .prompts-acciones-sep { flex: 1; }
@@ -2901,9 +2913,10 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .prompts-pasos li:nth-child(2)::after { display: none; }
   .paso-texto { min-width: 0; white-space: normal; }
   .prompts-cabeza { flex-wrap: wrap; }
-  .prompts-barra { flex-wrap: wrap; }
-  .prompts-tabs { overflow-x: auto; max-width: 100%; }
-  .prompts-tabs button { flex-shrink: 0; padding: 6px 10px; }
+  .pa-linea { grid-template-columns: 30px 12px minmax(0, 1fr); padding-right: 8px; }
+  .pa-bloque-cabeza, .pa-editor { padding-left: 42px; padding-right: 8px; }
+  .pa-herramientas { width: 100%; }
+  .pa-herramientas .select-field { flex: 1; }
   .prompts-acciones .btn { flex: 1 1 auto; }
   .prompts-acciones-sep { display: none; }
 }

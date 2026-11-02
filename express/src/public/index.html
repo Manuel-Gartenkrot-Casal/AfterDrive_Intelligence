@@ -621,41 +621,38 @@
             <li data-paso="activo"><span class="paso-num" aria-hidden="true">4</span><span class="paso-texto"><b>Activa</b><small>La usa la IA</small></span></li>
           </ol>
           <p class="prompts-aviso" id="pe-aviso" hidden></p>
+          <!-- El prompt completo, como un archivo: la pieza elegida se edita en su lugar. -->
           <div class="prompts-trabajo">
           <div class="prompts-barra">
-            <div class="prompts-tabs" role="tablist" aria-label="Vista">
-              <button type="button" role="tab" data-tab="editar" aria-selected="true">Editar</button>
-              <button type="button" role="tab" data-tab="ver" aria-selected="false">Vista previa</button>
-              <button type="button" role="tab" data-tab="completo" aria-selected="false">Prompt completo</button>
-              <button type="button" role="tab" data-tab="historial" aria-selected="false">Historial</button>
+            <div class="pa-nombre">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+              <b>Prompt completo</b>
+              <span class="pa-meta"><span id="pe-archivo-lineas"></span> · <span id="pe-largo"></span></span>
             </div>
-            <span class="prompts-largo" id="pe-largo"></span>
-          </div>
-          <div class="prompts-panel" data-panel="editar">
-            <label class="sr-only" for="pe-texto">Texto en Markdown</label>
-            <textarea id="pe-texto" class="prompts-texto" spellcheck="true" translate="no"></textarea>
-            <ul class="prompts-validacion" id="pe-validacion" aria-live="polite"></ul>
-          </div>
-          <div class="prompts-panel prompts-md" data-panel="ver" hidden translate="no" id="pe-ver"></div>
-          <div class="prompts-panel" data-panel="completo" hidden>
-            <div class="prompts-completo-opciones">
-              <label class="control-label" for="pe-persona">Persona</label>
-              <select id="pe-persona" class="select-field">
+            <div class="pa-herramientas">
+              <label class="sr-only" for="pe-persona">Persona</label>
+              <select id="pe-persona" class="select-field" title="Persona con la que se arma el prompt">
                 <option value="comercial">Comercial</option>
                 <option value="analitico">Analítico-técnico</option>
                 <option value="periodistico">Periodístico</option>
                 <option value="divulgativo">Divulgativo</option>
                 <option value="ejecutivo">Ejecutivo</option>
               </select>
-              <span class="prompts-nota">Con el texto del editor en lugar de la versión activa.</span>
+              <button type="button" class="btn btn-sm" id="pe-ver-historial" aria-pressed="false">Historial</button>
+              <button type="button" class="btn btn-sm btn-primary" id="pe-editar" aria-pressed="false"><span aria-hidden="true">✎</span> Editar</button>
             </div>
-            <pre class="prompts-completo" id="pe-completo" translate="no"></pre>
           </div>
-          <div class="prompts-panel" data-panel="historial" hidden>
+          <div class="prompt-archivo" id="pe-archivo-cuerpo" translate="no" aria-label="Prompt completo"></div>
+          <div class="prompts-panel" id="pe-historial-panel" hidden>
             <ul class="prompts-historial" id="pe-historial"></ul>
           </div>
+          <ul class="prompts-validacion" id="pe-validacion" aria-live="polite"></ul>
+          <div id="pe-guardado" hidden>
+            <label class="sr-only" for="pe-texto">Texto en Markdown</label>
+            <textarea id="pe-texto" class="prompts-texto" spellcheck="true" translate="no"></textarea>
           </div>
-          <div class="prompts-motivo">
+          </div>
+          <div class="prompts-motivo" id="pe-motivo-campo">
             <label class="control-label" for="pe-motivo">Motivo del cambio</label>
             <input id="pe-motivo" class="input-field" maxlength="300" placeholder="Por ejemplo: las notas nombraban poco a Alephee" />
           </div>

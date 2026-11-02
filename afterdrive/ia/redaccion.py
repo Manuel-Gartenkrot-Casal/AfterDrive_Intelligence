@@ -3,6 +3,7 @@ redaccion.py — System prompts de redacción de notas.
 
 Interfaz:
     system_prompt(persona, region=None, compacto=False, extension=None, directiva="") -> str
+    system_prompt_partes(...) -> [(clave, texto)]   el mismo prompt, separado por pieza (para el dashboard)
     voz(regiones) -> Voz
     voz_de_idioma(cod) -> Voz          es, pt o en (los blogs de HubSpot)
     idioma_principal() -> "pt"         en el que se escriben las notas (IDIOMA_PRINCIPAL)
@@ -427,45 +428,73 @@ def system_prompt(
     `piezas` ({clave: markdown}) reemplaza las piezas activas: es para la vista
     previa de un borrador en el dashboard.
     """
+    return "\n\n".join(texto for _, texto in system_prompt_partes(
+        persona, region, compacto, extension, puntapie_url, directiva, idioma, piezas))
+
+
+# Partes del prompt que arma el sistema (no se editan): dependen del idioma y del pedido.
+AUTOMATICAS = {
+    "lectores": "Lectores (modelos chicos)",
+    "reglas_compactas": "Reglas resumidas (modelos chicos)",
+    "secciones_fijas": "Secciones fijas del final",
+    "cierre": "Idioma y cierre",
+    "directiva": "Ajuste del modelo",
+}
+
+
+def system_prompt_partes(
+    persona: str = "analitico",
+    region: list[str] | None = None,
+    compacto: bool = False,
+    extension: str | None = None,
+    puntapie_url: str | None = None,
+    directiva: str = "",
+    idioma: str | None = None,
+    piezas: dict | None = None,
+) -> list[tuple[str, str]]:
+    """El prompt en partes [(clave, texto)], en orden: la clave es la pieza editable de la que sale
+    (la primera línea junta el rol de la persona con la identidad) o una de AUTOMATICAS."""
     p = _persona(persona, piezas)
+    slug = persona if persona in PERSONAS else "analitico"
     v = voz_de_idioma(idioma) if idioma else voz(region)
     extension = extension or _EXTENSION_DEFAULT
     identidad = texto("identidad", piezas)
 
     if compacto:
         partes = [
-            f"{p['rol']} {identidad}",
-            "Lectores: repuesteros, distribuidores y gerentes de e-commerce automotor (no consumidores).",
-            _bloque_persona(p),
-            "## Reglas\n"
-            "- Cifras, empresas y casos: solo de las noticias de contexto. Si no hay dato, no uses cifras.\n"
-            "- Neumático (goma) no es llanta (aro). Motor no es transmisión.\n"
-            "- Markdown: título con \"# \", secciones con \"## \". Negrita en cifras y empresas.\n"
-            "- Título de 60 caracteres como máximo. No inventes URLs.\n"
-            "- Si una nota de AfterDrive by Alephee del pedido encaja, citala como propia y enlazala; si no, no.\n"
-            f"- Extensión: {extension}. Sin repetir ideas.",
-            _secciones_fijas(v, compacto=True),
-            _cierre(v, puntapie_url),
-            texto("salida", piezas),
+            ("identidad", f"{p['rol']} {identidad}"),
+            ("lectores", "Lectores: repuesteros, distribuidores y gerentes de e-commerce automotor (no consumidores)."),
+            (f"persona_{slug}", _bloque_persona(p)),
+            ("reglas_compactas",
+             "## Reglas\n"
+             "- Cifras, empresas y casos: solo de las noticias de contexto. Si no hay dato, no uses cifras.\n"
+             "- Neumático (goma) no es llanta (aro). Motor no es transmisión.\n"
+             "- Markdown: título con \"# \", secciones con \"## \". Negrita en cifras y empresas.\n"
+             "- Título de 60 caracteres como máximo. No inventes URLs.\n"
+             "- Si una nota de AfterDrive by Alephee del pedido encaja, citala como propia y enlazala; si no, no.\n"
+             f"- Extensión: {extension}. Sin repetir ideas."),
+            ("secciones_fijas", _secciones_fijas(v, compacto=True)),
+            ("cierre", _cierre(v, puntapie_url)),
+            ("salida", texto("salida", piezas)),
         ]
     else:
         partes = [
-            f"{p['rol']} {identidad}",
-            texto("audiencia", piezas),
-            _bloque_persona(p),
-            texto("reglas_datos", piezas),
-            texto("oficio", piezas),
-            texto("enfoque_alephee", piezas),
+            ("identidad", f"{p['rol']} {identidad}"),
+            ("audiencia", texto("audiencia", piezas)),
+            (f"persona_{slug}", _bloque_persona(p)),
+            ("reglas_datos", texto("reglas_datos", piezas)),
+            ("oficio", texto("oficio", piezas)),
+            ("enfoque_alephee", texto("enfoque_alephee", piezas)),
             # replace y no format: el texto lo escribe una persona y puede traer otras llaves.
-            texto("formato", piezas).replace("{extension}", extension),
-            texto("seo", piezas),
-            _secciones_fijas(v, compacto=False),
-            _cierre(v, puntapie_url),
-            texto("salida", piezas),
+            ("formato", texto("formato", piezas).replace("{extension}", extension)),
+            ("seo", texto("seo", piezas)),
+            ("secciones_fijas", _secciones_fijas(v, compacto=False)),
+            ("cierre", _cierre(v, puntapie_url)),
+            ("salida", texto("salida", piezas)),
         ]
     if directiva:
-        partes.append(directiva)
-    return "\n\n".join(partes)
+        partes.append(("directiva", directiva))
+    return partes
 
 
 _persona = persona   # system_prompt tiene un parámetro que se llama igual

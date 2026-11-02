@@ -168,3 +168,21 @@ def test_vista_previa_con_un_borrador_sin_guardar(client):
 def test_sin_login_no_se_puede(api):
     flask_api, _ = api
     assert flask_api.app.test_client().get("/api/prompts").status_code == 401
+
+
+def test_vista_previa_por_partes_para_verla_como_archivo(client):
+    r = client.post("/api/prompts/vista-previa", json={"persona": "comercial"}).json
+    partes = r["partes"]
+    assert "\n\n".join(p["texto"] for p in partes) == r["prompt"]
+    assert [p["clave"] for p in partes] == ["identidad", "audiencia", "persona_comercial", "reglas_datos", "oficio",
+                                            "enfoque_alephee", "formato", "seo", "secciones_fijas", "cierre", "salida"]
+    automaticas = {p["clave"]: p for p in partes if not p["editable"]}
+    assert set(automaticas) == {"secciones_fijas", "cierre"} and automaticas["cierre"]["titulo"] == "Idioma y cierre"
+    assert partes[2]["titulo"] == "Comercial" and partes[2]["texto"].startswith("## Tu tarea")
+
+
+def test_partes_y_prompt_son_el_mismo_texto():
+    for compacto in (False, True):
+        partes = redaccion.system_prompt_partes("divulgativo", compacto=compacto, directiva="D")
+        assert "\n\n".join(t for _, t in partes) == redaccion.system_prompt("divulgativo", compacto=compacto, directiva="D")
+        assert partes[-1] == ("directiva", "D")

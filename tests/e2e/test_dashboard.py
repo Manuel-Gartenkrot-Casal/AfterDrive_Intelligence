@@ -780,6 +780,11 @@ def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     pg.click('.prompts-item[data-clave="seo"]')
     expect(pg.locator("#pe-titulo")).to_have_text("SEO")
     expect(pg.locator("#pe-estado")).to_contain_text("Activa")
+    # Se ve el prompt completo, con la pieza elegida resaltada; Editar la abre en su lugar.
+    expect(pg.locator(".pa-bloque.elegido")).to_contain_text("## SEO")
+    expect(pg.locator("#pe-texto")).to_be_hidden()
+    pg.click("#pe-editar")
+    expect(pg.locator(".pa-bloque.elegido #pe-texto")).to_be_visible()
     original = pg.input_value("#pe-texto")
 
     # Un texto inválido no se puede enviar.
@@ -791,6 +796,9 @@ def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     pg.fill("#pe-texto", original + "\n- Regla e2e.")
     pg.fill("#pe-motivo", "prueba e2e")
     expect(pg.locator("#pe-validacion .ok")).to_be_visible()
+    # Al terminar de editar, el cambio se ve marcado dentro del prompt completo.
+    pg.click("#pe-editar")
+    expect(pg.locator(".pa-bloque.elegido .pa-linea.pone")).to_contain_text("Regla e2e.")
     pg.click("#pe-enviar")
     expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
     expect(pg.locator('.prompts-item[data-clave="seo"] .prompts-chip')).to_have_text("En revisión")
@@ -806,10 +814,10 @@ def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     expect(pg.locator("#pe-estado")).to_have_text("Activa · v1")
     expect(pg.locator("#nav-badge-prompts")).to_have_text("")
 
-    # El prompt completo ya la usa, y el original queda en el historial para restaurarlo.
-    pg.click('[data-tab="completo"]')
-    expect(pg.locator("#pe-completo")).to_contain_text("Regla e2e.")
-    pg.click('[data-tab="historial"]')
+    # El prompt completo ya la usa, sin marcas, y el original queda en el historial para restaurarlo.
+    expect(pg.locator(".pa-bloque.elegido")).to_contain_text("Regla e2e.")
+    expect(pg.locator(".pa-bloque.elegido .pa-linea.pone")).to_have_count(0)
+    pg.click("#pe-ver-historial")
     pg.click('[data-restaurar="0"]')
     pg.click("#confirmar-si")
     expect(pg.locator("#pe-estado")).to_contain_text("En revisión")

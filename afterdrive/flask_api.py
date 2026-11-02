@@ -698,10 +698,16 @@ def prompts_vista_previa():
         persona = body.get("persona") or (clave.removeprefix("persona_") if clave.startswith("persona_") else "comercial")
         if persona not in redaccion.PERSONAS:
             raise pe.ErrorPrompt("Persona desconocida.")
-        prompt = redaccion.system_prompt(
+        partes = redaccion.system_prompt_partes(
             persona, compacto=bool(body.get("compacto")), extension=redaccion.extension(body.get("largo")),
             idioma=redaccion.idioma_principal(), piezas=piezas)
-        return jsonify({"success": True, "persona": persona, "prompt": prompt})
+        titulos = {c["clave"]: c["titulo"] for c in pe.catalogo()}
+        return jsonify({
+            "success": True, "persona": persona, "prompt": "\n\n".join(t for _, t in partes),
+            # Por pieza, para mostrarlo como un archivo: lo editable se puede abrir; lo automático, no.
+            "partes": [{"clave": c, "titulo": titulos.get(c) or redaccion.AUTOMATICAS.get(c, c),
+                        "editable": c in titulos, "texto": t} for c, t in partes],
+        })
     return _prompts(armar)
 
 

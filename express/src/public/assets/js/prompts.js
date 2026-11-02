@@ -3,7 +3,10 @@
    global y se cargan en orden; ver el final de index.html.
 
    Cada pieza del prompt (identidad, audiencia, reglas, enfoque Alephee,
-   formato, SEO, respuesta y las 5 personas) es Markdown. Recorrido:
+   formato, SEO, respuesta y las 5 personas) es Markdown. Se ve el prompt
+   completo como un archivo, con números de línea; "Editar" abre la pieza
+   elegida ahí mismo y, con un borrador, lo que cambia queda marcado en verde
+   (entra) y rojo (sale) dentro del prompt. Recorrido:
    Borrador → Validar → Enviar a revisión → Aprobar y activar (con el diff a la
    vista) → Activa. La versión anterior queda en el historial y se puede
    restaurar, que vuelve a pasar por revisión. El backend es
@@ -15,7 +18,9 @@ var PROMPTS = {
   detalle: null,
   base: { texto: '', motivo: '' },   // lo cargado en el editor: si difiere, hay cambios sin guardar
   validacion: null,
-  tab: 'editar',
+  modo: 'ver',          // ver | editar | historial
+  activas: [],          // el prompt activo, por partes (/api/prompts/vista-previa)
+  conBorrador: null,    // el mismo con el texto del editor, si cambia algo
   cargado: false
 };
 var _PASOS_PROMPT = ['borrador', 'validar', 'en_revision', 'activo'];
@@ -33,17 +38,17 @@ function _fechaPrompt(iso) {
 }
 
 function initPrompts() {
-  document.querySelectorAll('.prompts-tabs [role="tab"]').forEach(function(b) {
-    b.addEventListener('click', function() { elegirTabPrompt(b.dataset.tab); });
-  });
   var espera = null;
   $('pe-texto').addEventListener('input', function() {
+    _ajustarAlto();
     pintarAccionesPrompt();
     clearTimeout(espera);
     espera = setTimeout(validarPrompt, 400);
   });
   $('pe-motivo').addEventListener('input', pintarAccionesPrompt);
-  $('pe-persona').addEventListener('change', pintarPromptCompleto);
+  $('pe-persona').addEventListener('change', function() { refrescarArchivoPrompt(); });
+  $('pe-editar').addEventListener('click', function() { modoPrompt(PROMPTS.modo === 'editar' ? 'ver' : 'editar'); });
+  $('pe-ver-historial').addEventListener('click', function() { modoPrompt(PROMPTS.modo === 'historial' ? 'ver' : 'historial'); });
   $('pe-guardar').addEventListener('click', function() { guardarPrompt(); });
   $('pe-enviar').addEventListener('click', enviarPrompt);
   $('pe-aprobar').addEventListener('click', aprobarPrompt);
@@ -139,22 +144,116 @@ function cargarEditorPrompt(d) {
   if (esPersona) $('pe-persona').value = d.clave.slice(8);
   PROMPTS.validacion = null;
   validarPrompt();
-  pintarAccionesPrompt();
   pintarHistorialPrompt();
-  elegirTabPrompt(PROMPTS.tab);
+  modoPrompt(PROMPTS.modo === 'historial' ? 'historial' : 'ver', true);
+  pintarAccionesPrompt();
+  refrescarArchivoPrompt(true);
 }
 
-function elegirTabPrompt(tab) {
-  PROMPTS.tab = tab;
-  document.querySelectorAll('.prompts-tabs [role="tab"]').forEach(function(b) {
-    b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false');
-  });
-  document.querySelectorAll('.prompts-panel').forEach(function(p) { p.hidden = p.dataset.panel !== tab; });
-  if (tab === 'ver') {
-    var html = window.marked ? marked.parse(_promptTexto()) : escHtml(_promptTexto());
-    $('pe-ver').innerHTML = window.DOMPurify ? DOMPurify.sanitize(html) : escHtml(_promptTexto());
+/* ver: el prompt completo, como un archivo. editar: la pieza elegida se abre en su lugar.
+   historial: las versiones de la pieza. */
+function modoPrompt(modo, sinRefrescar) {
+  PROMPTS.modo = modo;
+  var editando = modo === 'editar';
+  $('pe-editar').innerHTML = editando ? escHtml(tr('Listo')) : '<span aria-hidden="true">✎</span> ' + escHtml(tr('Editar'));
+  $('pe-editar').setAttribute('aria-pressed', editando ? 'true' : 'false');
+  $('pe-ver-historial').setAttribute('aria-pressed', modo === 'historial' ? 'true' : 'false');
+  $('pe-archivo-cuerpo').hidden = modo === 'historial';
+  $('pe-historial-panel').hidden = modo !== 'historial';
+  pintarAccionesPrompt();
+  if (sinRefrescar) return;
+  if (editando) {
+    pintarArchivoPrompt();
+    var bloque = $('pe-texto').closest('.pa-bloque');
+    if (bloque) bloque.scrollIntoView({ block: 'nearest' });
+    $('pe-texto').focus({ preventScroll: true });
+  } else if (modo === 'ver') {
+    refrescarArchivoPrompt();
   }
-  if (tab === 'completo') pintarPromptCompleto();
+}
+
+/* Pide el prompt activo y, si el texto del editor cambia algo, el mismo con ese texto. */
+async function refrescarArchivoPrompt(irAPieza) {
+  if (!PROMPTS.clave) return;
+  var persona = $('pe-persona').value, texto = _promptTexto(), clave = PROMPTS.clave;
+  var cuerpo = function(extra) {
+    return { method: 'POST', headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify(Object.assign({ persona: persona }, extra || {})) };
+  };
+  try {
+    var activas = await pedir('/api/prompts/vista-previa', cuerpo());
+    var cambia = PROMPTS.detalle && texto.trim() !== PROMPTS.detalle.activo.contenido.trim();
+    var borrador = cambia ? await pedir('/api/prompts/vista-previa', cuerpo({ clave: clave, contenido: texto })) : null;
+    if (clave !== PROMPTS.clave) return;   // mientras tanto se eligió otra pieza
+    PROMPTS.activas = activas.partes;
+    PROMPTS.conBorrador = borrador ? borrador.partes : null;
+  } catch (e) {
+    $('pe-archivo-cuerpo').innerHTML = '<p class="prompts-vacio">' + escHtml(tr('No se pudo armar la vista previa: ') + e.message) + '</p>';
+    return;
+  }
+  pintarArchivoPrompt();
+  if (irAPieza) {
+    var sel = $('pe-archivo-cuerpo').querySelector('.pa-bloque.elegido');
+    if (sel) $('pe-archivo-cuerpo').scrollTop = sel.offsetTop - 8;
+  }
+}
+
+function _filasPrompt(lineas, clase, num) {
+  return lineas.map(function(l) {
+    var n = clase === 'quita' ? '' : num.valor++;
+    var marca = clase === 'pone' ? '+' : clase === 'quita' ? '−' : '';
+    return '<div class="pa-linea' + (clase ? ' ' + clase : '') + '"><span class="pa-num">' + n + '</span>'
+      + '<span class="pa-marca" aria-hidden="true">' + marca + '</span><span class="pa-txt">' + (escHtml(l) || '&nbsp;') + '</span></div>';
+  }).join('');
+}
+
+/* El prompt completo, con números de línea. La pieza elegida queda resaltada; con un
+   borrador, sus líneas muestran lo que entra y lo que sale. Editando, el texto se edita en su lugar. */
+function pintarArchivoPrompt() {
+  var caja = $('pe-archivo-cuerpo');
+  if (!PROMPTS.activas.length) return;
+  $('pe-guardado').appendChild($('pe-texto'));   // sacarlo antes de pisar el HTML
+  var partes = PROMPTS.conBorrador || PROMPTS.activas, num = { valor: 1 }, html = '';
+  var lineas = 0;
+  partes.forEach(function(parte, i) {
+    var elegido = parte.clave === PROMPTS.clave;
+    var activa = PROMPTS.activas[i] || parte;
+    var cuerpo;
+    if (elegido && PROMPTS.modo === 'editar') {
+      cuerpo = '<div class="pa-editor" id="pe-editor-lugar"></div>';
+    } else if (elegido && PROMPTS.conBorrador && activa.texto !== parte.texto) {
+      cuerpo = _diffPrompt(activa.texto, parte.texto, num);
+    } else {
+      cuerpo = _filasPrompt(parte.texto.split('\n'), '', num);
+    }
+    lineas += parte.texto.split('\n').length;
+    var etiqueta = parte.editable
+      ? '<button type="button" class="pa-abrir" data-clave="' + escHtml(parte.clave) + '">' + escHtml(tr(parte.titulo))
+        + (elegido ? '' : ' <span aria-hidden="true">✎</span>') + '</button>'
+      : '<span class="pa-auto">' + escHtml(tr(parte.titulo)) + ' · ' + escHtml(tr('lo arma el sistema')) + '</span>';
+    html += '<section class="pa-bloque' + (elegido ? ' elegido' : '') + (parte.editable ? '' : ' automatico') + '">'
+      + '<div class="pa-bloque-cabeza">' + etiqueta + '</div>' + cuerpo + '</section>';
+  });
+  caja.innerHTML = html;
+  $('pe-archivo-lineas').textContent = lineas + ' ' + tr('líneas');
+  var lugar = $('pe-editor-lugar');
+  if (lugar) { lugar.appendChild($('pe-texto')); _ajustarAlto(); }
+  caja.querySelectorAll('.pa-abrir').forEach(function(b) {
+    b.addEventListener('click', async function() {
+      if (b.dataset.clave !== PROMPTS.clave) await elegirPrompt(b.dataset.clave);
+      if (b.dataset.clave === PROMPTS.clave) modoPrompt('editar');
+    });
+  });
+}
+
+function _ajustarAlto() {
+  var t = $('pe-texto');
+  t.style.height = 'auto';
+  t.style.height = Math.max(120, t.scrollHeight + 2) + 'px';
+}
+
+function _diffPrompt(antes, despues, num) {
+  return _lineasDiff(antes, despues).map(function(f) { return _filasPrompt([f[1]], f[0] === 'igual' ? '' : f[0], num); }).join('');
 }
 
 async function validarPrompt() {
@@ -237,6 +336,9 @@ function pintarAccionesPrompt() {
   $('pe-aviso').textContent = aviso;
   $('pe-aviso').hidden = !aviso;
   $('pe-aviso').className = 'prompts-aviso ' + (p && p.rechazo && estado === 'borrador' ? 'rechazo' : estado);
+
+  // El motivo se pide al editar o mientras haya un cambio sin aprobar.
+  $('pe-motivo-campo').hidden = PROMPTS.modo !== 'editar' && estado === 'activo';
 
   // Botones.
   $('pe-descartar').hidden = !p;
@@ -342,7 +444,7 @@ async function restaurarPrompt(version) {
   var r = await _accionPrompt(null, '/api/prompts/' + encodeURIComponent(PROMPTS.clave) + '/restaurar',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: version }) },
     'Enviada a revisión');
-  if (r) { PROMPTS.tab = 'editar'; await _recargarPrompt(); }
+  if (r) { PROMPTS.modo = 'ver'; await _recargarPrompt(); }
 }
 
 function pintarHistorialPrompt() {
@@ -376,24 +478,9 @@ function pintarHistorialPrompt() {
   });
 }
 
-async function pintarPromptCompleto() {
-  if (PROMPTS.tab !== 'completo' || !PROMPTS.clave) return;
-  var pre = $('pe-completo');
-  pre.textContent = tr('Armando el prompt…');
-  try {
-    var d = await pedir('/api/prompts/vista-previa', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clave: PROMPTS.clave, contenido: _promptTexto(), persona: $('pe-persona').value })
-    });
-    pre.textContent = d.prompt;
-  } catch (e) {
-    pre.textContent = tr('No se pudo armar la vista previa: ') + e.message;
-  }
-}
-
 /* Diferencia por líneas (LCS) entre la versión activa y la nueva. Los tramos
    largos sin cambios se resumen para que se vea solo lo que cambia. */
-function diffPromptHtml(antes, despues) {
+function _lineasDiff(antes, despues) {
   var a = (antes || '').split('\n'), b = (despues || '').split('\n');
   var n = a.length, m = b.length, i, j;
   var lcs = [];
@@ -410,6 +497,11 @@ function diffPromptHtml(antes, despues) {
     else if (j < m && (i >= n || lcs[i][j + 1] >= lcs[i + 1][j])) { filas.push(['pone', b[j]]); j++; }
     else { filas.push(['quita', a[i]]); i++; }
   }
+  return filas;
+}
+
+function diffPromptHtml(antes, despues) {
+  var filas = _lineasDiff(antes, despues);
   if (!filas.some(function(f) { return f[0] !== 'igual'; })) return '<p class="prompts-diff-igual">' + escHtml(tr('Sin cambios.')) + '</p>';
   var html = '', CONTEXTO = 2;
   for (var k = 0; k < filas.length; k++) {
