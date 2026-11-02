@@ -384,6 +384,48 @@ def con_imagenes(html: str, imagenes: list[dict]) -> str:
     return html[:corte] + "".join(figuras) + html[corte:]
 
 
+# Galería del carrusel para redes (carrusel.py), antes de la sección de fuentes.
+TITULO_GALERIA = {"es": "La nota en 3 imágenes", "pt": "O artigo em 3 imagens", "en": "This article in 3 images"}
+_FUENTES_HTML = re.compile(r"<h3>(?:Fuentes|Fontes|Sources)</h3>")
+
+
+def galeria_carrusel(nota: dict, cod: str, vista: bool = False) -> list[dict]:
+    """[{url, alt}] de las diapositivas del carrusel que van en el post en el idioma `cod`.
+
+    Solo si el carrusel es de ese idioma y no se sacó del post (`en_post`). Al blog van
+    las copias en los archivos de HubSpot (`hubspot_urls`, ver historial.copiar_carrusel_a_hubspot):
+    las originales son rutas de este servidor. `vista=True` (la vista previa del dashboard)
+    acepta las originales mientras no se copiaron.
+    """
+    c = nota.get("carrusel") or {}
+    diapositivas = c.get("diapositivas") or []
+    if not diapositivas or c.get("en_post") is False or c.get("idioma") != cod:
+        return []
+    urls = c.get("hubspot_urls") or []
+    if len(urls) != len(diapositivas):
+        urls = diapositivas if vista else []
+    t = c.get("textos") or {}
+    alts = [t.get("titulo") or "", " · ".join(t.get("puntos") or []), t.get("cta") or ""]
+    return [{"url": u, "alt": (alts[i] if i < len(alts) else "")[:300]} for i, u in enumerate(urls)]
+
+
+def con_galeria(html: str, imagenes: list[dict], cod: str) -> str:
+    """Agrega la galería del carrusel (deslizable de costado) antes de las fuentes, o al final si no hay."""
+    from html import escape
+
+    if not imagenes:
+        return html
+    figuras = "".join(
+        f'<img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" loading="lazy" '
+        'style="flex:0 0 78%; width:78%; max-width:420px; height:auto; scroll-snap-align:start; border-radius:8px;">'
+        for im in imagenes)
+    bloque = (f'<p><strong>{escape(TITULO_GALERIA.get(cod, TITULO_GALERIA["es"]))}</strong></p>'
+              '<div class="afterdrive-carrusel" style="display:flex; gap:12px; overflow-x:auto; '
+              f'scroll-snap-type:x mandatory; padding:4px 0 12px; margin:0 0 24px;">{figuras}</div>')
+    m = _FUENTES_HTML.search(html)
+    return html[:m.start()] + bloque + html[m.start():] if m else html + bloque
+
+
 def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
     """Sube una imagen al gestor de archivos de HubSpot y devuelve su URL pública.
 
@@ -421,6 +463,8 @@ def vista_previa(nota: dict) -> dict:
     except ErrorHubSpot as e:
         lugar = {"error": str(e), "etiquetas": []}
     partes["html"] = con_imagenes(partes["html"], imagenes_cuerpo(nota))
+    cod = lugar.get("idioma") or idioma(nota)
+    partes["html"] = con_galeria(partes["html"], galeria_carrusel(nota, cod, vista=True), cod)
     return {
         **partes,
         "imagen": _imagen(nota, partes["titulo"]),
@@ -443,7 +487,8 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
     cuerpo = {
         "name": partes["titulo"],
         "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": con_galeria(con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+                                galeria_carrusel(nota, lugar["idioma"]), lugar["idioma"]),
         "metaDescription": partes["meta"],
         "state": "PUBLISHED" if publicar else "DRAFT",
     }
@@ -530,7 +575,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
     cuerpo = {
         "name": partes["titulo"], "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": con_galeria(con_imagenes(partes["html"], imagenes_cuerpo(nota)), galeria_carrusel(nota, cod), cod),
         "metaDescription": partes["meta"], "state": "DRAFT",
     }
     imagen = _imagen(nota, partes["titulo"])

@@ -55,6 +55,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/docs` · `GET /api/docs/<slug>` | Lista de documentos de Ayuda y el Markdown de uno (solo los de `DOCUMENTOS`) |
 | `POST /api/carrusel/<nota_id>` | `{idioma?}` (es, pt o en; por defecto el de la nota): encola el carrusel para redes (textos con IA, 3 PNG de 1080×1350 y un PDF). 202 con el id de la corrida |
 | `POST /api/carrusel/<nota_id>/textos` | `{titulo, subtitulo, puntos, cta}`: guarda los textos editados y encola volver a dibujar las imágenes, sin IA |
+| `POST /api/carrusel/<nota_id>/en-post` | `{activo: bool}`: si la galería del carrusel va en el post de HubSpot (se aplica al subir o volver a subir la nota). 404 si la nota no tiene carrusel |
 | `GET /api/carrusel/<nota_id>/pdf` | El PDF de las 3 diapositivas (descarga), para LinkedIn. Las imágenes se sirven en `/api/imagenes/<id>` |
 | `POST /api/hubspot/traducciones` | `{coleccion, id}`: encola la traducción a los otros idiomas y su subida a HubSpot como borradores (la nota tiene que estar subida en su idioma). 202 con el id de la corrida. `POST /api/hubspot/enviar` también la encola y lo devuelve en `traducciones` |
 | `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |

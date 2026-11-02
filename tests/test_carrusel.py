@@ -169,3 +169,114 @@ def test_descargar_el_pdf(cliente, base):
     r = c.get(f"/api/carrusel/{oid}/pdf")
     assert r.status_code == 200 and r.data == b"%PDF-falso" and r.mimetype == "application/pdf"
     assert "attachment" in r.headers["Content-Disposition"]
+
+
+# ── Galería en el post de HubSpot ─────────────────────────────────────────────
+
+from afterdrive import historial, hubspot  # noqa: E402
+
+CARRUSEL = {"idioma": "es", "diapositivas": ["/api/imagenes/a", "/api/imagenes/b", "/api/imagenes/c"],
+            "textos": {"titulo": "Gancho", "puntos": ["uno", "dos"], "cta": "Leé"}, "generado_en": "t1"}
+HTML = "<p>Intro</p><h3>Qué pasó</h3><p>Texto</p><h3>Fuentes</h3><ul><li>x</li></ul>"
+
+
+def test_la_galeria_va_antes_de_las_fuentes_con_las_copias_de_hubspot():
+    nota = {"carrusel": {**CARRUSEL, "hubspot_urls": ["https://hs/1.png", "https://hs/2.png", "https://hs/3.png"]}}
+    imgs = hubspot.galeria_carrusel(nota, "es")
+    assert [i["url"] for i in imgs] == ["https://hs/1.png", "https://hs/2.png", "https://hs/3.png"]
+    assert imgs[0]["alt"] == "Gancho" and imgs[1]["alt"] == "uno · dos"
+    html = hubspot.con_galeria(HTML, imgs, "es")
+    assert html.index("afterdrive-carrusel") < html.index("<h3>Fuentes</h3>") and html.count("<img") == 3
+    assert "La nota en 3 imágenes" in html
+    assert hubspot.con_galeria("<p>Sin fuentes</p>", imgs, "pt").endswith("</div>")   # al final si no hay fuentes
+
+
+@pytest.mark.parametrize("cambio, cod", [
+    ({}, "pt"),                                        # otro idioma
+    ({"en_post": False, "hubspot_urls": ["h"] * 3}, "es"),   # se sacó del post
+    ({}, "es"),                                        # sin copiar a HubSpot: las rutas locales no sirven en el blog
+])
+def test_cuando_no_va_la_galeria(cambio, cod):
+    assert hubspot.galeria_carrusel({"carrusel": {**CARRUSEL, **cambio}}, cod) == []
+
+
+def test_la_vista_previa_muestra_las_originales_mientras_no_se_copiaron():
+    assert len(hubspot.galeria_carrusel({"carrusel": CARRUSEL}, "es", vista=True)) == 3
+
+
+@pytest.fixture
+def hs(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_TOKEN", "pat")
+    monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS", raising=False)
+    llamadas, subidas = [], []
+
+    class Resp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"id": "999", "url": "https://blog/x", "state": "DRAFT"}
+
+    def fake(metodo):
+        return lambda url, json=None, headers=None, timeout=None, params=None: llamadas.append((metodo, json)) or Resp()
+    monkeypatch.setattr(hubspot, "_transporte", {"post": fake("post"), "patch": fake("patch"), "get": fake("get")})
+    monkeypatch.setattr(hubspot, "subir_imagen", lambda contenido, mime, nombre:
+                        subidas.append(nombre) or f"https://hs/{nombre}")
+    return llamadas, subidas
+
+
+def _nota_con_carrusel(base, **extra):
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "es", "estado": "aprobada", **extra}).inserted_id
+    carrusel.generar(str(oid), base=base, render=render_falso)
+    return oid
+
+
+def test_al_subir_la_nota_se_copian_las_diapositivas_y_va_la_galeria(base, hs):
+    llamadas, subidas = hs
+    oid = _nota_con_carrusel(base)
+    item = historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
+    assert len(subidas) == 3 and all(n.startswith(f"carrusel-{oid}-") for n in subidas)
+    cuerpo = llamadas[-1][1]["postBody"]
+    assert cuerpo.count("https://hs/carrusel-") == 3 and cuerpo.index("afterdrive-carrusel") < cuerpo.index("<h3>Fuentes</h3>")
+    assert len(base.notas_fase2.find_one({"_id": oid})["carrusel"]["hubspot_urls"]) == 3 and "aviso" not in item
+    historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
+    assert len(subidas) == 3                                     # reenviar no vuelve a copiarlas
+
+
+def test_sacada_del_post_no_se_copia_ni_va(base, hs):
+    llamadas, subidas = hs
+    oid = _nota_con_carrusel(base)
+    carrusel.en_post(str(oid), False, base=base)
+    historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
+    assert subidas == [] and "afterdrive-carrusel" not in llamadas[-1][1]["postBody"]
+    carrusel.generar(str(oid), base=base, render=render_falso)  # regenerar respeta la elección
+    assert base.notas_fase2.find_one({"_id": oid})["carrusel"]["en_post"] is False
+
+
+def test_si_no_se_puede_copiar_el_post_sale_sin_galeria_y_avisa(base, hs, monkeypatch):
+    llamadas, _ = hs
+    oid = _nota_con_carrusel(base)
+    monkeypatch.setattr(hubspot, "subir_imagen", lambda *a: (_ for _ in ()).throw(hubspot.ErrorHubSpot("sin scope files")))
+    item = historial.enviar_a_hubspot("notas_fase2", str(oid), publicar=False, base=base)
+    assert "sin la galería" in item["aviso"] and "afterdrive-carrusel" not in llamadas[-1][1]["postBody"]
+
+
+def test_la_galeria_va_en_la_traduccion_de_su_idioma(base, hs):
+    llamadas, _ = hs
+    doc = {"_id": ObjectId(), "idioma": "es", "categorias": [],
+           "carrusel": {**CARRUSEL, "idioma": "pt", "hubspot_urls": ["https://hs/1", "https://hs/2", "https://hs/3"]}}
+    hubspot.enviar_traduccion(doc, "pt", "# Título\n\n## Fontes\n\n- [x](https://n)\n\n*Meta.*", "111")
+    assert "O artigo em 3 imagens" in next(j for m, j in llamadas if m == "patch")["postBody"]
+    llamadas.clear()
+    hubspot.enviar_traduccion(doc, "en", "# Title\n\nBody.\n\n*Meta.*", "111")
+    assert "afterdrive-carrusel" not in next(j for m, j in llamadas if m == "patch")["postBody"]
+
+
+def test_endpoint_en_post(cliente, base):
+    c, _ = cliente
+    oid = base.notas_fase2.insert_one({"contenido": NOTA, "idioma": "es"}).inserted_id
+    assert c.post(f"/api/carrusel/{oid}/en-post", json={"activo": False}).status_code == 404   # sin carrusel
+    carrusel.generar(str(oid), base=base, render=render_falso)
+    assert c.post(f"/api/carrusel/{oid}/en-post", json={"activo": "no"}).status_code == 400
+    assert c.post(f"/api/carrusel/{oid}/en-post", json={"activo": False}).status_code == 200
+    assert base.notas_fase2.find_one({"_id": oid})["carrusel"]["en_post"] is False

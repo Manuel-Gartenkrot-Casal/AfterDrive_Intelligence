@@ -880,6 +880,23 @@ def editar_carrusel(nota_id: str):
     return respuesta, status
 
 
+@app.route("/api/carrusel/<nota_id>/en-post", methods=["POST"])
+def carrusel_en_post(nota_id: str):
+    """{"activo": bool}: si la galería del carrusel va en el post de HubSpot."""
+    from afterdrive import carrusel
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    activo = (request.get_json(silent=True) or {}).get("activo")
+    if not isinstance(activo, bool):
+        return jsonify({"success": False, "error": "Parámetro 'activo' inválido."}), 400
+    try:
+        carrusel.en_post(nota_id, activo)
+    except carrusel.ErrorCarrusel as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    return jsonify({"success": True, "en_post": activo})
+
+
 @app.route("/api/carrusel/<nota_id>/pdf", methods=["GET"])
 def pdf_carrusel(nota_id: str):
     """El PDF de las 3 diapositivas, para subir a LinkedIn como documento."""

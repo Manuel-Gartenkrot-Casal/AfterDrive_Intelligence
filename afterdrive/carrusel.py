@@ -23,7 +23,10 @@ Las imágenes y el PDF (las 3 páginas, para subir a LinkedIn como documento) se
 `imagenes_subidas` y se sirven en /api/imagenes/<id>. La nota guarda en `carrusel` los
 textos, las URLs, el id del PDF, el idioma y cuándo se generó.
 
-No publica en ninguna red: eso necesita las apps y tokens de Meta y LinkedIn.
+Al subir la nota a HubSpot, las diapositivas se copian a sus archivos y van como galería
+en el post del idioma del carrusel, antes de las fuentes (`en_post`, prendido por defecto;
+ver hubspot.con_galeria). No publica en ninguna red social: eso necesita las apps y tokens
+de Meta y LinkedIn.
 
 Uso (lo encola el dashboard):
     python -m afterdrive.carrusel --nota <id> [--idioma pt] [--solo-imagenes]
@@ -400,6 +403,8 @@ def generar(nota_id: str, idioma: str | None = None, solo_imagenes: bool = False
         "textos": textos, "origen_textos": origen, "idioma": idioma, "url": url,
         "diapositivas": [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]],
         "pdf_id": str(ids[-1]), "generado_en": ahora,
+        # La galería en el post de HubSpot: se mantiene lo que se eligió para el carrusel anterior.
+        "en_post": anterior.get("en_post", True),
     }
     b.notas_fase2.update_one({"_id": oid}, {"$set": {"carrusel": carrusel}})
     return carrusel
@@ -420,6 +425,18 @@ def guardar_textos(nota_id: str, textos: dict, base=None) -> dict:
     b.notas_fase2.update_one({"_id": oid}, {"$set": {"carrusel.textos": limpios, "carrusel.idioma": idioma,
                                                      "carrusel.origen_textos": "editado"}})
     return limpios
+
+
+def en_post(nota_id: str, activo: bool, base=None) -> None:
+    """Si la galería del carrusel va en el post de HubSpot (se aplica al subir o volver a subir la nota)."""
+    b = _base(base)
+    try:
+        oid = ObjectId(nota_id)
+    except (InvalidId, TypeError) as e:
+        raise ErrorCarrusel("Nota inválida.") from e
+    if not b.notas_fase2.update_one({"_id": oid, "carrusel": {"$exists": True}},
+                                    {"$set": {"carrusel.en_post": bool(activo)}}).matched_count:
+        raise ErrorCarrusel("La nota no tiene carrusel.")
 
 
 def main(argv: list[str] | None = None) -> int:

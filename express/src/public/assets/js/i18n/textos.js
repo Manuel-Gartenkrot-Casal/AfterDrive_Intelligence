@@ -6,6 +6,9 @@
 
 var _FILAS_TEXTOS = [
   // ── Carrusel para redes ───────────────────────────────────────────────────
+  ['Va antes de las fuentes, solo en la versión de ese idioma. Se aplica al subir la nota a HubSpot (si ya está subida, volvé a subirla).', 'Vai antes das fontes, só na versão desse idioma. Vale ao subir o post para o HubSpot (se já foi subido, suba de novo).', 'It goes before the sources, only in that language’s version. It applies when the post is uploaded to HubSpot (if it already is, upload it again).'],
+  ['La galería va en el post de HubSpot', 'A galeria vai no post do HubSpot', 'The gallery goes in the HubSpot post'],
+  ['El post de HubSpot va sin la galería', 'O post do HubSpot vai sem a galeria', 'The HubSpot post goes without the gallery'],
   ['Carrusel para redes', 'Carrossel para redes', 'Social carousel'],
   ['Tres imágenes de 1080×1350 para Instagram y un PDF para LinkedIn, con los textos que arma la IA a partir de la nota. Se descargan para publicarlas: no se suben solas.', 'Três imagens de 1080×1350 para o Instagram e um PDF para o LinkedIn, com os textos que a IA monta a partir do post. São baixadas para publicar: não sobem sozinhas.', 'Three 1080×1350 images for Instagram and a PDF for LinkedIn, with copy the AI writes from the post. You download them to publish: they aren\'t posted automatically.'],
   ['Crear carrusel', 'Criar carrossel', 'Create carousel'],

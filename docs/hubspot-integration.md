@@ -63,6 +63,7 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
 | `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
 | `postBody` (imágenes) | Las 4 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Una foto de Wikimedia Commons con licencia CC BY/BY-SA lleva su crédito debajo, en letra chica, como pide la licencia. Van también en las traducciones |
+| `postBody` (galería del carrusel) | Si la nota tiene carrusel para redes (`carrusel.py`) y no se sacó del post, sus 3 diapositivas se copian a los archivos de HubSpot y van como galería deslizable antes de la sección de fuentes, con el título "La nota en 3 imágenes" (en el idioma). Solo en la versión del idioma del carrusel: el post original o una traducción. Si la copia falla, el post se sube sin la galería y se avisa |
 | `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias o de un banco de imágenes, nunca una que pida crédito; copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.

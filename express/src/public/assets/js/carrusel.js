@@ -42,7 +42,10 @@ function llenarCarrusel(nota) {
         return '<figure><a href="' + src + '" target="_blank" rel="noopener"><img src="' + src + '" alt="Diapositiva ' + (i + 1) + ' del carrusel" loading="lazy"></a>'
           + '<figcaption><a href="' + src + '" download="carrusel-' + (i + 1) + '.png">Descargar ' + (i + 1) + '</a></figcaption></figure>';
       }).join('') + '</div>'
-      + '<p><a class="btn btn-sm" href="/api/carrusel/' + encodeURIComponent(nota._id) + '/pdf">Descargar PDF para LinkedIn</a></p>';
+      + '<p><a class="btn btn-sm" href="/api/carrusel/' + encodeURIComponent(nota._id) + '/pdf">Descargar PDF para LinkedIn</a></p>'
+      + '<label class="carrusel-en-post"><input type="checkbox" id="carrusel-en-post"' + (c.en_post === false ? '' : ' checked')
+      + ' onchange="carruselEnPost(this)"> Sumar la galería al post de HubSpot en ' + escHtml((NOMBRE_IDIOMA[c.idioma] || c.idioma || '').toLowerCase()) + '</label>'
+      + '<p class="revision-sub">Va antes de las fuentes, solo en la versión de ese idioma. Se aplica al subir la nota a HubSpot (si ya está subida, volvé a subirla).</p>';
     var t = c.textos || {};
     var puntos = (t.puntos || []).concat(['', '', '']).slice(0, 3);
     html += '<details class="carrusel-textos"><summary>Editar los textos</summary>'
@@ -115,4 +118,20 @@ async function guardarTextosCarrusel() {
   }
   await _seguirCarrusel('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/textos', body,
                         $('btn-carrusel-guardar'), 'Redibujando las imágenes…');
+}
+
+async function carruselEnPost(caja) {
+  var activo = caja.checked;
+  caja.disabled = true;
+  try {
+    await pedir('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/en-post', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activo: activo })
+    });
+    showToast(activo ? 'La galería va en el post de HubSpot' : 'El post de HubSpot va sin la galería', 'success');
+  } catch (e) {
+    caja.checked = !activo;
+    showToast('No se pudo cambiar: ' + e.message, 'error');
+  } finally {
+    caja.disabled = false;
+  }
 }
