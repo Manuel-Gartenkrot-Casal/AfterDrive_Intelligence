@@ -5,6 +5,16 @@
    PATRONES cubre los textos con números, fechas o nombres. */
 
 var _FILAS_TEXTOS = [
+  // ── Marco de la vista Cliente ──
+  ['Buscar o saltar a…', 'Buscar ou ir para…', 'Search or jump to…'],
+  ['Ir a', 'Ir para', 'Go to'],
+  ['Nueva nota', 'Novo post', 'New post'],
+  ['Prompts', 'Prompts', 'Prompts'],
+  ['Buscando notas…', 'Buscando posts…', 'Searching posts…'],
+  ['Sin resultados', 'Sem resultados', 'No results'],
+  ['Buscar notas por título o tema, o ir a una sección…', 'Buscar posts por título ou tema, ou ir para uma seção…', 'Search posts by title or topic, or jump to a section…'],
+  ['Pasar a la vista Desarrollador', 'Passar para a visão Desenvolvedor', 'Switch to the Developer view'],
+  ['+ Nueva nota', '+ Novo post', '+ New post'],
   // ── Revisión en la vista Cliente (lectura.js) ─────────────────────────────
   ['min de lectura', 'min de leitura', 'min read'],
   ['✎ Editar', '✎ Editar', '✎ Edit'],

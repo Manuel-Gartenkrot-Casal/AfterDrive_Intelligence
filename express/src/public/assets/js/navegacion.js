@@ -209,12 +209,10 @@ function ajustarMarcoCliente() {
   if (!pie || !der) return;
   var enRiel = document.documentElement.getAttribute('data-modo') === 'cliente' && _escritorio.matches;
   var idioma = document.querySelector('.selector-idioma'), tema = $('themeBtn'), salir = $('btn-salir');
-  var ayuda = document.querySelector('.sidebar-ayuda'), dev = pie.querySelector('.rail-dev'), estado = der.querySelector('.status-pill');
+  var ayuda = document.querySelector('.sidebar-ayuda'), estado = der.querySelector('.status-pill');
+  if (!enRiel) idioma.classList.remove('abierto');
   if (enRiel) {
-    pie.insertBefore(idioma, dev);
-    pie.insertBefore(tema, dev);
-    pie.insertBefore(ayuda, dev);
-    pie.appendChild(salir);
+    [idioma, tema, ayuda, salir].forEach(function(el) { pie.appendChild(el); });
   } else if (idioma.parentNode !== der) {
     der.insertBefore(idioma, estado);
     der.appendChild(tema);
@@ -229,3 +227,17 @@ function ajustarMarcoCliente() {
 }
 (_escritorio.addEventListener ? _escritorio.addEventListener('change', ajustarMarcoCliente) : _escritorio.addListener(ajustarMarcoCliente));
 document.addEventListener('idioma', function() { if (_seccion) pintarMiga(_seccion); ajustarMarcoCliente(); });
+
+/* En la barra de íconos el idioma es un solo botón (el elegido): al tocarlo se
+   despliegan los otros dos a su derecha. */
+(function() {
+  var sel = document.querySelector('.selector-idioma');
+  if (!sel) return;
+  sel.addEventListener('click', function(ev) {
+    var b = ev.target.closest('button');
+    if (!b || !sel.closest('.rail-pie')) return;
+    if (b.getAttribute('aria-pressed') === 'true') sel.classList.toggle('abierto');
+    else sel.classList.remove('abierto');
+  }, true);   // en captura: antes de que setIdioma cambie cuál está elegido
+  document.addEventListener('click', function(ev) { if (!ev.target.closest('.selector-idioma')) sel.classList.remove('abierto'); });
+})();

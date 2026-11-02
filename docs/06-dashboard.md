@@ -54,7 +54,8 @@ Lo que más vas a tocar:
 |---|---|
 | `navegacion.js` | Navegación. `irASeccion('fuentes')` cambia de sección; la sección vive en el hash (`#fuentes`) |
 | `navegacion.js` | `setModo('cliente' \| 'dev')` |
-| `navegacion.js` | **Marco de la vista Cliente en escritorio** (`ajustarMarcoCliente`): arriba una barra fina con el logo, la sección actual (`pintarMiga`) y "+ Nueva nota"; a la izquierda una barra de íconos (las mismas `.nav-link`) con idioma, tema, ayuda, el ícono `</>` para pasar a Desarrollador y salir abajo (se mueven los mismos elementos del encabezado). En Desarrollador y en el celular vuelven a su lugar. La revisión de una nota se abre a la derecha de la barra |
+| `buscador.js` | **Buscar o saltar a…** (vista Cliente: botón del encabezado, ⌘K / Ctrl+K): sin escribir lista las secciones; al escribir filtra y busca notas por título, tema o texto (`/api/historial/generados_aprobados?q=`). Flechas, Enter y Esc |
+| `navegacion.js` | **Marco de la vista Cliente en escritorio** (`ajustarMarcoCliente`): arriba una barra fina con el logo, la sección actual (`pintarMiga`) y "+ Nueva nota"; a la izquierda una barra de íconos (las mismas `.nav-link`) con los íconos de las maquetas (`.icono-riel`) y abajo idioma (un botón con el elegido que despliega los otros), tema, ayuda y salir (se mueven los mismos elementos del encabezado). Pasar a Desarrollador está en el menú de Ayuda. En Desarrollador y en el celular vuelven a su lugar. La revisión de una nota se abre a la derecha de la barra |
 | `base.js` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
 | `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
 | `historial.js` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`): aprobar, rechazar con motivo, editar, vista previa con imagen y HubSpot |

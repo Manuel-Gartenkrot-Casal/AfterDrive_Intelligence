@@ -15,7 +15,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from tests.e2e.conftest import abrir
+from tests.e2e.conftest import abrir, elegir_idioma, pasar_a_dev
 
 pytestmark = pytest.mark.e2e
 
@@ -275,7 +275,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
         ruta.fulfill(json={"success": True, "provider": "paga", "model": "modelo-e2e"})
 
     pagina.route("**/api/providers", cambiar)
-    pagina.click('button[data-modo="dev"]:visible')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
@@ -472,12 +472,12 @@ def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
     # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
-    pagina.click('button[data-modo="dev"]:visible')
+    pasar_a_dev(pagina)
     expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
     pagina.click("#confirmar-no")
     assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
     expect(tablero).to_be_hidden()
-    pagina.click('button[data-modo="dev"]:visible')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
@@ -753,7 +753,7 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     assert pg.evaluate("document.documentElement.lang") == "en"
 
     # Desde el encabezado, a portugués; queda elegido al recargar.
-    pg.locator(".selector-idioma").get_by_role("button", name="PT").click()
+    elegir_idioma(pg, "pt")
     expect(nav).to_contain_text("Criar post")
     pg.reload()
     pg.wait_for_selector(".sidebar")

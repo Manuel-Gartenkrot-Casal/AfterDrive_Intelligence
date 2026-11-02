@@ -91,3 +91,22 @@ def pagina(navegador, base_url, request):
     yield pg
     assert pg.errores == [], f"Errores de JavaScript: {pg.errores}"
     pg.context.close()
+
+
+def pasar_a_dev(pg):
+    """Toca el control para pasar a Desarrollador (no confirma). En la vista Cliente de
+    escritorio está en el menú de Ayuda; en el celular, en el selector de la barra."""
+    visible = pg.locator('.modo-switch button[data-modo="dev"]')
+    if visible.is_visible():
+        visible.click()
+        return
+    pg.click("#ayuda-btn")
+    pg.click('#ayuda-menu button[data-modo="dev"]')
+
+
+def elegir_idioma(pg, cod):
+    """Elige el idioma de la interfaz. En la barra de íconos se despliega tocando el elegido."""
+    boton = pg.locator(f'.selector-idioma [data-idioma="{cod}"]')
+    if not boton.is_visible():
+        pg.click('.selector-idioma button[aria-pressed="true"]')
+    boton.click()

@@ -121,3 +121,27 @@ def test_la_vista_desarrollador_sigue_con_los_pasos(pagina):
     assert not pagina.evaluate("document.getElementById('modal-caja').classList.contains('lectura')")
     expect(pagina.locator(".pasos .paso")).to_have_count(3)
     expect(pagina.locator("#nota-texto mark.dato")).to_have_count(0)
+
+
+def test_marco_de_la_vista_cliente_y_buscador(pagina):
+    # Arriba: logo, la sección actual y "+ Nueva nota"; a la izquierda, solo íconos.
+    expect(pagina.locator("#header-miga")).to_have_text("Inicio")
+    expect(pagina.locator(".header-nueva")).to_be_visible()
+    assert pagina.locator(".sidebar").bounding_box()["width"] <= 57
+    expect(pagina.locator(".rail-pie #themeBtn")).to_be_visible()
+    expect(pagina.locator(".rail-pie #btn-salir")).to_be_visible()
+    pagina.click('.nav-link[data-seccion="historial"]')
+    expect(pagina.locator("#header-miga")).to_have_text("Notas")
+    # Ctrl+K: buscar una nota por el título y abrirla con Enter.
+    pagina.keyboard.press("Control+k")
+    expect(pagina.locator("#buscador")).to_be_visible()
+    pagina.keyboard.type("Peças para")
+    expect(pagina.locator(".buscador-item", has_text=NOTA)).to_be_visible()
+    pagina.locator(".buscador-item", has_text=NOTA).click()
+    pagina.locator("#modal-art.open").wait_for()
+    expect(pagina.locator("#modal-titulo")).to_contain_text(NOTA)
+    pagina.keyboard.press("Escape")
+    # Sin escribir, lleva a una sección.
+    pagina.click("#buscador-btn")
+    pagina.locator(".buscador-item", has_text="Fuentes").click()
+    expect(pagina.locator("#header-miga")).to_have_text("Fuentes")
