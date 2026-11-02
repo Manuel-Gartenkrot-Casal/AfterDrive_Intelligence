@@ -16,6 +16,8 @@ queda con error y la nota espera a una persona.
 
 from __future__ import annotations
 
+import math
+
 from afterdrive.calibracion import ETIQUETAS
 from afterdrive.ia import llm
 from afterdrive.ia.lm_studio import _extraer_json
@@ -51,10 +53,29 @@ def _lista_etiquetas() -> str:
 
 
 def _numero(valor, minimo, maximo, default):
+    """El valor acotado a [minimo, maximo]; default si no es un número usable.
+
+    Un bool o un NaN no cuentan como número: antes `true` o `NaN` en la
+    confianza daban 1.0 y la nota podía aprobarse sola con un JSON roto.
+    """
+    if isinstance(valor, bool):
+        return default
     try:
-        return max(minimo, min(maximo, type(default)(valor)))
+        numero = float(valor)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(numero):
+        return default
+    if isinstance(default, int):
+        numero = round(numero)
+    return type(default)(max(minimo, min(maximo, numero)))
+
+
+def _lista(valor) -> list:
+    """Una lista aunque el modelo mande un solo texto (si no, se partiría letra por letra)."""
+    if isinstance(valor, str):
+        return [valor] if valor.strip() else []
+    return list(valor) if isinstance(valor, list) else []
 
 
 def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
@@ -76,9 +97,9 @@ def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
         "pasa": data["pasa"],
         "confianza": _numero(data.get("confianza"), 0.0, 1.0, 0.0),
         "calificacion": _numero(data.get("calificacion"), 1, 5, 3),
-        "etiquetas": [e for e in data.get("etiquetas") or [] if e in ETIQUETAS],
+        "etiquetas": [e for e in _lista(data.get("etiquetas")) if isinstance(e, str) and e in ETIQUETAS],
         "comentario": str(data.get("comentario") or "")[:300],
-        "motivos": [str(m)[:200] for m in data.get("motivos") or []][:5],
+        "motivos": [str(m)[:200] for m in _lista(data.get("motivos")) if str(m).strip()][:5],
         "modelo": "evaluacion",
     }
 
