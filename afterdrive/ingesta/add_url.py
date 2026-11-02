@@ -28,15 +28,17 @@ def add_custom_url(url: str):
     print(f"\nResultado: {res['aprobados']} aprobados, {res['rechazados']} rechazados.", flush=True)
 
     if res["aprobados"] > 0:
+        ahora = datetime.datetime.now(datetime.UTC).isoformat()
+        # Si la URL ya era confiable, se conserva su fecha de alta original.
         col_trusted_urls.update_one(
             {"url": url},
             {
                 "$set": {
                     "nombre_fuente": items[0].get("fuente", "Custom Source"),
-                    "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
-                    "ultima_ejecucion": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "ultima_ejecucion": ahora,
                     "estado": "activo",
-                }
+                },
+                "$setOnInsert": {"fecha_agregado": ahora},
             },
             upsert=True,
         )

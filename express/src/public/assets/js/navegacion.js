@@ -94,6 +94,7 @@ function setModo(modo) {
     if (el.dataset.dev === undefined) el.dataset.dev = el.textContent;
     if (!el.classList.contains('loading')) el.textContent = modo === 'cliente' ? el.dataset.cliente : el.dataset.dev;
   });
+  if (typeof pintarDia === 'function') pintarDia();   // el día de Programación nombra las tareas
   // Si la sección actual no existe en esta vista, se vuelve al inicio.
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
 }

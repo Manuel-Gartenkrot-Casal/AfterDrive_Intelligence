@@ -1006,15 +1006,17 @@ def add_trusted_url_direct():
         return error
     nombre = str(body.get("nombre") or "").strip()
     try:
+        # Volver a agregar una fuente que ya existe la reactiva, pero no pisa
+        # cuándo se dio de alta ni cuándo se revisó por última vez.
         col_trusted_urls.update_one(
             {"url": url},
-            {"$set": {
-                "url": url,
-                "nombre_fuente": nombre or url,
-                "estado": "activo",
-                "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
-                "ultima_ejecucion": None,
-            }},
+            {
+                "$set": {"url": url, "nombre_fuente": nombre or url, "estado": "activo"},
+                "$setOnInsert": {
+                    "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "ultima_ejecucion": None,
+                },
+            },
             upsert=True,
         )
         return jsonify({"success": True, "message": f"URL '{url}' agregada como activa."})

@@ -205,6 +205,34 @@ def test_pausar_una_fuente_inexistente_es_404(fuentes):
     assert c.patch("/api/trusted-urls/https://otro.com", json={"estado": "inactivo"}).status_code == 404
 
 
+def test_volver_a_agregar_una_fuente_conserva_alta_y_ultima_revision(fuentes, monkeypatch):
+    from afterdrive.ingesta import scraper
+    c, col = fuentes
+    col.update_one({"url": "https://sitio.com/noticias"}, {"$set": {
+        "estado": "inactivo",
+        "fecha_agregado": "2026-01-01T00:00:00+00:00",
+        "ultima_ejecucion": "2026-10-30T07:00:00+00:00",
+    }})
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    r = c.post("/api/trusted-urls", json={"url": "https://sitio.com/noticias", "nombre": "Sitio nuevo"})
+    assert r.status_code == 200
+    doc = col.find_one({"url": "https://sitio.com/noticias"})
+    assert doc["estado"] == "activo" and doc["nombre_fuente"] == "Sitio nuevo"
+    assert doc["fecha_agregado"] == "2026-01-01T00:00:00+00:00"
+    assert doc["ultima_ejecucion"] == "2026-10-30T07:00:00+00:00"
+    assert col.count_documents({}) == 1
+
+
+def test_agregar_una_fuente_nueva_le_pone_fecha_de_alta(fuentes, monkeypatch):
+    from afterdrive.ingesta import scraper
+    c, col = fuentes
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    assert c.post("/api/trusted-urls", json={"url": "https://nuevo.com/blog"}).status_code == 200
+    doc = col.find_one({"url": "https://nuevo.com/blog"})
+    assert doc["estado"] == "activo" and doc["nombre_fuente"] == "https://nuevo.com/blog"
+    assert doc["fecha_agregado"] and doc["ultima_ejecucion"] is None
+
+
 # ── Config de la Nota automática (Fase 2) ─────────────────────────────────────
 
 
