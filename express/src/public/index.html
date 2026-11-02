@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
   <script>
     (function () {
       var t = null;
@@ -775,10 +775,12 @@
     <div class="modal" id="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-titulo" data-vista="nota">
       <div class="modal-header">
         <div class="modal-cabeza">
+          <span class="lectura-miga">Notas <span aria-hidden="true">/</span></span>
           <span class="estado-chip" id="modal-estado" hidden></span>
           <h2 class="modal-title" id="modal-titulo">Última nota</h2>
           <p class="modal-meta" id="modal-meta"></p>
         </div>
+        <div class="lectura-acciones" id="lectura-acciones"></div>
         <button class="modal-close" onclick="cerrar()" aria-label="Cerrar">&times;</button>
       </div>
       <!-- Celular: la nota y la revisión no entran juntas; se elige cuál ver. -->
@@ -814,6 +816,7 @@
   <script src="/assets/js/prompts.js"></script>
   <script src="/assets/js/revision.js"></script>
   <script src="/assets/js/carrusel.js"></script>
+  <script src="/assets/js/lectura.js"></script>
   <script src="/assets/js/recorrido.js"></script>
   <script src="/assets/js/metricas.js"></script>
   <script src="/assets/js/animaciones.js"></script>

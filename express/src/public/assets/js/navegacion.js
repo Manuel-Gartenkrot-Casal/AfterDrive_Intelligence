@@ -97,6 +97,9 @@ function setModo(modo) {
   if (typeof pintarDia === 'function') pintarDia();   // el día de Programación nombra las tareas
   // Si la sección actual no existe en esta vista, se vuelve al inicio.
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
+  // Una nota abierta se vuelve a abrir en la vista nueva (en Cliente se lee como documento).
+  if ($('modal-art') && $('modal-art').classList.contains('open') && typeof _notaActual !== 'undefined' && _notaActual
+      && _notaActual.coleccion === 'notas_fase2') fase2MostrarUltima(_notaActual.id);
 }
 
 // Desde los botones de la barra lateral: pide confirmación antes de cambiar.

@@ -85,8 +85,9 @@ def abrir(navegador, base_url, modo="cliente", ancho=1366, alto=900):
 
 
 @pytest.fixture
-def pagina(navegador, base_url):
-    pg = abrir(navegador, base_url)
+def pagina(navegador, base_url, request):
+    """El dashboard abierto, en la vista Cliente salvo que el test pida otra (parametrize indirecto)."""
+    pg = abrir(navegador, base_url, modo=getattr(request, "param", "cliente"))
     yield pg
     assert pg.errores == [], f"Errores de JavaScript: {pg.errores}"
     pg.context.close()
