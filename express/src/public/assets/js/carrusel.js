@@ -1,7 +1,7 @@
 /* carrusel.js — Carruseles para redes de una nota, uno por idioma (paso Publicar de la revisión).
    3 imágenes de 1080×1350 para Instagram y un PDF para LinkedIn en español, portugués e
    inglés. Los arma la Cola (afterdrive/carrusel.py); acá se piden, se ven por idioma, se
-   editan los textos y se descargan. Cada post de HubSpot lleva la galería de su idioma.
+   editan los textos y se descargan.
    No publica en redes. Parte del dashboard: ver el final de index.html. */
 
 var IDIOMAS_CARRUSEL = ['es', 'pt', 'en'];
@@ -12,11 +12,6 @@ function carruselesDe(nota) {
   var c = Object.assign({}, nota.carruseles || {});
   if (nota.carrusel && nota.carrusel.idioma && !c[nota.carrusel.idioma]) c[nota.carrusel.idioma] = nota.carrusel;
   return c;
-}
-
-function carruselEnPostActivo(nota) {
-  if (nota.carrusel_en_post !== undefined) return nota.carrusel_en_post !== false;
-  return !(nota.carrusel && nota.carrusel.en_post === false);
 }
 
 function pintarCarrusel(nota, panel) {
@@ -50,9 +45,6 @@ function llenarCarrusel(nota) {
             + escHtml(NOMBRE_IDIOMA[cod] || cod) + '</button>';
         }).join('') + '</div>';
     html += carruselIdiomaHtml(nota, todos[_carruselVista], _carruselVista);
-    html += '<label class="carrusel-en-post"><input type="checkbox" id="carrusel-en-post"' + (carruselEnPostActivo(nota) ? ' checked' : '')
-      + ' onchange="carruselEnPost(this)"> Mostrar el carrusel también dentro de la nota en el blog</label>'
-      + '<p class="revision-sub">Además de descargarlo para redes, las 3 imágenes aparecen dentro de la nota publicada en el blog, antes de las fuentes. La nota en español muestra el carrusel en español, la de portugués el de portugués y la de inglés el de inglés. Si la nota ya está en HubSpot, volvé a subirla para que aparezca.</p>';
   }
   cont.innerHTML = html;
   cont._nota = nota;
@@ -212,22 +204,4 @@ async function guardarTextosCarrusel() {
   await _seguirCarrusel('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/textos', body, $('btn-carrusel-guardar'),
                         cambian.length === 1 ? 'Redibujando la diapositiva ' + cambian[0] + '…'
                                              : 'Redibujando las diapositivas ' + cambian.join(' y ') + '…');
-}
-
-async function carruselEnPost(caja) {
-  var activo = caja.checked;
-  caja.disabled = true;
-  try {
-    await pedir('/api/carrusel/' + encodeURIComponent(_notaActual.id) + '/en-post', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ activo: activo })
-    });
-    var cont = $('carrusel-cuerpo');
-    if (cont && cont._nota) cont._nota.carrusel_en_post = activo;
-    showToast(activo ? 'El carrusel se va a mostrar dentro de la nota en el blog' : 'La nota en el blog va sin el carrusel', 'success');
-  } catch (e) {
-    caja.checked = !activo;
-    showToast('No se pudo cambiar: ' + e.message, 'error');
-  } finally {
-    caja.disabled = false;
-  }
 }

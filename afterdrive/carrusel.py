@@ -9,7 +9,7 @@ Interfaz:
     renderizar(htmls) -> ([png], pdf)                  con Chromium (Playwright)
     carruseles(nota) -> {idioma: carrusel}             los guardados (entiende el formato viejo)
     generar(nota_id, idiomas=None, solo_imagenes=False, base=None) -> {idioma: carrusel}
-    guardar_textos(nota_id, idioma, textos) / en_post(nota_id, activo)
+    guardar_textos(nota_id, idioma, textos) -> (textos, diapositivas a redibujar)
 
 De dónde sale cada cosa:
 - Las diapositivas son plantillas HTML con los colores y el logo de AfterDrive que Chromium
@@ -31,12 +31,10 @@ Las tres diapositivas:
 Por defecto se arman los 3 idiomas de los blogs (es, pt, en), así hay uno listo para cada
 post. Las imágenes y el PDF de cada idioma (las 3 páginas, para LinkedIn) van a
 `imagenes_subidas` y se sirven en /api/imagenes/<id>. La nota guarda `carruseles`
-({idioma: textos, URLs, id del PDF, cuándo}) y `carrusel_en_post`.
+({idioma: textos, URLs, id del PDF, cuándo}).
 
-Al subir la nota a HubSpot, las diapositivas se copian a sus archivos y cada post (el original
-y sus traducciones) lleva como galería el carrusel de su idioma, antes de las fuentes (ver
-hubspot.con_galeria). No publica en ninguna red social: eso necesita las apps y tokens de
-Meta y LinkedIn.
+No van al blog ni se publican solos en ninguna red social: se descargan desde el dashboard
+(publicar directo necesita las apps y tokens de Meta y LinkedIn).
 
 Uso (lo encola el dashboard):
     python -m afterdrive.carrusel --nota <id> [--idiomas es pt en] [--solo-imagenes]
@@ -358,23 +356,15 @@ def carruseles(nota: dict) -> dict:
 
 
 def migrar(col, nota: dict) -> dict:
-    """Pasa el formato viejo (un solo `carrusel`) a `carruseles` + `carrusel_en_post`. Devuelve la nota al día."""
+    """Pasa el formato viejo (un solo `carrusel`) a `carruseles`. Devuelve la nota al día."""
     viejo = nota.get("carrusel")
     if not isinstance(viejo, dict):
         return nota
     nuevos = carruseles(nota)
-    activo = en_post_activo(nota)
-    col.update_one({"_id": nota["_id"]}, {"$set": {"carruseles": nuevos, "carrusel_en_post": activo},
+    col.update_one({"_id": nota["_id"]}, {"$set": {"carruseles": nuevos},
                                           "$unset": {"carrusel": ""}})
     nota = {k: v for k, v in nota.items() if k != "carrusel"}
-    return {**nota, "carruseles": nuevos, "carrusel_en_post": activo}
-
-
-def en_post_activo(nota: dict) -> bool:
-    """Si las galerías van en los posts de HubSpot (prendido salvo que se haya apagado)."""
-    if "carrusel_en_post" in nota:
-        return nota["carrusel_en_post"] is not False
-    return (nota.get("carrusel") or {}).get("en_post") is not False
+    return {**nota, "carruseles": nuevos}
 
 
 def _texto_base(nota: dict, idioma: str) -> tuple[str, bool]:
@@ -491,7 +481,6 @@ def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, 
             ids = _guardar_archivos(b, nota_id, nota["_id"], idioma, pngs, pdf, ahora)
             _borrar_archivos(b, anterior)
             urls, pdf_id = [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]], ids[-1]
-        # Sin hubspot_urls: las copias en HubSpot son de las imágenes anteriores y se vuelven a hacer al subir.
         hechos[idioma] = {
             "textos": textos, "origen_textos": origen, "idioma": idioma, "url": url,
             "diapositivas": urls, "pdf_id": str(pdf_id), "generado_en": ahora,
@@ -529,15 +518,6 @@ def guardar_textos(nota_id: str, idioma: str, textos: dict, base=None) -> tuple[
         b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {
             f"carruseles.{idioma}": {**actual, "textos": limpios, "origen_textos": "editado"}}})
     return limpios, cambiadas
-
-
-def en_post(nota_id: str, activo: bool, base=None) -> None:
-    """Si las galerías de los carruseles van en los posts de HubSpot (se aplica al subir o volver a subir)."""
-    b = _base(base)
-    nota = _nota(b, nota_id)
-    if not carruseles(nota):
-        raise ErrorCarrusel("La nota no tiene carrusel.")
-    b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {"carrusel_en_post": bool(activo)}})
 
 
 def main(argv: list[str] | None = None) -> int:

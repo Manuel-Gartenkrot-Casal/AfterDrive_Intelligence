@@ -177,11 +177,6 @@ def subir(coleccion: str, item_id: str, base=None) -> dict:
         raise ErrorTraduccion("La nota no está en un idioma de los blogs (español, portugués o inglés).")
 
     resultado = {"subidas": [], "errores": [], "avisos": []}
-    # Si el carrusel es de uno de estos idiomas, su galería va en esa versión (el envío original pudo no copiarlo).
-    from afterdrive import historial
-    aviso = historial.copiar_carrusel_a_hubspot(col, doc)
-    if aviso:
-        resultado["avisos"].append(aviso)
     with consumo.medir() as costo:
         for cod in destinos:
             nombre = NOMBRE[cod]
