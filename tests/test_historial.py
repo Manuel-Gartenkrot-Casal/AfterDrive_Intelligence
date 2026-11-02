@@ -273,3 +273,17 @@ def test_motivos_viejos_no_cuentan(base):
     base.notas_fase2.update_one({"_id": _oid(7)}, {"$set": {
         "estado": "rechazada", "motivo_rechazo": "Viejo", "rechazado_en": "2020-01-01T00:00:00+00:00"}})
     assert historial.motivos_recientes(base=base) == []
+
+
+def test_la_lista_trae_la_imagen_destacada_para_la_miniatura():
+    import mongomock
+
+    from afterdrive import historial
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_many([
+        {"contenido": "# A\n\nTexto.", "imagen": {"url": "https://img/a.jpg"}},
+        {"contenido": "# B\n\nTexto.", "imagen": {"url": "https://img/b.jpg", "hubspot_url": "https://hs/b.jpg"}},
+        {"contenido": "# C\n\nTexto."},
+    ])
+    imagenes = sorted(str(it["imagen"]) for it in historial.listar("generados_aprobados", base=base)["items"])
+    assert imagenes == ["None", "https://hs/b.jpg", "https://img/a.jpg"]

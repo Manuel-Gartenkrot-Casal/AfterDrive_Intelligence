@@ -181,6 +181,9 @@ def _normalizar(doc: dict, coleccion: str, seccion: str, completo: bool = False)
         item["aprobacion_auto"] = doc.get("aprobacion_auto")
         item["juicio"] = doc.get("juicio")
         item["critica_puntaje"] = (doc.get("critica") or {}).get("puntaje")   # 1 a 10, de critica.py
+        # La imagen destacada, para la miniatura de las listas (la copia de HubSpot si ya se subió).
+        imagen = doc.get("imagen") if isinstance(doc.get("imagen"), dict) else {}
+        item["imagen"] = imagen.get("hubspot_url") or imagen.get("url") or None
         if item["estado"] == _db.ESTADO_RECHAZADA:
             item["motivo"] = doc.get("motivo_rechazo") or None
     if seccion.endswith("descartados"):
