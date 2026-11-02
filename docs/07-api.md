@@ -30,7 +30,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | | |
 |---|---|
 | `POST /api/corridas/scraping` | Scraping de todas las fuentes activas |
-| `POST /api/corridas/generacion` | Una nota con los parámetros del body (`categorias`, `regiones`, `clientes`, `persona`, `tema`, `puntapie_url`) |
+| `POST /api/corridas/generacion` | Una nota con los parámetros del body (`categorias`, `regiones`, `clientes`, `persona`, `tema`, `puntapie_url`, `indicaciones`: texto libre de hasta 2000 caracteres para la IA) |
 | `POST /api/corridas/ejemplos` | Sincronizar ejemplos (`tags`, `max`) |
 | `POST /api/corridas/probar-fuente` | Probar y agregar una fuente (`url`) |
 | `POST /api/corridas/recomendaciones` | Buscar fuentes recomendadas |
@@ -84,7 +84,9 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | | |
 |---|---|
 | `GET /api/fase2/categorias`, `GET /api/fase2/regiones` | Opciones con la cantidad de ejemplos |
-| `GET/POST /api/fase2/clientes`, `DELETE /api/fase2/clientes/<slug>` | Clientes |
+| `GET/POST /api/fase2/clientes`, `DELETE /api/fase2/clientes/<slug>` | Clientes. `POST` acepta `modo`: `mencionar` (default) o `no_mencionar` |
+| `POST /api/fase2/clientes/importar` | Carga una lista (`texto`, una empresa por línea: `Nombre \| descripción \| alias1, alias2`) con un `modo` para todas. Crea las nuevas y cambia de modo las que ya estaban |
+| `PATCH /api/fase2/clientes/<slug>` | `{"modo"}`: si se puede nombrar. Pasar a `no_mencionar` la saca de los clientes de la nota automática |
 | `GET /api/fase2/ultima-nota`, `GET /api/fase2/notas/<id>` | Leer una nota |
 | `POST /api/evaluate-article` | Checklist de calidad a demanda |
 

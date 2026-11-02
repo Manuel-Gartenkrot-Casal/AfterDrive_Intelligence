@@ -5,6 +5,25 @@
    PATRONES cubre los textos con números, fechas o nombres. */
 
 var _FILAS_TEXTOS = [
+  // ── Indicaciones y clientes que no se nombran ─────────────────────────────
+  ['Indicaciones para la IA (opcional)', 'Instruções para a IA (opcional)', 'Instructions for the AI (optional)'],
+  ['Solo para esta nota: enfoque, tono, qué destacar o evitar. No hace falta guardarlo. La IA nunca inventa datos que no estén en las noticias, aunque se lo pidas.', 'Só para este post: enfoque, tom, o que destacar ou evitar. Não precisa salvar. A IA nunca inventa dados que não estejam nas notícias, mesmo que você peça.', 'Just for this post: focus, tone, what to highlight or avoid. No need to save it. The AI never makes up data that isn\'t in the news, even if you ask.'],
+  ['Indicaciones para la IA', 'Instruções para a IA', 'Instructions for the AI'],
+  ['No nombrar nunca', 'Nunca mencionar', 'Never mention'],
+  ['Ninguna nota las nombra, aunque aparezcan en las noticias. Si se cuela una, la nota se corrige y no se aprueba sola.', 'Nenhum post as menciona, mesmo que apareçam nas notícias. Se alguma escapar, o post é corrigido e não é aprovado automaticamente.', 'No post names them, even if they appear in the news. If one slips through, the post is corrected and isn\'t auto-approved.'],
+  ['Para mencionar', 'Para mencionar', 'Can be mentioned'],
+  ['No nombrar', 'Não mencionar', 'Don\'t mention'],
+  ['Cargar una lista', 'Carregar uma lista', 'Load a list'],
+  ['Cargar lista', 'Carregar lista', 'Load list'],
+  ['Todas para mencionar', 'Todas para mencionar', 'All can be mentioned'],
+  ['Ninguna se nombra', 'Nenhuma é mencionada', 'None are mentioned'],
+  ['Ninguna por ahora.', 'Nenhuma por enquanto.', 'None yet.'],
+  ['Sin clientes para mencionar. Podés agregar uno abajo.', 'Sem clientes para mencionar. Você pode adicionar um abaixo.', 'No clients to mention. You can add one below.'],
+  ['Permitir mencionarla', 'Permitir mencioná-la', 'Allow mentioning it'],
+  ['Permitir', 'Permitir', 'Allow'],
+  ['Nombra empresas que no se mencionan', 'Menciona empresas que não podem ser mencionadas', 'Names companies that can\'t be mentioned'],
+  ['Pegá la lista: una empresa por línea.', 'Cole a lista: uma empresa por linha.', 'Paste the list: one company per line.'],
+  ['Guardada: ninguna nota la va a nombrar.', 'Salva: nenhum post vai mencioná-la.', 'Saved: no post will name it.'],
   // ── Marco general ─────────────────────────────────────────────────────────
   ['AfterDrive Intelligence', 'AfterDrive Intelligence', 'AfterDrive Intelligence'],
   ['Centro de control del pipeline de autopartes', 'Central de controle do pipeline de autopeças', 'Auto parts pipeline control center'],

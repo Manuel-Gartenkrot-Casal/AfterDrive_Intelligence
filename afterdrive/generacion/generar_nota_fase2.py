@@ -43,7 +43,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from afterdrive import calibracion
+from afterdrive import calibracion, clientes
 from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
 from afterdrive.generacion import (
     calidad,
@@ -109,6 +109,7 @@ def _build_system_prompt(
     regiones: list[str] | None = None,
     ajustes: "llm.Redaccion | None" = None,
     largo: str | None = None,
+    prohibidos: list[dict] | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     base = redaccion.system_prompt(
@@ -139,7 +140,9 @@ def _build_system_prompt(
         )
     else:
         extra.append("- No menciones clientes específicos de Alephee.")
-    prompt = base + "\n\n## Para esta nota\n" + "\n".join(extra)
+    if prohibidos:
+        extra.append(_regla_prohibidos(prohibidos))
+    prompt =base + "\n\n## Para esta nota\n" + "\n".join(extra)
     # La indicación propia del modelo va al final: es lo último que lee.
     return prompt + ("\n\n" + ajustes.directiva if ajustes.directiva else "")
 
@@ -155,6 +158,7 @@ def _build_user_prompt(
     aciertos: list[str] | None = None,
     propios: list[dict] | None = None,
     blog: list | None = None,
+    indicaciones: str | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -195,16 +199,34 @@ def _build_user_prompt(
         partes.append("## Lo que el equipo valoró en notas anteriores\n" + "\n".join(f"- {m}" for m in aciertos))
     if plan_nota:
         partes.append(plan.formatear(plan_nota))
-    partes.append("## Pedido\n" + _pedido(categorias, tema))
+    partes.append("## Pedido\n" + _pedido(categorias, tema, indicaciones))
     return "\n\n".join(partes)
 
 
-def _pedido(categorias: list[str], tema: str | None) -> str:
+INDICACIONES_MAX = 2000
+
+
+def _pedido(categorias: list[str], tema: str | None, indicaciones: str | None = None) -> str:
+    """El pedido de la nota. Las indicaciones son lo que se escribió en la caja de Crear nota."""
     if tema:
-        return f"Escribí la nota sobre este tema: {tema}."
-    if categorias:
-        return f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
-    return "Escribí la nota."
+        pedido = f"Escribí la nota sobre este tema: {tema}."
+    elif categorias:
+        pedido = f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
+    else:
+        pedido = "Escribí la nota."
+    indicaciones = (indicaciones or "").strip()[:INDICACIONES_MAX]
+    if indicaciones:
+        # Mandan sobre el enfoque y el tono, nunca sobre la regla de datos: si piden
+        # una cifra o un caso que no está en las noticias, no se inventa.
+        pedido += ("\n\nIndicaciones del equipo para esta nota (seguilas, salvo que pidan datos que no están "
+                   f"en las noticias: eso no se inventa nunca):\n{indicaciones}")
+    return pedido
+
+
+def _regla_prohibidos(prohibidos: list[dict]) -> str:
+    nombres = ", ".join(c.get("nombre", "") for c in prohibidos if c.get("nombre"))
+    return (f"- Nunca nombres a estas empresas, aunque aparezcan en las noticias: {nombres}. Si un dato "
+            "depende de una de ellas, contalo sin el nombre o no lo uses.")
 
 
 def _fotos_de_otras_notas() -> set[str]:
@@ -328,7 +350,8 @@ class _Version:
 
 
 def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabra_clave: str,
-             permitidas: tuple, recientes: list[dict], umbral: int | None) -> _Version:
+             permitidas: tuple, recientes: list[dict], umbral: int | None,
+             prohibidos: list[dict] | None = None) -> _Version:
     from afterdrive.ia.lm_studio import evaluar_lineamientos
 
     texto, quitados = verificacion.sanear_enlaces(texto, noticias, permitidas, DOMINIOS_PROPIOS)
@@ -359,6 +382,11 @@ def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabr
         version.codigos.append("repetida")
         version.problemas.append(f"se parecía demasiado a una nota reciente (\"{parecida['titulo']}\"): "
                                  "elegí otro ángulo y otro hecho central")
+    nombradas = clientes.nombrados(texto, prohibidos or [])
+    if nombradas:
+        version.codigos.append("empresa_prohibida")
+        version.problemas.append(f"nombraba empresas que no se pueden mencionar: {', '.join(nombradas)}. Sacalas "
+                                 "del texto; si un dato depende de ellas, contalo sin el nombre o quitalo")
     if umbral is not None and evaluacion is not None and puntaje(evaluacion) < umbral:
         version.codigos.append("puntaje_bajo")
         version.problemas.append(f"cumplía {puntaje(evaluacion)} de 9 lineamientos; el equipo pide al menos {umbral}")
@@ -377,19 +405,28 @@ def generar_nota(
     tema: str | None = None,
     regiones: list[str] | None = None,
     largo: str = redaccion.LARGO_DEFAULT,
+    indicaciones: str | None = None,
 ) -> dict:
-    """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo)."""
+    """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo).
+
+    `indicaciones`: texto libre de la caja de Crear nota (enfoque, tono, qué destacar).
+    """
     with consumo.medir() as costo:
-        resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo)
+        resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
+                                  indicaciones)
     if costo.llamadas:
         detalle = ", ".join(f"{k} {v:.3f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
         print(f"  [COSTO] Esta nota: USD {costo.total:.3f} ({detalle})", flush=True)
     return resultado
 
 
-def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo) -> dict:
+def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
+                  indicaciones=None) -> dict:
     clientes_ids = clientes_ids or []
     regiones = regiones or []
+    indicaciones = (indicaciones or "").strip()[:INDICACIONES_MAX] or None
+    if indicaciones:
+        print(f"  Indicaciones del equipo: {indicaciones[:120]}", flush=True)
     ajustes = llm.ajustes_redaccion()
     # Todas las notas se escriben en el idioma principal (portugués); las
     # regiones eligen el mercado. Las otras versiones se traducen al final.
@@ -399,11 +436,27 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     clientes_docs = []
     for cid in clientes_ids:
         doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
-        if doc:
+        if doc and clientes.modo(doc) == clientes.MENCIONAR:
             clientes_docs.append(doc)
 
-    noticias = contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=NOTICIAS_POR_NOTA)
+    # Empresas que ninguna nota puede nombrar: se avisa en el prompt, se dejan afuera las
+    # noticias que las tienen en el título y se revisa el texto escrito.
+    prohibidos = clientes.no_mencionar(col_clientes)
+    if prohibidos:
+        print(f"  Empresas que no se pueden nombrar: {len(prohibidos)}", flush=True)
+    noticias = contexto_noticias.seleccionar(_consulta(categorias, tema, regiones),
+                                             limite=NOTICIAS_POR_NOTA + (3 if prohibidos else 0))
+    if prohibidos:
+        sin_prohibidas = [n for n in noticias if not clientes.nombrados(n.titulo, prohibidos)]
+        if len(sin_prohibidas) < len(noticias):
+            print(f"  Se dejaron afuera {len(noticias) - len(sin_prohibidas)} noticia(s) sobre empresas que no se "
+                  "nombran.", flush=True)
+        noticias = sin_prohibidas
+    noticias = noticias[:NOTICIAS_POR_NOTA]
     print(f"  Noticias de contexto: {len(noticias)}", flush=True)
+    reutilizadas = [n for n in noticias if getattr(n, "liberada", False)]
+    if reutilizadas:
+        print(f"  Reutilizadas de notas rechazadas: {len(reutilizadas)}", flush=True)
     for n in noticias:
         print(f"    - {n.titulo[:80]}", flush=True)
     if not noticias:
@@ -431,7 +484,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     print("  Planificando la nota...", flush=True)
     estructura = (redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["analitico"])["estructura"]
     plan_nota = plan.planificar(
-        noticias, _pedido(categorias, tema), estructura,
+        noticias, _pedido(categorias, tema, indicaciones), estructura,
         publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
         contexto=contexto_noticias.formatear(noticias, max_chars=5000), idioma=voz.idioma,
         notas_blog=[f"{n.titulo}: {n.resumen}" if n.resumen else n.titulo for n in blog],
@@ -439,9 +492,10 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     if plan_nota:
         print(f"  Plan: {plan_nota['titulo']}", flush=True)
 
-    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo)
+    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo,
+                                  prohibidos)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
-                                  cal.aciertos, propios, blog)
+                                  cal.aciertos, propios, blog, indicaciones)
 
     # Lo que dicen los resúmenes de las notas del blog también respalda datos (al citarlas).
     extra = " ".join([_formatear_clientes(clientes_docs), tema or "", *(n.resumen for n in blog)])
@@ -488,7 +542,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             continue
 
         version = _revisar(articulo, noticias, extra, voz, ajustes.compacto, palabra_clave, permitidas,
-                           recientes, cal.umbral)
+                           recientes, cal.umbral, prohibidos)
         if mejor is None or version.orden < mejor.orden:
             mejor = version
         anterior = version
@@ -523,6 +577,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "puntapie_url": puntapie_url,
         "persona": persona,
         "tema": tema,
+        "indicaciones": indicaciones,
+        # Lo que quedó nombrado en el cuerpo (sin la sección de fuentes): vacío salvo que la corrección no alcanzara.
+        "empresas_prohibidas": clientes.nombrados(mejor.texto, prohibidos),
         "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],   # la imagen se suma abajo
         "ejemplos_usados": [e.get("url") for e in ejemplos],
         "notas_blog_sugeridas": [n.como_dict() for n in blog],
@@ -581,6 +638,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
 
     def _fuente(n) -> dict:
         f = {"titulo": n.titulo, "url": n.url}
+        if getattr(n, "liberada", False):
+            f["reutilizada"] = True   # venía de una nota rechazada
         if n.imagen:
             f["imagen"] = n.imagen["url"]
             veredicto = eleccion.veredictos.get(n.imagen["url"])
@@ -652,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--persona", default="comercial",
                         choices=["analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"])
     parser.add_argument("--tema", type=str, default=None)
+    parser.add_argument("--indicaciones", type=str, default=None,
+                        help="Indicaciones libres para la IA (la caja de Crear nota)")
     parser.add_argument("--largo", choices=list(redaccion.LARGOS), default=redaccion.LARGO_DEFAULT)
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
@@ -664,6 +725,7 @@ def main(argv: list[str] | None = None) -> int:
         puntapie_url=args.puntapie,
         persona=args.persona,
         tema=args.tema,
+        indicaciones=args.indicaciones,
         regiones=args.regiones,
         largo=args.largo,
     )

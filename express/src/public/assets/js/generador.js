@@ -286,27 +286,41 @@ async function fase2CargarClientes() {
   } catch(e) {}
 }
 
+function esProhibido(c) { return c.modo === 'no_mencionar'; }
+
 function renderClientes() {
-  var list = $('f2-clientes-list');
-  if (!_f2Clientes.length) {
-    list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>';
-    return;
+  var list = $('f2-clientes-list'), prohibidos = $('f2-prohibidos-list');
+  var paraMencionar = _f2Clientes.filter(function(c) { return !esProhibido(c); });
+  var noNombrar = _f2Clientes.filter(esProhibido);
+  // Uno que pasó a "no nombrar" deja de estar elegido.
+  noNombrar.forEach(function(c) { _f2ClientesActivos.delete(c.slug); });
+  if (!paraMencionar.length) {
+    list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin clientes para mencionar. Podés agregar uno abajo.</div>';
+  } else {
+    list.innerHTML = '';
+    paraMencionar.forEach(function(c) {
+      var item = document.createElement('div');
+      item.className = 'cliente-item toggle-item' + (_f2ClientesActivos.has(c.slug) ? ' active' : '');
+      item.innerHTML =
+        '<button type="button" class="cliente-seleccion" aria-pressed="' + _f2ClientesActivos.has(c.slug) + '" onclick="fase2ToggleCliente(\'' + encArg(c.slug) + '\', this.parentElement)">' +
+          '<span class="cliente-nombre">' + escHtml(c.nombre) + '</span>' +
+          (c.sector ? '<span class="cliente-sector">' + escHtml(c.sector) + '</span>' : '') +
+        '</button>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<div class="toggle-switch"></div>' +
+          '<button class="icon-btn" onclick="fase2ModoCliente(\'' + encArg(c.slug) + '\', \'no_mencionar\')" title="No nombrar nunca" aria-label="No nombrar nunca a ' + escHtml(c.nombre) + '">⊘</button>' +
+          '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
+        '</div>';
+      list.appendChild(item);
+    });
   }
-  list.innerHTML = '';
-  _f2Clientes.forEach(function(c) {
-    var item = document.createElement('div');
-    item.className = 'cliente-item toggle-item' + (_f2ClientesActivos.has(c.slug) ? ' active' : '');
-    item.innerHTML =
-      '<button type="button" class="cliente-seleccion" aria-pressed="' + _f2ClientesActivos.has(c.slug) + '" onclick="fase2ToggleCliente(\'' + encArg(c.slug) + '\', this.parentElement)">' +
-        '<span class="cliente-nombre">' + escHtml(c.nombre) + '</span>' +
-        (c.sector ? '<span class="cliente-sector">' + escHtml(c.sector) + '</span>' : '') +
-      '</button>' +
-      '<div style="display:flex;align-items:center;gap:6px">' +
-        '<div class="toggle-switch"></div>' +
-        '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
-      '</div>';
-    list.appendChild(item);
-  });
+  prohibidos.innerHTML = noNombrar.length
+    ? noNombrar.map(function(c) {
+        return '<span class="cliente-prohibido" title="' + escHtml(c.descripcion || '') + '">' + escHtml(c.nombre)
+          + '<button type="button" class="icon-btn" onclick="fase2ModoCliente(\'' + encArg(c.slug) + '\', \'mencionar\')" title="Permitir mencionarla" aria-label="Permitir mencionar a ' + escHtml(c.nombre) + '">↺</button>'
+          + '<button type="button" class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar ' + escHtml(c.nombre) + '">✕</button></span>';
+      }).join('')
+    : '<div style="color:var(--text-lo);font-size:0.8rem">Ninguna por ahora.</div>';
 }
 
 function fase2ToggleCliente(slug, el) {
@@ -325,6 +339,7 @@ function fase2ToggleCliente(slug, el) {
 async function fase2AgregarCliente() {
   var nombre = $('f2-cli-nombre').value.trim();
   var desc = $('f2-cli-desc').value.trim();
+  var modo = $('f2-cli-modo').value;
   if (!nombre) return;
   var st = $('f2-cli-status');
   st.className = 'feedback info';
@@ -333,12 +348,12 @@ async function fase2AgregarCliente() {
     var r = await fetch('/api/fase2/clientes', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ nombre: nombre, descripcion: desc })
+      body: JSON.stringify({ nombre: nombre, descripcion: desc, modo: modo })
     });
     var d = await r.json();
     if (d.success) {
       st.className = 'feedback ok';
-      st.textContent = 'Cliente guardado.';
+      st.textContent = modo === 'no_mencionar' ? 'Guardada: ninguna nota la va a nombrar.' : 'Cliente guardado.';
       $('f2-cli-nombre').value = '';
       $('f2-cli-desc').value = '';
       await fase2CargarClientes();
@@ -348,6 +363,64 @@ async function fase2AgregarCliente() {
       st.textContent = d.error || 'Error';
     }
   } catch(e) { st.className = 'feedback err'; st.textContent = 'Error de conexión'; }
+}
+
+/* La lista que pasan, de una vez. Confirma antes: con "Ninguna se nombra" cambia qué pueden decir las notas. */
+async function fase2ImportarClientes() {
+  var texto = $('f2-cli-lista').value.trim();
+  var modo = $('f2-cli-lista-modo').value;
+  var st = $('f2-cli-status');
+  if (!texto) { st.className = 'feedback err'; st.textContent = 'Pegá la lista: una empresa por línea.'; return; }
+  var lineas = texto.split('\n').filter(function(l) { return l.trim(); }).length;
+  var ok = await confirmar({
+    titulo: modo === 'no_mencionar' ? '¿Cargar la lista de empresas que no se nombran?' : '¿Cargar la lista de clientes?',
+    mensaje: lineas + (lineas === 1 ? ' empresa' : ' empresas') + (modo === 'no_mencionar'
+      ? ': ninguna nota las va a nombrar. Las que ya estaban cargadas pasan a este modo.'
+      : ': quedan disponibles para mencionar en las notas. Las que ya estaban cargadas pasan a este modo.'),
+    accion: 'Cargar lista'
+  });
+  if (!ok) return;
+  var btn = $('btn-cli-importar');
+  setBtnLoading(btn, true);
+  try {
+    var d = await pedir('/api/fase2/clientes/importar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ texto: texto, modo: modo })
+    });
+    st.className = 'feedback ok';
+    st.textContent = 'Lista cargada: ' + d.nuevos + ' nuevas y ' + d.actualizados + ' actualizadas.';
+    $('f2-cli-lista').value = '';
+    await fase2CargarClientes();
+    showToast('Lista cargada (' + d.total + ')', 'success');
+  } catch(e) {
+    st.className = 'feedback err';
+    st.textContent = e.message;
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+async function fase2ModoCliente(slug, modo) {
+  slug = decodeURIComponent(slug);
+  var cliente = _f2Clientes.find(function(c) { return c.slug === slug; });
+  var nombre = cliente ? cliente.nombre : slug;
+  var ok = await confirmar(modo === 'no_mencionar'
+    ? { titulo: '¿No nombrar nunca a ' + nombre + '?', mensaje: 'Ninguna nota nueva la va a nombrar, aunque aparezca en las noticias. Las notas ya generadas no cambian.', accion: 'No nombrar' }
+    : { titulo: '¿Permitir mencionar a ' + nombre + '?', mensaje: 'Vuelve a la lista de clientes que se pueden elegir para una nota.', accion: 'Permitir' });
+  if (!ok) return;
+  try {
+    await pedir('/api/fase2/clientes/' + encodeURIComponent(slug), {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ modo: modo })
+    });
+    if (modo === 'no_mencionar' && FORMULARIOS.crear) {
+      _f2ClientesActivos.delete(slug);
+      FORMULARIOS.crear.quitarDeBase('clientes', slug);   // el servidor ya la sacó de la config guardada
+    }
+    await fase2CargarClientes();
+    marcarCrear();
+  } catch(e) {
+    showToast('No se pudo cambiar el cliente: ' + e.message, 'error');
+  }
 }
 
 async function fase2EliminarCliente(slug) {
@@ -431,6 +504,7 @@ async function fase2GenerarStream() {
     clientes: Array.from(_f2ClientesActivos),
     persona: $('f2-persona').value,
     tema: $('f2-tema').value.trim() || null,
+    indicaciones: $('f2-indicaciones').value.trim() || null,
     largo: $('f2-largo').value,
     puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
   };
