@@ -5,6 +5,26 @@
    PATRONES cubre los textos con números, fechas o nombres. */
 
 var _FILAS_TEXTOS = [
+  // ── Carrusel para redes ───────────────────────────────────────────────────
+  ['Carrusel para redes', 'Carrossel para redes', 'Social carousel'],
+  ['Tres imágenes de 1080×1350 para Instagram y un PDF para LinkedIn, con los textos que arma la IA a partir de la nota. Se descargan para publicarlas: no se suben solas.', 'Três imagens de 1080×1350 para o Instagram e um PDF para o LinkedIn, com os textos que a IA monta a partir do post. São baixadas para publicar: não sobem sozinhas.', 'Three 1080×1350 images for Instagram and a PDF for LinkedIn, with copy the AI writes from the post. You download them to publish: they aren\'t posted automatically.'],
+  ['Crear carrusel', 'Criar carrossel', 'Create carousel'],
+  ['Volver a crear con IA', 'Criar de novo com IA', 'Recreate with AI'],
+  ['Descargar PDF para LinkedIn', 'Baixar PDF para o LinkedIn', 'Download PDF for LinkedIn'],
+  ['Editar los textos', 'Editar os textos', 'Edit the copy'],
+  ['Título (diapositiva 1)', 'Título (slide 1)', 'Title (slide 1)'],
+  ['Subtítulo', 'Subtítulo', 'Subtitle'],
+  ['Llamada a la acción (diapositiva 3)', 'Chamada para ação (slide 3)', 'Call to action (slide 3)'],
+  ['Guardar y redibujar', 'Salvar e redesenhar', 'Save and redraw'],
+  ['Carrusel listo.', 'Carrossel pronto.', 'Carousel ready.'],
+  ['Carrusel listo', 'Carrossel pronto', 'Carousel ready'],
+  ['Armando el carrusel…', 'Montando o carrossel…', 'Building the carousel…'],
+  ['Redibujando las imágenes…', 'Redesenhando as imagens…', 'Redrawing the images…'],
+  ['¿Volver a crear el carrusel?', 'Criar o carrossel de novo?', 'Recreate the carousel?'],
+  ['La IA escribe textos nuevos y se pierden los que editaste.', 'A IA escreve textos novos e os que você editou se perdem.', 'The AI writes new copy and your edits are lost.'],
+  ['Crear de nuevo', 'Criar de novo', 'Recreate'],
+  ['Hacen falta el título y al menos un punto.', 'Faltam o título e pelo menos um ponto.', 'A title and at least one point are required.'],
+  ['No se pudo armar el carrusel.', 'Não foi possível montar o carrossel.', 'Couldn’t build the carousel.'],
   // ── Indicaciones y clientes que no se nombran ─────────────────────────────
   ['Indicaciones para la IA (opcional)', 'Instruções para a IA (opcional)', 'Instructions for the AI (optional)'],
   ['Solo para esta nota: enfoque, tono, qué destacar o evitar. No hace falta guardarlo. La IA nunca inventa datos que no estén en las noticias, aunque se lo pidas.', 'Só para este post: enfoque, tom, o que destacar ou evitar. Não precisa salvar. A IA nunca inventa dados que não estejam nas notícias, mesmo que você peça.', 'Just for this post: focus, tone, what to highlight or avoid. No need to save it. The AI never makes up data that isn\'t in the news, even if you ask.'],

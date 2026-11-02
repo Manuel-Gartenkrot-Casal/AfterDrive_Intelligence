@@ -380,6 +380,7 @@ function pintarPasoPublicar(nota, panel) {
   pintarImagen(nota, panel);
   pintarDestinoHubspot(nota, panel);
   pintarTraducciones(nota, panel);
+  pintarCarrusel(nota, panel);   // carrusel.js
 }
 
 // "Elegir imagen" desde Revisar: va a Publicar y abre el selector de archivos

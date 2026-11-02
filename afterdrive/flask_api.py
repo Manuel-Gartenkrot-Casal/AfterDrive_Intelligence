@@ -838,6 +838,67 @@ def encolar_generacion():
                     etiqueta="Generar nota")
 
 
+# ── Carrusel para redes (carrusel.py) ─────────────────────────────────────────
+
+
+def _id_nota_o_400(nota_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", nota_id or ""):
+        return jsonify({"success": False, "error": "Nota inválida."}), 400
+    return None
+
+
+@app.route("/api/carrusel/<nota_id>", methods=["POST"])
+def encolar_carrusel(nota_id: str):
+    """Encola el carrusel de una nota: textos con IA + 3 imágenes y un PDF. {"idioma"?: es | pt | en}."""
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    idioma = (request.get_json(silent=True) or {}).get("idioma")
+    if idioma is not None and idioma not in ("es", "pt", "en"):
+        return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
+    argv = [f"--nota={nota_id}"] + ([f"--idioma={idioma}"] if idioma else [])
+    return _encolar("script", {"modulo": "afterdrive.carrusel", "argv": argv}, etiqueta="Crear carrusel")
+
+
+@app.route("/api/carrusel/<nota_id>/textos", methods=["POST"])
+def editar_carrusel(nota_id: str):
+    """Guarda los textos editados y encola volver a dibujar las imágenes (sin IA)."""
+    from afterdrive import carrusel
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        textos = carrusel.guardar_textos(nota_id, {k: body.get(k) for k in ("titulo", "subtitulo", "puntos", "cta")})
+    except carrusel.ErrorCarrusel as e:
+        return jsonify({"success": False, "error": str(e)}), 404 if "no encontrada" in str(e) else 400
+    respuesta, status = _encolar("script", {"modulo": "afterdrive.carrusel",
+                                            "argv": [f"--nota={nota_id}", "--solo-imagenes"]},
+                                 etiqueta="Redibujar carrusel")
+    if status == 202:
+        respuesta = jsonify({**respuesta.get_json(), "textos": textos})
+    return respuesta, status
+
+
+@app.route("/api/carrusel/<nota_id>/pdf", methods=["GET"])
+def pdf_carrusel(nota_id: str):
+    """El PDF de las 3 diapositivas, para subir a LinkedIn como documento."""
+    from afterdrive import historial
+    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    from bson import ObjectId
+    nota = col_notas_fase2.find_one({"_id": ObjectId(nota_id)}, {"carrusel": 1})
+    pdf_id = ((nota or {}).get("carrusel") or {}).get("pdf_id")
+    local = historial.imagen_subida(pdf_id) if pdf_id else None
+    if not local:
+        return jsonify({"success": False, "error": "La nota no tiene carrusel."}), 404
+    return app.response_class(local[0], mimetype="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="carrusel-{nota_id[-6:]}.pdf"',
+        "Cache-Control": "private, no-store"})
+
+
 @app.route("/api/corridas/probar-fuente", methods=["POST"])
 def encolar_probar_fuente():
     """Encola 'Probar y agregar': scrapea la URL y la da de alta si aprueba algún artículo."""
