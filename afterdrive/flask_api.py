@@ -940,6 +940,108 @@ def encolar_generacion():
                     etiqueta="Generar nota")
 
 
+# ── Carrusel para redes (carrusel.py) ─────────────────────────────────────────
+
+
+def _id_nota_o_400(nota_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", nota_id or ""):
+        return jsonify({"success": False, "error": "Nota inválida."}), 400
+    return None
+
+
+def _idiomas_carrusel(valor):
+    """Lista de idiomas válida (None = los 3) o None, False si es inválida."""
+    if valor is None:
+        return None
+    if isinstance(valor, str):
+        valor = [valor]
+    if not isinstance(valor, list) or not valor or any(v not in ("es", "pt", "en") for v in valor):
+        return False
+    return list(dict.fromkeys(valor))
+
+
+@app.route("/api/carrusel/<nota_id>", methods=["POST"])
+def encolar_carrusel(nota_id: str):
+    """Encola los carruseles de una nota (textos con IA + 3 imágenes y un PDF por idioma).
+
+    {"idiomas"?: ["es", "pt", "en"]}: por defecto los 3. ("idioma": "pt" también se acepta.)
+    """
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    idiomas = _idiomas_carrusel(body.get("idiomas", body.get("idioma")))
+    if idiomas is False:
+        return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
+    argv = [f"--nota={nota_id}"] + (["--idiomas", *idiomas] if idiomas else [])
+    return _encolar("script", {"modulo": "afterdrive.carrusel", "argv": argv},
+                    etiqueta="Crear carrusel" if idiomas and len(idiomas) == 1 else "Crear carruseles")
+
+
+@app.route("/api/carrusel/<nota_id>/textos", methods=["POST"])
+def editar_carrusel(nota_id: str):
+    """{"idioma", "titulo", "subtitulo", "puntos", "cta"}: guarda los textos de ese idioma y
+    encola volver a dibujar sus imágenes (sin IA)."""
+    from afterdrive import carrusel
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    idioma = body.get("idioma")
+    if idioma not in carrusel.IDIOMAS:
+        return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
+    try:
+        textos = carrusel.guardar_textos(nota_id, idioma,
+                                         {k: body.get(k) for k in ("titulo", "subtitulo", "puntos", "cta")})
+    except carrusel.ErrorCarrusel as e:
+        return jsonify({"success": False, "error": str(e)}), 404 if "no encontrada" in str(e) else 400
+    respuesta, status = _encolar("script", {"modulo": "afterdrive.carrusel",
+                                            "argv": [f"--nota={nota_id}", "--idiomas", idioma, "--solo-imagenes"]},
+                                 etiqueta="Redibujar carrusel")
+    if status == 202:
+        respuesta = jsonify({**respuesta.get_json(), "textos": textos})
+    return respuesta, status
+
+
+@app.route("/api/carrusel/<nota_id>/en-post", methods=["POST"])
+def carrusel_en_post(nota_id: str):
+    """{"activo": bool}: si la galería del carrusel va en el post de HubSpot."""
+    from afterdrive import carrusel
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    activo = (request.get_json(silent=True) or {}).get("activo")
+    if not isinstance(activo, bool):
+        return jsonify({"success": False, "error": "Parámetro 'activo' inválido."}), 400
+    try:
+        carrusel.en_post(nota_id, activo)
+    except carrusel.ErrorCarrusel as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    return jsonify({"success": True, "en_post": activo})
+
+
+@app.route("/api/carrusel/<nota_id>/pdf", methods=["GET"])
+def pdf_carrusel(nota_id: str):
+    """El PDF de las 3 diapositivas de un idioma (?idioma=pt), para subir a LinkedIn como documento."""
+    from bson import ObjectId
+
+    from afterdrive import carrusel, historial
+    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    nota = col_notas_fase2.find_one({"_id": ObjectId(nota_id)}, {"carrusel": 1, "carruseles": 1, "idioma": 1}) or {}
+    guardados = carrusel.carruseles(nota)
+    idioma = request.args.get("idioma") or nota.get("idioma") or next(iter(guardados), "")
+    pdf_id = (guardados.get(idioma) or {}).get("pdf_id")
+    local = historial.imagen_subida(pdf_id) if pdf_id else None
+    if not local:
+        return jsonify({"success": False, "error": "La nota no tiene carrusel en ese idioma."}), 404
+    return app.response_class(local[0], mimetype="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="carrusel-{nota_id[-6:]}-{idioma}.pdf"',
+        "Cache-Control": "private, no-store"})
+
+
 @app.route("/api/corridas/probar-fuente", methods=["POST"])
 def encolar_probar_fuente():
     """Encola 'Probar y agregar': scrapea la URL y la da de alta si aprueba algún artículo."""

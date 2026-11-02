@@ -1816,6 +1816,20 @@ body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 5
 
 .revision-bloque { padding: var(--s3) 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
 .revision-bloque h4 { margin-bottom: 6px; }
+/* Carrusel para redes (carrusel.js) */
+.carrusel-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }
+.carrusel-fila .control-label { margin: 0; }
+.carrusel-tira { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
+.carrusel-tira figure { margin: 0; }
+.carrusel-tira img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.carrusel-tira figcaption { margin-top: 4px; text-align: center; }
+.carrusel-textos { margin-top: var(--s2); }
+.carrusel-idiomas { display: inline-flex; margin: var(--s2) 0; }
+.carrusel-idiomas button:disabled { opacity: .45; cursor: not-allowed; }
+.carrusel-en-post { display: flex; align-items: center; gap: 8px; margin-top: var(--s2); cursor: pointer; }
+.carrusel-textos summary { cursor: pointer; }
+.carrusel-textos .input-field { width: 100%; margin-bottom: var(--s2); }
+.carrusel-textos .control-label { margin-top: var(--s2); }
 .revision-bloque .hubspot-autor { width: 100%; max-width: 100%; margin-top: 4px; }
 .revision-bloque.con-fallas h4::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: 1px; }
 .revision-ok { color: var(--ok); }
