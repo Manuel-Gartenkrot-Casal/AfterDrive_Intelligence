@@ -581,3 +581,31 @@ def test_fotos_usadas_lee_destacadas_y_del_cuerpo_de_notas_recientes():
          "imagenes_cuerpo": [{"url": "https://b.jpg"}]},
         {"generado_en": "2000-01-01T00:00:00+00:00", "imagen": {"url": "https://vieja.jpg"}}])
     assert imagen_destacada.fotos_usadas(base=base) == {"https://a.jpg", "https://b.jpg"}
+
+
+def _de_banco(i, credito):
+    from afterdrive.generacion import imagenes_respaldo
+    return imagenes_respaldo._foto("garage", f"https://banco/{i}.jpg", "", f"https://banco/{i}", "Wikimedia Commons",
+                                   "Foto: Ana / CC BY" if credito else "", credito)
+
+
+def test_si_solo_falta_la_portada_no_trae_fotos_que_piden_credito_y_se_lo_pide_a_la_ia(ia_fotos):
+    # Las fotos de las noticias muestran personas: falta la portada. Las de Commons que piden
+    # crédito tampoco sirven, así que ni se le muestran a la IA.
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder([f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}], "elegidas": [1, 2]}}',
+               f'{{"fotos": [{_foto(1, False)}], "elegidas": [1]}}'])
+    banco = [_de_banco(1, credito=True), _de_banco(2, credito=False)]
+    e = imagen_destacada.elegir(_con_fotos(2), "T", cantidad=2, respaldo=lambda r: banco)
+    assert e.imagen["url"] == "https://banco/2.jpg" and [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg"]
+    assert len(pedidos[-1]["imagenes"]) == 1 and "solo falta la PORTADA" in pedidos[-1]["user"]
+
+
+def test_si_la_ia_elige_una_que_pide_credito_entra_de_portada_una_apta_que_no(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    responder(f'{{"fotos": [{_foto(1, False)}, {_foto(2, False)}], "elegidas": [1]}}')
+    banco = [_de_banco(1, credito=True), _de_banco(2, credito=False)]
+    e = imagen_destacada.elegir([], "T", cantidad=1, respaldo=lambda r: banco)
+    assert e.imagen["url"] == "https://banco/2.jpg"

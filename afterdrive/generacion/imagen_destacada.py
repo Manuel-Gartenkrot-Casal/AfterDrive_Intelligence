@@ -201,8 +201,11 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         faltan = _faltan(eleccion, cantidad)
         if faltan <= 0:
             break
+        # Están todas pero ninguna sirve de portada: una foto que pide crédito tampoco serviría.
+        solo_portada = len(eleccion.imagenes) >= cantidad and not eleccion.imagen
         try:
-            nuevas = [n for n in _unicas(buscar()) if n.imagen["url"] not in vistas][:MAX_FOTOS]
+            nuevas = [n for n in _unicas(buscar()) if n.imagen["url"] not in vistas
+                      and not (solo_portada and n.imagen.get("atribucion"))][:MAX_FOTOS]
         except llm.Cancelada:
             raise
         except Exception as e:
@@ -211,8 +214,9 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         if not nuevas:
             continue
         vistas |= {n.imagen["url"] for n in nuevas}
-        print(f"  Faltan {faltan} imagen(es) apta(s): se buscan entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
-        eleccion = _sumar(eleccion, _ronda(nuevas, titulo, angulo, faltan), cantidad)
+        que = "la portada" if solo_portada else f"{faltan} imagen(es) apta(s)"
+        print(f"  Falta {que}: se busca entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
+        eleccion = _sumar(eleccion, _ronda(nuevas, titulo, angulo, faltan, portada=solo_portada), cantidad)
     faltan = _faltan(eleccion, cantidad)
     if faltan > 0 and eleccion.imagenes:
         aviso = f"Se consiguieron {len(eleccion.imagenes)} de {cantidad} fotos: no hubo más aptas sin repetir."
@@ -239,8 +243,10 @@ def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
         return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
 
 
-def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool | None = None) -> Eleccion:
-    """Una pasada de la IA sobre las candidatas. ver=False la obliga a juzgar sin mirar las fotos."""
+def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool | None = None,
+           portada: bool = False) -> Eleccion:
+    """Una pasada de la IA sobre las candidatas. ver=False la obliga a juzgar sin mirar las fotos.
+    portada=True: solo falta la portada (se le pide una sin personas)."""
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
@@ -258,23 +264,23 @@ def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool 
                 sin_bajar.append(n)
         if not enviadas:
             # Ninguna se pudo mirar: se juzgan por su noticia y su texto en vez de descartarlas.
-            return _ronda(sin_bajar, titulo, angulo, cantidad, ver=False)
-        vistas = _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras)
+            return _ronda(sin_bajar, titulo, angulo, cantidad, ver=False, portada=portada)
+        vistas = _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras, portada)
         faltan = cantidad - len(vistas.imagenes)
         if faltan > 0 and sin_bajar and vistas.metodo != "primera":
             # Las que no se pudieron bajar completan los lugares que faltan, juzgadas sin verlas.
-            resto = _ronda(sin_bajar, titulo, angulo, faltan, ver=False)
+            resto = _ronda(sin_bajar, titulo, angulo, faltan, ver=False, portada=portada)
             vistas.veredictos.update(resto.veredictos)
             if resto.imagenes:
                 return Eleccion(vistas.imagenes + resto.imagenes, vistas.metodo, vistas.veredictos)
             if not vistas.imagenes:
                 vistas.motivo = (vistas.motivo + " " + resto.motivo).strip()
         return vistas
-    return _ronda_con(enviadas, None, titulo, angulo, cantidad, veredictos, primeras)
+    return _ronda_con(enviadas, None, titulo, angulo, cantidad, veredictos, primeras, portada)
 
 
 def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int, veredictos: dict,
-               primeras: Eleccion) -> Eleccion:
+               primeras: Eleccion, portada: bool = False) -> Eleccion:
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
@@ -287,6 +293,9 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
         lista = "\n".join(f"{i}. Noticia: \"{n.titulo}\" | texto alternativo: \"{n.imagen.get('alt', '')}\" | "
                           f"archivo: {_archivo(n.imagen['url'])}" for i, n in enumerate(enviadas, 1))
     pedido = f"Título de la nota: {titulo}\n" + (f"Ángulo: {angulo}\n" if angulo else "") + f"\nFotos:\n{lista}"
+    if portada:
+        pedido += ("\n\nLa nota ya tiene sus fotos del texto: solo falta la PORTADA. Elegí primero una foto "
+                   "apta SIN personas.")
     try:
         crudo = llm.completar((_SYSTEM_VISION if con_vista else _SYSTEM_TEXTO).format(cantidad=cantidad), pedido,
                               temperature=0, max_tokens=1500, tarea="clasificacion",
@@ -305,9 +314,12 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
     metodo = "ia" if con_vista else "ia-texto"
     elegidas = respuesta["elegidas"][:cantidad]
     fotos = respuesta["fotos"]
-    if elegidas and all(fotos.get(i, {}).get("personas") for i in elegidas):
-        # Ninguna elegida sirve de portada: entra una apta sin personas, si la IA marcó alguna.
-        libre = next((i for i in sorted(fotos) if fotos[i]["apta"] and not fotos[i]["personas"]
+    def puede_ser_portada(i: int) -> bool:
+        return not fotos.get(i, {}).get("personas") and not enviadas[i - 1].imagen.get("atribucion")
+
+    if elegidas and not any(puede_ser_portada(i) for i in elegidas):
+        # Ninguna elegida sirve de portada (personas o crédito): entra una apta que sí sirva, si hay.
+        libre = next((i for i in sorted(fotos) if fotos[i]["apta"] and puede_ser_portada(i)
                       and i not in elegidas), None)
         if libre:
             elegidas = [libre] + elegidas[:cantidad - 1]
