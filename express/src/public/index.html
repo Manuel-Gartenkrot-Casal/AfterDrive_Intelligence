@@ -59,6 +59,7 @@
         <li><a class="nav-link" href="#historial" data-seccion="historial"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>Historial<span class="nav-badge" id="nav-badge-historial" title="Notas para revisar"></span></a></li>
         <li><a class="nav-link" href="#programacion" data-seccion="programacion"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Programación</a></li>
         <li><a class="nav-link" href="#fuentes" data-seccion="fuentes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>Fuentes</a></li>
+        <li><a class="nav-link" href="#prompts" data-seccion="prompts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg><span data-cliente="Instrucciones">Prompts</span><span class="nav-badge" id="nav-badge-prompts" title="Cambios para revisar"></span></a></li>
         <li><a class="nav-link" href="#corridas" data-seccion="corridas"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Actividad<span class="nav-actividad" aria-hidden="true"><i></i><i></i><i></i></span><span class="nav-badge" id="nav-badge-corridas"></span></a></li>
       </ul>
       <div class="sidebar-pie">
@@ -596,6 +597,75 @@
     </section>
 
     <!-- Historial y revisión de notas -->
+    <!-- Prompts de redacción: cada pieza se edita en Markdown y pasa por aprobación (prompts.js). -->
+    <section class="prompts-seccion" data-seccion="prompts" aria-labelledby="prompts-title">
+      <div class="section-head">
+        <h2 class="section-title" id="prompts-title" data-cliente="Instrucciones de redacción">Prompts de redacción</h2>
+        <p class="section-sub">Las instrucciones que recibe la IA al escribir cada nota. Cada cambio pasa por borrador, revisión y aprobación antes de usarse; la versión anterior queda guardada.</p>
+      </div>
+      <div class="prompts-layout">
+        <nav class="prompts-lista" id="prompts-lista" aria-label="Piezas del prompt"></nav>
+        <div class="prompts-editor" id="prompts-editor" aria-live="polite">
+          <header class="prompts-cabeza">
+            <div class="prompts-cabeza-texto">
+              <h3 id="pe-titulo">Cargando…</h3>
+              <p id="pe-descripcion"></p>
+            </div>
+            <span class="prompts-estado" id="pe-estado"></span>
+          </header>
+          <ol class="prompts-pasos" id="pe-pasos" aria-label="Recorrido del cambio">
+            <li data-paso="borrador">Borrador</li>
+            <li data-paso="validar">Validar</li>
+            <li data-paso="en_revision">En revisión</li>
+            <li data-paso="activo">Activa</li>
+          </ol>
+          <p class="prompts-aviso" id="pe-aviso" hidden></p>
+          <div class="prompts-tabs" role="tablist" aria-label="Vista">
+            <button type="button" role="tab" data-tab="editar" aria-selected="true">Editar</button>
+            <button type="button" role="tab" data-tab="ver" aria-selected="false">Vista previa</button>
+            <button type="button" role="tab" data-tab="completo" aria-selected="false">Prompt completo</button>
+            <button type="button" role="tab" data-tab="historial" aria-selected="false">Historial</button>
+          </div>
+          <div class="prompts-panel" data-panel="editar">
+            <label class="sr-only" for="pe-texto">Texto en Markdown</label>
+            <textarea id="pe-texto" class="prompts-texto" spellcheck="true" translate="no"></textarea>
+            <div class="prompts-pie-texto">
+              <span id="pe-largo"></span>
+              <ul class="prompts-validacion" id="pe-validacion" aria-live="polite"></ul>
+            </div>
+            <label class="control-label" for="pe-motivo">Motivo del cambio</label>
+            <input id="pe-motivo" class="input-field" maxlength="300" placeholder="Por ejemplo: las notas nombraban poco a Alephee" />
+          </div>
+          <div class="prompts-panel prompts-md" data-panel="ver" hidden translate="no" id="pe-ver"></div>
+          <div class="prompts-panel" data-panel="completo" hidden>
+            <div class="prompts-completo-opciones">
+              <label class="control-label" for="pe-persona">Persona</label>
+              <select id="pe-persona" class="select-field">
+                <option value="comercial">Comercial</option>
+                <option value="analitico">Analítico-técnico</option>
+                <option value="periodistico">Periodístico</option>
+                <option value="divulgativo">Divulgativo</option>
+                <option value="ejecutivo">Ejecutivo</option>
+              </select>
+              <span class="prompts-nota">Con el texto del editor en lugar de la versión activa.</span>
+            </div>
+            <pre class="prompts-completo" id="pe-completo" translate="no"></pre>
+          </div>
+          <div class="prompts-panel" data-panel="historial" hidden>
+            <ul class="prompts-historial" id="pe-historial"></ul>
+          </div>
+          <footer class="prompts-acciones" id="pe-acciones">
+            <button type="button" class="btn btn-sm prompts-descartar" id="pe-descartar">Descartar borrador</button>
+            <span class="prompts-acciones-sep"></span>
+            <button type="button" class="btn" id="pe-guardar">Guardar borrador</button>
+            <button type="button" class="btn" id="pe-rechazar">Devolver a borrador</button>
+            <button type="button" class="btn btn-primary" id="pe-enviar">Enviar a revisión</button>
+            <button type="button" class="btn btn-primary" id="pe-aprobar">Aprobar y activar</button>
+          </footer>
+        </div>
+      </div>
+    </section>
+
     <section class="historial-seccion" data-seccion="historial" aria-labelledby="historial-title">
       <div class="section-head">
         <h2 class="section-title" id="historial-title">Historial</h2>
@@ -676,6 +746,19 @@
     </form>
   </dialog>
 
+  <dialog class="confirmar prompts-dialogo" id="prompts-aprobar" aria-labelledby="pa-titulo">
+    <form method="dialog">
+      <h2 id="pa-titulo">¿Aprobar y activar?</h2>
+      <p id="pa-texto"></p>
+      <div class="prompts-diff-leyenda" aria-hidden="true"><span class="quita">Sale</span><span class="pone">Entra</span></div>
+      <div class="prompts-diff" id="pa-diff" translate="no"></div>
+      <div class="confirmar-acciones">
+        <button class="btn" value="no" id="pa-no">Cancelar</button>
+        <button class="btn btn-primary" value="si" id="pa-si">Aprobar y activar</button>
+      </div>
+    </form>
+  </dialog>
+
   <details class="actividad-dock" id="actividad-dock" hidden>
     <summary><span class="actividad-punto" aria-hidden="true"></span><span id="actividad-titulo">Actividad</span><span class="actividad-chevron" aria-hidden="true">⌃</span></summary>
     <div class="actividad-detalle">
@@ -726,6 +809,7 @@
   <script src="/assets/js/sugerencias.js"></script>
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
+  <script src="/assets/js/prompts.js"></script>
   <script src="/assets/js/revision.js"></script>
   <script src="/assets/js/recorrido.js"></script>
   <script src="/assets/js/metricas.js"></script>

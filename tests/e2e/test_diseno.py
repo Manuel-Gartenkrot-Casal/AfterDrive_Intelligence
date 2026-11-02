@@ -8,7 +8,7 @@ from playwright.sync_api import expect
 from tests.e2e.conftest import abrir
 
 pytestmark = pytest.mark.e2e
-SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "corridas"]
+SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "prompts", "corridas"]
 
 
 def test_idioma_informativo_segun_region(pagina):

@@ -2687,3 +2687,137 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .fuentes-agregar .fuentes-ayuda { display: none; }
   .fuentes-agregar { padding-bottom: var(--s3); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROMPTS DE REDACCIÓN (prompts.js)
+   A la izquierda, las piezas del prompt; a la derecha, la pieza elegida con
+   su recorrido (Borrador → Validar → En revisión → Activa), el editor en
+   Markdown, la vista previa, el prompt completo y el historial.
+   ═══════════════════════════════════════════════════════════════════════ */
+.prompts-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: var(--s5); align-items: start; }
+.prompts-lista { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.prompts-grupo { margin: var(--s3) 8px 4px; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-lo); }
+.prompts-grupo:first-child { margin-top: 4px; }
+.prompts-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent; cursor: pointer;
+  font: inherit; font-size: 0.86rem; color: var(--text-mid); text-align: left;
+}
+.prompts-item:hover { background: var(--well); color: var(--text-hi); }
+.prompts-item.activo { background: var(--well); color: var(--text-hi); font-weight: 600; box-shadow: inset 3px 0 0 var(--brand); }
+.prompts-item:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.prompts-item-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.prompts-version { font: 500 0.7rem var(--mono); color: var(--text-lo); }
+.prompts-chip { padding: 1px 7px; border-radius: var(--r-pill); font-size: 0.66rem; font-weight: 600; white-space: nowrap; }
+.prompts-chip.borrador { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.prompts-chip.en_revision { color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent); }
+.prompts-vacio { padding: var(--s3); font-size: 0.85rem; color: var(--text-lo); }
+
+.prompts-editor { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; padding: var(--s5) var(--s6); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.prompts-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }
+.prompts-cabeza h3 { font-size: 1.05rem; font-weight: 600; color: var(--text-hi); }
+.prompts-cabeza p { margin-top: 2px; font-size: 0.8rem; color: var(--text-lo); }
+.prompts-estado { flex-shrink: 0; padding: 4px 10px; border-radius: var(--r-pill); font-size: 0.74rem; font-weight: 600; border: 1px solid currentColor; }
+.prompts-estado.activo { color: var(--ok); }
+.prompts-estado.borrador { color: var(--warn); }
+.prompts-estado.en_revision { color: var(--info); }
+
+/* Recorrido: cuatro pasos en fila, el actual marcado y los anteriores tildados. */
+.prompts-pasos { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 0; counter-reset: paso; }
+.prompts-pasos li {
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 0 10px;
+  border-bottom: 2px solid var(--border); font-size: 0.8rem; color: var(--text-lo); counter-increment: paso;
+}
+.prompts-pasos li::before {
+  content: counter(paso); display: grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0;
+  border: 1px solid var(--border-strong); border-radius: 50%; font: 600 0.68rem var(--mono);
+}
+.prompts-pasos li.hecho { color: var(--text-mid); border-bottom-color: color-mix(in srgb, var(--ok) 60%, var(--border)); }
+.prompts-pasos li.hecho::before { content: "✓"; border-color: var(--ok); color: var(--ok); }
+.prompts-pasos li.actual { color: var(--text-hi); font-weight: 600; border-bottom-color: var(--brand); }
+.prompts-pasos li.actual::before { border-color: var(--brand); background: var(--brand); color: var(--on-brand); }
+.prompts-aviso { margin: 0; padding: 10px 14px; border-radius: var(--r-md); background: var(--well); font-size: 0.82rem; color: var(--text-mid); }
+.prompts-aviso.rechazo { color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, var(--bg)); }
+
+.prompts-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); }
+.prompts-tabs button {
+  padding: 8px 14px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none;
+  font: inherit; font-size: 0.84rem; color: var(--text-lo); cursor: pointer;
+}
+.prompts-tabs button:hover { color: var(--text-hi); }
+.prompts-tabs button[aria-selected="true"] { color: var(--text-hi); font-weight: 600; border-bottom-color: var(--brand); }
+.prompts-panel { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.prompts-panel[hidden] { display: none; }
+.prompts-texto {
+  width: 100%; min-height: 340px; padding: 14px 16px; resize: vertical;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); color: var(--text-hi);
+  font: 0.84rem/1.6 var(--mono); tab-size: 2;
+}
+.prompts-texto:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent); }
+.prompts-pie-texto { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; font-size: 0.76rem; color: var(--text-lo); }
+.prompts-pie-texto > span { order: 2; font-family: var(--mono); }
+.prompts-validacion { list-style: none; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; }
+.prompts-validacion li::before { margin-right: 6px; font-weight: 700; }
+.prompts-validacion .err { color: var(--err); }
+.prompts-validacion .err::before { content: "✕"; }
+.prompts-validacion .aviso { color: var(--warn); }
+.prompts-validacion .aviso::before { content: "!"; }
+.prompts-validacion .ok { color: var(--ok); }
+.prompts-validacion .ok::before { content: "✓"; }
+.prompts-panel .control-label { margin-top: var(--s2); }
+.prompts-md { min-height: 340px; padding: 6px 4px; font-size: 0.9rem; line-height: 1.6; color: var(--text-mid); }
+.prompts-md h1, .prompts-md h2 { margin: 14px 0 6px; font-size: 1rem; color: var(--text-hi); }
+.prompts-md ul, .prompts-md ol { padding-left: 1.3em; }
+.prompts-md li { margin: 3px 0; }
+.prompts-completo-opciones { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.prompts-completo-opciones .control-label { margin: 0; }
+.prompts-completo-opciones .select-field { width: auto; min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.prompts-nota { font-size: 0.76rem; color: var(--text-lo); }
+.prompts-completo {
+  max-height: 460px; overflow: auto; margin: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--well); color: var(--text-mid); font: 0.78rem/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.prompts-historial { list-style: none; display: flex; flex-direction: column; gap: var(--s2); margin: 0; padding: 0; }
+.prompts-version-fila { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.prompts-version-fila.activa { border-color: color-mix(in srgb, var(--ok) 50%, var(--border)); }
+.prompts-version-cabeza { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; font-size: 0.85rem; }
+.prompts-version-cabeza strong { font-family: var(--mono); color: var(--text-hi); }
+.prompts-version-cuando { flex: 1; color: var(--text-lo); font-size: 0.78rem; }
+.prompts-version-motivo { margin-top: 4px; font-size: 0.8rem; color: var(--text-mid); }
+.prompts-version-fila .prompts-diff { margin-top: var(--s3); }
+
+.prompts-acciones { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding-top: var(--s4); border-top: 1px solid var(--border); }
+.prompts-acciones-sep { flex: 1; }
+.prompts-acciones [hidden] { display: none; }
+.prompts-descartar { color: var(--text-lo); }
+
+/* Diferencias entre versiones: lo que sale en rojo, lo que entra en verde. */
+.prompts-diff { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font: 0.78rem/1.55 var(--mono); }
+.prompts-diff[hidden] { display: none; }
+.diff-linea { display: flex; gap: 8px; padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-mid); }
+.diff-marca { flex-shrink: 0; width: 1ch; color: var(--text-lo); }
+.diff-linea.pone { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--text-hi); }
+.diff-linea.pone .diff-marca { color: var(--ok); }
+.diff-linea.quita { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--text-mid); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 50%, transparent); }
+.diff-linea.quita .diff-marca { color: var(--err); }
+.diff-salto { padding: 2px 10px; font-family: var(--font); font-size: 0.72rem; color: var(--text-lo); background: var(--bg); border-block: 1px dashed var(--border); }
+.prompts-diff-igual { padding: 10px; color: var(--text-lo); }
+.prompts-dialogo { width: min(760px, calc(100vw - 32px)); }
+.prompts-diff-leyenda { display: flex; gap: var(--s4); margin: var(--s3) 0 6px; font-size: 0.74rem; color: var(--text-lo); }
+.prompts-diff-leyenda span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+.prompts-diff-leyenda .quita::before { background: color-mix(in srgb, var(--err) 40%, transparent); }
+.prompts-diff-leyenda .pone::before { background: color-mix(in srgb, var(--ok) 40%, transparent); }
+
+@media (max-width: 1024px) {
+  .prompts-layout { grid-template-columns: minmax(0, 1fr); }
+  .prompts-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+  .prompts-grupo { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .prompts-editor { padding: var(--s4); }
+  .prompts-pasos li { flex-direction: column; align-items: flex-start; gap: 4px; font-size: 0.72rem; }
+  .prompts-tabs { overflow-x: auto; }
+  .prompts-tabs button { flex-shrink: 0; padding: 8px 10px; }
+  .prompts-acciones .btn { flex: 1 1 auto; }
+  .prompts-acciones-sep { display: none; }
+}

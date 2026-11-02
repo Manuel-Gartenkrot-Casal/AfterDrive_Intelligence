@@ -9,7 +9,7 @@
    otra sección; el logo también lleva a Inicio.
    Antes de salir se consultan los guardianes (cambios sin guardar).
    ═══════════════════════════════════════════════════════════════════════ */
-var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'corridas'];
+var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'prompts', 'corridas'];
 var _seccion = null;
 var _guardianes = [];
 

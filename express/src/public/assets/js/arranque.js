@@ -24,6 +24,7 @@ window.onload = function() {
   initHistorial();
   cargarEstadoHubspot();
   initAgenda();
+  initPrompts();
   fase2Init();
   cargarUltimaNota();
   loadTrustedUrls();

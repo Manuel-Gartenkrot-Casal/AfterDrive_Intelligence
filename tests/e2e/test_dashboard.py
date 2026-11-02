@@ -19,7 +19,7 @@ from tests.e2e.conftest import abrir
 
 pytestmark = pytest.mark.e2e
 
-SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "corridas"]
+SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "prompts", "corridas"]
 
 
 def _visible(pg, seccion):
@@ -43,8 +43,8 @@ def test_navegar_por_todas_las_secciones(pagina):
         otras = [o for o in SECCIONES if o != s]
         assert not any(_visible(pagina, o) for o in otras), s
     pagina.go_back()
-    pagina.wait_for_function("location.hash === '#fuentes'")
-    assert _visible(pagina, "fuentes")
+    pagina.wait_for_function(f"location.hash === '#{SECCIONES[-2]}'")
+    assert _visible(pagina, SECCIONES[-2])
 
 
 def test_siempre_abre_en_inicio_y_el_logo_lleva_a_inicio(navegador, base_url):
@@ -772,3 +772,49 @@ def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, b
     expect(pg.locator(".revision-bloque", has_text="Publicación en HubSpot")).to_contain_text("falta HUBSPOT_TOKEN")
     assert pg.errores == []
     pg.context.close()
+
+
+def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
+    pg = pagina
+    pg.click('.sidebar a[data-seccion="prompts"]')
+    pg.click('.prompts-item[data-clave="seo"]')
+    expect(pg.locator("#pe-titulo")).to_have_text("SEO")
+    expect(pg.locator("#pe-estado")).to_contain_text("Activa")
+    original = pg.input_value("#pe-texto")
+
+    # Un texto inválido no se puede enviar.
+    pg.fill("#pe-texto", "Sin título")
+    expect(pg.locator("#pe-validacion .err")).to_contain_text("título")
+    expect(pg.locator("#pe-enviar")).to_be_disabled()
+
+    # Válido: se envía (guarda solo el borrador) y queda en revisión.
+    pg.fill("#pe-texto", original + "\n- Regla e2e.")
+    pg.fill("#pe-motivo", "prueba e2e")
+    expect(pg.locator("#pe-validacion .ok")).to_be_visible()
+    pg.click("#pe-enviar")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    expect(pg.locator('.prompts-item[data-clave="seo"] .prompts-chip')).to_have_text("En revisión")
+    expect(pg.locator("#nav-badge-prompts")).to_have_text("1")
+
+    # Aprobar pide confirmación con el diff a la vista; cancelar no activa nada.
+    pg.click("#pe-aprobar")
+    expect(pg.locator("#pa-diff .diff-linea.pone")).to_contain_text("Regla e2e.")
+    pg.click("#pa-no")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    pg.click("#pe-aprobar")
+    pg.click("#pa-si")
+    expect(pg.locator("#pe-estado")).to_have_text("Activa · v1")
+    expect(pg.locator("#nav-badge-prompts")).to_have_text("")
+
+    # El prompt completo ya la usa, y el original queda en el historial para restaurarlo.
+    pg.click('[data-tab="completo"]')
+    expect(pg.locator("#pe-completo")).to_contain_text("Regla e2e.")
+    pg.click('[data-tab="historial"]')
+    pg.click('[data-restaurar="0"]')
+    pg.click("#confirmar-si")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    expect(pg.locator("#pe-aviso")).to_contain_text("texto original")
+    pg.click("#pe-aprobar")
+    pg.click("#pa-si")
+    expect(pg.locator("#pe-estado")).to_have_text("Activa · v2")
+    assert "Regla e2e." not in pg.input_value("#pe-texto")
