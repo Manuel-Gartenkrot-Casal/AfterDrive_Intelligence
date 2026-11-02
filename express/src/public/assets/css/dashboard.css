@@ -2860,6 +2860,14 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .pa-linea.quita { background: color-mix(in srgb, var(--err) 13%, transparent); }
 .pa-linea.quita .pa-marca { color: var(--err); }
 .pa-linea.quita .pa-txt { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 55%, transparent); }
+/* Una línea que cambió poco (.par: emparejada con su otra versión): solo lo que cambió va
+   marcado fuerte; el resto, suave. */
+.pa-linea.par.pone { background: color-mix(in srgb, var(--ok) 8%, transparent); }
+.pa-linea.par.quita { background: color-mix(in srgb, var(--err) 7%, transparent); }
+.pa-linea.par.quita .pa-txt { text-decoration: none; }
+mark.cambio { padding: 0 1px; border-radius: 3px; color: inherit; }
+:is(.pa-linea, .diff-linea).pone mark.cambio { background: color-mix(in srgb, var(--ok) 38%, transparent); }
+:is(.pa-linea, .diff-linea).quita mark.cambio { background: color-mix(in srgb, var(--err) 34%, transparent); text-decoration: line-through; text-decoration-color: var(--err); }
 .pa-editor { padding: 4px 14px 8px 58px; }
 .prompts-texto {
   display: block; width: 100%; min-height: 120px; padding: 10px 12px; resize: vertical; overflow: hidden;
@@ -2905,6 +2913,7 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .diff-linea.pone .diff-marca { color: var(--ok); }
 .diff-linea.quita { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--text-mid); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 50%, transparent); }
 .diff-linea.quita .diff-marca { color: var(--err); }
+.diff-linea.par.quita { text-decoration: none; }
 .diff-salto { padding: 2px 10px; font-family: var(--font); font-size: 0.72rem; color: var(--text-lo); background: var(--bg); border-block: 1px dashed var(--border); }
 .prompts-diff-igual { padding: 10px; color: var(--text-lo); }
 .prompts-dialogo { width: min(760px, calc(100vw - 32px)); }

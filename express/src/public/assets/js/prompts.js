@@ -198,12 +198,12 @@ async function refrescarArchivoPrompt(irAPieza) {
   }
 }
 
-function _filasPrompt(lineas, clase, num) {
+function _filasPrompt(lineas, clase, num, tramos) {
   return lineas.map(function(l) {
     var n = clase === 'quita' ? '' : num.valor++;
     var marca = clase === 'pone' ? '+' : clase === 'quita' ? '−' : '';
-    return '<div class="pa-linea' + (clase ? ' ' + clase : '') + '"><span class="pa-num">' + n + '</span>'
-      + '<span class="pa-marca" aria-hidden="true">' + marca + '</span><span class="pa-txt">' + (escHtml(l) || '&nbsp;') + '</span></div>';
+    return '<div class="pa-linea' + (clase ? ' ' + clase : '') + (tramos ? ' par' : '') + '"><span class="pa-num">' + n + '</span>'
+      + '<span class="pa-marca" aria-hidden="true">' + marca + '</span><span class="pa-txt">' + _textoConTramos(l, tramos) + '</span></div>';
   }).join('');
 }
 
@@ -253,7 +253,7 @@ function _ajustarAlto() {
 }
 
 function _diffPrompt(antes, despues, num) {
-  return _lineasDiff(antes, despues).map(function(f) { return _filasPrompt([f[1]], f[0] === 'igual' ? '' : f[0], num); }).join('');
+  return _lineasDiff(antes, despues).map(function(f) { return _filasPrompt([f[1]], f[0] === 'igual' ? '' : f[0], num, f[2]); }).join('');
 }
 
 async function validarPrompt() {
@@ -494,10 +494,79 @@ function _lineasDiff(antes, despues) {
   i = 0; j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && a[i] === b[j]) { filas.push(['igual', a[i]]); i++; j++; }
-    else if (j < m && (i >= n || lcs[i][j + 1] >= lcs[i + 1][j])) { filas.push(['pone', b[j]]); j++; }
-    else { filas.push(['quita', a[i]]); i++; }
+    else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) { filas.push(['quita', a[i]]); i++; }
+    else { filas.push(['pone', b[j]]); j++; }
+  }
+  return _emparejarLineas(filas);
+}
+
+/* Una tanda de líneas que salen seguida de otra que entra: la 1ª que sale con la 1ª que
+   entra, y así. Si se parecen, cada una lleva en f[2] sus tramos [cambió, texto]: así se
+   marca solo lo que cambió de verdad (una letra, una palabra) y no la oración entera. */
+function _emparejarLineas(filas) {
+  for (var k = 0; k < filas.length; k++) {
+    if (filas[k][0] !== 'quita') continue;
+    var q0 = k;
+    while (k < filas.length && filas[k][0] === 'quita') k++;
+    var p0 = k;
+    while (k < filas.length && filas[k][0] === 'pone') k++;
+    for (var x = 0; x < Math.min(p0 - q0, k - p0); x++) {
+      var t = _tramosLinea(filas[q0 + x][1], filas[p0 + x][1]);
+      if (t) { filas[q0 + x][2] = t.antes; filas[p0 + x][2] = t.despues; }
+    }
+    k--;
   }
   return filas;
+}
+
+/* Diferencia letra por letra entre dos versiones de una línea. Los pedacitos iguales de
+   1 o 2 letras entre dos cambios se suman al cambio (si no, queda una sopa de marcas).
+   null si cambió casi toda: ahí se marca la línea entera. */
+function _tramosLinea(a, b) {
+  if (!a || !b || a.length > 1500 || b.length > 1500) return null;
+  var n = a.length, m = b.length, i, j;
+  var lcs = [];
+  for (i = 0; i <= n; i++) lcs.push(new Uint16Array(m + 1));
+  for (i = n - 1; i >= 0; i--) {
+    for (j = m - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  var ops = [];   // ['=', texto] | ['-', texto] | ['+', texto]
+  function sumar(op, ch) {
+    if (ops.length && ops[ops.length - 1][0] === op) ops[ops.length - 1][1] += ch;
+    else ops.push([op, ch]);
+  }
+  i = 0; j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { sumar('=', a[i]); i++; j++; }
+    else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) { sumar('-', a[i]); i++; }
+    else { sumar('+', b[j]); j++; }
+  }
+  var antes = [], despues = [], cambiadas = 0;
+  ops.forEach(function(op, x) {
+    var chico = op[0] === '=' && op[1].length <= 2 && x > 0 && x < ops.length - 1;
+    if (op[0] === '=' && !chico) { antes.push([false, op[1]]); despues.push([false, op[1]]); return; }
+    if (op[0] !== '+') { antes.push([true, op[1]]); cambiadas += op[1].length; }
+    if (op[0] !== '-') { despues.push([true, op[1]]); cambiadas += op[0] === '+' ? op[1].length : 0; }
+  });
+  if (cambiadas > 0.6 * (n + m)) return null;
+  return { antes: _unirTramos(antes), despues: _unirTramos(despues) };
+}
+
+function _unirTramos(tramos) {
+  var r = [];
+  tramos.forEach(function(t) {
+    if (r.length && r[r.length - 1][0] === t[0]) r[r.length - 1][1] += t[1];
+    else r.push([t[0], t[1]]);
+  });
+  return r;
+}
+
+/* El texto de una línea, con lo que cambió marcado si hay tramos. */
+function _textoConTramos(texto, tramos) {
+  if (!tramos) return escHtml(texto) || '&nbsp;';
+  return tramos.map(function(t) { return t[0] ? '<mark class="cambio">' + escHtml(t[1]) + '</mark>' : escHtml(t[1]); }).join('') || '&nbsp;';
 }
 
 function diffPromptHtml(antes, despues) {
@@ -525,6 +594,6 @@ function diffPromptHtml(antes, despues) {
 
 function _filaDiff(f) {
   var marca = f[0] === 'pone' ? '+' : f[0] === 'quita' ? '−' : ' ';
-  return '<div class="diff-linea ' + f[0] + '"><span class="diff-marca" aria-hidden="true">' + marca + '</span>'
-    + '<span class="diff-texto">' + (escHtml(f[1]) || '&nbsp;') + '</span></div>';
+  return '<div class="diff-linea ' + f[0] + (f[2] ? ' par' : '') + '"><span class="diff-marca" aria-hidden="true">' + marca + '</span>'
+    + '<span class="diff-texto">' + _textoConTramos(f[1], f[2]) + '</span></div>';
 }
