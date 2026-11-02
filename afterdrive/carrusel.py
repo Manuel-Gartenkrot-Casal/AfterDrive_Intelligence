@@ -201,11 +201,9 @@ body {{ font-family: "Inter", "Helvetica Neue", Arial, sans-serif; color: #fff; 
              text-transform: uppercase; letter-spacing: .08em; padding: 10px 22px; border-radius: 999px; margin-bottom: 36px; }}
 h1 {{ font-weight: 800; line-height: 1.08; letter-spacing: -.01em; }}
 .sub {{ margin-top: 32px; font-size: 38px; line-height: 1.35; color: rgba(255,255,255,.88); }}
-.contador {{ position: absolute; right: 0; top: 6px; font-size: 26px; color: rgba(255,255,255,.7); }}
 .desliza {{ margin-top: 48px; font-size: 30px; font-weight: 600; color: rgba(255,255,255,.85); }}
 .valor {{ background: {MARCA['claro']}; color: {MARCA['fondo']}; }}
 .valor .logo {{ color: {MARCA['principal']}; }}
-.valor .contador {{ color: rgba(29,27,41,.55); }}
 .valor h2 {{ font-size: 64px; font-weight: 800; margin: auto 0 56px; color: {MARCA['fondo']}; }}
 .puntos {{ list-style: none; display: flex; flex-direction: column; gap: 40px; margin-bottom: auto; }}
 .puntos li {{ display: flex; gap: 32px; align-items: flex-start; line-height: 1.32; font-weight: 500; }}
@@ -229,16 +227,13 @@ def html_diapositivas(textos: dict, fondo: str | None = None, url: str = "", idi
     e = html.escape
     logo = _logo()
     marca = f'<div class="marca">{logo}<span>AfterDrive</span></div>'
-    total = 3
-
-    def contador(n: int) -> str:
-        return f'<span class="contador">{n}/{total}</span>'
+    # Sin contador "1/3" dibujado: Instagram y LinkedIn muestran el suyo.
 
     fondo_css = f'<div class="fondo" style="background-image:url(\'{fondo}\')"></div><div class="velo"></div>' if fondo else ""
     t = textos["titulo"]
     gancho = (
         f'<section class="slide">{fondo_css}<div class="contenido">'
-        f'<div style="position:relative">{marca}{contador(1)}</div>'
+        f'<div style="position:relative">{marca}</div>'
         f'<div class="pie"><h1 style="font-size:{_tamano(t, 92, 68, TITULO_MAX)}px">{e(t)}</h1>'
         + (f'<p class="sub">{e(textos["subtitulo"])}</p>' if textos.get("subtitulo") else "")
         + f'<p class="desliza">{e(ETIQUETA_DESLIZA.get(idioma, ETIQUETA_DESLIZA["pt"]))}</p></div></div></section>'
@@ -247,7 +242,7 @@ def html_diapositivas(textos: dict, fondo: str | None = None, url: str = "", idi
     tam = _tamano("x" * largo, 44, 36, PUNTO_MAX)
     valor = (
         f'<section class="slide valor"><div class="contenido">'
-        f'<div style="position:relative">{marca}{contador(2)}</div>'
+        f'<div style="position:relative">{marca}</div>'
         f'<h2>{e(ETIQUETA_PUNTOS.get(idioma, ETIQUETA_PUNTOS["pt"]))}</h2><ol class="puntos">'
         + "".join(f'<li style="font-size:{tam}px"><span class="num">{i}</span><span>{e(p)}</span></li>'
                   for i, p in enumerate(textos["puntos"], 1))
@@ -256,7 +251,7 @@ def html_diapositivas(textos: dict, fondo: str | None = None, url: str = "", idi
     c = textos["cta"]
     cta = (
         f'<section class="slide cta"><div class="contenido">'
-        f'<div style="position:relative">{marca}{contador(3)}</div>'
+        f'<div style="position:relative">{marca}</div>'
         f'<h1 style="font-size:{_tamano(c, 84, 64, CTA_MAX)}px">{e(c)}</h1>'
         f'<div><span class="boton">afterdrive.alephee.com</span></div>'
         + (f'<p class="url">{e(url)}</p>' if url else "")
@@ -283,15 +278,22 @@ def _playwright():
     return sync_playwright()
 
 
-def renderizar(htmls: list[str]) -> tuple[list[bytes], bytes]:
-    """(PNG de cada diapositiva, PDF con las 3 páginas)."""
+def renderizar(htmls: list[str], solo: list[int] | None = None) -> tuple[list[bytes | None], bytes]:
+    """(PNG de cada diapositiva, PDF con las 3 páginas).
+
+    solo: números de diapositiva (desde 1) a dibujar; las demás vuelven como None. El PDF
+    siempre lleva las 3 (es un solo archivo).
+    """
     try:
         with _playwright() as p:
             navegador = _chromium(p)
             try:
                 pagina = navegador.new_page(viewport={"width": ANCHO, "height": ALTO})
                 pngs = []
-                for doc in htmls:
+                for n, doc in enumerate(htmls, 1):
+                    if solo and n not in solo:
+                        pngs.append(None)
+                        continue
                     pagina.set_content(doc, wait_until="load")
                     pngs.append(pagina.screenshot(type="png", clip={"x": 0, "y": 0, "width": ANCHO, "height": ALTO}))
                 # PDF: las 3 en un solo documento, una por página.
@@ -418,14 +420,16 @@ def _textos(nota: dict, idioma: str, anterior: dict, solo_imagenes: bool) -> tup
     return textos_sin_ia(texto, idioma), "nota"
 
 
+def _guardar_archivo(b, nota_id, oid, idioma, numero, contenido, mime, ahora):
+    return b.imagenes_subidas.insert_one({
+        "contenido": contenido, "mime": mime, "nombre": f"carrusel-{nota_id}-{idioma}-{numero}",
+        "coleccion": "notas_fase2", "nota_id": oid, "carrusel": True, "idioma": idioma, "fecha": ahora,
+    }).inserted_id
+
+
 def _guardar_archivos(b, nota_id, oid, idioma, pngs, pdf, ahora) -> list:
-    ids = []
-    for i, (contenido, mime) in enumerate([(x, "image/png") for x in pngs] + [(pdf, "application/pdf")], 1):
-        ids.append(b.imagenes_subidas.insert_one({
-            "contenido": contenido, "mime": mime, "nombre": f"carrusel-{nota_id}-{idioma}-{i}",
-            "coleccion": "notas_fase2", "nota_id": oid, "carrusel": True, "idioma": idioma, "fecha": ahora,
-        }).inserted_id)
-    return ids
+    pares = [(x, "image/png") for x in pngs] + [(pdf, "application/pdf")]
+    return [_guardar_archivo(b, nota_id, oid, idioma, i, c, m, ahora) for i, (c, m) in enumerate(pares, 1)]
 
 
 def _borrar_archivos(b, carrusel: dict) -> None:
@@ -436,11 +440,14 @@ def _borrar_archivos(b, carrusel: dict) -> None:
         b.imagenes_subidas.delete_many({"_id": {"$in": oids}, "carrusel": True})
 
 
-def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, render=renderizar) -> dict:
+def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, render=renderizar,
+            diapositivas: list[int] | None = None) -> dict:
     """Arma el carrusel de cada idioma (por defecto los 3) y lo guarda. Devuelve {idioma: carrusel}.
 
     Un idioma que falla no frena a los otros; si fallan todos, ErrorCarrusel.
     solo_imagenes: usa los textos ya guardados (los editó una persona) y no llama a la IA.
+    diapositivas: con solo_imagenes, redibuja solo esas (1 a 3) y deja las otras como estaban
+    (las que cambiaron al corregir un texto, ver diapositivas_cambiadas). El PDF se rehace entero.
     """
     from afterdrive import historial
 
@@ -458,19 +465,37 @@ def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, 
             textos, origen = _textos(nota, idioma, anterior, solo_imagenes)
             print(f"  [{idioma}] Título: {textos['titulo']}", flush=True)
             url = url_blog(nota, idioma)
-            print(f"  [{idioma}] Dibujando las 3 diapositivas...", flush=True)
-            pngs, pdf = render(html_diapositivas(textos, fondo, url, idioma))
+            # Redibujar solo algunas exige tener las otras ya hechas.
+            parcial = sorted(set(diapositivas)) if (solo_imagenes and diapositivas
+                                                     and len(anterior.get("diapositivas") or []) == 3) else None
+            if parcial:
+                print(f"  [{idioma}] Dibujando la diapositiva {', '.join(map(str, parcial))}...", flush=True)
+                pngs, pdf = render(html_diapositivas(textos, fondo, url, idioma), solo=parcial)
+            else:
+                print(f"  [{idioma}] Dibujando las 3 diapositivas...", flush=True)
+                pngs, pdf = render(html_diapositivas(textos, fondo, url, idioma))
         except ErrorCarrusel as e:
             print(f"  [AVISO] [{idioma}] No se armó el carrusel: {e}", flush=True)
             errores.append(f"{idioma}: {e}")
             continue
         ahora = datetime.datetime.now(datetime.UTC).isoformat()
-        ids = _guardar_archivos(b, nota_id, nota["_id"], idioma, pngs, pdf, ahora)
-        _borrar_archivos(b, anterior)
+        if parcial:
+            urls, reemplazadas = list(anterior["diapositivas"]), []
+            for n in parcial:
+                nuevo = _guardar_archivo(b, nota_id, nota["_id"], idioma, n, pngs[n - 1], "image/png", ahora)
+                reemplazadas.append(urls[n - 1])
+                urls[n - 1] = historial.PREFIJO_IMAGEN_SUBIDA + str(nuevo)
+            pdf_id = _guardar_archivo(b, nota_id, nota["_id"], idioma, 4, pdf, "application/pdf", ahora)
+            _borrar_archivos(b, {"diapositivas": reemplazadas, "pdf_id": anterior.get("pdf_id")})
+        else:
+            ids = _guardar_archivos(b, nota_id, nota["_id"], idioma, pngs, pdf, ahora)
+            _borrar_archivos(b, anterior)
+            urls, pdf_id = [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]], ids[-1]
+        # Sin hubspot_urls: las copias en HubSpot son de las imágenes anteriores y se vuelven a hacer al subir.
         hechos[idioma] = {
             "textos": textos, "origen_textos": origen, "idioma": idioma, "url": url,
-            "diapositivas": [historial.PREFIJO_IMAGEN_SUBIDA + str(i) for i in ids[:-1]],
-            "pdf_id": str(ids[-1]), "generado_en": ahora,
+            "diapositivas": urls, "pdf_id": str(pdf_id), "generado_en": ahora,
+            "redibujadas": parcial or [1, 2, 3],
         }
         b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {f"carruseles.{idioma}": hechos[idioma]}})
     if not hechos:
@@ -478,17 +503,32 @@ def generar(nota_id: str, idiomas=None, solo_imagenes: bool = False, base=None, 
     return hechos
 
 
-def guardar_textos(nota_id: str, idioma: str, textos: dict, base=None) -> dict:
-    """Guarda los textos editados de un idioma (después se vuelven a dibujar sus imágenes)."""
+def diapositivas_cambiadas(antes: dict | None, despues: dict) -> list[int]:
+    """Qué diapositivas cambian con estos textos: 1 título y subtítulo, 2 los puntos, 3 la llamada a la acción."""
+    antes = antes or {}
+    cambian = []
+    if (antes.get("titulo"), antes.get("subtitulo")) != (despues.get("titulo"), despues.get("subtitulo")):
+        cambian.append(1)
+    if list(antes.get("puntos") or []) != list(despues.get("puntos") or []):
+        cambian.append(2)
+    if antes.get("cta") != despues.get("cta"):
+        cambian.append(3)
+    return cambian
+
+
+def guardar_textos(nota_id: str, idioma: str, textos: dict, base=None) -> tuple[dict, list[int]]:
+    """Guarda los textos editados de un idioma. Devuelve (textos, diapositivas que hay que redibujar)."""
     if idioma not in IDIOMAS:
         raise ErrorCarrusel("Idioma inválido: es, pt o en.")
     b = _base(base)
     nota = _nota(b, nota_id)
     limpios = validar(textos, idioma)
     actual = carruseles(nota).get(idioma) or {"idioma": idioma}
-    b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {
-        f"carruseles.{idioma}": {**actual, "textos": limpios, "origen_textos": "editado"}}})
-    return limpios
+    cambiadas = diapositivas_cambiadas(actual.get("textos"), limpios)
+    if cambiadas:
+        b.notas_fase2.update_one({"_id": nota["_id"]}, {"$set": {
+            f"carruseles.{idioma}": {**actual, "textos": limpios, "origen_textos": "editado"}}})
+    return limpios, cambiadas
 
 
 def en_post(nota_id: str, activo: bool, base=None) -> None:
@@ -505,9 +545,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--nota", required=True)
     parser.add_argument("--idiomas", nargs="+", choices=list(IDIOMAS), default=None)
     parser.add_argument("--solo-imagenes", action="store_true", help="Usa los textos guardados, sin IA")
+    parser.add_argument("--diapositivas", nargs="+", type=int, choices=[1, 2, 3], default=None,
+                        help="Con --solo-imagenes: redibuja solo esas")
     args = parser.parse_args(argv)
     try:
-        hechos = generar(args.nota, args.idiomas, args.solo_imagenes)
+        hechos = generar(args.nota, args.idiomas, args.solo_imagenes, diapositivas=args.diapositivas)
     except ErrorCarrusel as e:
         print(f"[ERROR] {e}", flush=True)
         return 1

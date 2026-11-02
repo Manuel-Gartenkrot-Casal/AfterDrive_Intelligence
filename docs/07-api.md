@@ -54,7 +54,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /ayuda` | Página de documentación (sin sesión, redirige al login) |
 | `GET /api/docs` · `GET /api/docs/<slug>` | Lista de documentos de Ayuda y el Markdown de uno (solo los de `DOCUMENTOS`) |
 | `POST /api/carrusel/<nota_id>` | `{idiomas?}` (por defecto los 3: es, pt, en): encola los carruseles para redes, uno por idioma (textos con IA, 3 PNG de 1080×1350 y un PDF cada uno). 202 con el id de la corrida |
-| `POST /api/carrusel/<nota_id>/textos` | `{idioma, titulo, subtitulo, puntos, cta}`: guarda los textos editados de ese idioma y encola volver a dibujar sus imágenes, sin IA |
+| `POST /api/carrusel/<nota_id>/textos` | `{idioma, titulo, subtitulo, puntos, cta}`: guarda los textos editados de ese idioma y encola volver a dibujar, sin IA, solo las diapositivas que cambiaron (1: título y subtítulo, 2: puntos, 3: llamada a la acción); devuelve cuáles en `diapositivas`. Si no cambió nada, 200 sin encolar |
 | `POST /api/carrusel/<nota_id>/en-post` | `{activo: bool}`: si cada post de HubSpot lleva la galería de su idioma (se aplica al subir o volver a subir la nota). 404 si la nota no tiene carruseles |
 | `GET /api/carrusel/<nota_id>/pdf?idioma=pt` | El PDF de las 3 diapositivas de ese idioma (descarga), para LinkedIn. Las imágenes se sirven en `/api/imagenes/<id>` |
 | `POST /api/hubspot/traducciones` | `{coleccion, id}`: encola la traducción a los otros idiomas y su subida a HubSpot como borradores (la nota tiene que estar subida en su idioma). 202 con el id de la corrida. `POST /api/hubspot/enviar` también la encola y lo devuelve en `traducciones` |

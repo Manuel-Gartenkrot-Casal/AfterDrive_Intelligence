@@ -1819,6 +1819,35 @@ body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 5
 /* Carrusel para redes (carrusel.js) */
 .carrusel-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }
 .carrusel-fila .control-label { margin: 0; }
+/* Vista previa como post de Instagram: una imagen 4:5 que se desliza, con contador, flechas y puntitos. */
+.ig-post { max-width: 380px; margin: var(--s2) auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); overflow: hidden; font-size: 0.85rem; }
+.ig-cabeza { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.ig-avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; padding: 6px;
+  background: #fff; color: #C93D58; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #C93D58; font-weight: 700; }
+.ig-avatar svg { width: 100%; height: 100%; }
+.ig-cuenta { display: flex; flex-direction: column; line-height: 1.2; }
+.ig-cuenta small { color: var(--text-lo); font-size: 0.72rem; }
+.ig-mas { margin-left: auto; color: var(--text-mid); letter-spacing: 1px; }
+.ig-marco { position: relative; }
+.ig-pista { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4 / 5; background: #111; }
+.ig-pista::-webkit-scrollbar { display: none; }
+.ig-pista:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.ig-pista img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: start; user-select: none; display: block; }
+.ig-contador { position: absolute; top: 10px; right: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,.65);
+  color: #fff; font-size: 0.72rem; font-weight: 600; }
+.ig-flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border: 0; border-radius: 50%;
+  background: rgba(255,255,255,.88); color: #222; font-size: 1.2rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.ig-ant { left: 8px; } .ig-sig { right: 8px; }
+.ig-flecha[hidden] { display: none; }
+.ig-acciones { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px 12px 2px; }
+.ig-iconos { display: flex; gap: 14px; }
+.ig-acciones svg { width: 22px; height: 22px; fill: none; stroke: var(--text-hi); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.ig-guardar { justify-self: end; }
+.ig-puntos { display: flex; gap: 4px; }
+.ig-puntos i { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.ig-puntos i.activo { background: #0095F6; }
+.ig-pie { padding: 6px 12px 12px; line-height: 1.4; }
+.carrusel-descargas { font-size: 0.8rem; text-align: center; color: var(--text-mid); }
 .carrusel-tira { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
 .carrusel-tira figure { margin: 0; }
 .carrusel-tira img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
