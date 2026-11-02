@@ -2633,7 +2633,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .agenda-cuerpo { grid-template-columns: minmax(0, 1fr); }
   .agenda-cuerpo .agenda-foot { flex-direction: column; align-items: stretch; }
   .agenda-cuerpo .agenda-foot .btn { width: 100%; }
+}
 
+/* ═══════════════════════════════════════════════════════════════════════
    AJUSTES DE PANTALLA
    - Indicador de la sección actual: una línea recta, fina y redondeada,
      separada del borde del ítem (antes era un borde que seguía la curva).
