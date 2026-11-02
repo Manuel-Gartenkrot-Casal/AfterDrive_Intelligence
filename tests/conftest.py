@@ -52,6 +52,13 @@ def prompts_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_archivo_de_noticias(monkeypatch):
+    """La generación no busca noticias viejas en la base real; los tests del archivo lo instalan a mano."""
+    from afterdrive.generacion import contexto_noticias
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", lambda consulta, limite=2, dias_min=90, excluir=(): [])
+
+
+@pytest.fixture(autouse=True)
 def sin_buscar_imagenes(monkeypatch):
     """Los tests no descargan páginas de noticias para buscarles la imagen ni buscan en bancos de imágenes."""
     from afterdrive.generacion import contexto_noticias, imagenes_respaldo

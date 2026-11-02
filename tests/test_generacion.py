@@ -9,6 +9,9 @@ from afterdrive.generacion import generar_nota_fase2 as g
 from afterdrive.generacion.contexto_noticias import Noticia
 from afterdrive.ia import llm
 
+# conftest reemplaza seleccionar_archivo para que la generación no lea la base: acá se prueba la de verdad.
+SELECCIONAR_ARCHIVO = contexto_noticias.seleccionar_archivo
+
 
 @pytest.fixture(autouse=True)
 def notas_en_espanol(monkeypatch):
@@ -814,3 +817,132 @@ def test_una_noticia_liberada_cuenta_como_no_usada(monkeypatch):
     elegidas = contexto_noticias.seleccionar("frenos", limite=2)
     assert [n.titulo for n in elegidas] == ["Usada en rechazada", "Usada en aprobada"]
     assert elegidas[0].liberada and not elegidas[0].usada_reciente and elegidas[1].usada_reciente
+
+
+# ── Archivo: noticias viejas para dar perspectiva ────────────────────────────
+
+
+def _viejo(titulo, dias, emb, **extra):
+    """Un artículo guardado hace `dias` días."""
+    from bson import ObjectId
+    cuando = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=dias)
+    return {"_id": ObjectId.from_datetime(cuando), "titulo": titulo, "cuerpo": "La venta online de repuestos creció.",
+            "url": f"https://a/{titulo}", "embedding": emb, **extra}
+
+
+@pytest.fixture
+def archivo(monkeypatch):
+    import mongomock
+
+    from afterdrive import db
+    col = mongomock.MongoClient().db.articulos
+    monkeypatch.setattr(db, "col_articulos", col)
+    monkeypatch.setattr(llm, "embeber", lambda textos, tipo="passage": [[1.0, 0.0]])
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", SELECCIONAR_ARCHIVO)
+    monkeypatch.setattr(contexto_noticias, "_completar_fichas", lambda ns, col: None)
+    monkeypatch.delenv("ATLAS_VECTOR_INDEX", raising=False)
+    return col
+
+
+def test_el_archivo_trae_las_viejas_mas_parecidas_sin_importar_la_recencia(archivo):
+    archivo.insert_many([
+        _viejo("reciente-igual", 5, [1.0, 0.0]),          # muy parecida pero fresca: no es archivo
+        _viejo("vieja-parecida", 400, [0.95, 0.05]),
+        _viejo("menos-vieja-menos-parecida", 120, [0.8, 0.6]),
+        _viejo("vieja-sin-relacion", 200, [0.0, 1.0]),    # por debajo del parecido mínimo
+        _viejo("vieja-ya-usada", 300, [0.9, 0.1], usado_para_articulo=True),
+    ])
+    elegidas = contexto_noticias.seleccionar_archivo("venta online de repuestos", limite=2)
+    assert [n.titulo for n in elegidas] == ["vieja-parecida", "vieja-ya-usada"]
+    assert elegidas[0].antiguedad_dias == 400 and elegidas[1].usada
+    assert contexto_noticias.seleccionar_archivo("x", limite=0) == []
+
+
+def test_el_archivo_mira_la_fecha_de_publicacion_y_excluye_lo_pedido(archivo):
+    publicada_hace_un_anio = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+    vieja = _viejo("scrapeada-hoy-pero-vieja", 1, [1.0, 0.0], fecha=publicada_hace_un_anio)
+    archivo.insert_many([vieja, _viejo("otra", 200, [1.0, 0.0])])
+    titulos = [n.titulo for n in contexto_noticias.seleccionar_archivo("x", excluir=[vieja["_id"]])]
+    assert titulos == ["otra"]
+    assert "scrapeada-hoy-pero-vieja" in [n.titulo for n in contexto_noticias.seleccionar_archivo("x")]
+
+
+def test_sin_embeddings_no_hay_archivo(archivo, monkeypatch):
+    archivo.insert_one(_viejo("vieja", 200, [1.0, 0.0]))
+    monkeypatch.setattr(llm, "embeber", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin embeddings")))
+    assert contexto_noticias.seleccionar_archivo("x") == []
+
+
+@pytest.mark.parametrize("dias, texto", [(45, "hace 45 días"), (120, "hace 4 meses"), (365, "hace 1 año"),
+                                         (400, "hace 1 año y 1 mes"), (800, "hace 2 años y 2 meses")])
+def test_antiguedad(dias, texto):
+    assert contexto_noticias.antiguedad(dias) == texto
+
+
+def _de_archivo(**extra):
+    n = Noticia(id=99, titulo="Las ventas online de repuestos eran el 8% del total",
+                cuerpo="En 2025 la venta online de repuestos era el 8% del total del sector.",
+                url="https://archivo/1", fecha=datetime.datetime(2025, 5, 2, tzinfo=datetime.UTC), **extra)
+    n.antiguedad_dias, n.puntaje = 550, 0.81
+    return n
+
+
+def test_la_nota_recibe_el_archivo_con_fecha_y_guarda_la_historia(entorno, monkeypatch):
+    llamadas, col, usadas = entorno
+    vieja = _de_archivo()
+    pedidas = {}
+
+    def archivo_fake(consulta, limite=2, dias_min=90, excluir=()):
+        pedidas.update(limite=limite, excluir=list(excluir))
+        return [vieja]
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", archivo_fake)
+    r = g.generar_nota(["autopartes"], persona="comercial")
+    assert r["success"]
+    user = llamadas["user"]
+    assert "## Archivo: noticias anteriores" in user and "No inventes valores intermedios" in user
+    assert "[A1] Las ventas online de repuestos eran el 8% del total" in user
+    assert "Fecha: 2025-05-02 (hace 1 año y 6 meses)" in user
+    assert user.index("## Noticias de contexto") < user.index("## Archivo: noticias anteriores")
+    assert pedidas == {"limite": g.ARCHIVO_POR_NOTA, "excluir": [1, 2]}
+    historia = col.docs[0]["historia"]
+    assert historia["articulos"][0] | {"usado": None} == {
+        "titulo": vieja.titulo, "url": "https://archivo/1", "fecha": "2025-05-02", "antiguedad_dias": 550,
+        "parecido": 0.81, "usado": None, "ya_usado_en_otra_nota": False}
+    assert usadas == [1, 2]                                   # las del archivo no se marcan como usadas
+    assert [f["url"] for f in col.docs[0]["fuentes"]] == ["https://n/1", "https://n/2"]
+
+
+def test_un_articulo_del_archivo_citado_cuenta_como_usado(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", lambda *a, **k: [_de_archivo()])
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: PLAN if system.startswith("Sos el editor") else
+                        NOTA.replace("\n\n## ", "\n\nHace un año, [la venta online](https://archivo/1) era el 8%.\n\n## ", 1))
+    g.generar_nota(["autopartes"], persona="comercial")
+    historia = col.docs[0]["historia"]
+    assert historia["usados"] == 1 and historia["antiguedad_media_dias"] == 550 and historia["articulos"][0]["usado"]
+    assert "https://archivo/1" in col.docs[0]["contenido"].split("## Fuentes")[-1]
+
+
+def test_sin_archivo_la_nota_no_lleva_el_bloque(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"], persona="comercial")
+    assert "## Archivo" not in llamadas["user"]
+    assert col.docs[0]["historia"] == {"articulos": [], "usados": 0, "antiguedad_media_dias": None}
+
+
+def test_metricas_del_archivo():
+    import mongomock
+
+    from afterdrive import metricas
+    base = mongomock.MongoClient().db
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+    usado = {"titulo": "a", "url": "https://archivo/1", "antiguedad_dias": 200, "usado": True}
+    base.notas_fase2.insert_many([
+        {"generado_en": ahora, "historia": {"articulos": [usado, {**usado, "url": "https://archivo/2", "usado": False}]}},
+        {"generado_en": ahora, "historia": {"articulos": [{**usado, "antiguedad_dias": 400}]}},
+        {"generado_en": ahora, "historia": {"articulos": []}},
+        {"generado_en": ahora, "historia": {"articulos": [{**usado, "url": "https://archivo/3", "antiguedad_dias": 300}]}},
+        {"generado_en": ahora},                                      # anterior a la historia: no cuenta
+    ])
+    a = metricas.resumen(base=base)["notas"]["archivo"]
+    assert a == {"evaluadas": 4, "con_archivo": 3, "porcentaje": 0.75, "antiguedad_media_dias": 300, "reutilizados": 2}

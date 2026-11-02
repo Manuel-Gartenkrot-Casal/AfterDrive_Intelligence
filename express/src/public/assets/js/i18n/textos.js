@@ -787,6 +787,11 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
+["Perspectiva histórica", "Perspectiva histórica", "Historical perspective"],
+["noticias de más de 3 meses usadas en las notas", "notícias de mais de 3 meses usadas nas notas", "news older than 3 months used in articles"],
+["antigüedad media de lo usado", "idade média do que foi usado", "average age of what was used"],
+["artículos viejos reutilizados", "artigos antigos reutilizados", "old articles reused"],
+["meses", "meses", "months"],
 ["Estados", "Estados", "States"],
 ["Original", "Original", "Original"],
 ["Editada", "Editada", "Edited"],
@@ -1065,6 +1070,7 @@ function _fotosDescartadas(x, cod) {
 
 var PATRONES = {
   pt: [
+    [/^notas con archivo \((\d+) de (\d+)\)$/, 'notas com arquivo ($1 de $2)'],
     [/^Hay (\d+) errores$/, 'Há $1 erros'],
     [/^La usa la IA · v(\d+)$/, 'A IA a usa · v$1'],
     [/^(Activa|En revisión|Borrador) · v(\d+)$/, function(m, e, v) { return {'Activa': 'Ativa', 'En revisión': 'Em revisão', 'Borrador': 'Rascunho'}[e] + ' · v' + v; }],
@@ -1179,6 +1185,7 @@ var PATRONES = {
     [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
+    [/^notas con archivo \((\d+) de (\d+)\)$/, 'articles with archive ($1 of $2)'],
     [/^Hay (\d+) errores$/, 'There are $1 errors'],
     [/^La usa la IA · v(\d+)$/, 'Used by the AI · v$1'],
     [/^(Activa|En revisión|Borrador) · v(\d+)$/, function(m, e, v) { return {'Activa': 'Active', 'En revisión': 'In review', 'Borrador': 'Draft'}[e] + ' · v' + v; }],

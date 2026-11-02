@@ -5,7 +5,8 @@ Interfaz:
 
 Todo sale de colecciones que ya existen, sin guardar nada nuevo:
     articulos / articulos_descartados   lo que trajo el scraping, por día y por sitio
-    notas_fase2 / notas_descartadas     notas escritas y versiones descartadas
+    notas_fase2 / notas_descartadas     notas escritas y versiones descartadas (y su `historia`:
+                                        las noticias del archivo que se usaron para dar perspectiva)
     corridas                            resultado y duración de cada corrida
     consumo_ia                          tokens de cada llamada a la IA y gasto de la API paga
 
@@ -109,7 +110,8 @@ def _inicio_del_dia(dia: datetime.date) -> datetime.datetime:
 def _notas(b, desde_corto, desde_largo, dias):
     escritas_dia, puntajes, intentos, estrellas = [], [], [], []
     estados = Counter()
-    campos = {"generado_en": 1, "estado": 1, "calidad": 1, "calificacion": 1}
+    archivo = {"evaluadas": 0, "con_archivo": 0, "antiguedades": [], "urls": set()}
+    campos = {"generado_en": 1, "estado": 1, "calidad": 1, "calificacion": 1, "historia": 1}
     for doc in b["notas_fase2"].find({"generado_en": {"$gte": desde_largo.isoformat()}}, campos):
         cuando = _fecha(doc.get("generado_en"))
         if not cuando:
@@ -125,6 +127,7 @@ def _notas(b, desde_corto, desde_largo, dias):
         cal = doc.get("calificacion") or {}
         if isinstance(cal.get("puntaje"), (int, float)):
             estrellas.append(cal["puntaje"])
+        _sumar_historia(archivo, doc.get("historia"))
     descartadas = [_dia(d["_id"]) for d in b["notas_descartadas"].find(_desde_oid(desde_corto), {"_id": 1})]
     return {
         "escritas": _por_dia(escritas_dia, dias),
@@ -134,6 +137,34 @@ def _notas(b, desde_corto, desde_largo, dias):
         "intentos_promedio": _promedio(intentos),
         "calificacion_promedio": _promedio(estrellas),    # estrellas del equipo, 1 a 5
         "calificadas": len(estrellas),
+        "archivo": _resumen_archivo(archivo),
+    }
+
+
+def _sumar_historia(archivo: dict, historia) -> None:
+    """Las notas anteriores a `historia` no cuentan: no se sabe si hubo archivo para ofrecerles."""
+    if not isinstance(historia, dict):
+        return
+    archivo["evaluadas"] += 1
+    usados = [a for a in historia.get("articulos") or [] if isinstance(a, dict) and a.get("usado")]
+    if usados:
+        archivo["con_archivo"] += 1
+    for a in usados:
+        if isinstance(a.get("antiguedad_dias"), (int, float)):
+            archivo["antiguedades"].append(a["antiguedad_dias"])
+        archivo["urls"].add(a.get("url") or a.get("titulo"))
+
+
+def _resumen_archivo(archivo: dict) -> dict:
+    """% de notas que usaron el archivo, antigüedad media de lo usado y cuántos artículos viejos se reutilizaron."""
+    evaluadas = archivo["evaluadas"]
+    return {
+        "evaluadas": evaluadas,
+        "con_archivo": archivo["con_archivo"],
+        "porcentaje": round(archivo["con_archivo"] / evaluadas, 3) if evaluadas else None,
+        "antiguedad_media_dias": round(sum(archivo["antiguedades"]) / len(archivo["antiguedades"]))
+        if archivo["antiguedades"] else None,
+        "reutilizados": len(archivo["urls"]),
     }
 
 

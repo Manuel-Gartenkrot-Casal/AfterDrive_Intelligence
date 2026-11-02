@@ -67,6 +67,7 @@ col_clientes = db["clientes"]
 
 EJEMPLOS_POR_CATEGORIA = 2
 NOTICIAS_POR_NOTA = 5
+ARCHIVO_POR_NOTA = 2      # noticias de más de 90 días parecidas al tema, para dar perspectiva
 
 
 def _recortar_parrafos(texto: str, limite: int) -> str:
@@ -159,6 +160,7 @@ def _build_user_prompt(
     propios: list[dict] | None = None,
     blog: list | None = None,
     indicaciones: str | None = None,
+    archivo: list | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -174,6 +176,8 @@ def _build_user_prompt(
             "No hay noticias recientes para este tema. Escribí un análisis sin cifras, empresas ni "
             "casos concretos: explicá el tema con criterio de negocio."
         )
+    if archivo:
+        partes.append(_bloque_archivo(archivo, ajustes.compacto))
     if ejemplos:
         partes.append(
             "## Notas publicadas de referencia\n"
@@ -204,6 +208,48 @@ def _build_user_prompt(
 
 
 INDICACIONES_MAX = 2000
+
+
+def _bloque_archivo(archivo: list, compacto: bool = False) -> str:
+    """Las noticias viejas parecidas al tema, con su fecha, y cómo usarlas sin inventar la evolución."""
+    return (
+        "## Archivo: noticias anteriores\n"
+        "Noticias de hace más de tres meses sobre temas parecidos. Sirven para dar perspectiva "
+        "(\"hace un año…\", \"pasó de X a Y\"); el hecho principal de la nota sale de las noticias de contexto.\n"
+        "- Compará cifras en el tiempo solo cuando tengas las dos puntas: la de antes acá y la de ahora en "
+        "las noticias de contexto. No inventes valores intermedios ni digas que algo creció o cayó de forma "
+        "sostenida si no hay datos en el medio.\n"
+        "- Decí de cuándo es cada dato viejo (el mes y el año, o \"hace un año\") y enlazá la noticia como "
+        "a las de contexto.\n"
+        "- Si no aportan al tema, no las uses.\n\n"
+        + contexto_noticias.formatear_archivo(archivo, max_chars=1200 if compacto else 2500)
+    )
+
+
+def _contexto(noticias: list, archivo: list, max_chars: int = 7000) -> str:
+    """Todo lo que respalda datos: las noticias de contexto y, si hay, las del archivo."""
+    texto = contexto_noticias.formatear(noticias, max_chars=max_chars)
+    if archivo:
+        texto += "\n\n## Archivo (noticias anteriores)\n" + contexto_noticias.formatear_archivo(archivo)
+    return texto
+
+
+def _historia(archivo: list, usadas_ids: set) -> dict:
+    """Lo que se guarda en la nota sobre el archivo: qué se ofreció, qué se usó y de cuándo era."""
+    articulos = [{
+        "titulo": n.titulo, "url": n.url,
+        "fecha": n.fecha.date().isoformat() if n.fecha else None,
+        "antiguedad_dias": n.antiguedad_dias,
+        "parecido": round(n.puntaje, 3),
+        "usado": id(n) in usadas_ids,
+        "ya_usado_en_otra_nota": bool(n.usada),
+    } for n in archivo]
+    usados = [a["antiguedad_dias"] for a in articulos if a["usado"] and a["antiguedad_dias"] is not None]
+    return {
+        "articulos": articulos,
+        "usados": sum(a["usado"] for a in articulos),
+        "antiguedad_media_dias": round(sum(usados) / len(usados)) if usados else None,
+    }
 
 
 def _pedido(categorias: list[str], tema: str | None, indicaciones: str | None = None) -> str:
@@ -461,6 +507,15 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print(f"    - {n.titulo[:80]}", flush=True)
     if not noticias:
         print("  [WARN] No hay noticias scrapeadas: la nota se escribe sin datos concretos.", flush=True)
+    # Perspectiva: 1 o 2 noticias de hace más de 3 meses parecidas al tema.
+    archivo = contexto_noticias.seleccionar_archivo(_consulta(categorias, tema, regiones),
+                                                    limite=1 if ajustes.compacto else ARCHIVO_POR_NOTA,
+                                                    excluir=[n.id for n in noticias])
+    if prohibidos:
+        archivo = [n for n in archivo if not clientes.nombrados(n.titulo, prohibidos)]
+    for n in archivo:
+        print(f"  Archivo ({contexto_noticias.antiguedad(n.antiguedad_dias)}): {n.titulo[:80]}", flush=True)
+    con_archivo = noticias + archivo   # lo que respalda datos y enlaces al revisar
 
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
     ejemplos = ejemplos[: ajustes.max_ejemplos]
@@ -495,7 +550,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo,
                                   prohibidos)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
-                                  cal.aciertos, propios, blog, indicaciones)
+                                  cal.aciertos, propios, blog, indicaciones, archivo)
 
     # Lo que dicen los resúmenes de las notas del blog también respalda datos (al citarlas).
     extra = " ".join([_formatear_clientes(clientes_docs), tema or "", *(n.resumen for n in blog)])
@@ -517,7 +572,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             # Retocar con el modelo de corrección (barato) en lugar de pagar otra redacción entera.
             segundo_intento = "correccion"
             print("  Corrigiendo la nota...", flush=True)
-            articulo = correccion.corregir(anterior.texto, anterior.problemas, contexto_noticias.formatear(noticias),
+            articulo = correccion.corregir(anterior.texto, anterior.problemas, _contexto(noticias, archivo),
                                            max_tokens=ajustes.max_tokens)
             if articulo is None:
                 break
@@ -541,7 +596,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             )
             continue
 
-        version = _revisar(articulo, noticias, extra, voz, ajustes.compacto, palabra_clave, permitidas,
+        version = _revisar(articulo, con_archivo, extra, voz, ajustes.compacto, palabra_clave, permitidas,
                            recientes, cal.umbral, prohibidos)
         if mejor is None or version.orden < mejor.orden:
             mejor = version
@@ -562,10 +617,14 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     # y las que el plan asignó a una sección. Sin ninguna señal, todas.
     citadas = verificacion.urls_citadas(mejor.texto)
     del_plan = {id(n) for n in plan.noticias_del_plan(plan_nota, noticias)}
-    usadas = [n for i, n in enumerate(noticias)
-              if (n.url and n.url.strip().rstrip("/").lower() in citadas) or i in mejor.verificacion.noticias_citadas
-              or id(n) in del_plan]
-    articulo = verificacion.agregar_fuentes(mejor.texto, usadas or noticias, voz.titulo_fuentes)
+    # Los índices de la verificación son de con_archivo (noticias + archivo).
+    usadas_todas = [n for i, n in enumerate(con_archivo)
+                    if (n.url and n.url.strip().rstrip("/").lower() in citadas) or i in mejor.verificacion.noticias_citadas
+                    or id(n) in del_plan]
+    ids_archivo = {id(n) for n in archivo}
+    usadas = [n for n in usadas_todas if id(n) not in ids_archivo]   # la foto sale de las noticias frescas
+    del_archivo = [n for n in usadas_todas if id(n) in ids_archivo]
+    articulo = verificacion.agregar_fuentes(mejor.texto, (usadas or noticias) + del_archivo, voz.titulo_fuentes)
     evaluacion = mejor.evaluacion
 
     doc = {
@@ -597,6 +656,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "estilo": mejor.revision.como_dict()["hallazgos"],
         "seo": mejor.revision.seo,
         "plan": plan_nota,
+        # Perspectiva histórica: las noticias del archivo que se ofrecieron, cuáles se usaron y su antigüedad.
+        "historia": _historia(archivo, {id(n) for n in del_archivo}),
         "parecida_a": mejor.parecida,
         "enlaces_quitados": mejor.enlaces_quitados,
         "calibracion_usada": cal.como_dict(),
@@ -650,7 +711,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     doc["fuentes"] = [_fuente(n) for n in noticias]
     # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.
     print("  Juzgando la nota (editor crítico)...", flush=True)
-    doc["juicio"] = juez.juzgar(articulo, contexto_noticias.formatear(noticias, max_chars=juez.NOTICIAS_MAX),
+    doc["juicio"] = juez.juzgar(articulo, _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),
                                 cal.reglas)
     if doc["juicio"].get("error"):
         print(f"  [AVISO] {doc['juicio']['error']}", flush=True)

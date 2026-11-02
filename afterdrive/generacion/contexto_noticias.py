@@ -3,7 +3,10 @@ contexto_noticias.py — Qué noticias scrapeadas alimentan una nota.
 
 Interfaz:
     seleccionar(consulta, limite=5) -> list[Noticia]
+    seleccionar_archivo(consulta, limite=2, dias_min=90) -> list[Noticia]
+                                       noticias viejas parecidas al tema, para dar perspectiva
     formatear(noticias, max_chars=7000) -> str
+    formatear_archivo(noticias, max_chars=2500) -> str
     marcar_usadas(noticias) -> None
     urls_liberadas() -> set[str]       noticias de notas rechazadas, que vuelven a estar disponibles
     con_foto(noticias, max_busquedas=3, limite=4) -> list[Noticia]   las que tienen foto
@@ -16,6 +19,12 @@ escribía solo con las categorías y los ejemplos de estilo, y los prompts le
 pedían "usar datos del contexto" que nunca recibía. Acá se eligen las
 noticias más útiles para el pedido: parecidas al tema (embeddings), recientes
 y todavía no usadas en otra nota.
+
+Además, 1 o 2 noticias del archivo (de más de ARCHIVO_DIAS_MIN días) parecidas
+al tema dan perspectiva ("hace un año…", "pasó de X a Y"). rankear() no sirve
+para eso: con una vida media de 10 días una noticia de hace 3 meses casi no
+pesa, y solo mira las CANDIDATOS más recientes. seleccionar_archivo() busca
+entre las viejas y las ordena solo por parecido.
 
 Una noticia que ya alimentó una nota en los últimos DIAS_SIN_REPETIR días
 solo se usa si no alcanzan las demás: así dos notas seguidas no salen de la
@@ -38,6 +47,9 @@ PESO_SIMILITUD = 0.65
 PESO_RECENCIA = 0.25
 PESO_NO_USADA = 0.10
 DIAS_SIN_REPETIR = 30
+ARCHIVO_DIAS_MIN = 90          # desde cuándo una noticia es "de archivo"
+ARCHIVO_CANDIDATOS = 400       # viejas que se miran (por fecha de guardado y por fecha de publicación)
+ARCHIVO_SIMILITUD_MIN = 0.5    # menos parecida que esto no aporta perspectiva: mejor ninguna
 
 
 @dataclass
@@ -58,6 +70,7 @@ class Noticia:
     imagenes: list[dict] | None = None   # todas las fotos del artículo; None = scrapeado antes de guardarlas
     refrescable: bool = True       # su `imagen` es la principal de la página: si deja de responder se relee
     liberada: bool = False         # solo alimentó notas rechazadas: vuelve a contar como no usada
+    antiguedad_dias: int | None = None   # solo las del archivo: días desde su fecha
 
 
 def _coseno(a, b) -> float:
@@ -104,14 +117,44 @@ def formatear(noticias: list[Noticia], max_chars: int = 7000) -> str:
     por_noticia = max(400, max_chars // len(noticias))
     bloques = []
     for i, n in enumerate(noticias, 1):
-        if n.ficha:
-            ficha = _texto_ficha(n.ficha)
-            extracto = _recortar(n.cuerpo or "", max(300, por_noticia - len(ficha)))
-            cuerpo = ficha + (f"\nExtracto: {extracto}" if extracto else "")
-        else:
-            cuerpo = _recortar(n.cuerpo or "", por_noticia)
         origen = " | ".join(x for x in (n.fuente, n.url) if x)
-        bloques.append(f"[{i}] {n.titulo}\n{('Fuente: ' + origen) if origen else ''}\n{cuerpo}".strip())
+        bloques.append(f"[{i}] {n.titulo}\n{('Fuente: ' + origen) if origen else ''}\n{_cuerpo(n, por_noticia)}".strip())
+    return "\n\n".join(bloques)
+
+
+def _cuerpo(n: Noticia, limite: int) -> str:
+    if n.ficha:
+        ficha = _texto_ficha(n.ficha)
+        extracto = _recortar(n.cuerpo or "", max(300, limite - len(ficha)))
+        return ficha + (f"\nExtracto: {extracto}" if extracto else "")
+    return _recortar(n.cuerpo or "", limite)
+
+
+def antiguedad(dias: int | None) -> str:
+    """"hace 4 meses", "hace 1 año y 2 meses": cómo se le cuenta al modelo de cuándo es el dato."""
+    if dias is None:
+        return "fecha desconocida"
+    if dias < 60:
+        return f"hace {dias} días"
+    meses = round(dias / 30.4)
+    if meses < 12:
+        return f"hace {meses} meses"
+    anios, meses = divmod(meses, 12)
+    texto = "hace 1 año" if anios == 1 else f"hace {anios} años"
+    return texto + ("" if not meses else " y 1 mes" if meses == 1 else f" y {meses} meses")
+
+
+def formatear_archivo(noticias: list[Noticia], max_chars: int = 2500) -> str:
+    """Las noticias del archivo, con la fecha y la antigüedad de cada una ([A1], [A2])."""
+    if not noticias:
+        return ""
+    por_noticia = max(400, max_chars // len(noticias))
+    bloques = []
+    for i, n in enumerate(noticias, 1):
+        fecha = n.fecha.date().isoformat() if n.fecha else "sin fecha"
+        origen = " | ".join(x for x in (n.fuente, n.url) if x)
+        bloques.append(f"[A{i}] {n.titulo}\nFecha: {fecha} ({antiguedad(n.antiguedad_dias)})"
+                       f"{(' | Fuente: ' + origen) if origen else ''}\n{_cuerpo(n, por_noticia)}".strip())
     return "\n\n".join(bloques)
 
 
@@ -232,15 +275,11 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     rankear() (parecido, recencia y si ya se usó) igual en los dos casos.
     """
     from afterdrive.db import col_articulos
-    from afterdrive.ia import llm
     from afterdrive.ingesta.embeddings import vector_de
 
-    vec = None
-    modelo = llm.modelo_embeddings()  # antes de vectorizar: la etiqueta es del modelo que lo calculó
-    try:
-        vec = llm.embeber([consulta], tipo="query")[0]
-    except Exception as e:
-        print(f"  [AVISO] Sin embeddings para elegir noticias ({e}); se usan las más recientes.", flush=True)
+    vec, modelo = _vector_consulta(consulta)
+    if vec is None:
+        print("  [AVISO] Sin embeddings para elegir noticias; se usan las más recientes.", flush=True)
 
     recientes = list(col_articulos.find({"cuerpo": {"$exists": True, "$ne": ""}}, _CAMPOS)
                      .sort("_id", -1).limit(CANDIDATOS))
@@ -258,6 +297,77 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
         noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
     elegidas = elegir(rankear(noticias, vec, ahora), limite)
+    _completar_fichas(elegidas, col_articulos)
+    return elegidas
+
+
+def _vector_consulta(consulta: str) -> tuple[list[float] | None, str]:
+    """(vector de la consulta o None si los embeddings fallan, modelo con el que se calculó)."""
+    from afterdrive.ia import llm
+
+    modelo = llm.modelo_embeddings()  # antes de vectorizar: la etiqueta es del modelo que lo calculó
+    try:
+        return llm.embeber([consulta], tipo="query")[0], modelo
+    except Exception as e:
+        print(f"  [AVISO] Embeddings no disponibles: {e}", flush=True)
+        return None, modelo
+
+
+def seleccionar_archivo(consulta: str, limite: int = 2, dias_min: int = ARCHIVO_DIAS_MIN,
+                        excluir=()) -> list[Noticia]:
+    """Hasta `limite` noticias de hace más de `dias_min` días parecidas a `consulta`, para dar perspectiva.
+
+    Ordenadas solo por parecido (no por recencia ni por si ya se usaron: una
+    noticia vieja que alimentó otra nota sigue sirviendo de referencia). Sin
+    embeddings no hay orden posible y devuelve []; por debajo de
+    ARCHIVO_SIMILITUD_MIN tampoco: mejor ninguna que una que no viene al caso.
+    `excluir`: _id de noticias que ya están en la nota.
+    """
+    if limite <= 0:
+        return []
+    from bson import ObjectId
+
+    from afterdrive.db import col_articulos
+    from afterdrive.ingesta.embeddings import vector_de
+
+    vec, modelo = _vector_consulta(consulta)
+    if vec is None:
+        return []
+    ahora = datetime.datetime.now(datetime.UTC)
+    corte = ahora - datetime.timedelta(days=dias_min)
+    con_cuerpo = {"cuerpo": {"$exists": True, "$ne": ""}}
+    try:
+        # Guardadas hace más de dias_min días, y publicadas antes aunque se hayan scrapeado hace poco.
+        viejas = list(col_articulos.find({**con_cuerpo, "_id": {"$lt": ObjectId.from_datetime(corte)}}, _CAMPOS)
+                      .sort("_id", -1).limit(ARCHIVO_CANDIDATOS))
+        por_fecha = list(col_articulos.find({**con_cuerpo, "fecha": {"$lt": corte.date().isoformat(), "$gte": "1990"}},
+                                            _CAMPOS).sort("fecha", -1).limit(ARCHIVO_CANDIDATOS))
+    except Exception as e:
+        print(f"  [AVISO] No se pudo leer el archivo de noticias: {e}", flush=True)
+        return []
+    excluir = set(excluir)
+    docs = {d["_id"]: d for d in viejas + por_fecha + _parecidas_en_atlas(col_articulos, vec, modelo)}
+    candidatas, titulos = [], set()
+    for d in docs.values():
+        if d["_id"] in excluir:
+            continue
+        n = _desde_doc(d)
+        if not n.fecha or n.fecha > corte:
+            continue
+        n.puntaje = _coseno(vec, vector_de(d, modelo))
+        if n.puntaje < ARCHIVO_SIMILITUD_MIN:
+            continue
+        n.antiguedad_dias = (ahora - n.fecha).days
+        candidatas.append(n)
+    elegidas = []
+    for n in sorted(candidatas, key=lambda n: n.puntaje, reverse=True):
+        clave = " ".join(n.titulo.lower().split())
+        if clave in titulos:   # la misma noticia publicada por dos sitios
+            continue
+        titulos.add(clave)
+        elegidas.append(n)
+        if len(elegidas) == limite:
+            break
     _completar_fichas(elegidas, col_articulos)
     return elegidas
 

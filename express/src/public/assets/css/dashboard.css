@@ -2879,3 +2879,8 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .prompts-acciones .btn { flex: 1 1 auto; }
   .prompts-acciones-sep { display: none; }
 }
+
+/* Perspectiva histórica en el tablero (metricas.js): notas que usaron noticias del archivo. */
+.archivo-metricas { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--border); }
+.archivo-titulo { margin-bottom: var(--s3); font-size: 0.8rem; font-weight: 600; color: var(--text-hi); }
+.archivo-titulo span { margin-left: 6px; font-weight: 400; color: var(--text-lo); }
