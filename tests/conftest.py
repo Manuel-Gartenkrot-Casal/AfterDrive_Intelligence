@@ -30,6 +30,9 @@ def sin_buscar_imagenes(monkeypatch):
     monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda *a, **kw: (_ for _ in ()).throw(
         AssertionError("un test quiso buscar en un banco de imágenes"))})
     monkeypatch.setattr(imagenes_respaldo, "buscador", lambda titulo, angulo="": None)
+    # Sin la API paga, las fotos elegidas se descargan para comprobar que no estén rotas: en los tests, no.
+    from afterdrive.generacion import imagen_destacada
+    monkeypatch.setattr(imagen_destacada, "_bajables", lambda candidatas, refrescos, veredictos: list(candidatas))
 
 
 @pytest.fixture(autouse=True)

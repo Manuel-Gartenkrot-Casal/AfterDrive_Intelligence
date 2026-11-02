@@ -263,17 +263,27 @@ def _imagen(nota: dict, titulo: str) -> dict:
     """
     propia = nota.get("imagen") or {}
     # Una subida desde la computadora tiene una ruta de este servidor: solo sirve su copia en HubSpot.
-    externa = propia.get("url") if not str(propia.get("url") or "").startswith("/") else ""
+    # Si no se pudo copiar, el link de la noticia tampoco: el sitio la bloquea o ya no existe, y en el
+    # blog salía rota.
+    externa = propia.get("url") if not _sin_link_usable(propia) else ""
     url = propia.get("hubspot_url") or externa or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
 
 
+def _sin_link_usable(im: dict) -> bool:
+    """La imagen no tiene un link que sirva en el blog: es una ruta de este servidor o su copia a
+    HubSpot falló (historial marca `copia_fallida`: el sitio la bloquea o ya no existe)."""
+    return str(im.get("url") or "").startswith("/") or bool(im.get("copia_fallida"))
+
+
 def imagenes_cuerpo(nota: dict) -> list[dict]:
     """[{url, alt, credito}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo).
-    `credito` solo en las de bancos de imágenes que piden atribución."""
+    `credito` solo en las de bancos de imágenes que piden atribución. Sin copia en HubSpot, una
+    imagen sin link usable queda afuera: mejor una foto menos que una rota."""
     return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or "",
              **({"credito": im["credito"]} if im.get("atribucion") and im.get("credito") else {})}
-            for im in nota.get("imagenes_cuerpo") or [] if im.get("hubspot_url") or im.get("url")]
+            for im in nota.get("imagenes_cuerpo") or []
+            if im.get("hubspot_url") or (im.get("url") and not _sin_link_usable(im))]
 
 
 def con_imagenes(html: str, imagenes: list[dict]) -> str:

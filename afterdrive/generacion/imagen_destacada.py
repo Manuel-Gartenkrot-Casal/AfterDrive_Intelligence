@@ -253,40 +253,63 @@ def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
         return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
 
 
+def _no_bajada(n, error) -> dict:
+    return {"apta": False, "personas": False, "motivo": f"No se pudo descargar ({error}): en el blog saldría rota."}
+
+
+def _bajables(candidatas: list, refrescos: list[int], veredictos: dict) -> list:
+    """Las que se pueden descargar. Las otras quedan en los veredictos como no aptas: si este servidor
+    no puede bajarla, tampoco se puede copiar a HubSpot y en el blog sale rota."""
+    from afterdrive import imagen_web
+
+    buenas = []
+    for n in candidatas:
+        try:
+            _descargar(n, refrescos)
+            buenas.append(n)
+        except imagen_web.ErrorDescarga as e:
+            print(f"  [AVISO] No se pudo descargar la foto de '{n.titulo[:50]}': {e}", flush=True)
+            veredictos[n.imagen["url"]] = _no_bajada(n, e)
+    return buenas
+
+
 def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool | None = None,
            portada: bool = False) -> Eleccion:
     """Una pasada de la IA sobre las candidatas. ver=False la obliga a juzgar sin mirar las fotos.
-    portada=True: solo falta la portada (se le pide una sin personas)."""
+    portada=True: solo falta la portada (se le pide una sin personas).
+
+    Una foto que no se puede descargar no se elige nunca (antes completaba los lugares que faltaban,
+    juzgada por su texto, y en HubSpot salía rota): faltan fotos, y elegir() las busca en otro lado.
+    """
     from afterdrive.generacion import contexto_noticias
     from afterdrive.ia import llm
 
-    primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
-    veredictos, enviadas, imagenes = {}, candidatas, None
+    veredictos, refrescos = {}, [REFRESCOS]
     if ver is not False and llm.ve_imagenes():
         from afterdrive import imagen_web
-        enviadas, imagenes, refrescos, sin_bajar = [], [], [REFRESCOS], []
+        enviadas, imagenes = [], []
         for n in candidatas:
             try:
                 imagenes.append(_descargar(n, refrescos))
                 enviadas.append(n)
             except imagen_web.ErrorDescarga as e:
                 print(f"  [AVISO] No se pudo descargar la foto de '{n.titulo[:50]}': {e}", flush=True)
-                sin_bajar.append(n)
+                veredictos[n.imagen["url"]] = _no_bajada(n, e)
         if not enviadas:
-            # Ninguna se pudo mirar: se juzgan por su noticia y su texto en vez de descartarlas.
-            return _ronda(sin_bajar, titulo, angulo, cantidad, ver=False, portada=portada)
-        vistas = _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras, portada)
-        faltan = cantidad - len(vistas.imagenes)
-        if faltan > 0 and sin_bajar and vistas.metodo != "primera":
-            # Las que no se pudieron bajar completan los lugares que faltan, juzgadas sin verlas.
-            resto = _ronda(sin_bajar, titulo, angulo, faltan, ver=False, portada=portada)
-            vistas.veredictos.update(resto.veredictos)
-            if resto.imagenes:
-                return Eleccion(vistas.imagenes + resto.imagenes, vistas.metodo, vistas.veredictos)
-            if not vistas.imagenes:
-                vistas.motivo = (vistas.motivo + " " + resto.motivo).strip()
-        return vistas
-    return _ronda_con(enviadas, None, titulo, angulo, cantidad, veredictos, primeras, portada)
+            return Eleccion([], "ia", veredictos, motivo="No se pudo descargar ninguna de estas fotos.")
+        primeras = Eleccion([contexto_noticias.imagen_de(n) for n in enviadas[:cantidad]], "primera")
+        return _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras, portada)
+    # Sin verlas: la IA juzga por el texto y después se comprueba que las elegidas se puedan bajar.
+    primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
+    eleccion = _ronda_con(candidatas, None, titulo, angulo, cantidad, veredictos, primeras, portada)
+    por_url = {n.imagen["url"]: n for n in candidatas}
+    elegidas = [por_url[im["url"]] for im in eleccion.imagenes if im["url"] in por_url]
+    buenas = _bajables(elegidas, refrescos, eleccion.veredictos)
+    if len(buenas) < len(elegidas):
+        eleccion.imagenes = [contexto_noticias.imagen_de(n) for n in buenas]
+        if not eleccion.imagenes:
+            eleccion.motivo = (eleccion.motivo + " No se pudo descargar ninguna de las elegidas.").strip()
+    return eleccion
 
 
 def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int, veredictos: dict,

@@ -7,12 +7,13 @@ import pytest
 from bson import ObjectId
 
 from afterdrive import historial, hubspot, imagen_web
-from afterdrive.generacion import contexto_noticias
+from afterdrive.generacion import contexto_noticias, imagen_destacada
 from afterdrive.generacion.contexto_noticias import Noticia
 from afterdrive.ingesta import imagen_articulo
 
 # Capturada al importar, antes de que conftest la reemplace para que los tests no descarguen páginas.
 _BUSCAR_IMAGEN = contexto_noticias._buscar_imagen
+_BAJABLES = imagen_destacada._bajables   # idem con la comprobación de que las fotos se puedan bajar
 JPG = b"\xff\xd8\xff\xe0falso"
 
 
@@ -206,12 +207,44 @@ def test_hubspot_usa_la_copia_y_si_no_hay_el_link_original(monkeypatch):
     (RespImg(404), "404"), (RespImg(tipo="text/html"), "no es una imagen"), (RespImg(tipo="image/svg+xml"), "no es una imagen"),
     (RespImg(contenido=b""), "vacía"), (RespImg(302, location="https://127.0.0.1/x.jpg"), "https pública"),
 ])
-def test_si_no_se_puede_copiar_se_sube_igual_con_el_link_original(base, nota, monkeypatch, hubspot_falso, resp, texto):
+def test_si_no_se_puede_bajar_del_sitio_queda_afuera_para_que_no_salga_rota(base, nota, monkeypatch, hubspot_falso,
+                                                                           resp, texto):
+    # Antes iba con el link original y, si el sitio bloquea que otros muestren sus fotos, salía rota.
+    monkeypatch.delenv("HUBSPOT_IMAGEN_DEFAULT", raising=False)
     monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: resp)
     monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, n: pytest.fail("no debería subir"))
     item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
-    assert texto in item["aviso"] and "link original" in item["aviso"]
-    assert len(hubspot_falso) == 1 and hubspot_falso[0]["imagen"]["url"] == "https://n.com/1.jpg"
+    assert texto in item["aviso"] and "afuera" in item["aviso"]
+    assert len(hubspot_falso) == 1 and hubspot._imagen(hubspot_falso[0], "T") == {}
+    assert base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]["copia_fallida"]
+
+
+def test_si_falla_hubspot_y_no_la_foto_va_con_el_link_original(base, nota, monkeypatch, hubspot_falso):
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+
+    def sin_scope(c, m, n):
+        raise hubspot.ErrorHubSpot("la app privada necesita el scope 'files'")
+    monkeypatch.setattr(hubspot, "subir_imagen", sin_scope)
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert "link original" in item["aviso"] and "afuera" not in item["aviso"]
+    assert hubspot._imagen(hubspot_falso[0], "T")["url"] == "https://n.com/1.jpg"
+
+
+def test_al_reenviar_una_que_ahora_se_copia_vuelve_al_post(base, nota, monkeypatch, hubspot_falso):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagen.copia_fallida": "404"}})
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+    monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, n: "https://hs/1.jpg")
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert "aviso" not in item and hubspot._imagen(hubspot_falso[0], "T")["url"] == "https://hs/1.jpg"
+    assert "copia_fallida" not in base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]
+
+
+def test_en_el_cuerpo_no_van_las_que_no_se_pudieron_copiar_ni_rutas_del_servidor():
+    nota = {"imagenes_cuerpo": [{"url": "https://n.com/1.jpg", "copia_fallida": "403"},
+                                {"url": "/api/imagenes/abc"},
+                                {"url": "/api/imagenes/def", "hubspot_url": "https://hs/def.jpg"},
+                                {"url": "https://n.com/4.jpg"}]}
+    assert [im["url"] for im in hubspot.imagenes_cuerpo(nota)] == ["https://hs/def.jpg", "https://n.com/4.jpg"]
 
 
 def test_la_descarga_valida_cada_redireccion_contra_la_red_interna(monkeypatch):
@@ -320,25 +353,46 @@ def test_si_la_ia_falla_va_la_primera(ia_fotos, falla):
     assert e.metodo == "primera" and e.imagen["url"] == "https://n.com/1.jpg" and e.motivo
 
 
-def test_las_que_no_se_descargan_se_juzgan_sin_verlas_despues_de_las_vistas(ia_fotos):
+def test_una_foto_que_no_se_puede_descargar_no_se_elige(ia_fotos):
+    # Antes completaba los lugares que faltaban, juzgada por su texto, y en HubSpot salía rota.
     from afterdrive.generacion import imagen_destacada
     responder, descargas, pedidos = ia_fotos
     descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 403")
     responder('{"fotos": [{"n": 1, "apta": true, "motivo": "Taller."}], "elegidas": [1]}')
     e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg", "https://n.com/1.jpg"]
-    assert len(pedidos[0]["imagenes"]) == 1 and "imagenes" not in pedidos[1]   # la segunda, sin verla
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg"] and len(pedidos) == 1
+    assert e.veredictos["https://n.com/1.jpg"]["apta"] is False
+    assert "403" in e.veredictos["https://n.com/1.jpg"]["motivo"]
 
 
-def test_si_ninguna_se_descarga_se_juzgan_todas_por_su_texto(ia_fotos):
+def test_si_ninguna_se_descarga_no_se_elige_ninguna(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, descargas, pedidos = ia_fotos
     for i in (1, 2):
         descargas[f"https://n.com/{i}.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 404")
-    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Billetes."}, {"n": 2, "apta": true, "motivo": "Repuestos."}],'
-              ' "elegidas": [2]}')
+    responder('{"fotos": [], "elegidas": []}')
     e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.metodo == "ia-texto" and e.imagen["url"] == "https://n.com/2.jpg" and len(pedidos) == 1
+    assert e.imagenes == [] and pedidos == [] and "descargar" in e.motivo
+
+
+def test_sin_api_paga_las_elegidas_que_no_se_pueden_bajar_se_descartan(monkeypatch):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: False)
+    monkeypatch.setattr(imagen_destacada, "_bajables", _BAJABLES)
+    monkeypatch.setattr(contexto_noticias, "refrescar_imagen", lambda n: None)
+
+    def descargar(url, max_bytes=None):
+        if url.endswith("1.jpg"):
+            raise imagen_web.ErrorDescarga("el sitio respondió 403")
+        return JPG, "image/jpeg"
+    monkeypatch.setattr(imagen_web, "descargar", descargar)
+    monkeypatch.setattr(llm, "completar", lambda *a, **k: (
+        '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}],'
+        ' "elegidas": [1, 2]}'))
+    e = imagen_destacada.elegir(_con_fotos(2), "T")
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg"]
+    assert e.veredictos["https://n.com/1.jpg"]["apta"] is False
 
 def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(monkeypatch):
     from afterdrive.generacion import imagen_destacada
