@@ -2595,6 +2595,23 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .agenda-falta { font-size: 0.74rem; color: var(--text-mid); font-variant-numeric: tabular-nums; }
 .agenda-cuerpo .agenda-foot .btn { flex-shrink: 0; }
 
+/* En escritorio, con las tareas lado a lado, el panel llega hasta el fondo de la
+   pantalla: el contenido se reparte a lo alto y los relojes crecen con el alto
+   que haya (150 px en pantallas bajas, hasta 250 px en las altas). */
+@media (min-width: 1181px) {
+  /* Sin el lugar extra del final, el panel termina a la misma altura que la barra
+     lateral (si el dock de actividad está abierto, se le sigue dejando su lugar). */
+  .contenido:has(> .agenda.activa) { display: flex; flex-direction: column; padding-bottom: calc(var(--shell-pie) - 20px); }
+  .agenda.activa { flex: 1 0 auto; display: flex; flex-direction: column; margin-bottom: 0; }
+  .agenda-panel { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .agenda-dia { padding-top: 14px; padding-bottom: 12px; }
+  .agenda-grid { flex: 1 0 auto; }
+  .agenda-card { display: flex; flex-direction: column; }
+  .agenda-cuerpo { flex: 1 0 auto; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; align-items: center; column-gap: var(--s6); }
+  .agenda-hora { min-width: 196px; }
+  .agenda-hora .reloj { width: clamp(150px, calc(100dvh - 660px), 250px); }
+  .agenda-ajustes .agenda-field { min-height: clamp(50px, calc((100dvh - 560px) / 4.5), 64px); }
+}
 @media (max-width: 1180px) {
   .agenda-grid { grid-template-columns: minmax(0, 1fr); }
   .agenda-card + .agenda-card { border-left: 0; border-top: 1px solid var(--border); }
