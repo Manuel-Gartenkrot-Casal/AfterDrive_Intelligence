@@ -258,9 +258,10 @@ def _extraer_articulo(html: str, url: str) -> dict | None:
             cuerpo = data.get("text") or ""
             fecha = data.get("date") or ""
             if titulo and cuerpo and len(cuerpo) > 100:
-                # La foto del artículo: la usa la nota que salga de esta noticia (None si no tiene).
+                # Las fotos del artículo (la principal primero): las usa la nota que salga de esta noticia.
+                imagenes = imagen_articulo.extraer_todas(html, url)
                 return {"titulo": titulo, "cuerpo": cuerpo, "fecha": fecha, "url": url, "fuente": "custom",
-                        "imagen": imagen_articulo.extraer(html, url)}
+                        "imagen": imagenes[0] if imagenes else None, "imagenes": imagenes}
     except Exception:
         pass
     return None

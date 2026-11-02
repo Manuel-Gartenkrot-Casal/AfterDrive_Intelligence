@@ -1,27 +1,33 @@
 """
-imagen_destacada.py — Qué fotos de las noticias van en una Nota: la destacada y dos para el cuerpo.
+imagen_destacada.py — Qué fotos van en una Nota: la destacada y CANTIDAD - 1 para el cuerpo.
 
 Interfaz:
-    elegir(noticias, titulo, angulo="", cantidad=CANTIDAD, extra=None) -> Eleccion
+    elegir(noticias, titulo, angulo="", cantidad=CANTIDAD, extra=None, excluir=(), respaldo=None) -> Eleccion
 
 Las candidatas son las fotos de las noticias de la nota (las que la respaldan
-primero), hasta MAX_FOTOS, sin repetir. La IA las juzga contra el TEMA de la
-nota (no alcanza con que sean del sector) y devuelve las aptas en orden: la
-primera va como destacada y las siguientes dentro del texto (hubspot.py las
-reparte entre las secciones).
+primero; cada noticia guarda varias), hasta MAX_FOTOS, sin repetir las que ya
+están en otras notas. La IA las juzga contra el TEMA de la nota (no alcanza con
+que sean del sector) y devuelve las aptas en orden: la primera va como
+destacada y las siguientes dentro del texto (hubspot.py las reparte entre las
+secciones).
 
 - Con la API paga (llm.ve_imagenes) el modelo de clasificación mira las fotos.
 - Sin ella, el mismo modelo juzga sin verlas: por la noticia de la que salen,
-  su texto alternativo y el nombre del archivo. Descarta las que claramente no
-  tienen que ver (antes iba la primera foto a ciegas, aunque fuera de otra cosa).
+  su texto alternativo y el nombre del archivo.
+
+Si no se juntan `cantidad` fotos aptas, no se conforma: las busca en este
+orden hasta completarlas (cada paso, solo las que faltan):
+  1. las otras fotos de las páginas de sus noticias (las scrapeadas antes de
+     que se guardaran todas se releen);
+  2. otras noticias del mismo tema (`extra`);
+  3. bancos de imágenes (`respaldo`, ver imagenes_respaldo.py): una búsqueda
+     por ronda, hasta MAX_RONDAS_RESPALDO.
+Solo si después de todo eso faltan, la nota sale con menos y el motivo queda
+para mostrarlo al revisarla.
 
 Una foto guardada que el sitio ya no sirve (404) se vuelve a buscar en la
-página de la noticia. Si entre las de la nota no hay suficientes aptas, se
-buscan las que faltan entre otras noticias del mismo tema (`extra`).
-
-Si la IA falla, van las primeras en orden: la IA mejora la elección pero nunca
-la frena. Si las descarta todas, la nota queda sin imágenes y el motivo se
-muestra al revisarla.
+página de la noticia. Si la IA falla, van las primeras en orden: la IA mejora
+la elección pero nunca la frena.
 """
 
 from __future__ import annotations
@@ -30,9 +36,10 @@ import os
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-CANTIDAD = 3        # destacada + 2 en el cuerpo
-MAX_FOTOS = 8
+CANTIDAD = 5        # destacada + 4 en el cuerpo
+MAX_FOTOS = 12      # fotos que la IA mira por pasada
 MAX_BUSQUEDAS = 5   # páginas de noticias viejas que se descargan para buscarles la foto
+MAX_RONDAS_RESPALDO = 8   # búsquedas en bancos de imágenes antes de rendirse
 REFRESCOS = 3       # fotos que dejaron de responder: se relee su página para tomar la actual
 # Bedrock rechaza imágenes de más de 3,75 MB en Converse.
 MAX_BYTES_IA = 3_750_000
@@ -49,6 +56,7 @@ una noticia usada: billetes o cotizaciones, políticos, deportes, catástrofes, 
 
 En cada foto indicá "personas": true si se ve una persona o parte de una (cara, cuerpo, manos), aunque sea \
 chica o de fondo. Una foto con personas puede ser apta (va dentro del texto), pero la portada no puede tenerlas.
+Las fotos de bancos de imágenes valen igual que las de las noticias si muestran el tema o el sector.
 
 Ordená las aptas: primero las que muestran el tema y después las del sector ("elegidas", como mucho \
 {cantidad}). Si ninguna es apta, "elegidas" es [].
@@ -56,7 +64,7 @@ Ordená las aptas: primero las que muestran el tema y después las del sector ("
 Respondé solo con este JSON, una entrada por foto en el orden recibido:
 {{"fotos": [{{"n": 1, "apta": true, "personas": false, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
 
-SIN_PORTADA = "Las fotos aptas muestran personas y la portada no puede tenerlas."
+SIN_PORTADA = "Las fotos aptas muestran personas (o piden crédito) y la portada no puede tenerlas."
 
 _SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
                   "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa.\n\n" + _CRITERIOS)
@@ -76,13 +84,14 @@ class Eleccion:
     veredictos: dict = field(default_factory=dict)   # url -> {"apta": bool, "personas": bool, "motivo": str}
     motivo: str = ""                    # por qué no hay imagen o por qué no decidió la IA
 
-    def _personas(self, im: dict) -> bool:
-        return bool(self.veredictos.get(im["url"], {}).get("personas"))
+    def _no_portada(self, im: dict) -> bool:
+        """Muestra personas, o es de un banco que pide crédito (HubSpot no lo muestra en la destacada)."""
+        return bool(self.veredictos.get(im["url"], {}).get("personas") or im.get("atribucion"))
 
     @property
     def imagen(self) -> dict | None:
-        """La portada: la primera foto, salvo que muestre personas."""
-        return self.imagenes[0] if self.imagenes and not self._personas(self.imagenes[0]) else None
+        """La portada: la primera foto, salvo que muestre personas o pida crédito."""
+        return self.imagenes[0] if self.imagenes and not self._no_portada(self.imagenes[0]) else None
 
     @property
     def cuerpo(self) -> list[dict]:
@@ -90,8 +99,8 @@ class Eleccion:
         return self.imagenes[1:] if self.imagen else self.imagenes[:CANTIDAD - 1]
 
     def ordenar(self, cantidad: int) -> Eleccion:
-        """Pone primero la primera foto sin personas (la portada) y deja `cantidad`."""
-        libres = [im for im in self.imagenes if not self._personas(im)]
+        """Pone primero la primera foto que puede ser portada y deja `cantidad`."""
+        libres = [im for im in self.imagenes if not self._no_portada(im)]
         if libres:
             self.imagenes = [libres[0]] + [im for im in self.imagenes if im is not libres[0]]
         elif self.imagenes:
@@ -137,48 +146,79 @@ def fotos_usadas(dias: int | None = None, base=None) -> set[str]:
     return usadas
 
 
-def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD, extra=None,
-           excluir: set[str] = frozenset()) -> Eleccion:
-    """Elige hasta `cantidad` fotos. Nunca lanza, salvo una cancelación desde el dashboard.
+def _faltan(eleccion: Eleccion, cantidad: int) -> int:
+    """Fotos que faltan; al menos 1 si hay fotos pero ninguna sirve de portada."""
+    return max(cantidad - len(eleccion.imagenes), 0 if eleccion.imagen or not eleccion.imagenes else 1)
 
-    extra: función sin argumentos que devuelve más noticias del mismo tema. Si
-    entre las de la nota no hay `cantidad` fotos aptas, se buscan ahí las que faltan.
+
+def _sumar(eleccion: Eleccion, otra: Eleccion, cantidad: int) -> Eleccion:
+    imagenes = eleccion.imagenes + otra.imagenes
+    veredictos = {**eleccion.veredictos, **otra.veredictos}
+    if not imagenes:
+        return Eleccion([], otra.metodo, veredictos, motivo=f"{eleccion.motivo} {otra.motivo}".strip())
+    return Eleccion(imagenes, eleccion.metodo if eleccion.imagenes else otra.metodo, veredictos).ordenar(cantidad)
+
+
+def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTIDAD, extra=None,
+           excluir: set[str] = frozenset(), respaldo=None) -> Eleccion:
+    """Elige `cantidad` fotos (menos solo si se agotaron todas las fuentes). Nunca lanza, salvo una
+    cancelación desde el dashboard.
+
+    extra: función sin argumentos que devuelve más noticias del mismo tema.
     excluir: fotos que ya están en otras notas (ver fotos_usadas): no se repiten.
+    respaldo: función ronda -> fotos de bancos de imágenes (imagenes_respaldo.buscador).
     """
     from afterdrive.generacion import contexto_noticias
+    from afterdrive.ia import llm
 
-    con_foto = _unicas(contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
-    candidatas = [n for n in con_foto if n.imagen["url"] not in excluir]
+    con_foto = contexto_noticias.con_foto(noticias, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS)
+    todas = _unicas(contexto_noticias.todas_las_fotos(con_foto))
+    candidatas = [n for n in todas if n.imagen["url"] not in excluir][:MAX_FOTOS]
     if candidatas:
         eleccion = _ronda(candidatas, titulo, angulo, cantidad)
-    elif con_foto:
+    elif todas:
         eleccion = Eleccion([], "ninguna", motivo="Las fotos de sus noticias ya están en otras notas.")
     else:
         eleccion = Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
     eleccion.ordenar(cantidad)
-    # Faltan fotos, o todas tienen personas y falta una para la portada.
-    faltan = max(cantidad - len(eleccion.imagenes), 0 if eleccion.imagen or not eleccion.imagenes else 1)
-    if faltan <= 0 or extra is None or eleccion.metodo == "primera":
+    if eleccion.metodo == "primera":   # la IA no responde: no tiene sentido seguir buscando
         return eleccion
-    vistas = {n.imagen["url"] for n in con_foto} | {id(n) for n in noticias} | set(excluir)
-    try:
-        mas = [n for n in extra() if id(n) not in vistas and n.url not in {x.url for x in noticias}]
-    except Exception as e:
-        print(f"  [AVISO] No se pudieron buscar más noticias con foto: {e}", flush=True)
-        return eleccion
-    otras = [n for n in _unicas(contexto_noticias.con_foto(mas, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
-             if n.imagen["url"] not in vistas]
-    if not otras:
-        return eleccion
-    print(f"  Faltan {faltan} imagen(es) apta(s): se buscan entre {len(otras)} foto(s) de otras noticias del tema.",
-          flush=True)
-    segunda = _ronda(otras, titulo, angulo, faltan)
-    imagenes = eleccion.imagenes + segunda.imagenes
-    veredictos = {**eleccion.veredictos, **segunda.veredictos}
-    if not imagenes:
-        motivo = eleccion.motivo + " Tampoco sirvió ninguna foto de otras noticias del tema."
-        return Eleccion([], segunda.metodo, veredictos, motivo=motivo.strip())
-    return Eleccion(imagenes, eleccion.metodo if eleccion.imagenes else segunda.metodo, veredictos).ordenar(cantidad)
+    vistas = {n.imagen["url"] for n in candidatas} | set(excluir)
+    urls_nota = {n.url for n in noticias}
+
+    def de_otras_noticias():
+        mas = [n for n in extra() if n.url not in urls_nota]
+        return contexto_noticias.todas_las_fotos(
+            contexto_noticias.con_foto(mas, max_busquedas=MAX_BUSQUEDAS, limite=MAX_FOTOS))
+
+    pasos = [("otras fotos de las páginas de sus noticias",
+              lambda: contexto_noticias.mas_fotos(noticias, max_busquedas=MAX_BUSQUEDAS) + todas)]
+    if extra is not None:
+        pasos.append(("otras noticias del tema", de_otras_noticias))
+    if respaldo is not None:
+        pasos += [("bancos de imágenes", lambda r=r: respaldo(r)) for r in range(MAX_RONDAS_RESPALDO)]
+    for nombre, buscar in pasos:
+        faltan = _faltan(eleccion, cantidad)
+        if faltan <= 0:
+            break
+        try:
+            nuevas = [n for n in _unicas(buscar()) if n.imagen["url"] not in vistas][:MAX_FOTOS]
+        except llm.Cancelada:
+            raise
+        except Exception as e:
+            print(f"  [AVISO] No se pudieron buscar más fotos en {nombre}: {e}", flush=True)
+            continue
+        if not nuevas:
+            continue
+        vistas |= {n.imagen["url"] for n in nuevas}
+        print(f"  Faltan {faltan} imagen(es) apta(s): se buscan entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
+        eleccion = _sumar(eleccion, _ronda(nuevas, titulo, angulo, faltan), cantidad)
+    faltan = _faltan(eleccion, cantidad)
+    if faltan > 0 and eleccion.imagenes:
+        aviso = f"Se consiguieron {len(eleccion.imagenes)} de {cantidad} fotos: no hubo más aptas sin repetir."
+        eleccion.motivo = f"{eleccion.motivo} {aviso}".strip()
+        print(f"  [AVISO] {aviso}", flush=True)
+    return eleccion
 
 
 def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
@@ -190,7 +230,7 @@ def _descargar(n, refrescos: list[int]) -> tuple[bytes, str]:
     try:
         return imagen_web.descargar(n.imagen["url"], max_bytes=MAX_BYTES_IA)
     except imagen_web.ErrorDescarga as e:
-        if refrescos[0] <= 0 or "respondió 4" not in str(e):
+        if refrescos[0] <= 0 or "respondió 4" not in str(e) or not getattr(n, "refrescable", True):
             raise
         refrescos[0] -= 1
         if contexto_noticias.refrescar_imagen(n) is None:

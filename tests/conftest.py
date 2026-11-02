@@ -24,9 +24,12 @@ def consumo_en_memoria(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def sin_buscar_imagenes(monkeypatch):
-    """Los tests no descargan páginas de noticias para buscarles la imagen."""
-    from afterdrive.generacion import contexto_noticias
+    """Los tests no descargan páginas de noticias para buscarles la imagen ni buscan en bancos de imágenes."""
+    from afterdrive.generacion import contexto_noticias, imagenes_respaldo
     monkeypatch.setattr(contexto_noticias, "_buscar_imagen", lambda n: None)
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda *a, **kw: (_ for _ in ()).throw(
+        AssertionError("un test quiso buscar en un banco de imágenes"))})
+    monkeypatch.setattr(imagenes_respaldo, "buscador", lambda titulo, angulo="": None)
 
 
 @pytest.fixture(autouse=True)

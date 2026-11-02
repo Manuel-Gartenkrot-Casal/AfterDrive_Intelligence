@@ -269,8 +269,10 @@ def _imagen(nota: dict, titulo: str) -> dict:
 
 
 def imagenes_cuerpo(nota: dict) -> list[dict]:
-    """[{url, alt}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo)."""
-    return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or ""}
+    """[{url, alt, credito}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo).
+    `credito` solo en las de bancos de imágenes que piden atribución."""
+    return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or "",
+             **({"credito": im["credito"]} if im.get("atribucion") and im.get("credito") else {})}
             for im in nota.get("imagenes_cuerpo") or [] if im.get("hubspot_url") or im.get("url")]
 
 
@@ -279,13 +281,16 @@ def con_imagenes(html: str, imagenes: list[dict]) -> str:
 
     Nunca antes de la primera sección (la nota abre con texto) ni después de
     la última. Sin subtítulos suficientes, van después del primer párrafo.
+    Una imagen con `credito` (licencia que pide atribución) lo lleva debajo.
     """
     from html import escape
 
     if not imagenes:
         return html
     figuras = [f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
-               f'style="max-width:100%; height:auto;" loading="lazy"></p>' for im in imagenes]
+               f'style="max-width:100%; height:auto;" loading="lazy">'
+               + (f'<br><small>{escape(im["credito"])}</small>' if im.get("credito") else "") + '</p>'
+               for im in imagenes]
     titulos = [m.start() for m in re.finditer(r"<h3\b", html)]
     n = len(titulos)
     if n >= 3:

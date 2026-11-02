@@ -329,17 +329,17 @@ function pintarImagen(nota, contenedor) {
   pintarImagenesCuerpo(nota, contenedor);
 }
 
-/* Las fotos que van dentro del texto (hasta 2), con la noticia de la que salió cada una. */
+/* Las fotos que van dentro del texto (hasta 4), con la noticia o el banco de imágenes de la que salió cada una. */
 function pintarImagenesCuerpo(nota, contenedor) {
   var imgs = (nota.imagenes_cuerpo || []).filter(function(im) {
     return im && urlSegura(im.hubspot_url || im.url || '') !== '#';
-  }).slice(0, 2);
+  }).slice(0, 4);
   var html = imgs.length
     ? '<div class="revision-imagenes">' + imgs.map(function(im) {
         return '<figure><img class="revision-imagen" src="' + urlSegura(im.hubspot_url || im.url) + '" alt="' + escHtml(im.alt || '') + '"'
           + ' referrerpolicy="no-referrer" loading="lazy">'
           + (im.origen ? '<figcaption class="revision-sub"><a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
-                         + escHtml(im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
+                         + escHtml(im.credito || im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
           + '</figure>';
       }).join('') + '</div>'
     : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';

@@ -357,14 +357,105 @@ def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(m
     assert imagen_destacada.elegir([], "T").metodo == "ninguna"
 
 
-def test_elige_hasta_tres_en_orden_sin_repetir(ia_fotos):
+def test_elige_hasta_cinco_en_orden_sin_repetir(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
-    fotos = ", ".join(f'{{"n": {i}, "apta": true, "motivo": "ok"}}' for i in range(1, 6))
-    responder('{"fotos": [' + fotos + '], "elegidas": [4, 2, 2, 5, 1]}')
-    e = imagen_destacada.elegir(_con_fotos(5), "T")
-    assert [i["url"] for i in e.imagenes] == ["https://n.com/4.jpg", "https://n.com/2.jpg", "https://n.com/5.jpg"]
-    assert e.imagen["url"] == "https://n.com/4.jpg"
+    fotos = ", ".join(f'{{"n": {i}, "apta": true, "motivo": "ok"}}' for i in range(1, 8))
+    responder('{"fotos": [' + fotos + '], "elegidas": [4, 2, 2, 5, 1, 7, 3]}')
+    e = imagen_destacada.elegir(_con_fotos(7), "T")
+    assert [i["url"] for i in e.imagenes] == [f"https://n.com/{i}.jpg" for i in (4, 2, 5, 1, 7)]
+    assert e.imagen["url"] == "https://n.com/4.jpg" and len(e.cuerpo) == 4 and not e.motivo
+
+
+def test_extrae_varias_fotos_de_la_pagina_sin_miniaturas_ni_repetidas():
+    html = _html('<meta property="og:image" content="https://s.com/f/portada.jpg">'
+                 '<meta property="og:image:alt" content="Portada">',
+                 '<article><img src="/f/portada-300x200.jpg"><img src="https://s.com/f/taller.jpg" alt="Taller">'
+                 '<img src="https://s.com/f/mini.jpg" width="80"><img src="https://s.com/logo.png">'
+                 '<img data-src="https://s.com/f/deposito.webp" alt="Depósito"></article>')
+    assert imagen_articulo.extraer_todas(html, "https://s.com/nota") == [
+        {"url": "https://s.com/f/portada.jpg", "alt": "Portada"}, {"url": "https://s.com/f/taller.jpg", "alt": "Taller"},
+        {"url": "https://s.com/f/deposito.webp", "alt": "Depósito"}]
+    assert imagen_articulo.extraer(html, "https://s.com/nota")["url"] == "https://s.com/f/portada.jpg"
+
+
+def test_las_otras_fotos_de_una_noticia_tambien_son_candidatas(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    n = _noticia(1, "https://n.com/1.jpg")
+    n.imagenes = [{"url": "https://n.com/1.jpg", "alt": ""}, {"url": "https://n.com/1b.jpg", "alt": "b"}]
+    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}], "elegidas": [2, 1]}')
+    e = imagen_destacada.elegir([n], "T")
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/1b.jpg", "https://n.com/1.jpg"]
+    assert len(pedidos[0]["imagenes"]) == 2 and "Se consiguieron 2 de 5" in e.motivo
+
+
+def test_si_las_noticias_no_alcanzan_completa_con_bancos_de_imagenes(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    banco = [Noticia(id=None, titulo=f"Banco {i}", cuerpo="", url=f"https://banco/{i}", refrescable=False,
+                     imagen={"url": f"https://banco/{i}.jpg", "alt": "", "credito": "Foto: X", "atribucion": i == 1})
+             for i in range(1, 5)]
+    rondas = []
+
+    def respaldo(ronda):
+        rondas.append(ronda)
+        return banco[ronda * 2:ronda * 2 + 2]
+    responder(['{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": false, "motivo": "no"}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}], "elegidas": [1, 2]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=4, respaldo=respaldo)
+    assert rondas[:2] == [0, 1] and len(pedidos) == 3
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/1.jpg", "https://banco/1.jpg", "https://banco/3.jpg",
+                                              "https://banco/4.jpg"]
+    assert e.cuerpo[0]["credito"] == "Foto: X" and e.cuerpo[0]["atribucion"] is True
+
+
+def test_una_foto_que_pide_credito_nunca_es_portada_y_lleva_su_credito_en_hubspot(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    banco = [Noticia(id=None, titulo="Banco", cuerpo="", url="https://banco/1", refrescable=False,
+                     imagen={"url": "https://banco/1.jpg", "alt": "", "credito": "Foto: Ana / CC BY", "atribucion": True})]
+    responder(['{"fotos": [], "elegidas": []}', '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=1, respaldo=lambda r: banco)
+    assert e.imagen is None and e.cuerpo[0]["url"] == "https://banco/1.jpg"
+    html = hubspot.con_imagenes("<p>a</p>", hubspot.imagenes_cuerpo({"imagenes_cuerpo": e.cuerpo}))
+    assert "<small>Foto: Ana / CC BY</small>" in html
+
+
+def test_banco_commons_filtra_licencias_y_marca_las_que_piden_credito(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+
+    def pagina(i, licencia, ancho=1600, mime="image/jpeg"):
+        return {"index": i, "title": f"File:Foto_{i}.jpg", "imageinfo": [{
+            "mime": mime, "width": ancho, "thumburl": f"https://upload.wikimedia.org/{i}.jpg",
+            "descriptionurl": f"https://commons.wikimedia.org/wiki/File:Foto_{i}.jpg",
+            "extmetadata": {"LicenseShortName": {"value": licencia}, "Artist": {"value": "<a>Ana</a>"}}}]}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"query": {"pages": {str(i): p for i, p in enumerate([
+                pagina(1, "CC BY-SA 4.0"), pagina(2, "Public domain"), pagina(3, "CC BY-NC 2.0"),
+                pagina(4, "CC0", ancho=300), pagina(5, "CC0", mime="image/svg+xml")])}}}
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda url, **kw: Resp()})
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    fotos = imagenes_respaldo.buscar("brake pads")
+    assert [f.imagen["url"] for f in fotos] == ["https://upload.wikimedia.org/1.jpg", "https://upload.wikimedia.org/2.jpg"]
+    assert fotos[0].imagen["atribucion"] is True and "Ana" in fotos[0].imagen["credito"]
+    assert "atribucion" not in fotos[1].imagen and fotos[1].refrescable is False
+
+
+def test_las_busquedas_del_banco_son_las_de_la_ia_y_despues_las_del_sector(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    from afterdrive.ia import llm
+    monkeypatch.setattr(llm, "completar", lambda s, u, **kw: '{"consultas": ["brake pads", "auto parts"]}')
+    c = imagenes_respaldo.consultas("Pastillas de freno")
+    assert c[0] == "brake pads" and c.count("auto parts") == 1 and "car repair workshop" in c
+    monkeypatch.setattr(llm, "completar", lambda s, u, **kw: "nada")
+    assert imagenes_respaldo.consultas("T") == imagenes_respaldo.CONSULTAS_SECTOR
 
 
 def test_las_imagenes_del_cuerpo_se_reparten_entre_las_secciones():
@@ -456,8 +547,8 @@ def test_si_todas_tienen_personas_no_hay_portada_pero_si_fotos_en_el_texto(ia_fo
     responder, _, _ = ia_fotos
     responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, True)}], "elegidas": [1, 2, 3]}}')
     e = imagen_destacada.elegir(_con_fotos(3), "T")
-    assert e.imagen is None and e.motivo == imagen_destacada.SIN_PORTADA
-    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+    assert e.imagen is None and e.motivo.startswith(imagen_destacada.SIN_PORTADA)
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg", "https://n.com/3.jpg"]
 
 
 def test_busca_la_portada_sin_personas_en_otras_noticias_del_tema(ia_fotos):
@@ -468,7 +559,7 @@ def test_busca_la_portada_sin_personas_en_otras_noticias_del_tema(ia_fotos):
     otra = [_noticia(9, "https://n.com/9.jpg")]
     e = imagen_destacada.elegir(_con_fotos(3), "T", extra=lambda: otra)
     assert len(pedidos) == 2 and e.imagen["url"] == "https://n.com/9.jpg"
-    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg", "https://n.com/3.jpg"]
 
 
 def test_la_foto_elegida_a_mano_de_portada_sale_del_texto():
