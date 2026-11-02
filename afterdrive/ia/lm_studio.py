@@ -20,66 +20,55 @@ from afterdrive.ia.saneo import sanear
 # ── System prompts optimizados con patrones de prompt engineering ──────────────
 
 _SYSTEM_EVALUAR = """\
-Eres un clasificador de contenido especializado en la industria de autopartes y aftermarket.
+Sos el editor de noticias del blog B2B AfterDrive by Alephee: lo leen dueños y gerentes de distribuidoras \
+y casas de repuestos, fabricantes de autopartes, talleres mecánicos y lubricentros de Latinoamérica.
 
 ## Tu tarea
-Evaluar si un articulo es relevante para la industria de autopartes.
+Decidir si una noticia scrapeada sirve como materia prima para una nota del blog.
 
-## Reglas de clasificacion
-APROBAR solo si el contenido trata sobre:
-- Piezas mecanicas (frenos, filtros, amortiguadores, etc.)
-- Repuestos y catalogos de autopartes
-- Normas tecnicas OEM y equivalencias
-- Logistica inversa y gestion de devoluciones
-- Digitalizacion del sector aftermarket
-- E-commerce B2B de repuestos
-- Indexacion y fitment de componentes
-- PAGINAS DE PRODUCTOS de repuestos (kits de distribucion, homocineticas, electroventiladores, espejos, botadores, pastillas, etc.)
-- CATALOGOS de autopartes con precios y especificaciones tecnicas
+## APROBÁ si a ese lector le sirve para su negocio. Por ejemplo:
+- Autopartes y repuestos: fabricantes, distribuidores, lanzamientos, catálogos, precios, faltantes, calidad, \
+falsificaciones.
+- Mercado de reposición (aftermarket / posventa): ventas, cifras, tendencias, importaciones y exportaciones \
+de autopartes, aranceles y regulaciones que lo afectan.
+- Talleres, lubricentros, gomerías y servicio técnico: gestión, capacitación, herramientas, diagnóstico.
+- Neumáticos, lubricantes, baterías, filtros, frenos, iluminación y demás rubros de reposición.
+- Industria automotriz y autopartista: producción, inversiones, plantas, empleo, cámaras del sector.
+- Parque automotor (cantidad y antigüedad de los vehículos), patentamientos y mercado de usados, como dato \
+de la demanda de repuestos.
+- Logística, distribución, e-commerce y digitalización del sector; ferias y eventos (Automechanika, etc.).
+- Vehículos eléctricos e híbridos y nuevas tecnologías, cuando hablan de mantenimiento, repuestos o del \
+negocio de posventa.
+- Páginas de productos o catálogos de repuestos con especificaciones.
 
-RECHAZAR si trata sobre:
-- Noticias generales ajenas al sector automotor (politica, guerras, policiales, protestas, deportes, espectaculos)
-- Ventas de vehiculos 0km (concesionarias, agencias, listados de autos nuevos)
-- Seguros automotrices
-- Anecdotas personales de consumidores
-- Concesionarias o dealers de VEHICULOS (no de repuestos)
-- Contenido generico de B2C (explicar al consumidor basico)
-- Contenido con alucinaciones tecnicas (conceptos inventados que no existen)
+## RECHAZÁ solo si claramente no le sirve:
+- Temas ajenos al sector: política general, policiales, deportes (también el automovilismo deportivo), \
+espectáculos, clima, salud, recetas.
+- Publicidad o review de un auto nuevo para el consumidor (prueba de manejo, precio de un 0 km, \
+equipamiento) sin datos del negocio.
+- Seguros, multas, licencias y trámites del conductor.
+- Contenido vacío: anuncios del propio sitio, listados de links, avisos de empleo, textos inventados.
 
-## IMPORTANTE: Diferenciar REPUSTOS de VEHICULOS
-- "Kit Correa Distribucion Renault" = REPOSTO → APROBAR
-- "Kit Homocinetica Chevrolet Corsa" = REPOSTO → APROBAR
-- "Electroventilador VW Gol" = REPOSTO → APROBAR
-- "Espejos Retrovisores" = REPOSTO → APROBAR
-- "Botadores VW Amarok" = REPOSTO → APROBAR
-- "Concesionaria Renault venta 0km" = VEHICULO → RECHAZAR
-- "Review Toyota Corolla 2026" = VEHICULO → RECHAZAR
+Ante la duda, si la noticia es del sector automotor y tiene algún dato útil para el negocio, APROBALA: \
+después otro paso elige qué noticias van a cada nota.
 
 ## Formato de salida
-Responde UNICAMENTE con este JSON (sin texto adicional):
-{"aprobado": true/false, "razon": "maximo 15 palabras"}
+Respondé ÚNICAMENTE con este JSON (sin texto adicional):
+{"aprobado": true, "razon": "máximo 15 palabras"}
 
 ## Ejemplos
-
-Ejemplo 1 - APROBAR:
-Entrada: "Las pastillas de freno ceramicas ganan mercado en el aftermarket argentino"
-Salida: {"aprobado": true, "razon": "Mercado de repuestos aftermarket"}
-
-Ejemplo 2 - RECHAZAR:
-Entrada: "Los seguros auto suben un 15% y afectan el bolsillo de los conductores"
-Salida: {"aprobado": false, "razon": "Tema de seguros, no autopartes"}
-
-Ejemplo 3 - RECHAZAR:
-Entrada: "Las ruedas de traccion en dos ruedas son importantes para la seguridad"
-Salida: {"aprobado": false, "razon": "Alucinacion tecnica: concepto inventado"}
-
-Ejemplo 4 - APROBAR:
-Entrada: "Kit Correa Distribucion Renault Master 2 2.5 G9u"
-Salida: {"aprobado": true, "razon": "Repuesto Renault: kit distribucion"}
-
-Ejemplo 5 - APROBAR:
-Entrada: "Electroventilador P/ Gol Trend Voyage Fox Suran Todos C/aire"
-Salida: {"aprobado": true, "razon": "Repuesto Volkswagen: electroventilador"}"""
+"Las pastillas de freno cerámicas ganan mercado en el aftermarket argentino" -> \
+{"aprobado": true, "razon": "Mercado de repuestos"}
+"La producción automotriz de Brasil creció 8% en septiembre" -> \
+{"aprobado": true, "razon": "Industria automotriz: demanda autopartista"}
+"El parque automotor argentino envejece: la edad promedio ya supera los 14 años" -> \
+{"aprobado": true, "razon": "Parque automotor: demanda de reposición"}
+"Bosch inaugura un centro de distribución en México" -> {"aprobado": true, "razon": "Distribución de autopartes"}
+"Kit Correa Distribución Renault Master 2 2.5 G9u" -> {"aprobado": true, "razon": "Repuesto: kit de distribución"}
+"Probamos el nuevo Toyota Corolla 2026: diseño y equipamiento" -> \
+{"aprobado": false, "razon": "Review de auto nuevo para consumidores"}
+"Los seguros de auto suben un 15%" -> {"aprobado": false, "razon": "Seguros, no autopartes"}
+"Verstappen ganó el Gran Premio de Brasil" -> {"aprobado": false, "razon": "Automovilismo deportivo"}"""
 
 
 # ── Redacción ─────────────────────────────────────────────────────────────────
@@ -156,7 +145,10 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
     del modelo gratis), el artículo queda pendiente: ni se guarda ni se descarta,
     así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba
     cualquier cosa (noticias de guerra de CNN, por ejemplo). Si el modelo
-    respondió basura, se rechaza (el juicio existe pero no se lee).
+    respondió algo que no se entiende, se le pregunta una vez más y, si sigue
+    sin entenderse, también queda pendiente. Antes se rechazaba y el artículo
+    quedaba descartado para siempre: con un modelo local o gratis eso se
+    llevaba buena parte de lo scrapeado.
 
     Returns:
         {"aprobado": bool, "razon": str, "pendiente"?: True}
@@ -165,19 +157,20 @@ def clasificar_articulo(titulo: str, cuerpo: str) -> dict:
         return {"aprobado": False, "pendiente": True, "razon": "sin clasificar: proveedor de IA no disponible"}
 
     mensaje = f"<EVALUAR>\nTítulo: {titulo}\n\nCuerpo: {(cuerpo or '')[:2000]}"
-    try:
-        data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1, tarea="clasificacion"))
-        aprobado = data.get("aprobado", False)
+    for _ in range(2):
+        try:
+            data = _extraer_json(llm.completar(_SYSTEM_EVALUAR, mensaje, temperature=0.1, tarea="clasificacion"))
+        except json.JSONDecodeError:
+            continue   # respuesta rota: no es un juicio, se pregunta otra vez
+        except Exception as e:
+            return {"aprobado": False, "pendiente": True, "razon": f"sin clasificar: {e}"}
+        if not isinstance(data, dict) or "aprobado" not in data:
+            continue
+        aprobado = data["aprobado"]
         if isinstance(aprobado, str):  # algunos modelos devuelven "false" entre comillas
             aprobado = aprobado.strip().lower() in ("true", "si", "sí")
-        return {
-            "aprobado": aprobado is True,
-            "razon": data.get("razon", "Sin razón especificada"),
-        }
-    except json.JSONDecodeError:
-        return {"aprobado": False, "razon": "error: respuesta inválida del modelo"}
-    except Exception as e:
-        return {"aprobado": False, "pendiente": True, "razon": f"sin clasificar: {e}"}
+        return {"aprobado": aprobado is True, "razon": data.get("razon", "Sin razón especificada")}
+    return {"aprobado": False, "pendiente": True, "razon": "sin clasificar: respuesta inválida del modelo"}
 
 
 _SYSTEM_FICHA = """\

@@ -75,6 +75,14 @@ services:
         sync: false
       - key: HUBSPOT_BLOG_PRUEBAS
         sync: false
+      # Fotos de respaldo (opcional): si las noticias no alcanzan para las 5 fotos de
+      # una nota, se buscan en Pixabay (clave gratis con una cuenta en pixabay.com) y
+      # Pexels. Sin claves se busca solo en Wikimedia Commons, que tiene menos fotos
+      # del sector y muchas piden crédito (esas no pueden ser portada).
+      - key: PIXABAY_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       # Autoriza a los cron de abajo (y a cualquier monitor externo) a disparar corridas.

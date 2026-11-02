@@ -6,6 +6,8 @@ Interfaz:
     formatear(noticias, max_chars=7000) -> str
     marcar_usadas(noticias) -> None
     con_foto(noticias, max_busquedas=3, limite=4) -> list[Noticia]   las que tienen foto
+    todas_las_fotos(noticias) -> list[Noticia]       una por foto (cada noticia guarda varias)
+    mas_fotos(noticias, max_busquedas=5) -> list[Noticia]   relee las páginas que no tienen la lista
     imagen_de(noticia) -> {"url", "alt", "origen"}
 
 Antes la generación de notas no leía las noticias scrapeadas: el modelo
@@ -26,7 +28,7 @@ from __future__ import annotations
 import datetime
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 CANDIDATOS = 200          # noticias recientes que se consideran
 CANDIDATOS_VECTOR = 100   # con Atlas Vector Search: las más parecidas de toda la base
@@ -52,6 +54,8 @@ class Noticia:
     puntaje: float = 0.0
     imagen: dict | None = None     # {"url", "alt"}: la foto del artículo (imagen_articulo.extraer)
     imagen_buscada: bool = False   # ya se intentó sacarla (aunque no tuviera): no se vuelve a descargar
+    imagenes: list[dict] | None = None   # todas las fotos del artículo; None = scrapeado antes de guardarlas
+    refrescable: bool = True       # su `imagen` es la principal de la página: si deja de responder se relee
 
 
 def _coseno(a, b) -> float:
@@ -165,11 +169,14 @@ def _desde_doc(d: dict) -> Noticia:
         embedding=d.get("embedding"),
         imagen=d.get("imagen") if isinstance(d.get("imagen"), dict) and d["imagen"].get("url") else None,
         imagen_buscada="imagen" in d,
+        imagenes=[i for i in d["imagenes"] if isinstance(i, dict) and i.get("url")]
+        if isinstance(d.get("imagenes"), list) else None,
     )
 
 
 _CAMPOS = {"titulo": 1, "cuerpo": 1, "bajada": 1, "url": 1, "fuente": 1, "fecha": 1, "embedding": 1,
-           "embedding_modelo": 1, "usado_para_articulo": 1, "usado_en": 1, "ficha": 1, "imagen": 1}
+           "embedding_modelo": 1, "usado_para_articulo": 1, "usado_en": 1, "ficha": 1, "imagen": 1,
+           "imagenes": 1}
 
 
 def _parecidas_en_atlas(col, vec: list[float] | None, modelo: str) -> list[dict]:
@@ -303,16 +310,50 @@ def con_foto(noticias: list[Noticia], max_busquedas: int = 3, limite: int = 4) -
     return resultado
 
 
+def todas_las_fotos(noticias: list[Noticia]) -> list[Noticia]:
+    """Una Noticia por foto: primero la principal de cada una y después las otras de sus páginas.
+
+    Las copias llevan otra `imagen` y no se releen si la foto deja de responder
+    (releer la página trae la principal, no esa).
+    """
+    principales = [n for n in noticias if n.imagen]
+    otras = []
+    for n in principales:
+        for im in n.imagenes or []:
+            if im["url"] != n.imagen["url"]:
+                otras.append(replace(n, imagen={"url": im["url"], "alt": im.get("alt", "")}, refrescable=False))
+    return principales + otras
+
+
+def mas_fotos(noticias: list[Noticia], max_busquedas: int = 5) -> list[Noticia]:
+    """Relee las páginas de las noticias scrapeadas antes de que se guardaran todas sus fotos
+    (hasta `max_busquedas`) y devuelve una Noticia por foto encontrada. Lo encontrado queda guardado."""
+    leidas = 0
+    for n in noticias:
+        if leidas >= max_busquedas:
+            break
+        if n.imagenes is None and n.url and n.id is not None:
+            leidas += 1
+            principal = _buscar_imagen(n)
+            if principal and not n.imagen:
+                n.imagen = principal
+    return todas_las_fotos([n for n in noticias if n.imagenes])
+
+
 def imagen_de(n: Noticia) -> dict:
-    """El campo `imagen` de una nota con la foto de esta noticia."""
-    return {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""), "origen": {"titulo": n.titulo, "url": n.url}}
+    """El campo `imagen` de una nota con la foto de esta noticia (o del banco de imágenes)."""
+    im = {"url": n.imagen["url"], "alt": n.imagen.get("alt", ""), "origen": {"titulo": n.titulo, "url": n.url}}
+    for extra in ("credito", "atribucion", "banco"):
+        if n.imagen.get(extra):
+            im[extra] = n.imagen[extra]
+    return im
 
 
 def refrescar_imagen(n: Noticia) -> dict | None:
     """Vuelve a leer la página de la noticia para sacar su foto actual: la guardada dejó de responder
     (los sitios cambian o borran las fotos). Devuelve la nueva si cambió de URL, o None. Queda guardada."""
     anterior = (n.imagen or {}).get("url")
-    if not n.url:
+    if not n.url or not n.refrescable:
         return None
     nueva = _buscar_imagen(n)
     if nueva and nueva.get("url") != anterior:
@@ -333,10 +374,11 @@ def _buscar_imagen(n: Noticia) -> dict | None:
         print(f"  [AVISO] No se pudo leer la página de la noticia: {e}", flush=True)
     if not html:
         return None   # sin marcar como buscada: la próxima nota lo reintenta
-    imagen = imagen_articulo.extraer(html, n.url)
-    n.imagen_buscada = True
+    imagenes = imagen_articulo.extraer_todas(html, n.url)
+    imagen = imagenes[0] if imagenes else None
+    n.imagen_buscada, n.imagenes = True, imagenes
     try:
-        col_articulos.update_one({"_id": n.id}, {"$set": {"imagen": imagen}})
+        col_articulos.update_one({"_id": n.id}, {"$set": {"imagen": imagen, "imagenes": imagenes}})
     except Exception as e:
         print(f"  [AVISO] No se pudo guardar la imagen de la noticia: {e}", flush=True)
     return imagen

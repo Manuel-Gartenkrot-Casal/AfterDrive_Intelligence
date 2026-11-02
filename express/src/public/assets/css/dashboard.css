@@ -2623,4 +2623,55 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .agenda-cuerpo { grid-template-columns: minmax(0, 1fr); }
   .agenda-cuerpo .agenda-foot { flex-direction: column; align-items: stretch; }
   .agenda-cuerpo .agenda-foot .btn { width: 100%; }
+
+   AJUSTES DE PANTALLA
+   - Indicador de la sección actual: una línea recta, fina y redondeada,
+     separada del borde del ítem (antes era un borde que seguía la curva).
+   - Fuentes entra en el alto de la ventana, en las dos vistas: solo se
+     desplazan las listas de adentro de cada tarjeta.
+   - Barra lateral en vista Desarrollador: más compacta, para que los
+     ajustes entren sin scroll.
+   ═══════════════════════════════════════════════════════════════════════ */
+.nav-link { position: relative; }
+.nav-link[aria-current="page"] { box-shadow: none; }
+.nav-link[aria-current="page"]::before {
+  content: '';
+  position: absolute; left: 4px; top: 50%;
+  width: 3px; height: 16px;
+  transform: translateY(-50%);
+  border-radius: var(--r-pill);
+  background: var(--brand);
+}
+@media (max-width: 900px) {
+  /* Navegación horizontal: la línea va abajo. */
+  .nav-link[aria-current="page"]::before { left: 12px; right: 12px; top: auto; bottom: 3px; width: auto; height: 2px; transform: none; }
+}
+
+@media (min-width: 901px) {
+  /* Fuentes: las dos tarjetas ocupan el alto disponible y cada lista llena su tarjeta. */
+  .contenido:has(> .fuentes-seccion.activa) { display: flex; flex-direction: column; }
+  .fuentes-seccion { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+  .fuentes-seccion .fuentes-grupo { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+  .fuentes-seccion .fuentes-cols { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .fuentes-seccion :is(.fuentes-lista, #sug-list) { flex: 1 1 0; min-height: 80px; max-height: none; overflow-y: auto; }
+  [data-modo] .fuentes-seccion { min-height: 0; }
+  .fuentes-seccion .section-head { margin-bottom: var(--s4); }
+
+  /* Barra lateral en vista Desarrollador: menos aire entre ítems y ajustes. */
+  [data-modo="dev"] .sidebar { gap: 10px; padding: 10px; }
+  [data-modo="dev"] .nav-link { padding-block: 7px; }
+  [data-modo="dev"] .sidebar-pie { gap: 6px; padding-top: 10px; }
+  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta { margin-top: 4px; }
+  [data-modo="dev"] .sidebar-pie .ajuste { padding-block: 5px; }
+  /* Los cuatro proveedores en dos filas parejas (antes ocupaban tres). */
+  [data-modo="dev"] .sidebar-pie .provider-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; }
+  [data-modo="dev"] .sidebar-pie .provider-toggle .prov-btn { padding: 5px 6px; font-size: 0.75rem; }
+}
+/* Pantallas bajas: los ajustes ya dicen su nombre, sus títulos de sección sobran. */
+@media (min-width: 901px) and (max-height: 820px) {
+  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta:has(+ .ajuste) { display: none; }
+  [data-modo="dev"] .nav-link { padding-block: 5px; }
+  [data-modo="dev"] .sidebar-pie .ajuste-estado { display: none; }
+  .fuentes-agregar .fuentes-ayuda { display: none; }
+  .fuentes-agregar { padding-bottom: var(--s3); }
 }

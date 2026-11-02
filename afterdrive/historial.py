@@ -425,46 +425,63 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
     """Copia las imágenes de la nota (destacada y del cuerpo) a los archivos de HubSpot.
 
     Así el blog no depende de que el sitio de la noticia la siga sirviendo ni
-    de que acepte que otro sitio la muestre. Si una copia falla, la nota se
-    sube igual con el link original: una imagen no debería frenar una
-    publicación. Devuelve un aviso si alguna no se pudo copiar.
+    de que acepte que otro sitio la muestre. Una imagen nunca frena la subida:
+    - si no se puede bajar del sitio (lo bloquea o ya no existe), queda marcada
+      `copia_fallida` y se deja afuera del post (hubspot.py): antes iba con el
+      link original y en el blog salía rota;
+    - si lo que falla es HubSpot (p. ej. falta el scope "files"), va con el
+      link original, porque la foto en sí está bien.
+    Devuelve un aviso si alguna no se pudo copiar.
     """
     from afterdrive import hubspot, imagen_web
 
-    def copiar(url: str, nombre: str) -> tuple[str, str]:
+    def copiar(url: str, nombre: str) -> tuple[str, str, bool]:
+        """(copia, error, la foto está rota)."""
         try:
             if url.startswith(PREFIJO_IMAGEN_SUBIDA):   # subida desde la computadora: está en la base
                 local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database)
                 if not local:
-                    return "", "la imagen subida ya no está"
+                    return "", "la imagen subida ya no está", True
                 contenido, mime = local
             else:
                 contenido, mime = imagen_web.descargar(url)
+        except imagen_web.ErrorDescarga as e:
+            return "", str(e), True
+        try:
             extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
-            return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), ""
-        except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
-            return "", str(e)
+            return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), "", False
+        except hubspot.ErrorHubSpot as e:
+            return "", str(e), False
 
-    errores = []
+    afuera, con_link = [], []
+
+    def anotar(campo: str, im: dict, copia: str, error: str, rota: bool, nombre: str) -> None:
+        if copia:
+            im["hubspot_url"] = copia
+            im.pop("copia_fallida", None)
+            col.update_one({"_id": doc["_id"]}, {"$set": {f"{campo}.hubspot_url": copia},
+                                                  "$unset": {f"{campo}.copia_fallida": ""}})
+        elif rota:
+            im["copia_fallida"] = error
+            col.update_one({"_id": doc["_id"]}, {"$set": {f"{campo}.copia_fallida": error}})
+            afuera.append(f"{nombre} ({error})")
+        else:
+            con_link.append(f"{nombre} ({error})")
+
     imagen = doc.get("imagen") or {}
     if imagen.get("url") and not imagen.get("hubspot_url"):
-        copia, error = copiar(imagen["url"], f"nota-{doc['_id']}")
-        if copia:
-            col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
-            doc["imagen"] = {**imagen, "hubspot_url": copia}
-        else:
-            errores.append(f"la destacada ({error})")
+        doc["imagen"] = imagen = dict(imagen)
+        anotar("imagen", imagen, *copiar(imagen["url"], f"nota-{doc['_id']}"), "la destacada")
     for i, im in enumerate(doc.get("imagenes_cuerpo") or []):
         if im.get("url") and not im.get("hubspot_url"):
-            copia, error = copiar(im["url"], f"nota-{doc['_id']}-{i + 2}")
-            if copia:
-                col.update_one({"_id": doc["_id"]}, {"$set": {f"imagenes_cuerpo.{i}.hubspot_url": copia}})
-                im["hubspot_url"] = copia
-            else:
-                errores.append(f"la {i + 2}ª ({error})")
-    if not errores:
-        return ""
-    return f"No se pudo copiar a HubSpot {', '.join(errores)}. Se usa el link original."
+            anotar(f"imagenes_cuerpo.{i}", im, *copiar(im["url"], f"nota-{doc['_id']}-{i + 2}"), f"la {i + 2}ª")
+    avisos = []
+    if afuera:
+        avisos.append(f"No se pudo bajar del sitio {', '.join(afuera)}: se dejó afuera del post para que no "
+                      "salga rota. Podés elegir otra foto y volver a enviarla.")
+    if con_link:
+        avisos.append(f"No se pudo copiar a HubSpot {', '.join(con_link)}. Se usa el link original.")
+    return " ".join(avisos)
 
 
 def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:

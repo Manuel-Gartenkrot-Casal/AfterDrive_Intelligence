@@ -18,9 +18,15 @@ Dos caminos, y alcanza con que funcione uno:
    resultados: antes eso se contaba como "0 resultados" y la búsqueda
    terminaba "bien" sin encontrar nada. Ahora se detecta y se pasa al
    siguiente buscador.
-2. La IA: se le piden medios del sector que conozca y cada uno se verifica
-   entrando al sitio (responde, habla del sector y tiene notas enlazadas).
-   Lo que no se puede verificar no se sugiere.
+2. La IA: se le piden medios del sector que conozca.
+
+Todo sitio, venga de donde venga, se verifica entrando a su portada: tiene que
+responder, tener notas enlazadas y que al menos MIN_PROPORCION_SECTOR de sus
+titulares sean del sector. Antes los de los buscadores se sugerían con que un
+solo titular nombrara el sector, y entraban diarios generales cuya ingesta
+rechazaba casi todo. Si la portada es de un medio general, se prueban sus
+secciones del sector ("/autos/", "/motor/") y se sugiere la que pase.
+Lo que no se puede verificar no se sugiere.
 
 Si los dos caminos fallan, la corrida termina con error y un motivo claro.
 """
@@ -28,6 +34,7 @@ Si los dos caminos fallan, la corrida termina con error y un motivo claro.
 from __future__ import annotations
 
 import datetime
+import re
 import sys
 import time
 import unicodedata
@@ -42,13 +49,26 @@ _USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KH
                "Chrome/124.0 Safari/537.36")
 _HEADERS = {"User-Agent": _USER_AGENT, "Accept-Language": "es-AR,es;q=0.9,pt;q=0.8,en;q=0.7"}
 
-# Palabras del nicho (sin tildes): un resultado o un sitio tiene que nombrar alguna.
+# Palabras del nicho (sin tildes), como palabras enteras. Sin las ambiguas de antes: "filtro" (también
+# "filtró"), "bateria" ("batería de medidas"), "suspension" ("de clases"), "talleres", "reposicion" y
+# "frenos" metían diarios generales que después rechazaba la ingesta.
 _KEYWORDS_NICHO = [
-    "autopartes", "autopecas", "repuestos", "refacciones", "aftermarket", "automotriz", "automotor",
-    "automotivo", "taller mecanico", "talleres", "oficina mecanica", "distribucion de repuestos", "frenos",
-    "filtro", "amortiguador", "embrague", "pastillas de freno", "neumatico", "pneu", "lubricante",
-    "bateria", "suspension", "reposicion", "posventa", "pos-venda", "autopiezas", "auto parts",
+    "autopartes", "autopecas", "repuestos", "refacciones", "aftermarket", "automotriz", "automotrices",
+    "automotor", "automotores", "automotivo", "automotiva", "taller mecanico", "talleres mecanicos",
+    "oficina mecanica", "distribucion de repuestos", "amortiguadores?", "embragues?", "pastillas de freno",
+    "neumaticos?", "pneus?", "lubricantes?", "posventa", "postventa", "pos-venda", "autopiezas",
+    "auto parts", "reposicao automotiva", "mercado de reposicion",
 ]
+_PATRON_NICHO = [(kw, re.compile(rf"\b{kw}\b")) for kw in _KEYWORDS_NICHO]
+
+# Un sitio se sugiere si al menos esta parte de los titulares de su portada (o de la sección) es del
+# sector y son al menos MIN_TITULARES_SECTOR: un diario general con una nota de repuestos no pasa.
+MIN_PROPORCION_SECTOR = 0.25
+MIN_TITULARES_SECTOR = 3
+# Secciones de un medio general que valen la pena probar si su portada no pasa.
+_SECCIONES = re.compile(r"autos?|motor|autopartes|repuestos|posventa|aftermarket|automotriz|automotor|"
+                        r"fierros|vehiculos|movilidad|talleres|autopecas|automoveis|carros|veiculos")
+_MAX_SECCIONES = 3
 
 _BUSQUEDAS = [
     "noticias autopartes latinoamerica",
@@ -106,7 +126,7 @@ def _plano(texto: str) -> str:
 
 def _keywords_en_texto(texto: str) -> list[str]:
     texto_l = _plano(texto)
-    return [kw for kw in _KEYWORDS_NICHO if kw in texto_l]
+    return [m.group(0) for _, patron in _PATRON_NICHO if (m := patron.search(texto_l))]
 
 
 # ── Buscadores ────────────────────────────────────────────────────────────────
@@ -238,36 +258,95 @@ def _sugeridos_por_ia(ya: set[str]) -> list[dict]:
     return [s for s in sitios if isinstance(s, dict) and str(s.get("url", "")).startswith("http")][:_MAX_IA]
 
 
-def _verificar_sitio(url: str) -> tuple[bool, str, str]:
-    """(ok, título del sitio, motivo): responde, habla del sector y tiene notas enlazadas."""
+def _titulares(html: str, url: str) -> dict[str, str]:
+    """{link: texto} de las notas enlazadas en la página (los mismos links que seguiría el scraper)."""
+    from urllib.parse import urljoin
+
+    from afterdrive.ingesta import scraper
+
+    links = set(scraper._encontrar_links(html, url))
+    titulares = {}
+    for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
+        destino = urljoin(url, a["href"].strip())
+        if destino in links and destino not in titulares:
+            titulares[destino] = a.get_text(" ", strip=True)
+    return titulares
+
+
+def _leer(url: str) -> tuple[str | None, str]:
+    """(html, motivo si no se pudo)."""
     from afterdrive.ingesta import scraper
 
     if not scraper.url_publica(url):
-        return False, "", "no es una URL pública o el dominio no existe"
+        return None, "no es una URL pública o el dominio no existe"
     try:
         resp = _transporte["get"](url, headers=_HEADERS, timeout=15)
     except requests.RequestException as e:
-        return False, "", f"no respondió ({e.__class__.__name__})"
+        return None, f"no respondió ({e.__class__.__name__})"
     if resp.status_code >= 400:
-        return False, "", f"respondió {resp.status_code}"
-    html = resp.text or ""
+        return None, f"respondió {resp.status_code}"
+    return resp.text or "", ""
+
+
+def _del_sector(html: str, url: str) -> tuple[bool, str]:
+    """(ok, motivo): la página tiene notas enlazadas y una buena parte de sus titulares es del sector."""
+    titulares = _titulares(html, url)
+    if len(titulares) < 3:
+        return False, "no tiene notas enlazadas"
+    del_sector = sum(bool(_keywords_en_texto(t)) for t in titulares.values())
+    proporcion = del_sector / len(titulares)
+    if del_sector < MIN_TITULARES_SECTOR or proporcion < MIN_PROPORCION_SECTOR:
+        if not del_sector:
+            return False, "no habla del sector"
+        return False, (f"solo {del_sector} de {len(titulares)} notas son del sector ({proporcion:.0%}): "
+                       "es un medio general")
+    return True, ""
+
+
+def _secciones(html: str, url: str) -> list[str]:
+    """Links a secciones del mismo sitio que suenan al sector ("/autos/", "/motor/")."""
+    from urllib.parse import urljoin
+
+    secciones = []
+    for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
+        destino = urljoin(url, a["href"].strip()).split("#")[0].split("?")[0]
+        partes = [p for p in urlparse(destino).path.split("/") if p]
+        if (dominio(destino) == dominio(url) and 1 <= len(partes) <= 2 and destino not in secciones
+                and _SECCIONES.fullmatch(_plano(partes[-1]).replace("-", "")) is not None):
+            secciones.append(destino if destino.endswith("/") else destino + "/")
+    return secciones[:_MAX_SECCIONES]
+
+
+def _verificar_sitio(url: str) -> tuple[bool, str, str, str]:
+    """(ok, título, motivo, url a sugerir): responde, tiene notas y buena parte son del sector.
+
+    Si la portada es de un medio general, prueba sus secciones del sector (autos, motor,
+    repuestos) y sugiere la primera que pase en vez de la portada.
+    """
+    html, motivo = _leer(url)
+    if html is None:
+        return False, "", motivo, url
     soup = BeautifulSoup(html, "html.parser")
     titulo = (soup.title.get_text(strip=True) if soup.title else "")[:150]
-    descripcion = soup.find("meta", attrs={"name": "description"})
-    texto = f"{titulo} {descripcion.get('content', '') if descripcion else ''} {soup.get_text(' ', strip=True)[:4000]}"
-    if not _keywords_en_texto(texto):
-        return False, titulo, "no habla del sector"
-    if len(scraper._encontrar_links(html, url)) < 3:
-        return False, titulo, "no tiene notas enlazadas en la portada"
-    return True, titulo, ""
+    ok, motivo = _del_sector(html, url)
+    if ok:
+        return True, titulo, "", url
+    for seccion in _secciones(html, url):
+        html_seccion, _ = _leer(seccion)
+        if html_seccion and _del_sector(html_seccion, seccion)[0]:
+            print(f"  La portada de {dominio(url)} es general: se sugiere su sección {seccion}", flush=True)
+            return True, titulo, "", seccion
+    return False, titulo, motivo, url
 
 
 # ── Recorrido ─────────────────────────────────────────────────────────────────
 
 
-def _sugerencia(url: str, titulo: str, snippet: str, matches: list[str], origen: str, busqueda: str = "") -> dict:
+def _sugerencia(url: str, titulo: str, snippet: str, matches: list[str], origen: str, busqueda: str = "",
+                fuente: str | None = None) -> dict:
+    """fuente: la página a scrapear (la portada o la sección del sector que pasó la verificación)."""
     return {
-        "url": raiz(url), "dominio": dominio(url), "ejemplo_url": url, "titulo": titulo, "snippet": snippet,
+        "url": fuente or raiz(url), "dominio": dominio(url), "ejemplo_url": url, "titulo": titulo, "snippet": snippet,
         "keyword_match": matches, "keyword_busqueda": busqueda, "origen": origen,
         "fecha_sugerida": datetime.datetime.now(datetime.UTC).isoformat(),
     }
@@ -294,9 +373,16 @@ def discover(base=None) -> dict:
                 print(f"  [SKIP] ya registrada: {dom}", flush=True)
                 continue
             matches = _keywords_en_texto(f"{r.titulo} {r.snippet}")
-            if matches:
-                print(f"  [OK] {dom}: {r.titulo[:60]}", flush=True)
-                nuevas.append(_sugerencia(r.url, r.titulo, r.snippet, matches, "buscador", q))
+            if not matches:
+                continue
+            # Un titular del sector no alcanza: antes así entraban diarios generales y la ingesta
+            # rechazaba casi todo lo que se scrapeaba de ellos. Se entra al sitio y se mira su portada.
+            ok, _, motivo, fuente = _verificar_sitio(raiz(r.url))
+            if not ok:
+                print(f"  [DESCARTADA] {dom}: {motivo}", flush=True)
+                continue
+            print(f"  [OK] {dom}: {r.titulo[:60]}", flush=True)
+            nuevas.append(_sugerencia(r.url, r.titulo, r.snippet, matches, "buscador", q, fuente=fuente))
             if len(nuevas) >= _MAX_SUGERENCIAS_TOTAL:
                 break
         _dormir(1)
@@ -319,13 +405,13 @@ def discover(base=None) -> dict:
         if not dom or dom in ya or dom in vistas or _excluido(dom):
             continue
         vistas.add(dom)
-        ok, titulo, motivo = _verificar_sitio(url)
+        ok, titulo, motivo, fuente = _verificar_sitio(url)
         if not ok:
             print(f"  [DESCARTADA] {dom}: {motivo}", flush=True)
             continue
         print(f"  [OK] {dom}: {titulo[:60]}", flush=True)
         nuevas.append(_sugerencia(url, titulo or str(s.get("nombre") or ""), str(s.get("pais") or ""),
-                                  _keywords_en_texto(titulo), "ia"))
+                                  _keywords_en_texto(titulo), "ia", fuente=fuente))
 
     if nuevas:
         base["suggested_urls"].insert_many([dict(n) for n in nuevas])

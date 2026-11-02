@@ -24,7 +24,8 @@ Recorrido de una nota:
   7. El largo (corto, medio, largo) se elige en Crear nota.
   8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
      destacada es una foto de las noticias usadas (la guardó el scraper),
-     elegidas con IA contra el tema de la nota: la destacada y 2 para el cuerpo (imagen_destacada.py).
+     elegidas con IA contra el tema de la nota: la destacada y 4 para el cuerpo (imagen_destacada.py).
+     Si las noticias no alcanzan, se completan con bancos de imágenes (imagenes_respaldo.py).
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -50,6 +51,7 @@ from afterdrive.generacion import (
     correccion,
     critica,
     imagen_destacada,
+    imagenes_respaldo,
     juez,
     notas_blog,
     plan,
@@ -561,7 +563,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         usadas + [n for n in noticias if id(n) not in usadas_ids], titulo, (plan_nota or {}).get("angulo", ""),
         # Si las fotos de estas noticias no alcanzan, más noticias del mismo tema.
         extra=lambda: contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=15),
-        excluir=_fotos_de_otras_notas())
+        excluir=_fotos_de_otras_notas(),
+        # Y si tampoco, bancos de imágenes: la nota no sale con menos fotos mientras haya de dónde sacar.
+        respaldo=imagenes_respaldo.buscador(titulo, (plan_nota or {}).get("angulo", "")))
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
@@ -571,6 +575,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.cuerpo]
     if doc["imagenes_cuerpo"]:
         print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
+    # Las de Pixabay no se pueden enlazar para siempre: se guardan en la base ahora, mientras el link vale.
+    imagenes_respaldo.guardar_las_que_caducan([doc.get("imagen"), *doc["imagenes_cuerpo"]])
     doc["imagen_eleccion"] = eleccion.como_dict()
 
     def _fuente(n) -> dict:
