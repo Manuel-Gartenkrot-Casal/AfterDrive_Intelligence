@@ -2501,3 +2501,105 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .ajuste.active .ajuste-switch::after { transform: translateX(12px); background: #FFFFFF; }
 .ajuste.no-disponible { cursor: not-allowed; }
 .ajuste.no-disponible .ajuste-switch, .ajuste.no-disponible .ajuste-nombre { opacity: 0.5; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROGRAMACIÓN: el día de un vistazo y tarjetas a lo ancho
+   Arriba, un eje de 24 h con la hora de cada tarea y la de ahora. Cada tarea
+   es una tarjeta a lo ancho en tres columnas: el reloj, la configuración como
+   tabla de ajustes y la próxima ejecución con su acción.
+   ═══════════════════════════════════════════════════════════════════════ */
+.agenda-dia { display: flex; flex-direction: column; gap: 18px; margin-bottom: var(--s5); padding: var(--s5) var(--s6); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.agenda-dia-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; }
+.agenda-dia-titulo { font-size: 1rem; font-weight: 600; color: var(--text-hi); }
+.agenda-dia-sub { margin-top: 2px; font-size: 0.78rem; color: var(--text-lo); }
+.agenda-dia-leyenda { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.76rem; color: var(--text-mid); }
+.agenda-dia-leyenda li { display: flex; align-items: center; gap: 6px; }
+.agenda-dia-leyenda i { width: 10px; height: 10px; border-radius: 50%; }
+.ley-scraping { background: var(--brand); }
+.ley-generacion { background: var(--text-hi); }
+.agenda-dia-leyenda .ley-ahora { width: 2px; height: 14px; border-radius: 1px; background: var(--info); }
+.ley-hora { font-family: var(--mono); font-size: 0.72rem; color: var(--info); }
+/* De arriba a abajo: las etiquetas de cada tarea, la barra de 24 h partida en
+   cuatro momentos del día, las horas y el nombre de cada momento. */
+.agenda-dia-grafico { position: relative; padding: 40px 0 0; }
+.agenda-dia-grafico.dos-filas { padding-top: 70px; }
+.agenda-dia-eje {
+  position: relative; height: 10px; border-radius: 5px;
+  background: linear-gradient(to right,
+    var(--well) 0 25%, color-mix(in srgb, var(--text-lo) 14%, var(--well)) 25% 50%,
+    color-mix(in srgb, var(--text-lo) 22%, var(--well)) 50% 75%, color-mix(in srgb, var(--text-lo) 8%, var(--well)) 75% 100%);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.agenda-dia-franjas { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 30px; }
+.agenda-dia-franjas span { padding-top: 2px; text-align: center; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo); }
+.agenda-dia-franjas span + span { border-left: 1px dashed var(--border); }
+.agenda-dia-resumen { margin: 0; padding: 10px 14px; border-radius: var(--r-md); background: var(--well); font-size: 0.82rem; color: var(--text-mid); }
+.agenda-dia-resumen:empty { display: none; }
+.agenda-dia-resumen.aviso { color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, var(--bg)); }
+.dia-marca { position: absolute; top: 100%; transform: translateX(-50%); }
+.dia-marca i { display: block; width: 1px; height: 6px; margin: 0 auto; background: var(--border-strong); }
+.dia-marca b { display: block; margin-top: 3px; font: 500 0.66rem var(--mono); color: var(--text-lo); white-space: nowrap; }
+.dia-marca:first-child b { transform: translateX(calc(50% - 4px)); }
+.dia-marca:nth-child(9) b { transform: translateX(calc(-50% + 4px)); }
+.dia-ahora { position: absolute; top: -6px; bottom: -6px; z-index: 1; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--info); }
+.dia-tarea {
+  position: absolute; top: 50%; z-index: 2; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: var(--brand); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--brand);
+}
+.dia-tarea[data-tipo="generacion"] { background: var(--text-hi); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4px var(--text-hi); }
+/* La etiqueta cuelga de un palito que baja hasta el punto. */
+.dia-tarea::before { content: ""; position: absolute; left: 50%; bottom: calc(100% + 4px); width: 1px; height: 8px; background: var(--brand); }
+.dia-tarea[data-tipo="generacion"]::before { background: var(--text-hi); }
+.dia-tarea.alto::before { height: 38px; }
+.dia-tarea b {
+  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--brand); color: var(--on-brand); font: 600 0.68rem var(--font); white-space: nowrap;
+}
+.dia-tarea[data-tipo="generacion"] b { background: var(--text-hi); color: var(--bg); }
+.dia-tarea.alto b { bottom: calc(100% + 42px); }
+.dia-tarea.pausada { opacity: 0.4; }
+.dia-tarea.izq b { left: -6px; transform: none; }
+.dia-tarea.der b { left: auto; right: -6px; transform: none; }
+
+.agenda-grid { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+.agenda-card { gap: var(--s4); padding: var(--s5) var(--s6); }
+.agenda-cuerpo { display: grid; grid-template-columns: 240px minmax(0, 1fr) minmax(240px, 300px); gap: var(--s6); align-items: stretch; }
+.agenda-hora { display: flex; flex-direction: column; align-items: center; gap: var(--s3); }
+.agenda-hora .reloj { width: 200px; padding: 10px; }
+.agenda-hora .hora-input { min-height: 46px; font-size: 1.35rem; }
+.agenda-hora .ampm button { min-width: 42px; padding: 6px 10px; }
+.agenda-ajustes { display: flex; flex-direction: column; min-width: 0; padding-left: var(--s6); border-left: 1px solid var(--border); }
+.agenda-col-titulo { margin-bottom: 4px; font-size: 0.66rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-lo); }
+.agenda-ajustes .agenda-field { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); padding: 12px 0; border-top: 1px solid var(--border); font-size: 0.85rem; }
+.agenda-ajustes .agenda-col-titulo + .agenda-field { border-top: 0; }
+.agenda-field-nombre { font-weight: 600; color: var(--text-hi); white-space: nowrap; }
+.agenda-field-control { display: flex; align-items: center; gap: 8px; color: var(--text-mid); }
+.agenda-ajustes .agenda-field .input-field { width: 64px; min-height: 36px; padding: 4px 8px; }
+.agenda-ajustes .select-field { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.agenda-field-dato { font-size: 0.78rem; color: var(--text-lo); text-align: right; }
+.agenda-card.pausada .agenda-ajustes { opacity: 0.45; }
+.agenda-cuerpo .agenda-foot {
+  flex-direction: column; align-items: stretch; justify-content: flex-start; align-self: start; gap: var(--s4); margin: 0;
+  padding: var(--s4) var(--s5); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); box-shadow: none;
+}
+.agenda-cuerpo .agenda-next { gap: 2px; }
+.agenda-cuerpo .agenda-next strong { font-size: 1.05rem; }
+.agenda-falta { font-size: 0.78rem; color: var(--text-mid); font-variant-numeric: tabular-nums; }
+.agenda-cuerpo .agenda-foot .btn { width: 100%; }
+
+@media (max-width: 1240px) {
+  .agenda-cuerpo { grid-template-columns: 230px minmax(0, 1fr); row-gap: var(--s4); }
+  .agenda-hora { grid-row: span 2; }
+  .agenda-cuerpo .agenda-foot { grid-column: 2; align-self: start; margin-left: var(--s6); flex-direction: row; align-items: center; justify-content: space-between; }
+  .agenda-cuerpo .agenda-foot .btn { width: auto; flex-shrink: 0; }
+}
+@media (max-width: 640px) {
+  .agenda-dia { padding: var(--s4); }
+  .dia-marca:nth-child(even) b { display: none; }
+  .agenda-cuerpo { grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+  .agenda-ajustes { padding-left: 0; border-left: 0; }
+  .agenda-hora { grid-row: auto; }
+  .agenda-cuerpo .agenda-foot { grid-column: auto; margin-left: 0; }
+  .agenda-cuerpo .agenda-foot { flex-direction: column; align-items: stretch; }
+  .agenda-cuerpo .agenda-foot .btn { width: 100%; }
+}

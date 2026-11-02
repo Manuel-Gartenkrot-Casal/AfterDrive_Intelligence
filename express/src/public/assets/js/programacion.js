@@ -200,9 +200,89 @@ function aplicarAgenda(tipo, c) {
   $('dias-' + tipo).value = c.interval_days || 1;
   AGENDA[tipo].cargarExtra(c);
   pintarActivo(tipo, c.enabled !== false);
+  pintarDia();
 }
 
-function marcarProgramacion() { if (FORMULARIOS.programacion) FORMULARIOS.programacion.marcar(); }
+function marcarProgramacion() { if (FORMULARIOS.programacion) FORMULARIOS.programacion.marcar(); pintarDia(); }
+
+/* El día de un vistazo: un eje de 24 h con la hora de cada tarea y la de ahora
+   (en la zona del servidor). Sigue lo que se está editando, sin guardar. */
+function _minutos(hhmm) {
+  var p = String(hhmm || '').split(':');
+  return p.length === 2 ? (parseInt(p[0], 10) * 60 + parseInt(p[1], 10)) : null;
+}
+
+function pintarDia() {
+  var eje = $('agenda-dia-eje');
+  if (!eje) return;
+  var pos = function(min) { return (min / 1440 * 100).toFixed(3) + '%'; };
+  var html = '';
+  for (var h = 0; h <= 24; h += 3) {
+    html += '<span class="dia-marca" style="left:' + pos(h * 60) + '"><i></i><b>' + (h < 10 ? '0' : '') + h + ':00</b></span>';
+  }
+  // Cerca de los bordes, la etiqueta se apoya hacia adentro para no salirse.
+  var lado = function(min) { return min < 150 ? ' izq' : min > 1290 ? ' der' : ''; };
+  var ahora = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: _zona });
+  var minAhora = _minutos(ahora);
+  html += '<span class="dia-ahora" style="left:' + pos(minAhora) + '"></span>';
+  if ($('ley-ahora')) $('ley-ahora').textContent = ahora;
+  var anterior = null, dosFilas = false;
+  Object.keys(AGENDA).forEach(function(tipo) {
+    var hora = $('hora-' + tipo).value, min = _minutos(hora);
+    if (min === null || isNaN(min)) return;
+    var activa = $('sw-' + tipo).classList.contains('active');
+    var nombre = $('agenda-' + tipo).querySelector('.agenda-card-title').textContent;
+    // Dos tareas cerca en pantalla: la segunda sube un renglón para no pisar a la primera.
+    var alto = anterior !== null && Math.abs(min - anterior) / 1440 * (eje.clientWidth || 800) < 170 ? ' alto' : '';
+    anterior = min;
+    if (alto) dosFilas = true;
+    html += '<span class="dia-tarea' + (activa ? '' : ' pausada') + lado(min) + alto + '" data-tipo="' + tipo + '" style="left:' + pos(min) + '">'
+      + '<b>' + escHtml(nombre) + ' · ' + hora + '</b></span>';
+  });
+  eje.innerHTML = html;
+  eje.parentNode.classList.toggle('dos-filas', dosFilas);
+  Object.keys(AGENDA).forEach(function(tipo) {
+    var ley = $('ley-' + tipo);
+    if (ley) ley.textContent = $('agenda-' + tipo).querySelector('.agenda-card-title').textContent;
+  });
+  pintarResumenDia();
+}
+
+function _lapso(min) {
+  var h = Math.floor(min / 60), m = min % 60;
+  return h && m ? h + ' h ' + m + ' min' : h ? h + ' h' : m + ' min';
+}
+
+// En una frase: en qué orden corren las tareas y si eso tiene sentido.
+function pintarResumenDia() {
+  var el = $('agenda-dia-resumen');
+  if (!el) return;
+  var hs = $('hora-scraping').value, hg = $('hora-generacion').value;
+  var s = _minutos(hs), g = _minutos(hg);
+  var activaS = $('sw-scraping').classList.contains('active'), activaG = $('sw-generacion').classList.contains('active');
+  var texto, aviso = false;
+  if (!activaS && !activaG) texto = 'Las dos tareas están pausadas: no corre nada solo.';
+  else if (!activaS) texto = 'La búsqueda de noticias está pausada: la nota se escribe a las ' + hg + ' con las noticias que ya hay.';
+  else if (!activaG) texto = 'La nota automática está pausada: solo se buscan noticias a las ' + hs + '.';
+  else if (s === null || g === null || isNaN(s) || isNaN(g)) texto = '';
+  else if (s < g) texto = 'Primero se buscan noticias a las ' + hs + ' y, ' + _lapso(g - s) + ' después, se escribe la nota a las ' + hg + '.';
+  else if (s === g) { texto = 'Las dos tareas están a la misma hora: conviene buscar noticias antes de escribir la nota.'; aviso = true; }
+  else { texto = 'La nota se escribe a las ' + hg + ', antes de buscar noticias a las ' + hs + ': va a usar las del día anterior.'; aviso = true; }
+  el.textContent = texto;
+  el.classList.toggle('aviso', aviso);
+}
+
+// "en 4 h 12 min" hasta la próxima corrida guardada.
+function pintarFalta(tipo) {
+  var el = $('falta-' + tipo), iso = AGENDA[tipo].proxima;
+  if (!el) return;
+  if (!iso) { el.textContent = ''; return; }
+  var min = Math.max(0, Math.round((new Date(iso) - Date.now()) / 60000));
+  var d = Math.floor(min / 1440), h = Math.floor(min % 1440 / 60), m = min % 60;
+  el.textContent = min < 1 ? 'En menos de un minuto'
+    : d ? 'En ' + d + (d === 1 ? ' día ' : ' días ') + h + ' h'
+    : h ? 'En ' + h + ' h ' + m + ' min' : 'En ' + m + ' min';
+}
 
 /* forzar: pisar los campos aunque haya cambios sin guardar (carga inicial). */
 async function cargarAgenda(tipo, forzar) {
@@ -224,6 +304,8 @@ async function cargarAgenda(tipo, forzar) {
       if (!forzar && form) form.tomarBase();
     }
     $('next-' + tipo).textContent = d.enabled === false ? 'Pausado' : formatearProxima(d.next_execution);
+    AGENDA[tipo].proxima = d.enabled === false ? null : d.next_execution;
+    pintarFalta(tipo);
     if (tipo === 'generacion') $('c-proxima').textContent = d.enabled === false ? 'Pausada' : proximaCorta(d.next_execution);
   } catch(e) {}
 }
@@ -284,4 +366,9 @@ function initAgenda() {
     despues: function() { cargarAgenda('scraping'); cargarAgenda('generacion'); updateStats(); }
   });
   Promise.all([cargarAgenda('scraping', true), cargarAgenda('generacion', true)]).then(form.tomarBase);
+  setInterval(function() { pintarDia(); Object.keys(AGENDA).forEach(pintarFalta); }, 60000);
+  document.addEventListener('idioma', pintarDia);   // los nombres de las tareas cambian de idioma
+  // Se dibuja con el ancho real: al entrar a la sección y si cambia la ventana.
+  document.addEventListener('seccion', function(ev) { if (ev.detail === 'programacion') pintarDia(); });
+  window.addEventListener('resize', pintarDia);
 }

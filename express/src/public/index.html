@@ -279,6 +279,27 @@
         <h2 class="section-title" id="agenda-title">Programación automática</h2>
         <p class="section-sub">Definí el horario y la frecuencia. Los cambios se aplican al guardar. Hora de Argentina.</p>
       </div>
+      <!-- El día de un vistazo: a qué hora corre cada tarea (se mueve con las agujas). -->
+      <div class="agenda-dia" id="agenda-dia">
+        <div class="agenda-dia-cabeza">
+          <div>
+            <h3 class="agenda-dia-titulo">Tu día</h3>
+            <p class="agenda-dia-sub">Cuándo corre cada tarea, en hora de Argentina. Se actualiza mientras cambiás los horarios.</p>
+          </div>
+          <ul class="agenda-dia-leyenda" aria-hidden="true">
+            <li><i class="ley-scraping"></i><span id="ley-scraping">Scraping</span></li>
+            <li><i class="ley-generacion"></i><span id="ley-generacion">Generación de nota</span></li>
+            <li><i class="ley-ahora"></i><span>Ahora</span> <span class="ley-hora" id="ley-ahora"></span></li>
+          </ul>
+        </div>
+        <div class="agenda-dia-grafico" aria-hidden="true">
+          <div class="agenda-dia-eje" id="agenda-dia-eje"></div>
+          <div class="agenda-dia-franjas">
+            <span>Madrugada</span><span>Mañana</span><span>Tarde</span><span>Noche</span>
+          </div>
+        </div>
+        <p class="agenda-dia-resumen" id="agenda-dia-resumen" aria-live="polite"></p>
+      </div>
       <div class="agenda-grid">
         <article class="agenda-card" id="agenda-scraping">
           <header class="agenda-card-head">
@@ -290,35 +311,43 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
-          <div class="reloj" id="reloj-scraping"></div>
-          <div class="hora-row">
-            <label class="sr-only" for="hora-scraping">Hora de scraping</label>
-            <input type="time" id="hora-scraping" class="hora-input" step="300" required />
-            <div class="ampm" id="ampm-scraping" role="group" aria-label="Mañana o tarde">
-              <button type="button" data-p="am">AM</button>
-              <button type="button" data-p="pm">PM</button>
+          <div class="agenda-cuerpo">
+            <div class="agenda-hora">
+              <div class="reloj" id="reloj-scraping"></div>
+              <div class="hora-row">
+                <label class="sr-only" for="hora-scraping">Hora de scraping</label>
+                <input type="time" id="hora-scraping" class="hora-input" step="300" required />
+                <div class="ampm" id="ampm-scraping" role="group" aria-label="Mañana o tarde">
+                  <button type="button" data-p="am">AM</button>
+                  <button type="button" data-p="pm">PM</button>
+                </div>
+              </div>
+            </div>
+            <div class="agenda-ajustes">
+              <p class="agenda-col-titulo">Configuración</p>
+              <label class="agenda-field">
+                <span class="agenda-field-nombre">Frecuencia</span>
+                <span class="agenda-field-control">Cada <input type="number" id="dias-scraping" class="input-field" min="1" max="30" value="1" /> día(s)</span>
+              </label>
+              <label class="agenda-field solo-dev">
+                <span class="agenda-field-nombre">Artículos por fuente</span>
+                <span class="agenda-field-control">Hasta <input type="number" id="max-scraping" class="input-field" min="1" max="50" value="10" /></span>
+              </label>
+              <div class="agenda-field">
+                <span class="agenda-field-nombre">Zona horaria</span>
+                <span class="agenda-field-control agenda-field-dato">Argentina (GMT−3)</span>
+              </div>
+            </div>
+            <div class="agenda-foot">
+              <div class="agenda-next">
+                <span>Próxima ejecución</span>
+                <strong id="next-scraping">-</strong>
+                <small class="agenda-falta" id="falta-scraping"></small>
+                <em class="agenda-estado" id="estado-scraping" aria-live="polite"></em>
+              </div>
+              <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()" data-cliente="Buscar ahora">Scrapear ahora</button>
             </div>
           </div>
-          <div class="agenda-fields">
-            <label class="agenda-field">
-              <span>Cada</span>
-              <input type="number" id="dias-scraping" class="input-field" min="1" max="30" value="1" />
-              <span>día(s)</span>
-            </label>
-            <label class="agenda-field solo-dev">
-              <span>Hasta</span>
-              <input type="number" id="max-scraping" class="input-field" min="1" max="50" value="10" />
-              <span>artículos por fuente</span>
-            </label>
-          </div>
-          <footer class="agenda-foot">
-            <div class="agenda-next">
-              <span>Próxima ejecución</span>
-              <strong id="next-scraping">-</strong>
-              <em class="agenda-estado" id="estado-scraping" aria-live="polite"></em>
-            </div>
-            <button class="btn btn-primary" id="btn-runnow" onclick="runNowStream()" data-cliente="Buscar ahora">Scrapear ahora</button>
-          </footer>
         </article>
         <article class="agenda-card" id="agenda-generacion">
           <header class="agenda-card-head">
@@ -330,40 +359,50 @@
               <div class="toggle-switch"></div><span>Activo</span>
             </div>
           </header>
-          <div class="reloj" id="reloj-generacion"></div>
-          <div class="hora-row">
-            <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
-            <input type="time" id="hora-generacion" class="hora-input" step="300" required />
-            <div class="ampm" id="ampm-generacion" role="group" aria-label="Mañana o tarde">
-              <button type="button" data-p="am">AM</button>
-              <button type="button" data-p="pm">PM</button>
+          <div class="agenda-cuerpo">
+            <div class="agenda-hora">
+              <div class="reloj" id="reloj-generacion"></div>
+              <div class="hora-row">
+                <label class="sr-only" for="hora-generacion">Hora de generación de nota</label>
+                <input type="time" id="hora-generacion" class="hora-input" step="300" required />
+                <div class="ampm" id="ampm-generacion" role="group" aria-label="Mañana o tarde">
+                  <button type="button" data-p="am">AM</button>
+                  <button type="button" data-p="pm">PM</button>
+                </div>
+              </div>
+            </div>
+            <div class="agenda-ajustes">
+              <p class="agenda-col-titulo">Configuración</p>
+              <label class="agenda-field">
+                <span class="agenda-field-nombre">Frecuencia</span>
+                <span class="agenda-field-control">Cada <input type="number" id="dias-generacion" class="input-field" min="1" max="30" value="1" /> día(s)</span>
+              </label>
+              <label class="agenda-field">
+                <span class="agenda-field-nombre">Tono</span>
+                <span class="agenda-field-control">
+                  <select id="persona-generacion" class="select-field">
+                    <option value="comercial">Comercial</option>
+                    <option value="analitico">Analítico-técnico</option>
+                    <option value="periodistico">Periodístico</option>
+                    <option value="divulgativo">Divulgativo</option>
+                    <option value="ejecutivo">Ejecutivo</option>
+                  </select>
+                </span>
+              </label>
+              <div class="agenda-field">
+                <span class="agenda-field-nombre">Contenido</span>
+                <span class="agenda-field-control agenda-field-dato">Categorías, regiones y clientes de Crear nota</span>
+              </div>
+            </div>
+            <div class="agenda-foot">
+              <div class="agenda-next">
+                <span>Próxima nota</span>
+                <strong id="next-generacion">-</strong>
+                <small class="agenda-falta" id="falta-generacion"></small>
+                <em class="agenda-estado" id="estado-generacion" aria-live="polite"></em>
+              </div>
             </div>
           </div>
-          <div class="agenda-fields">
-            <label class="agenda-field">
-              <span>Cada</span>
-              <input type="number" id="dias-generacion" class="input-field" min="1" max="30" value="1" />
-              <span>día(s)</span>
-            </label>
-            <label class="agenda-field agenda-field-wide">
-              <span>Tono</span>
-              <select id="persona-generacion" class="select-field">
-                <option value="comercial">Comercial</option>
-                <option value="analitico">Analítico-técnico</option>
-                <option value="periodistico">Periodístico</option>
-                <option value="divulgativo">Divulgativo</option>
-                <option value="ejecutivo">Ejecutivo</option>
-              </select>
-            </label>
-          </div>
-          <footer class="agenda-foot">
-            <div class="agenda-next">
-              <span>Próxima nota</span>
-              <strong id="next-generacion">-</strong>
-              <em class="agenda-estado" id="estado-generacion" aria-live="polite"></em>
-            </div>
-            <p class="agenda-hint">Usa las categorías, regiones y clientes guardados en Crear nota.</p>
-          </footer>
         </article>
       </div>
       <div class="barra-guardar" id="barra-programacion" hidden>
