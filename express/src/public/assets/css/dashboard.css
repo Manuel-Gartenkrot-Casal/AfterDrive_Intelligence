@@ -723,6 +723,16 @@ body {
 .puntapie-toggle.active .toggle-switch::after { transform: translateX(18px); background: #F6F7FA; }
 
 .cliente-item { margin-bottom: var(--s3); }
+/* Empresas que no se nombran: chips con borde de alerta, siempre aplicadas (no se eligen). */
+.clientes-prohibidos-titulo { margin-top: var(--s4); }
+.clientes-prohibidos { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.cliente-prohibido { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px;
+  border: 1px solid var(--err, #c0392b); color: var(--text-hi, inherit); font-size: 0.8rem; }
+.cliente-prohibido .icon-btn { width: 24px; height: 24px; font-size: 0.75rem; }
+.clientes-importar { margin-top: var(--s3); }
+.clientes-importar summary { cursor: pointer; font-size: 0.85rem; color: var(--text-lo); }
+.clientes-importar[open] summary { margin-bottom: var(--s2); }
+.f2-indicaciones { resize: vertical; min-height: 88px; font-family: inherit; }
 .cliente-nombre { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
 .cliente-item.active .cliente-nombre { color: var(--brand); }
 .cliente-sector { font-size: 0.72rem; color: var(--text-lo); }

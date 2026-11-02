@@ -329,8 +329,30 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
         # La versión que escribió el modelo, una sola vez: de la diferencia con la
         # editada salen las lecciones de calibracion.lecciones_de_ediciones.
         cambios["contenido_original"] = doc["contenido"]
+    # El aviso de empresas que no se nombran se recalcula con el texto nuevo (la edición pudo sacarlas o sumarlas).
+    from afterdrive import clientes
+    cambios["empresas_prohibidas"] = clientes.nombrados(_sin_fuentes(contenido),
+                                                        clientes.no_mencionar(_base(base)["clientes"]))
     col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
+
+
+def _sin_fuentes(contenido: str) -> str:
+    """El texto sin la sección de fuentes (verificacion.agregar_fuentes): los títulos de las noticias
+    no son menciones de la nota. La meta description, que va después, sí cuenta."""
+    from afterdrive.ia.redaccion import _VOCES
+
+    titulos = {f"## {v.titulo_fuentes}" for v in _VOCES.values()}
+    salida, en_fuentes = [], False
+    for ln in contenido.splitlines():
+        if ln.strip() in titulos:
+            en_fuentes = True
+            continue
+        if en_fuentes and (not ln.strip() or ln.lstrip().startswith("- [")):
+            continue
+        en_fuentes = False
+        salida.append(ln)
+    return "\n".join(salida)
 
 
 def editar_traduccion(coleccion: str, item_id: str, idioma: str, contenido: str, base=None) -> dict | None:

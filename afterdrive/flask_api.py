@@ -1198,21 +1198,80 @@ def fase2_get_clientes():
 
 @app.route("/api/fase2/clientes", methods=["POST"])
 def fase2_crear_cliente():
+    """Agrega (o actualiza) un cliente. `modo`: "mencionar" (default) o "no_mencionar"."""
+    from afterdrive import clientes
     from afterdrive.db import col_clientes
     body = request.get_json(silent=True) or {}
-    nombre = body.get("nombre", "").strip()
-    if not nombre:
+    nombre = body.get("nombre", "")
+    nombre = nombre.strip()[:clientes.MAX_NOMBRE] if isinstance(nombre, str) else ""
+    if not nombre or not clientes.slug(nombre):
         return jsonify({"success": False, "error": "Se requiere 'nombre'."}), 400
+    modo = clientes.normalizar_modo(body.get("modo"))
+    if modo is None:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    descripcion = body.get("descripcion", "")
     doc = {
-        "slug": re.sub(r"[^a-z0-9]+", "-", nombre.lower()).strip("-"),
+        "slug": clientes.slug(nombre),
         "nombre": nombre,
-        "descripcion": body.get("descripcion", ""),
+        "descripcion": descripcion.strip()[:clientes.MAX_DESCRIPCION] if isinstance(descripcion, str) else "",
         "productos": body.get("productos", []),
         "sector": body.get("sector", ""),
         "url": body.get("url", ""),
+        "modo": modo,
     }
     col_clientes.update_one({"slug": doc["slug"]}, {"$set": doc}, upsert=True)
     return jsonify({"success": True, "cliente": doc})
+
+
+@app.route("/api/fase2/clientes/importar", methods=["POST"])
+def fase2_importar_clientes():
+    """Carga la lista que pasan, una empresa por línea ("Nombre | descripción | alias1, alias2").
+
+    {"texto", "modo"}: todas quedan con ese modo. Las que ya existían cambian de modo y, si la
+    línea trae descripción o alias, se actualizan; las demás se crean.
+    """
+    from afterdrive import clientes
+    from afterdrive.db import col_clientes
+    body = request.get_json(silent=True) or {}
+    texto = body.get("texto")
+    if not isinstance(texto, str) or not texto.strip():
+        return jsonify({"success": False, "error": "Pegá la lista: una empresa por línea."}), 400
+    modo = clientes.normalizar_modo(body.get("modo"))
+    if modo is None:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    lista = clientes.parsear_lista(texto)
+    if not lista:
+        return jsonify({"success": False, "error": "No se encontró ningún nombre en la lista."}), 400
+    nuevos = 0
+    for c in lista:
+        cambios = {"nombre": c["nombre"], "modo": modo}
+        if c["descripcion"]:
+            cambios["descripcion"] = c["descripcion"]
+        if c["alias"]:
+            cambios["alias"] = c["alias"]
+        r = col_clientes.update_one({"slug": clientes.slug(c["nombre"])}, {"$set": cambios}, upsert=True)
+        nuevos += 1 if r.upserted_id is not None else 0
+    return jsonify({"success": True, "total": len(lista), "nuevos": nuevos, "actualizados": len(lista) - nuevos,
+                    "modo": modo})
+
+
+@app.route("/api/fase2/clientes/<slug>", methods=["PATCH"])
+def fase2_modo_cliente(slug: str):
+    """Cambia si un cliente se puede nombrar: {"modo": "mencionar" | "no_mencionar"}."""
+    from afterdrive import clientes, config_store
+    from afterdrive.db import col_clientes
+    body = request.get_json(silent=True) or {}
+    modo = body.get("modo")
+    if modo not in clientes.MODOS:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    if not col_clientes.update_one({"slug": slug}, {"$set": {"modo": modo}}).matched_count:
+        return jsonify({"success": False, "error": "Cliente no encontrado."}), 404
+    if modo == clientes.NO_MENCIONAR:
+        # Uno que no se nombra no puede quedar elegido para la nota automática.
+        elegidos = config_store.get_fase2_config().get("clientes") or []
+        if slug in elegidos:
+            config_store.set_fase2_config(clientes=[c for c in elegidos if c != slug])
+    return jsonify({"success": True, "slug": slug, "modo": modo})
 
 
 @app.route("/api/fase2/clientes/<slug>", methods=["DELETE"])
@@ -1232,6 +1291,9 @@ def _nota_para_dashboard(doc: dict) -> dict:
     return doc
 
 
+_INDICACIONES_MAX = 2000   # el mismo tope que generar_nota_fase2.INDICACIONES_MAX
+
+
 def _argv_generar(body: dict):
     """(argv de generar_nota_fase2, None), o (None, respuesta 400)."""
     listas, error = _listas(body, "categorias", "clientes", "regiones")
@@ -1245,6 +1307,13 @@ def _argv_generar(body: dict):
     largo = body.get("largo") or ""
     if largo and largo not in _LARGOS:
         return None, (jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400)
+    indicaciones = body.get("indicaciones") or ""
+    if not isinstance(indicaciones, str):
+        return None, (jsonify({"success": False, "error": "Parámetro 'indicaciones' inválido."}), 400)
+    indicaciones = indicaciones.strip()
+    if len(indicaciones) > _INDICACIONES_MAX:
+        return None, (jsonify({"success": False,
+                               "error": f"Las indicaciones son muy largas (máximo {_INDICACIONES_MAX} caracteres)."}), 400)
 
     extra = []
     for clave in ("categorias", "clientes", "regiones"):
@@ -1259,6 +1328,8 @@ def _argv_generar(body: dict):
         extra.append(f"--tema={tema}")
     if largo:
         extra.append(f"--largo={largo}")
+    if indicaciones:
+        extra.append(f"--indicaciones={indicaciones}")
     return extra, None
 
 

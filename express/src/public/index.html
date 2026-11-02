@@ -474,6 +474,15 @@
             <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
           </div>
 
+          <!-- Indicaciones libres para la IA -->
+          <div style="margin-bottom:var(--s4)">
+            <label class="control-label" for="f2-indicaciones">Indicaciones para la IA (opcional)</label>
+            <textarea id="f2-indicaciones" class="input-field f2-indicaciones" rows="4" maxlength="2000" style="width:100%"
+                      aria-describedby="f2-indicaciones-ayuda"
+                      placeholder="Ej: enfocá la nota en cómo Alephee ayuda a los distribuidores a vender en marketplaces; tono cercano; cerrá con una pregunta al lector."></textarea>
+            <p id="f2-indicaciones-ayuda" class="field-help">Solo para esta nota: enfoque, tono, qué destacar o evitar. No hace falta guardarlo. La IA nunca inventa datos que no estén en las noticias, aunque se lo pidas.</p>
+          </div>
+
           <!-- Puntapié a link -->
           <div class="f2-avanzado" style="margin-bottom:var(--s3)">
             <div class="control-label" style="margin-bottom:var(--s2)" data-cliente="Llevar al lector a un link">Modo puntapié a link</div>
@@ -511,11 +520,30 @@
           <div id="f2-clientes-list" style="margin-bottom:var(--s3)">
             <div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>
           </div>
+          <div class="fase2-grupo-title clientes-prohibidos-titulo">No nombrar nunca</div>
+          <p class="field-help">Ninguna nota las nombra, aunque aparezcan en las noticias. Si se cuela una, la nota se corrige y no se aprueba sola.</p>
+          <div id="f2-prohibidos-list" class="clientes-prohibidos" style="margin-bottom:var(--s3)"></div>
           <div class="input-row">
             <input type="text" aria-label="Nombre del cliente" id="f2-cli-nombre" class="input-field" placeholder="Nombre del cliente" />
+            <select id="f2-cli-modo" class="select-field" aria-label="Si se puede nombrar">
+              <option value="mencionar">Para mencionar</option>
+              <option value="no_mencionar">No nombrar</option>
+            </select>
             <button class="btn" onclick="fase2AgregarCliente()">Agregar</button>
           </div>
           <input type="text" aria-label="Descripción del cliente" id="f2-cli-desc" class="input-field" placeholder="Descripción breve" style="margin-top:var(--s2);width:100%" />
+          <details class="clientes-importar">
+            <summary>Cargar una lista</summary>
+            <label class="control-label" for="f2-cli-lista">Una empresa por línea: <code>Nombre | descripción | otros nombres</code>. Solo el nombre es obligatorio.</label>
+            <textarea id="f2-cli-lista" class="input-field" rows="5" style="width:100%" placeholder="Repuestos del Sur | Distribuidor mayorista en Córdoba&#10;Competidor SA | | CSA, Competidor"></textarea>
+            <div class="input-row" style="margin-top:var(--s2)">
+              <select id="f2-cli-lista-modo" class="select-field" aria-label="Qué hacer con la lista">
+                <option value="mencionar">Todas para mencionar</option>
+                <option value="no_mencionar">Ninguna se nombra</option>
+              </select>
+              <button class="btn" id="btn-cli-importar" onclick="fase2ImportarClientes()">Cargar lista</button>
+            </div>
+          </details>
           <div id="f2-cli-status" class="feedback"></div>
         </div>
 

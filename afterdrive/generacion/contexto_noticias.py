@@ -5,6 +5,7 @@ Interfaz:
     seleccionar(consulta, limite=5) -> list[Noticia]
     formatear(noticias, max_chars=7000) -> str
     marcar_usadas(noticias) -> None
+    urls_liberadas() -> set[str]       noticias de notas rechazadas, que vuelven a estar disponibles
     con_foto(noticias, max_busquedas=3, limite=4) -> list[Noticia]   las que tienen foto
     todas_las_fotos(noticias) -> list[Noticia]       una por foto (cada noticia guarda varias)
     mas_fotos(noticias, max_busquedas=5) -> list[Noticia]   relee las páginas que no tienen la lista
@@ -56,6 +57,7 @@ class Noticia:
     imagen_buscada: bool = False   # ya se intentó sacarla (aunque no tuviera): no se vuelve a descargar
     imagenes: list[dict] | None = None   # todas las fotos del artículo; None = scrapeado antes de guardarlas
     refrescable: bool = True       # su `imagen` es la principal de la página: si deja de responder se relee
+    liberada: bool = False         # solo alimentó notas rechazadas: vuelve a contar como no usada
 
 
 def _coseno(a, b) -> float:
@@ -245,15 +247,52 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
     docs = {d["_id"]: d for d in recientes + _parecidas_en_atlas(col_articulos, vec, modelo)}
     if not docs:
         return []
+    liberadas = urls_liberadas()
     noticias = []
     for d in docs.values():
         n = _desde_doc(d)
         n.embedding = vector_de(d, modelo)  # vectores de otro modelo no se comparan
+        if (n.usada or n.usada_reciente) and _url_clave(n.url) in liberadas:
+            n.usada = n.usada_reciente = False
+            n.liberada = True
         noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
     elegidas = elegir(rankear(noticias, vec, ahora), limite)
     _completar_fichas(elegidas, col_articulos)
     return elegidas
+
+
+NOTAS_PARA_LIBERAR = 300   # notas recientes que se miran para saber qué noticias liberar
+
+
+def _url_clave(url: str) -> str:
+    return (url or "").strip().rstrip("/").lower()
+
+
+def urls_liberadas(col=None) -> set[str]:
+    """URLs de noticias que solo alimentaron notas rechazadas: se pueden volver a usar.
+
+    marcar_usadas() las marca al guardar la nota, y si el equipo la rechaza
+    quedaban postergadas DIAS_SIN_REPETIR días sin haber llegado al blog. Si
+    también están en otra nota que no se rechazó (borrador, aprobada,
+    publicada), siguen contando como usadas. Se calcula cada vez desde las
+    notas, así que si una nota vuelve de rechazada a borrador sus noticias
+    vuelven a estar usadas. Si Mongo falla, ninguna.
+    """
+    from afterdrive.db import ESTADO_RECHAZADA
+
+    if col is None:
+        from afterdrive.db import db
+        col = db["notas_fase2"]
+    rechazadas, en_uso = set(), set()
+    try:
+        for d in col.find({}, {"estado": 1, "fuentes.url": 1}).sort("generado_en", -1).limit(NOTAS_PARA_LIBERAR):
+            urls = {_url_clave(f.get("url")) for f in d.get("fuentes") or [] if isinstance(f, dict) and f.get("url")}
+            (rechazadas if d.get("estado") == ESTADO_RECHAZADA else en_uso).update(urls)
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer las notas rechazadas para reutilizar sus noticias: {e}", flush=True)
+        return set()
+    return rechazadas - en_uso
 
 
 def elegir(ranking: list[Noticia], limite: int) -> list[Noticia]:

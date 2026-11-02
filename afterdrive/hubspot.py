@@ -8,6 +8,7 @@ Interfaz:
                                             la versión en otro idioma, como borrador vinculado al post original
     destino(nota) -> dict                   blog, idioma, etiquetas y autor que le tocan
     autores(idioma) -> [{"id", "nombre"}]   autores del blog en ese idioma
+    autor_en_idioma(autor_id, idioma)       el mismo autor en otro idioma (translatedFromId)
     vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
     subir_imagen(contenido, mime, nombre) -> url pública (scope "files")
     preparar(contenido) -> dict             título, cuerpo HTML y meta description
@@ -37,6 +38,8 @@ Si eso falla (por ejemplo, si los tres blogs no están configurados como
 versiones de un mismo blog multilenguaje), se crea un borrador normal en el
 blog de ese idioma y se intenta vincularlo (attach-to-lang-group). Si tampoco
 se puede, queda como borrador suelto, con un aviso. Siempre como borrador.
+La traducción la firma el mismo autor que el original, en su versión de ese
+idioma (autor_traduccion); si no tiene, el autor por defecto del idioma.
 Los códigos de idioma de HubSpot salen de LENGUAJES (HUBSPOT_LENGUAJES los cambia).
 """
 
@@ -155,8 +158,17 @@ def destino(nota: dict) -> dict:
     }
 
 
-def autores(cod: str) -> list[dict]:
-    """Autores del blog en ese idioma, por nombre: para elegir quién firma la nota."""
+def _idioma_base(lenguaje) -> str:
+    """"pt-br" -> "pt": HubSpot guarda el idioma del autor con variante regional (ver LENGUAJES)."""
+    return str(lenguaje or "").strip().lower().split("-")[0]
+
+
+def _nombre_autor(a: dict) -> str:
+    return (a.get("fullName") or a.get("name") or a.get("displayName") or "").strip()
+
+
+def _autores_hubspot() -> list[dict]:
+    """Todos los autores de la cuenta, tal como los devuelve HubSpot."""
     if not configurado():
         raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
     try:
@@ -165,9 +177,64 @@ def autores(cod: str) -> list[dict]:
         raise ErrorHubSpot(f"No se pudo conectar con HubSpot: {e}") from e
     if resp.status_code >= 400:
         raise _error(resp)
-    lista = [{"id": str(a["id"]), "nombre": (a.get("fullName") or a.get("name") or "").strip()}
-             for a in resp.json().get("results", []) if a.get("language") == cod]
+    return [a for a in (resp.json() or {}).get("results", []) if isinstance(a, dict) and a.get("id")]
+
+
+def autores(cod: str) -> list[dict]:
+    """Autores del blog en ese idioma, por nombre: para elegir quién firma la nota.
+
+    El idioma se compara sin la variante: antes se pedía "pt" exacto y los autores
+    guardados como "pt-br" no aparecían (la lista en portugués salía vacía).
+    """
+    lista = [{"id": str(a["id"]), "nombre": _nombre_autor(a)}
+             for a in _autores_hubspot() if _idioma_base(a.get("language")) == cod]
     return sorted(lista, key=lambda a: a["nombre"].lower())
+
+
+def autor_en_idioma(autor_id: str, cod: str, lista: list[dict] | None = None) -> str | None:
+    """El mismo autor en el idioma `cod`, o None si no tiene versión en ese idioma.
+
+    En HubSpot cada autor existe una vez por idioma: las versiones se vinculan con
+    `translatedFromId` (apunta a la original). Si no están vinculadas, se busca
+    uno con el mismo nombre en ese idioma. Un autor sin idioma sirve para todos.
+    """
+    lista = _autores_hubspot() if lista is None else lista
+    por_id = {str(a["id"]): a for a in lista}
+    autor = por_id.get(str(autor_id))
+    if not autor:
+        return None
+    if _idioma_base(autor.get("language")) in (cod, ""):
+        return str(autor["id"])
+    grupo = str(autor.get("translatedFromId") or autor["id"])
+    del_idioma = [a for a in lista if _idioma_base(a.get("language")) == cod]
+    for a in del_idioma:
+        if grupo in (str(a["id"]), str(a.get("translatedFromId") or "")):
+            return str(a["id"])
+    nombre = _nombre_autor(autor).lower()
+    for a in del_idioma:
+        if nombre and _nombre_autor(a).lower() == nombre:
+            return str(a["id"])
+    return None
+
+
+def autor_traduccion(nota: dict, cod: str) -> str:
+    """Quién firma la versión en `cod`: el equivalente del autor elegido para el original.
+
+    Antes las traducciones firmaban siempre con el autor por defecto de cada idioma,
+    aunque el original lo firmara otra persona. Sin autor elegido, o si HubSpot no
+    responde o esa persona no tiene versión en ese idioma, el autor por defecto.
+    """
+    elegido = nota.get("hubspot_autor_id")
+    if elegido:
+        try:
+            equivalente = autor_en_idioma(str(elegido), cod)
+        except ErrorHubSpot as e:
+            print(f"  [AVISO] No se pudo buscar el autor en {cod}: {e}. Se usa el autor por defecto.", flush=True)
+            equivalente = None
+        if equivalente:
+            return equivalente
+        print(f"  [AVISO] El autor elegido no tiene versión en {cod}: se usa el autor por defecto.", flush=True)
+    return AUTOR_POR_DEFECTO[cod]
 
 
 def _slug(texto: str, sufijo: str = "") -> str:
@@ -477,7 +544,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
             raise _error(resp)
         return {**_resultado(resp.json(), cuerpo, previo), "vinculada": previo.get("vinculada", False), "aviso": ""}
 
-    cuerpo["blogAuthorId"] = AUTOR_POR_DEFECTO[cod]
+    cuerpo["blogAuthorId"] = autor_traduccion(nota, cod)
     if categorias:
         cuerpo["tagIds"] = [ETIQUETAS[c][_COLUMNA[cod]] for c in categorias]
     cuerpo["slug"] = _slug(partes["titulo"], f"{str(nota.get('_id', ''))[-6:]}-{cod}")

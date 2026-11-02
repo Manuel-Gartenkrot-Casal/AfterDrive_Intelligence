@@ -696,3 +696,121 @@ def test_al_crear_la_nota_se_traduce_a_los_otros_idiomas(entorno, monkeypatch):
     assert pedidas == [("pt", "es"), ("pt", "en")]
     assert traducciones.al_dia(doc["traducciones"]["es"], doc["contenido"])
     assert doc["traducciones"]["en"] == {"error": "vino cortada"}
+
+
+# ── Caja de indicaciones de Crear nota ────────────────────────────────────────
+
+
+def test_las_indicaciones_llegan_al_plan_y_a_la_redaccion(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"], indicaciones="  Enfocá la nota en distribuidores de Córdoba.  ")
+    assert "Enfocá la nota en distribuidores de Córdoba." in llamadas["user"]
+    assert "Enfocá la nota en distribuidores de Córdoba." in llamadas["plan_user"]
+    assert "no se inventa nunca" in llamadas["user"]            # no pisan la regla de datos
+    assert col.docs[0]["indicaciones"] == "Enfocá la nota en distribuidores de Córdoba."
+
+
+def test_sin_indicaciones_el_pedido_queda_como_antes(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"])
+    assert "Indicaciones del equipo" not in llamadas["user"] and col.docs[0]["indicaciones"] is None
+
+
+def test_las_indicaciones_se_recortan_al_maximo():
+    pedido = g._pedido(["autopartes"], None, "x" * (g.INDICACIONES_MAX + 500))
+    assert pedido.count("x") == g.INDICACIONES_MAX
+
+
+# ── Empresas que no se nombran ────────────────────────────────────────────────
+
+
+@pytest.fixture
+def frasle_prohibida(monkeypatch):
+    from afterdrive import clientes
+    monkeypatch.setattr(clientes, "no_mencionar", lambda col=None: [{"nombre": "Frasle", "modo": "no_mencionar"}])
+
+
+def test_una_empresa_prohibida_se_corrige_y_sus_noticias_quedan_afuera(entorno, frasle_prohibida, monkeypatch):
+    _, col, _ = entorno
+    _con_tareas(monkeypatch, [NOTA], correccion=NOTA.replace("Frasle", "Una fabricante brasileña")
+                .replace("la planta de Una fabricante", "la planta de una fabricante"))
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert [f["url"] for f in doc["fuentes"]] == ["https://n/2"]     # la noticia sobre Frasle no se usó
+    assert "empresa_prohibida" in doc["calidad"]["reescrita_por"]
+    assert doc["empresas_prohibidas"] == [] and "Frasle" not in doc["contenido"]
+
+
+def test_el_system_prompt_lista_las_empresas_prohibidas():
+    system = g._build_system_prompt(["autopartes"], [], None, "comercial", prohibidos=[{"nombre": "Frasle"},
+                                                                                      {"nombre": "ZF"}])
+    assert "Nunca nombres a estas empresas, aunque aparezcan en las noticias: Frasle, ZF." in system
+
+
+def test_si_la_correccion_no_la_saca_queda_marcada_y_no_se_aprueba_sola(entorno, frasle_prohibida, monkeypatch):
+    from afterdrive.generacion import juez
+    _, col, _ = entorno
+    _con_tareas(monkeypatch, [NOTA], correccion="")
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert doc["empresas_prohibidas"] == ["Frasle"]
+    assert any("no se pueden mencionar: Frasle" in m for m in juez.filtro_duro(doc))
+
+
+def test_un_cliente_marcado_no_mencionar_no_se_usa_como_caso(entorno, monkeypatch):
+    llamadas, _, _ = entorno
+
+    class Clientes:
+        def find_one(self, filtro, *a, **k):
+            return {"slug": "acme", "nombre": "ACME", "modo": "no_mencionar"} if filtro.get("slug") == "acme" else None
+
+        def find(self, *a, **k):
+            return []
+
+    monkeypatch.setattr(g, "col_clientes", Clientes())
+    g.generar_nota(["autopartes"], clientes_ids=["acme"])
+    assert "Clientes a mencionar" not in llamadas["system"]
+
+
+# ── Noticias de notas rechazadas vuelven a estar disponibles ──────────────────
+
+
+def test_las_noticias_de_notas_rechazadas_se_liberan():
+    import mongomock
+    col = mongomock.MongoClient().db.notas_fase2
+    col.insert_many([
+        {"estado": "rechazada", "generado_en": "2026-10-03", "fuentes": [{"url": "https://n/1/"}, {"url": "https://n/2"}]},
+        {"estado": "borrador", "generado_en": "2026-10-02", "fuentes": [{"url": "https://n/2"}]},
+        {"estado": "rechazada", "generado_en": "2026-10-01", "fuentes": [{"url": "https://N/3"}]},
+    ])
+    # La 2 sigue en una nota que no se rechazó: no se libera. Las URLs se comparan sin "/" final ni mayúsculas.
+    assert contexto_noticias.urls_liberadas(col) == {"https://n/1", "https://n/3"}
+
+
+def test_si_mongo_falla_no_se_libera_ninguna():
+    class Rota:
+        def find(self, *a, **k):
+            raise RuntimeError("sin conexión")
+    assert contexto_noticias.urls_liberadas(Rota()) == set()
+
+
+def test_una_noticia_liberada_cuenta_como_no_usada(monkeypatch):
+    import mongomock
+
+    from afterdrive import db as db_module
+    from afterdrive.ingesta import embeddings
+    base = mongomock.MongoClient().db
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+    base.articulos.insert_many([
+        {"titulo": "Usada en rechazada", "cuerpo": "x", "url": "https://n/1", "usado_para_articulo": True, "usado_en": ahora},
+        {"titulo": "Usada en aprobada", "cuerpo": "x", "url": "https://n/2", "usado_para_articulo": True, "usado_en": ahora},
+    ])
+    monkeypatch.setattr(db_module, "col_articulos", base.articulos)
+    monkeypatch.setattr(contexto_noticias, "urls_liberadas", lambda: {"https://n/1"})
+    monkeypatch.setattr(llm, "embeber", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin embeddings")))
+    monkeypatch.setattr(llm, "modelo_embeddings", lambda: "x/y")
+    monkeypatch.setattr(embeddings, "vector_de", lambda d, modelo: None)
+    monkeypatch.setattr(contexto_noticias, "_completar_fichas", lambda ns, col: None)
+    elegidas = contexto_noticias.seleccionar("frenos", limite=2)
+    assert [n.titulo for n in elegidas] == ["Usada en rechazada", "Usada en aprobada"]
+    assert elegidas[0].liberada and not elegidas[0].usada_reciente and elegidas[1].usada_reciente

@@ -133,6 +133,11 @@ function chequeosDeNota(nota) {
           titulo: sin.length ? 'Datos sin respaldo' : 'Datos contra las noticias',
           linea: ok + ' de ' + v.total + ' datos aparecen en las noticias.', detalle: det });
   }
+  if ((nota.empresas_prohibidas || []).length) {
+    out.push({ c: 'err', id: 'prohibidas', titulo: 'Nombra empresas que no se mencionan',
+               linea: nota.empresas_prohibidas.join(', ') + '. Sacalas antes de aprobar.',
+               accion: { texto: 'Editar', onclick: 'editarNota()' } });
+  }
   if (nota.parecida_a) {
     out.push({ c: 'err', id: 'parecida', titulo: 'Parecida a una nota reciente',
                linea: 'Se parece a “' + nota.parecida_a.titulo + '” (' + Math.round(nota.parecida_a.similitud * 100) + '%).' });
@@ -298,6 +303,9 @@ function pintarGeneracion(nota, cont) {
     fija.innerHTML = '<span class="acordeon-titulo">Categorías</span><span class="etiquetas-nota">'
       + nota.categorias.map(function(c) { return '<span>' + escHtml(c.replace(/-/g, ' ')) + '</span>'; }).join('') + '</span>';
     cont.appendChild(fija);
+  }
+  if (nota.indicaciones) {
+    cont.appendChild(itemAcordeon('Indicaciones para la IA', 'Sí', '<p class="acordeon-nota">' + escHtml(nota.indicaciones) + '</p>'));
   }
   if (nota.plan) {
     var p = nota.plan, secciones = p.secciones || [];
