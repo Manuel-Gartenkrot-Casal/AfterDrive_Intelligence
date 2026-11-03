@@ -31,6 +31,8 @@ import os
 
 VARIABLE = "MODO_PAGO_HASTA"
 DURACION = datetime.timedelta(days=1)
+# Tolerancia para la diferencia de reloj entre Render y GitHub Actions.
+MARGEN_RELOJ = datetime.timedelta(minutes=10)
 
 
 def _ahora() -> datetime.datetime:
@@ -45,12 +47,22 @@ def _leer(crudo: str) -> datetime.datetime | None:
     return valor if valor.tzinfo else valor.replace(tzinfo=datetime.UTC)
 
 
-def hasta() -> datetime.datetime | None:
-    """Vencimiento del modo pago, o None si está apagado o ya venció."""
-    valor = _leer(os.getenv(VARIABLE, ""))
-    if valor is None or valor <= _ahora():
+def _vigente_hasta(valor: datetime.datetime | None) -> datetime.datetime | None:
+    """El vencimiento si sigue vigente y es creíble; None si no.
+
+    Un vencimiento a más de un día (p. ej. "2099-01-01" cargado a mano o un
+    reloj corrido) se descarta: si no, la API paga quedaría prendida y
+    cobrando sin límite de tiempo.
+    """
+    ahora = _ahora()
+    if valor is None or valor <= ahora or valor > ahora + DURACION + MARGEN_RELOJ:
         return None
     return valor
+
+
+def hasta() -> datetime.datetime | None:
+    """Vencimiento del modo pago, o None si está apagado, ya venció o es inválido."""
+    return _vigente_hasta(_leer(os.getenv(VARIABLE, "")))
 
 
 def vigente() -> bool:
@@ -114,7 +126,11 @@ def restaurar() -> None:
     except Exception as e:
         print(f"[MODO PAGO] No se pudo leer el modo pago guardado: {e}", flush=True)
         return
-    _aplicar(valor if valor and valor > _ahora() else None)
+    vigente_hasta = _vigente_hasta(valor)
+    if valor and vigente_hasta is None and valor > _ahora():
+        print(f"[MODO PAGO] Se ignora el vencimiento guardado {valor.isoformat()}: "
+              f"supera el máximo de {DURACION}.", flush=True)
+    _aplicar(vigente_hasta)
 
 
 def estado() -> dict:
