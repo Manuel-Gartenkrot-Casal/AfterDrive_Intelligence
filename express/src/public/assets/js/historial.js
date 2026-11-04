@@ -142,6 +142,7 @@ var PUBLICAR_DESDE_DASHBOARD = false;
    recorrido (ver recorrido.js) y al estado de la nota. */
 function pintarAccionesNota() {
   var cont = $('nota-acciones'), chip = $('modal-estado');
+  if ($('lectura-acciones')) $('lectura-acciones').innerHTML = '';
   if (!_notaActual) {
     chip.hidden = true;
     cont.innerHTML = '<button type="button" class="btn btn-xs" onclick="copiar()">Copiar texto</button>';
@@ -151,6 +152,7 @@ function pintarAccionesNota() {
   chip.hidden = false;
   chip.className = 'estado-chip ' + e;
   chip.textContent = NOMBRE_ESTADO_NOTA[e];
+  if (_recorrido.lectura) { pintarAccionesLectura(); return; }   // vista Cliente (lectura.js)
   // En todas las notas, esté o no configurado HubSpot en este servidor: si falta el
   // token, el bloque de la revisión lo dice y la subida devuelve el motivo.
   var subible = !n.sinDestino;   // sinDestino: no hay blog en su idioma
@@ -495,6 +497,7 @@ function pintarCuerpoNota() {
   if (n.idioma) html = '<div class="idiomas-cab">' + html + '</div>';
   html += '<div id="nota-texto" translate="no">' + DOMPurify.sanitize(marked.parse(texto)) + '</div>';
   $('art-body').innerHTML = html;
+  decorarLectura();   // vista Cliente: datos marcados y avisos (lectura.js); en Desarrollador no hace nada
 }
 
 function verIdiomaNota(cod) {

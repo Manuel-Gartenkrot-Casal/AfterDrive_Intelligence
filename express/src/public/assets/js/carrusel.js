@@ -23,6 +23,11 @@ function pintarCarrusel(nota, panel) {
 }
 
 function llenarCarrusel(nota) {
+  if (_recorrido && _recorrido.lectura) {   // vista Cliente: el carrusel está en la vista previa (lectura.js)
+    if (nota && _recorrido.nota) Object.assign(_recorrido.nota, { carruseles: nota.carruseles, carrusel: nota.carrusel });
+    pintarPanelLectura();
+    return;
+  }
   var cont = $('carrusel-cuerpo');
   if (!cont) return;
   var todos = carruselesDe(nota), hechos = IDIOMAS_CARRUSEL.filter(function(cod) { return todos[cod]; });
@@ -136,6 +141,7 @@ function igAlDeslizar() {
 function verCarrusel(cod) {
   _carruselVista = cod;
   var cont = $('carrusel-cuerpo');
+  if (_recorrido && _recorrido.lectura) { pintarPanelLectura(); return; }
   if (cont && cont._nota) llenarCarrusel(cont._nota);
 }
 
@@ -194,7 +200,8 @@ async function guardarTextosCarrusel() {
     return;
   }
   // Cuáles cambian (igual que carrusel.diapositivas_cambiadas en el servidor): 1 título y subtítulo, 2 puntos, 3 llamada a la acción.
-  var cont = $('carrusel-cuerpo'), antes = ((carruselesDe(cont._nota)[_carruselVista] || {}).textos) || {};
+  var cont = $('carrusel-cuerpo'), notaC = (cont && cont._nota) || (_recorrido && _recorrido.nota) || {};
+  var antes = ((carruselesDe(notaC)[_carruselVista] || {}).textos) || {};
   var cambian = [];
   if ((antes.titulo || '') !== body.titulo || (antes.subtitulo || '') !== body.subtitulo) cambian.push(1);
   if (JSON.stringify(antes.puntos || []) !== JSON.stringify(body.puntos)) cambian.push(2);

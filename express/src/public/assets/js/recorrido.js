@@ -19,6 +19,13 @@ var _recorrido = { activo: false, paso: 'publicar', nota: null };
 /* ── Armado ─────────────────────────────────────────────────────────────── */
 
 function armarRecorrido(nota, cont) {
+  if (vistaCliente()) { armarLectura(nota, cont); return; }   // vista Cliente: la nota como documento (lectura.js)
+  if ($('art-body').classList.contains('lectura-doc')) {      // venía de la vista Cliente: el texto sin marcas
+    salirDeLectura();
+    $('art-body').classList.remove('lectura-doc');
+    pintarCuerpoNota();
+  }
+  salirDeLectura();
   _recorrido = { activo: true, paso: pasoInicial(nota), nota: nota };
   $('modal-caja').classList.remove('sin-panel');
   cont.classList.add('recorrido');
@@ -39,6 +46,7 @@ function armarRecorrido(nota, cont) {
 
 // Sin recorrido (noticias, otras colecciones): el modal es una sola columna.
 function sinRecorrido() {
+  salirDeLectura();
   _recorrido = { activo: false, paso: 'publicar', nota: null };
   $('modal-caja').classList.add('sin-panel');
   $('check-list').classList.remove('recorrido');
@@ -54,6 +62,7 @@ function pasoInicial(nota) {
 
 function irAPaso(id, opts) {
   opts = opts || {};
+  if (_recorrido.lectura) { irAPasoLectura(id, opts); return; }
   _recorrido.paso = id;
   PASOS.forEach(function(p) {
     var tab = $('tab-' + p.id), panel = $('paso-' + p.id);
@@ -399,6 +408,7 @@ function imagenCambiada(imagen) {
   var nota = _recorrido.nota;
   if (imagen) { nota.imagen = imagen; nota.imagen_eleccion = { metodo: 'manual' }; }
   else delete nota.imagen;
+  if (_recorrido.lectura) { pintarCuerpoNota(); pintarPanelLectura(); return; }
   pintarPasoRevisar(nota, $('paso-revisar'));
   pintarPasoPublicar(nota, $('paso-publicar'));
   actualizarPasos();

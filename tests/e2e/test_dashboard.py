@@ -15,7 +15,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from tests.e2e.conftest import abrir
+from tests.e2e.conftest import abrir, elegir_idioma, pasar_a_dev
 
 pytestmark = pytest.mark.e2e
 
@@ -26,6 +26,11 @@ def _visible(pg, seccion):
     """Si algún bloque de la sección se ve (en modo cliente hay bloques solo-dev ocultos)."""
     return pg.evaluate("""s => [...document.querySelectorAll('main [data-seccion="' + s + '"]')]
         .some(el => el.offsetParent !== null)""", seccion)
+
+
+# La revisión con pasos (Revisar → Calificar → Publicar) es la de la vista Desarrollador;
+# en la vista Cliente la nota se lee como documento (ver test_lectura.py).
+VISTA_DEV = pytest.mark.parametrize("pagina", ["dev"], indirect=True)
 
 
 def test_login_carga_el_dashboard_sin_errores(pagina):
@@ -123,6 +128,7 @@ def _abrir_nota(pg, titulo):
     pg.locator("#modal-art.open").wait_for()
 
 
+@VISTA_DEV
 def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     _abrir_nota(pagina, "Frenos")
     acciones = pagina.locator("#nota-acciones")
@@ -169,6 +175,7 @@ def _volver_a_revisar(pg, titulo):
     }""", titulo)
 
 
+@VISTA_DEV
 def test_recorrido_de_revision(pagina):
     # Para revisar: abre en Revisar, con lo que necesita atención primero.
     _volver_a_revisar(pagina, "Frenos")
@@ -205,7 +212,7 @@ def test_recorrido_de_revision(pagina):
 
 
 def test_recorrido_en_el_celular(navegador, base_url):
-    pg = abrir(navegador, base_url, ancho=390, alto=844)
+    pg = abrir(navegador, base_url, ancho=390, alto=844, modo="dev")
     try:
         pg.click("#menu-movil")
         _abrir_nota(pg, "Frenos")
@@ -223,6 +230,7 @@ def test_recorrido_en_el_celular(navegador, base_url):
         pg.context.close()
 
 
+@VISTA_DEV
 def test_vista_previa_de_la_nota(pagina):
     _abrir_nota(pagina, "Marketplaces")
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
@@ -267,7 +275,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
         ruta.fulfill(json={"success": True, "provider": "paga", "model": "modelo-e2e"})
 
     pagina.route("**/api/providers", cambiar)
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
@@ -317,6 +325,7 @@ def test_cancelar_la_nota_en_curso(pagina):
     expect(pagina.locator('#f2-pasos [data-paso="6"]')).to_be_hidden()
 
 
+@VISTA_DEV
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
@@ -369,6 +378,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")
 
 
+@VISTA_DEV
 def test_calificacion_de_la_ia_en_su_apartado(pagina):
     # En la lista, como las estrellas de una persona, con la marca IA (6/10 = 3 de 5).
     pagina.click('.sidebar a[data-seccion="historial"]')
@@ -417,6 +427,7 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
     assert len(pedidos) == 1 and pedidos[0]["coleccion"] == "notas_fase2" and pedidos[0]["id"]
 
 
+@VISTA_DEV
 def test_la_calificacion_de_la_ia_sigue_el_idioma_del_dashboard(pagina):
     pedidos = []
 
@@ -447,6 +458,7 @@ def test_la_calificacion_de_la_ia_sigue_el_idioma_del_dashboard(pagina):
     pagina.locator(".header").get_by_role("button", name="ES").click()
 
 
+@VISTA_DEV
 def test_si_la_ia_no_puede_revisar_lo_dice_en_el_apartado(pagina):
     pagina.route("**/api/historial/critica", lambda r: r.fulfill(
         status=503, json={"success": False, "error": "Proveedor de IA no disponible para criticar la nota."}))
@@ -460,12 +472,12 @@ def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
     # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
     pagina.click("#confirmar-no")
     assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
     expect(tablero).to_be_hidden()
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
@@ -492,6 +504,7 @@ def test_el_largo_de_la_nota_se_guarda(pagina):
     pagina.locator("#barra-crear").locator('[data-accion="guardar"]').click()
 
 
+@VISTA_DEV
 def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
     from tests.e2e.servidor import FOTO_E2E
     _abrir_nota(pagina, "Marketplaces")
@@ -514,6 +527,7 @@ def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
     pagina.locator(".previa-sin-imagen").wait_for()
 
 
+@VISTA_DEV
 def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
@@ -532,6 +546,7 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
     expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
 
 
+@VISTA_DEV
 def test_publicar_muestra_la_destacada_y_las_dos_del_texto(pagina):
     _abrir_nota(pagina, "Baterías en el mostrador")
     pagina.locator("#tab-publicar").click()
@@ -549,6 +564,7 @@ def _cambiar_desde_afuera(pg, contenido):
         body: JSON.stringify({coleccion: 'notas_fase2', id: _notaActual.id, contenido: c})}).then(r => r.ok)""", contenido)
 
 
+@VISTA_DEV
 def test_la_nota_y_la_lista_se_actualizan_sin_refrescar(pagina):
     _abrir_nota(pagina, "Baterías en el mostrador")
     pagina.locator("#tab-publicar").click()
@@ -578,6 +594,7 @@ def test_la_nota_y_la_lista_se_actualizan_sin_refrescar(pagina):
     expect(pagina.locator(".hist-item", has_text="Baterías: cambió otra persona")).to_be_visible()
 
 
+@VISTA_DEV
 def test_imagen_desde_la_computadora(pagina):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
     _abrir_nota(pagina, "Frenos")
@@ -608,6 +625,7 @@ def test_imagen_desde_la_computadora(pagina):
     expect(pagina.locator(".previa-imagen")).not_to_have_attribute("src", src)
 
 
+@VISTA_DEV
 def test_elegir_imagen_abre_el_selector_y_la_deja_en_la_nota(pagina):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
     # Los tests comparten servidor: se arranca sin imagen.
@@ -638,6 +656,7 @@ def test_elegir_imagen_abre_el_selector_y_la_deja_en_la_nota(pagina):
     expect(lateral.locator("#paso-publicar .revision-imagen")).not_to_have_attribute("src", src)
 
 
+@VISTA_DEV
 def test_la_vista_previa_marca_las_fotos_que_la_ia_descarto(pagina):
     _abrir_nota(pagina, "Marketplaces")
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
@@ -734,12 +753,12 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     assert pg.evaluate("document.documentElement.lang") == "en"
 
     # Desde el encabezado, a portugués; queda elegido al recargar.
-    pg.locator(".header-right .selector-idioma").get_by_role("button", name="PT").click()
+    elegir_idioma(pg, "pt")
     expect(nav).to_contain_text("Criar post")
     pg.reload()
     pg.wait_for_selector(".sidebar")
     expect(nav).to_contain_text("Histórico")
-    assert pg.locator(".header-right [data-idioma='pt']").get_attribute("aria-pressed") == "true"
+    assert pg.locator(".selector-idioma [data-idioma='pt']").get_attribute("aria-pressed") == "true"
 
     # Lo que el JS pinta después también sale traducido.
     pg.goto(base_url + "/#crear")
@@ -762,7 +781,7 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
 
 def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, base_url):
     # El botón de HubSpot está en todas las notas. Sin token, el bloque de la revisión lo dice.
-    pg = abrir(navegador, base_url)
+    pg = abrir(navegador, base_url, modo="dev")
     pg.context.route("**/api/hubspot/estado", lambda r: r.fulfill(json={"success": True, "configurado": False}))
     pg.reload()
     pg.wait_for_selector(".sidebar")

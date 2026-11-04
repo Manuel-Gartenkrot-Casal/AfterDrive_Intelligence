@@ -97,6 +97,33 @@ def test_restaurar_retoma_el_modo_vigente_y_descarta_el_vencido(paga_configurada
     assert llm.proveedor_activo() == "openrouter"
 
 
+@pytest.mark.parametrize("hasta", ["2099-01-01T00:00:00+00:00", "2026-10-21T12:00:00+00:00"])
+def test_restaurar_descarta_un_vencimiento_a_mas_de_un_dia(paga_configurada, store, reloj, hasta):
+    store["modo_pago"] = {"hasta": hasta}
+    modo_pago.restaurar()
+    assert not modo_pago.vigente()
+    assert llm.proveedor_activo() == "openrouter"
+
+
+def test_vencimiento_en_el_entorno_a_mas_de_un_dia_no_cuenta(paga_configurada, store, reloj, monkeypatch):
+    monkeypatch.setenv(modo_pago.VARIABLE, "2099-01-01T00:00:00+00:00")
+    assert modo_pago.hasta() is None
+    assert llm.proveedor_activo() == "openrouter"
+    assert modo_pago.estado()["modo_pago_activo"] is False
+
+
+def test_un_dia_justo_con_reloj_algo_adelantado_sigue_valiendo(paga_configurada, store, reloj):
+    # Lo prendió otro servidor cuyo reloj va 5 minutos adelantado.
+    store["modo_pago"] = {"hasta": "2026-10-20T12:05:00+00:00"}
+    modo_pago.restaurar()
+    assert modo_pago.vigente()
+
+
+def test_un_vencimiento_invalido_se_ignora(paga_configurada, store, reloj, monkeypatch):
+    monkeypatch.setenv(modo_pago.VARIABLE, "mañana")
+    assert not modo_pago.vigente()
+
+
 def test_el_ejecutor_de_github_toma_el_modo_pago(paga_configurada, store, reloj, monkeypatch):
     from afterdrive import ejecutor_externo
     monkeypatch.delenv("AI_PROVIDER_OVERRIDE", raising=False)

@@ -24,7 +24,13 @@ import sys
 
 
 def reclasificar(dias: int = 30, limite: int = 500) -> dict:
-    """{"revisados", "aprobados", "rechazados", "pendientes"}."""
+    """{"revisados", "aprobados", "rechazados", "pendientes"}.
+
+    `dias` y `limite` tienen que ser al menos 1: en Mongo un limit(0) es
+    "sin límite", así que reclasificaría (y pagaría) todos los descartados.
+    """
+    if dias < 1 or limite < 1:
+        raise ValueError("dias y limite tienen que ser al menos 1")
     from afterdrive.ingesta import ingesta
 
     # Las mismas colecciones en las que escribe la ingesta.
@@ -51,11 +57,21 @@ def reclasificar(dias: int = 30, limite: int = 500) -> dict:
     return resumen
 
 
-def main() -> int:
+def _entero_positivo(texto: str) -> int:
+    try:
+        valor = int(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un número entero") from None
+    if valor < 1:
+        raise argparse.ArgumentTypeError("tiene que ser al menos 1")
+    return valor
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Vuelve a clasificar los artículos descartados.")
-    parser.add_argument("--dias", type=int, default=30, help="descartados en los últimos N días (30)")
-    parser.add_argument("--limite", type=int, default=500, help="como mucho N artículos (500)")
-    args = parser.parse_args()
+    parser.add_argument("--dias", type=_entero_positivo, default=30, help="descartados en los últimos N días (30)")
+    parser.add_argument("--limite", type=_entero_positivo, default=500, help="como mucho N artículos (500)")
+    args = parser.parse_args(argv)
     reclasificar(args.dias, args.limite)
     return 0
 

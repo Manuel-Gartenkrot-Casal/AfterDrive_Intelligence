@@ -21,6 +21,7 @@ express/src/public/
         ├── generador.js      Crear nota y el modal de la nota
         ├── historial.js      Historial y revisión de notas
         ├── revision.js       calificación, lo revisado al generar y panel de calibración
+        ├── lectura.js        revisión de la nota en la vista Cliente (la nota como documento)
         ├── tour.js           recorrido guiado y menú de Ayuda
         ├── arranque.js       inicializa todo al cargar
         └── paginas/ayuda.js  página /ayuda (documentación); no la carga index.html, sino ayuda.html
@@ -53,12 +54,15 @@ Lo que más vas a tocar:
 |---|---|
 | `navegacion.js` | Navegación. `irASeccion('fuentes')` cambia de sección; la sección vive en el hash (`#fuentes`) |
 | `navegacion.js` | `setModo('cliente' \| 'dev')` |
+| `buscador.js` | **Buscar o saltar a…** (vista Cliente: botón del encabezado, ⌘K / Ctrl+K): sin escribir lista las secciones; al escribir filtra y busca notas por título, tema o texto (`/api/historial/generados_aprobados?q=`). Flechas, Enter y Esc |
+| `navegacion.js` | **Marco de la vista Cliente en escritorio** (`ajustarMarcoCliente`): arriba una barra fina con el logo, la sección actual (`pintarMiga`) y "+ Nueva nota"; a la izquierda una barra de íconos (las mismas `.nav-link`) con los íconos de las maquetas (`.icono-riel`) y abajo idioma (un botón con el elegido que despliega los otros), tema, ayuda y salir (se mueven los mismos elementos del encabezado). Pasar a Desarrollador está en el menú de Ayuda. En Desarrollador y en el celular vuelven a su lugar. La revisión de una nota se abre a la derecha de la barra |
 | `base.js` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
 | `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas |
 | `historial.js` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`): aprobar, rechazar con motivo, editar, vista previa con imagen y HubSpot |
 | `tour.js` | Recorrido guiado (`PASOS_TOUR`): se abre solo la primera vez en cada navegador (`localStorage` `ad-tour-visto`) y desde **Ayuda → Repetir el tutorial**. Cada paso va a su sección y resalta un elemento real; si no se ve en la vista actual, se saltea (`soloDev` marca los de Desarrollador). Al agregar una función nueva, sumale su paso |
 | `paginas/ayuda.js` + `ayuda.html` | **Ayuda → Ver la documentación**: la guía de uso (`docs/guia-de-uso.md`), el glosario y la documentación técnica, renderizados con marked + DOMPurify. Los documentos son una lista blanca (`DOCUMENTOS` en `flask_api.py`) |
 | `idioma.js` + `i18n/textos.js` | Interfaz en español, portugués o inglés (ver abajo) |
+| `lectura.js` | **Revisión de una nota en la vista Cliente**: la nota en serif con los datos verificados marcados (verde con respaldo, amarillo dudoso, rojo sin respaldo) y su aviso debajo del párrafo; arriba "Notas / título", estado y Rechazar / Aprobar y subir; a la derecha un panel con la vista previa (switch Blog / Instagram / LinkedIn) o la calificación; abajo una barra flotante (Editar, Calificar, Vista previa, Más). Reusa las acciones de `historial.js`, `revision.js` y `carrusel.js`. La vista Desarrollador sigue con el recorrido de `recorrido.js` (`armarRecorrido` decide según la vista) |
 | `revision.js` | Calificación de la nota abierta (estrellas, etiquetas, comentario), lo que se revisó al generarla (datos contra las noticias, estilo y SEO, plan) y el panel "Cómo aprende la generación" del Historial |
 | `base.js` | `confirmar()` (diálogo; con `campo` pide un texto, como el motivo de un rechazo) y `pedir()` (`fetch` que lanza error si el server responde error) |
 
