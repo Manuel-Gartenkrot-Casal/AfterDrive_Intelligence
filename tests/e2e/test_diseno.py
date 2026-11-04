@@ -88,6 +88,23 @@ def test_categorias_con_teclado_y_descartar(pagina):
     expect(categoria).to_have_attribute("aria-pressed", "false")
 
 
+def test_crear_nota_tono_y_largo_con_botones(pagina):
+    pagina.locator('.nav-link[data-seccion="crear"]').click()
+    tonos = pagina.locator("#f2-persona-chips")
+    tonos.get_by_role("radio", name="Divulgativo").click()
+    expect(pagina.locator("#f2-persona")).to_have_value("divulgativo")
+    expect(tonos.get_by_role("radio", name="Divulgativo")).to_have_attribute("aria-checked", "true")
+    pagina.locator("#f2-largo-chips").get_by_role("radio", name="Corto").click()
+    expect(pagina.locator("#f2-largo")).to_have_value("corto")
+    expect(pagina.locator("#crear-resumen")).to_contain_text("Divulgativo")
+    expect(pagina.locator("#barra-crear")).to_be_visible()     # el largo se guarda: avisa el cambio
+    pagina.locator('#barra-crear [data-accion="descartar"]').click()
+    expect(pagina.locator("#f2-largo-chips").get_by_role("radio", name="Medio")).to_have_attribute("aria-checked", "true")
+    # En escritorio, "Tu nota" queda a la derecha del formulario.
+    panel, form = pagina.locator(".f2-acciones").bounding_box(), pagina.locator(".fase2-grupos").bounding_box()
+    assert panel["x"] > form["x"] + form["width"]
+
+
 def test_saltar_al_contenido_conserva_seccion(pagina):
     pagina.locator('.nav-link[data-seccion="crear"]').click()
     pagina.locator('.skip-link').focus()

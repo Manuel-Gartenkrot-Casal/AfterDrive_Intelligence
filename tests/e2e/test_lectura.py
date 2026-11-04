@@ -124,14 +124,31 @@ def test_la_vista_desarrollador_sigue_con_los_pasos(pagina):
 
 
 def test_marco_de_la_vista_cliente_y_buscador(pagina):
-    # Arriba: logo, la sección actual y "+ Nueva nota"; a la izquierda, solo íconos.
-    expect(pagina.locator("#header-miga")).to_have_text("Inicio")
+    # Arriba: el logo y "afterdrive" como siempre (no el nombre de la sección), "+ Nueva nota",
+    # idioma, tema y salir; a la izquierda, la barra de íconos con Ayuda abajo.
+    expect(pagina.locator(".header-title")).to_be_visible()
+    expect(pagina.locator("#header-miga")).to_be_hidden()
     expect(pagina.locator(".header-nueva")).to_be_visible()
+    for control in (".selector-idioma", "#themeBtn", "#btn-salir"):
+        expect(pagina.locator(".header-right " + control)).to_be_visible()
+    expect(pagina.locator(".rail-pie #ayuda-btn")).to_be_visible()
     assert pagina.locator(".sidebar").bounding_box()["width"] <= 57
-    expect(pagina.locator(".rail-pie #themeBtn")).to_be_visible()
-    expect(pagina.locator(".rail-pie #btn-salir")).to_be_visible()
+    # Las secciones en el orden de siempre.
+    orden = pagina.evaluate("[...document.querySelectorAll('.nav-link')].map(a => a.dataset.seccion)")
+    assert orden == ["inicio", "crear", "historial", "programacion", "fuentes", "prompts", "corridas"]
+    ys = [pagina.locator(f'.nav-link[data-seccion="{s}"]').bounding_box()["y"] for s in orden]
+    assert ys == sorted(ys)
+    # La barra se despliega con los nombres y se recuerda al volver a entrar.
+    barra = pagina.locator(".sidebar")
+    pagina.click("#rail-toggle")
+    expect(pagina.locator('.nav-link[data-seccion="historial"]')).to_contain_text("Historial")
+    expect(barra).to_have_css("width", "224px")
+    pagina.reload()
+    expect(barra).to_have_css("width", "224px")
+    pagina.click("#rail-toggle")
+    expect(barra).to_have_css("width", "56px")
     pagina.click('.nav-link[data-seccion="historial"]')
-    expect(pagina.locator("#header-miga")).to_have_text("Notas")
+    expect(pagina.locator("#header-miga")).to_be_hidden()
     # Ctrl+K: buscar una nota por el título y abrirla con Enter.
     pagina.keyboard.press("Control+k")
     expect(pagina.locator("#buscador")).to_be_visible()
@@ -144,4 +161,4 @@ def test_marco_de_la_vista_cliente_y_buscador(pagina):
     # Sin escribir, lleva a una sección.
     pagina.click("#buscador-btn")
     pagina.locator(".buscador-item", has_text="Fuentes").click()
-    expect(pagina.locator("#header-miga")).to_have_text("Fuentes")
+    pagina.wait_for_function("location.hash === '#fuentes'")

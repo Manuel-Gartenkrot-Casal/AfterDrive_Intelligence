@@ -203,6 +203,15 @@ def test_un_verbo_en_negrita_al_empezar_una_vinieta_no_es_un_dato():
     assert [d for d, _ in datos] == ["Frasle", "Grupo Tagle", "Grupo SIMPA"]
 
 
+def test_una_oracion_en_negrita_que_abre_un_paso_no_es_un_dato():
+    # Caso real: "1. Escolha as aplicações com mais circulação." quedó como dato dudoso.
+    datos = verificacion.extraer_datos(
+        "**1. Escolha as aplicações com mais circulação.** Comece pelos modelos.\n\n"
+        "**2. Publique fichas técnicas completas e separadas.** Cada anúncio.\n\n"
+        "**3. Meça o giro em 60 dias.** Segundo **Grupo Comolatti S.A.** e a **Bosch**, sim.")
+    assert [d for d, _ in datos] == ["Grupo Comolatti S.A.", "Bosch", "60"]
+
+
 def test_el_plan_pide_el_idioma_de_la_nota(monkeypatch):
     pedidos = []
     monkeypatch.setattr(llm, "completar", lambda s, u, **k: pedidos.append(u) or "nada")
