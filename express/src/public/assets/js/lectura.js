@@ -131,16 +131,14 @@ function decorarLectura() {
   lineaMeta.className = 'lectura-meta';
   lineaMeta.innerHTML = meta.filter(Boolean).map(function(x) { return '<span>' + escHtml(x) + '</span>'; }).join('');
   if (h1) h1.after(lineaMeta); else texto.prepend(lineaMeta);
+  if (!principal) return;   // las marcas y los avisos son del texto original
 
-  // Los datos se verificaron en el texto original; en una traducción se marcan donde
-  // aparecen (las cifras se reconocen aunque cambien los separadores: 2,65 = 2.65).
-  var v = nota.verificacion || {}, sirve = function(d) { return esDatoVerificable(d) && noOculto(d); };
-  marcarDatos(texto, (v.respaldados || []).filter(esDatoVerificable), 'ok');
-  marcarDatos(texto, (v.dudosos || []).filter(sirve), 'duda');
-  marcarDatos(texto, (v.sin_respaldo || []).filter(sirve), 'sin');
-  avisosDeDatos(texto, (v.sin_respaldo || []).filter(sirve), 'sin');
-  avisosDeDatos(texto, (v.dudosos || []).filter(sirve), 'duda');
-  if (!principal) return;   // los demás avisos y "Cómo se generó" son de la nota original
+  var v = nota.verificacion || {};
+  marcarDatos(texto, v.respaldados || [], 'ok');
+  marcarDatos(texto, (v.dudosos || []).filter(noOculto), 'duda');
+  marcarDatos(texto, (v.sin_respaldo || []).filter(noOculto), 'sin');
+  avisosDeDatos(texto, (v.sin_respaldo || []).filter(noOculto), 'sin');
+  avisosDeDatos(texto, (v.dudosos || []).filter(noOculto), 'duda');
 
   // Lo demás que necesita atención, arriba del texto.
   var otros = chequeosDeNota(nota).filter(function(c) { return c.c !== 'ok' && c.id !== 'datos'; });
@@ -167,52 +165,19 @@ function decorarLectura() {
 
 function noOculto(dato) { return !_lectura.ocultos[dato]; }
 
-/* Un dato es una cifra o un nombre propio. Las notas viejas guardaron como "dato"
-   frases en negrita que abren un paso ("1. Elegí las aplicaciones con más
-   circulación."): no se marcan. Misma regla que extraer_datos (verificacion.py). */
-function esDatoVerificable(dato) {
-  var d = String(dato || '').trim();
-  if (d.length < 2) return false;
-  if (/\d/.test(d.replace(/^\d+[.)]\s+/, ''))) return true;
-  d = d.replace(/^\d+[.)]\s*/, '');
-  var palabras = d.split(/\s+/);
-  if (palabras.length === 1) return true;
-  if (/[.:!?]$/.test(d) && !/\b[A-Z]\.[A-Z]?\.?$|Ltda\.$|Inc\.$|Corp\.$/.test(d)) return false;   // termina como una oración
-  // Un nombre lleva mayúscula más allá de la primera palabra ("Mercado Libre"); una frase, no.
-  return palabras.length <= 3 || palabras.slice(1).some(function(p) { return /^[A-ZÁÉÍÓÚÂÊÔÃÕÇÑ]/.test(p); });
-}
-
-/* Dónde está el dato en un texto: [inicio, largo] o null. Primero tal cual; si es
-   una cifra, por sus dígitos (en una traducción "US$ 2,65 trilhões" es "US$ 2.65 trillion"). */
-var _MONEDA = '(?:US\\$|USD|U\\$S|R\\$|€|\\$)';
-var _MAGNITUD = '(?:mil millones|millones|millón|milhões|milhão|millions?|bilhões|bilhão|billones|billón|billions?|trilhões|trilhão|trillions?|mil|mi|bi|tri|M|B)';
-function patronDeDato(dato) {
-  var d = String(dato).trim(), digitos = d.replace(/\D/g, '');
-  if (!digitos || (digitos.length < 2 && !/%/.test(d))) return null;
-  var moneda = new RegExp('^' + _MONEDA, 'i').test(d), magnitud = new RegExp('\\d\\s?' + _MAGNITUD + '\\b', 'i').test(d);
-  return new RegExp((moneda ? _MONEDA + '\\s?' : '') + '(?<![\\d.,])' + digitos.split('').join('[.,\\s\\u00a0\\u202f]?') + '(?![\\d]|[.,]\\d)'
-    + (/%|por ciento/i.test(d) ? '\\s?(?:%|por ciento|percent)' : '') + (magnitud ? '(?:\\s?' + _MAGNITUD + '\\b)?' : ''), 'i');
-}
-function buscarDato(texto, dato, patron) {
-  var i = texto.toLocaleLowerCase().indexOf(dato.toLocaleLowerCase());
-  if (i >= 0) return [i, dato.length];
-  var m = patron && patron.exec(texto);
-  return m ? [m.index, m[0].length] : null;
-}
-
 /* Envuelve cada aparición del dato en el texto (sin tocar los enlaces). */
 function marcarDatos(raiz, datos, clase) {
   datos.slice().sort(function(a, b) { return b.length - a.length; }).forEach(function(dato) {
     var buscado = String(dato || '').trim();
     if (buscado.length < 2) return;
-    var patron = patronDeDato(buscado), caminante = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT), nodos = [];
+    var bajo = buscado.toLocaleLowerCase(), caminante = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT), nodos = [];
     while (caminante.nextNode()) nodos.push(caminante.currentNode);
     nodos.forEach(function(nodo) {
       if (nodo.parentNode.closest('mark.dato, a, .lectura-meta, .lectura-aviso')) return;
-      var donde = buscarDato(nodo.data, buscado, patron);
-      if (!donde) return;
-      var medio = nodo.splitText(donde[0]);
-      medio.splitText(donde[1]);
+      var i = nodo.data.toLocaleLowerCase().indexOf(bajo);
+      if (i < 0) return;
+      var medio = nodo.splitText(i);
+      medio.splitText(buscado.length);
       var marca = document.createElement('mark');
       marca.className = 'dato ' + clase;
       marca.dataset.dato = dato;
@@ -225,10 +190,9 @@ function marcarDatos(raiz, datos, clase) {
 
 /* Un aviso debajo del párrafo donde aparece cada dato dudoso o sin respaldo (uno por párrafo). */
 function avisosDeDatos(raiz, datos, clase) {
-  var porBloque = new Map(), sueltos = [], visto = {};
+  var porBloque = new Map(), sueltos = [];
   datos.forEach(function(dato) {
     var marca = raiz.querySelector('mark.dato[data-dato="' + CSS.escape(dato) + '"]');
-    visto[dato] = marca ? marca.textContent : dato;   // en una traducción, como quedó escrito ahí
     var bloque = marca && marca.closest('p, li, h2, h3, blockquote');
     if (!bloque) { sueltos.push(dato); return; }
     if (bloque.tagName === 'LI') bloque = bloque.closest('ul, ol') || bloque;
@@ -240,8 +204,8 @@ function avisosDeDatos(raiz, datos, clase) {
     div.className = 'lectura-aviso' + (clase === 'sin' ? ' err' : '');
     div.setAttribute('role', 'note');
     div.innerHTML = '<span class="lectura-aviso-icono" aria-hidden="true">' + (clase === 'sin' ? '!' : '⚠') + '</span>'
-      + '<div><div class="lectura-aviso-titulo"><b>' + escHtml(tr(clase === 'sin' ? (lista.length === 1 ? 'Dato sin respaldo' : 'Datos sin respaldo') : (lista.length === 1 ? 'Dato dudoso' : 'Datos dudosos')))
-      + '</b>' + lista.map(function(d) { return '<q translate="no">' + escHtml(visto[d]) + '</q>'; }).join('') + '</div><span>' + escHtml(tr(clase === 'sin' ? 'No aparece en las noticias: revisalo o quitalo antes de publicar.'
+      + '<div><b>' + escHtml(tr(clase === 'sin' ? (lista.length === 1 ? 'Dato sin respaldo' : 'Datos sin respaldo') : (lista.length === 1 ? 'Dato dudoso' : 'Datos dudosos'))
+      + ': ' + lista.join(', ')) + '</b><span>' + escHtml(tr(clase === 'sin' ? 'No aparece en las noticias: revisalo o quitalo antes de publicar.'
                                                                                  : 'No aparece literal en las noticias.')) + '</span></div>'
       + (_notaActual.estado !== 'publicado' ? '<button type="button" class="btn btn-xs" onclick="editarNota()">' + escHtml(tr('Editar')) + '</button>' : '')
       + '<button type="button" class="btn btn-xs" data-datos="' + escHtml(JSON.stringify(lista)) + '" onclick="dejarDatos(this)">' + escHtml(tr('Dejar así')) + '</button>';

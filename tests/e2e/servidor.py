@@ -63,12 +63,7 @@ def sembrar_nota_de_lectura() -> None:
                      "O mercado global, estimado em **US$ 2,65 trilhões**, cresce.\n\n*A oficina independente concentra o reparo.*",
         "generado_en": "2026-10-10T14:00:00+00:00", "estado": "aprobada", "idioma": "pt", "persona": "divulgativo",
         "categorias": ["autopartes"], "fuentes": [{"titulo": "AAPEX 2026", "url": "https://s.com/aapex"}],
-        # Un paso en negrita guardado como "dato" (notas viejas): no se marca.
-        "verificacion": {"total": 4, "respaldados": ["72%", "28%"], "sin_respaldo": [],
-                         "dudosos": ["US$ 2,65 trilhões", "1. Escolha as aplicações com mais circulação."]},
-        "traducciones": {"es": {"contenido": "# Repuestos para eléctricos: el canal independiente\n\n## Qué pasó\n\n"
-                                             "Los talleres independientes representaron el **72 %** de la capacidad de reparación. "
-                                             "El mercado global, estimado en **US$ 2.65 billones**, crece.", "huella": "x", "al_dia": True}},
+        "verificacion": {"total": 3, "respaldados": ["72%", "28%"], "sin_respaldo": [], "dudosos": ["US$ 2,65 trilhões"]},
         "calidad": {"puntaje": 8, "fallas_criticas": [], "intentos": 1, "reescrita_por": []},
         "carruseles": {"pt": {"idioma": "pt", "textos": {"titulo": "Peças para elétricos", "subtitulo": "Comece pela oficina.",
                                                          "puntos": ["Teste a demanda."], "cta": "Leia o artigo"},
