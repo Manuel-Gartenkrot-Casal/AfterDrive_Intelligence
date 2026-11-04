@@ -844,6 +844,8 @@ _FILAS_TEXTOS.push(
 ["Revisar y publicar", "Revisar e publicar", "Review and publish"],
 ["Programar tareas", "Agendar tarefas", "Schedule tasks"],
 ["Calificación de la IA", "Avaliação da IA", "AI rating"],
+["Desplegar menú", "Expandir menu", "Expand menu"],
+["Contraer menú", "Recolher menu", "Collapse menu"],
 ["Listo", "Pronto", "Done"],
 ["líneas", "linhas", "lines"],
 ["lo arma el sistema", "montado pelo sistema", "built by the system"],
