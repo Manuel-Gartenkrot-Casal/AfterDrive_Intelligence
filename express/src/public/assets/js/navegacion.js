@@ -196,7 +196,7 @@ document.addEventListener('keydown', function(e) {
    "+ Nueva nota", el idioma, el estado, el tema y salir. A la izquierda la barra
    de secciones, que se despliega: plegada muestra solo los íconos; desplegada,
    también el nombre de cada sección, como la barra de antes (se recuerda en
-   ad-riel). Ayuda baja al pie de esa barra, junto al botón que la despliega. En
+   ad-riel); el botón que la despliega va arriba de todo. Ayuda baja al pie. En
    Desarrollador y en el celular todo queda como siempre.
    ═══════════════════════════════════════════════════════════════════════ */
 var NOMBRE_SECCION = { inicio: 'Inicio', crear: 'Nueva nota', historial: 'Notas', programacion: 'Programación',
@@ -237,7 +237,6 @@ function pintarRiel() {
     var texto = tr(abierto ? 'Contraer menú' : 'Desplegar menú');
     btn.setAttribute('aria-label', texto);
     btn.title = texto;
-    btn.querySelector('span').textContent = texto;
   }
   // Plegada, cada ícono dice qué es al pasar el mouse; desplegada ya se lee el nombre.
   document.querySelectorAll('.nav-link').forEach(function(a) {

@@ -3141,31 +3141,32 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
    despliega (--ancho-riel): plegada, solo íconos; desplegada, también los nombres,
    como antes. Abajo, el botón que la despliega y Ayuda.
    ═══════════════════════════════════════════════════════════════════════ */
-.header-miga, .header-nueva, .rail-pie, .buscador-btn, .icono-riel, .ayuda-dev { display: none; }
+.header-miga, .header-nueva, .rail-pie, .rail-cabeza, .buscador-btn, .icono-riel, .ayuda-dev { display: none; }
 @media (min-width: 901px) {
   html[data-modo="cliente"] { scrollbar-gutter: auto; }   /* sin la franja reservada a la derecha */
   [data-modo="cliente"] { --linea-suave: color-mix(in srgb, var(--border) 55%, var(--bg)); --icono-riel: color-mix(in srgb, var(--text-lo) 72%, var(--bg));
     --ancho-riel: 56px; }
   [data-modo="cliente"][data-riel="abierto"] { --ancho-riel: 224px; }
   [data-modo="cliente"] .app-container { padding: 0; }
-  [data-modo="cliente"] .header { height: 52px; flex: 0 0 52px; margin: 0; padding: 0 20px; gap: 10px; border-radius: 0; box-shadow: none;
+  [data-modo="cliente"] .header { height: 68px; flex: 0 0 68px; margin: 0; padding: 0 20px; gap: 10px; border-radius: 0; box-shadow: none;
     border-bottom: 1px solid var(--linea-suave); justify-content: flex-start; }
   [data-modo="cliente"] .header::after { left: 0; right: 0; bottom: 0; height: 2px; }
   /* El logo y "afterdrive · intelligence by alephee", como siempre (sin el nombre de la sección). */
-  [data-modo="cliente"] .header { padding-left: 14px; }
-  [data-modo="cliente"] .header-brand { gap: 10px; }
-  [data-modo="cliente"] .header-logo { height: 30px; }
-  [data-modo="cliente"] .header-title { font-size: 1.4rem; }
-  [data-modo="cliente"] .header-title span { margin-top: 3px; font-size: 0.64rem; }
-  [data-modo="cliente"] .header-right { margin-left: auto; gap: 8px; flex-wrap: nowrap; }
-  /* Idioma, estado, tema y salir: los mismos de antes, a la altura de la barra fina. */
-  [data-modo="cliente"] .header-right .selector-idioma { padding: 2px; }
-  [data-modo="cliente"] .header-right .selector-idioma button { min-width: 32px; padding: 4px 7px; }
-  [data-modo="cliente"] .header-right .status-pill { height: 34px; padding: 0 12px; font-size: 0.76rem; }
-  [data-modo="cliente"] .header-right .theme-toggle { width: 34px; height: 34px; font-size: 0.95rem; }
-  [data-modo="cliente"] .header-right .theme-toggle svg { width: 16px; height: 16px; }
-  [data-modo="cliente"] .header-nueva { display: inline-flex; align-items: center; min-height: 34px; padding: 8px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; box-shadow: none; }
-  [data-modo="cliente"] .buscador-btn { display: flex; align-items: center; gap: 8px; width: 280px; height: 34px; padding: 0 10px; border: 1px solid var(--linea-suave);
+  /* Con aire, como el encabezado de antes: logo grande y el nombre con su bajada. */
+  [data-modo="cliente"] .header { padding-left: 18px; }
+  [data-modo="cliente"] .header-brand { gap: 12px; }
+  [data-modo="cliente"] .header-logo { height: 40px; }
+  [data-modo="cliente"] .header-title { font-size: 1.65rem; }
+  [data-modo="cliente"] .header-title span { margin-top: 4px; font-size: 0.7rem; }
+  [data-modo="cliente"] .header-right { margin-left: auto; gap: 10px; flex-wrap: nowrap; }
+  /* Idioma, estado, tema y salir: los mismos de antes, todos a la misma altura. */
+  [data-modo="cliente"] .header-right .selector-idioma { padding: 3px; }
+  [data-modo="cliente"] .header-right .selector-idioma button { min-width: 34px; padding: 6px 8px; }
+  [data-modo="cliente"] .header-right .status-pill { height: 38px; padding: 0 14px; }
+  [data-modo="cliente"] .header-right .theme-toggle { width: 38px; height: 38px; }
+  [data-modo="cliente"] .header-right .theme-toggle svg { width: 17px; height: 17px; }
+  [data-modo="cliente"] .header-nueva { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 15px; border-radius: 10px; font-size: 13.5px; font-weight: 600; box-shadow: none; }
+  [data-modo="cliente"] .buscador-btn { display: flex; align-items: center; gap: 8px; width: 300px; height: 38px; padding: 0 12px; border: 1px solid var(--linea-suave);
     border-radius: 9px; background: color-mix(in srgb, var(--well) 60%, var(--bg)); color: var(--text-lo); font: 13px var(--font); cursor: text; text-align: left; }
   [data-modo="cliente"] .buscador-btn span { flex: 1; }
   [data-modo="cliente"] .buscador-btn kbd { font: 11px var(--font); padding: 1px 6px; border: 1px solid var(--linea-suave); border-radius: 5px; background: var(--bg); color: var(--text-lo); }
@@ -3188,13 +3189,21 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
   [data-modo="cliente"] .nav-actividad { display: none; }
   [data-modo="cliente"] .sidebar-pie { display: none; }
   [data-modo="cliente"] .rail-pie { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: auto; }
-  [data-modo="cliente"] .rail-pie .rail-toggle, [data-modo="cliente"] .rail-pie .ayuda-btn { width: 36px; height: 36px; padding: 0; box-shadow: none; border: 0;
+  /* Arriba de la barra: el botón para desplegarla (plegada, solo el ícono; desplegada,
+     "Secciones" a la izquierda y el botón a la derecha), separado de las secciones. */
+  [data-modo="cliente"] .rail-cabeza { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 10px 10px;
+    margin-bottom: 4px; border-bottom: 1px solid var(--linea-suave); }
+  [data-modo="cliente"] .rail-titulo { display: none; }
+  [data-modo="cliente"] .rail-toggle { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: transparent;
+    color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; }
+  [data-modo="cliente"] .rail-toggle:hover { background: var(--well); color: var(--text-hi); }
+  [data-modo="cliente"][data-riel="abierto"] .rail-cabeza { justify-content: space-between; padding-left: 12px; padding-right: 0; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-titulo { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-lo); white-space: nowrap; }
+  [data-modo="cliente"] .rail-pie .ayuda-btn { width: 36px; height: 36px; padding: 0; box-shadow: none; border: 0;
     border-radius: 9px; background: transparent; color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; font: inherit; }
-  [data-modo="cliente"] .rail-pie .rail-toggle:hover, [data-modo="cliente"] .rail-pie .ayuda-btn:hover { background: var(--well); color: var(--text-hi); }
+  [data-modo="cliente"] .rail-pie .ayuda-btn:hover { background: var(--well); color: var(--text-hi); }
   [data-modo="cliente"] .rail-pie .ayuda-btn svg { width: 18px; height: 18px; }
-  [data-modo="cliente"] .rail-toggle span { display: none; }
-  [data-modo="cliente"] .rail-flecha { transition: transform 200ms var(--ease-out); transform-origin: 15px 12px; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-flecha { transform: rotate(180deg); }
   [data-modo="cliente"] .rail-pie .sidebar-ayuda { padding: 0; margin: 0; border: 0; }
   [data-modo="cliente"] .rail-pie > * { margin-top: 0; margin-bottom: 0; }
   [data-modo="cliente"] .rail-pie { padding-bottom: 12px; }
@@ -3209,11 +3218,9 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
   [data-modo="cliente"][data-riel="abierto"] .nav-link[aria-current="page"] { color: var(--brand); font-weight: 600; }
   [data-modo="cliente"][data-riel="abierto"] .nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; font-size: 0.7rem; line-height: 20px; }
   [data-modo="cliente"][data-riel="abierto"] .rail-pie { align-items: stretch; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .rail-toggle,
   [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 12px;
     font-size: 0.9rem; color: var(--text-mid); white-space: nowrap; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn span,
-  [data-modo="cliente"][data-riel="abierto"] .rail-toggle span { display: inline; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn span { display: inline; }
   /* Con una nota abierta, la ruta de la sección no asoma junto al logo. */
   [data-modo="cliente"] body.modal-abierto .header-miga, body.modal-abierto [data-modo="cliente"] .header-miga { visibility: hidden; }
   /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
