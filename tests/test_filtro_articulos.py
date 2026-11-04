@@ -75,3 +75,34 @@ def test_reclasificar_sin_ia_no_pierde_nada(base, monkeypatch):
     r = reclasificar.reclasificar(dias=30)
     assert r["pendientes"] == 2 and base.articulos.count_documents({}) == 0
     assert base.articulos_descartados.count_documents({}) == 3
+
+
+def test_reclasificar_respeta_el_limite(base, monkeypatch):
+    monkeypatch.setattr(ingesta, "clasificar", lambda t, c: {"aprobado": False, "razon": "r"})
+    assert reclasificar.reclasificar(dias=30, limite=1)["revisados"] == 1
+
+
+@pytest.mark.parametrize("dias, limite", [(30, 0), (30, -5), (0, 500), (-1, 500)])
+def test_reclasificar_rechaza_limite_o_dias_menores_a_uno(base, monkeypatch, dias, limite):
+    llamadas = []
+    monkeypatch.setattr(ingesta, "clasificar", lambda t, c: llamadas.append(t) or {"aprobado": True, "razon": "r"})
+    with pytest.raises(ValueError):
+        reclasificar.reclasificar(dias=dias, limite=limite)
+    assert llamadas == []  # no gastó ni una llamada a la IA
+    assert base.articulos_descartados.count_documents({}) == 3
+
+
+@pytest.mark.parametrize("argv", [["--limite", "0"], ["--dias", "-3"], ["--limite", "muchos"]])
+def test_reclasificar_cli_rechaza_valores_invalidos(argv, capsys):
+    with pytest.raises(SystemExit) as salida:
+        reclasificar.main(argv)
+    assert salida.value.code == 2
+    assert "--" in capsys.readouterr().err
+
+
+def test_reclasificar_cli_pasa_dias_y_limite(monkeypatch):
+    recibidos = []
+    monkeypatch.setattr(reclasificar, "reclasificar", lambda dias, limite: recibidos.append((dias, limite)))
+    assert reclasificar.main(["--dias", "90", "--limite", "200"]) == 0
+    assert reclasificar.main([]) == 0
+    assert recibidos == [(90, 200), (30, 500)]
