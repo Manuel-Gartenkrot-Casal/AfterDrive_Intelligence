@@ -436,11 +436,12 @@
 
       <!-- Acción -->
       <div class="f2-acciones">
+        <span class="f2-acciones-titulo solo-cliente">Tu nota</span>
         <span id="crear-resumen" class="crear-resumen" role="status">Elegí las categorías de tu nota</span>
-        <button type="button" class="btn mas-opciones solo-cliente" id="btn-mas-opciones" aria-expanded="false" onclick="toggleMasOpciones()">Más opciones</button>
         <button class="btn solo-dev" onclick="fase2VerUltima()">Última Nota</button>
         <button type="button" class="btn btn-large btn-cancelar-nota" id="btn-f2-cancelar" onclick="cancelarGeneracion()" hidden>Cancelar</button>
         <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
+        <p class="f2-acciones-ayuda solo-cliente">Se escribe en el idioma principal y se traduce a los otros dos del blog apenas se crea.</p>
         <ol class="f2-pasos" id="f2-pasos" hidden aria-label="Avance de la nota">
           <li data-paso="0">Noticias</li><li data-paso="1">Referencias</li><li data-paso="2">Plan</li>
           <li data-paso="3">Redacción</li><li data-paso="4">Verificación</li><li data-paso="5">Revisión</li><li data-paso="6">Imagen</li><li data-paso="7">Guardado</li>
@@ -453,7 +454,7 @@
           <div class="fase2-grupo-title" data-cliente="Estilo de la nota">Opciones de nota</div>
 
           <!-- Personalidad -->
-          <div style="margin-bottom:var(--s4)">
+          <div class="f2-campo f2-campo-tono" style="margin-bottom:var(--s4)">
             <label class="control-label" for="f2-persona" data-cliente="Tono">Personalidad / Tono</label>
             <select id="f2-persona" class="select-field" style="width:100%">
               <option value="comercial">Comercial</option>
@@ -462,31 +463,34 @@
               <option value="divulgativo">Divulgativo</option>
               <option value="ejecutivo">Ejecutivo</option>
             </select>
+            <div class="f2-chips solo-cliente" id="f2-persona-chips" role="radiogroup" aria-label="Tono"></div>
           </div>
 
-          <div style="margin-bottom:var(--s4)">
+          <div class="f2-campo f2-campo-idioma" style="margin-bottom:var(--s4)">
             <span class="control-label" id="idioma-nota-label">Idioma de la nota</span>
             <output id="idioma-nota-valor" aria-labelledby="idioma-nota-label" aria-describedby="idioma-nota-ayuda" aria-live="polite"></output>
             <p id="idioma-nota-ayuda" class="field-help">Todas las notas se escriben en este idioma y se traducen a los otros dos del blog apenas se crean (las ves y editás en el Historial). Las regiones eligen el mercado, no el idioma.</p>
           </div>
           <!-- Largo aproximado -->
-          <div style="margin-bottom:var(--s4)">
+          <div class="f2-campo f2-campo-largo" style="margin-bottom:var(--s4)">
             <label class="control-label" for="f2-largo">Largo aproximado</label>
             <select id="f2-largo" class="select-field" style="width:100%">
               <option value="corto">Corto (500 a 700 palabras)</option>
               <option value="medio" selected>Medio (700 a 1000 palabras)</option>
               <option value="largo">Largo (1000 a 1400 palabras)</option>
             </select>
+            <div class="f2-chips f2-chips-largo solo-cliente" id="f2-largo-chips" role="radiogroup" aria-label="Largo aproximado"></div>
           </div>
 
-          <!-- Tema libre -->
-          <div style="margin-bottom:var(--s4)">
+          <!-- Tema libre (en la vista Cliente, primero del bloque Enfoque) -->
+          <div class="fase2-grupo-title f2-titulo-enfoque solo-cliente">Enfoque</div>
+          <div class="f2-campo f2-campo-tema" style="margin-bottom:var(--s4)">
             <label class="control-label" for="f2-tema" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</label>
             <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
           </div>
 
           <!-- Indicaciones libres para la IA -->
-          <div style="margin-bottom:var(--s4)">
+          <div class="f2-campo f2-campo-indicaciones" style="margin-bottom:var(--s4)">
             <label class="control-label" for="f2-indicaciones">Indicaciones para la IA (opcional)</label>
             <textarea id="f2-indicaciones" class="input-field f2-indicaciones" rows="4" maxlength="2000" style="width:100%"
                       aria-describedby="f2-indicaciones-ayuda"
@@ -495,7 +499,7 @@
           </div>
 
           <!-- Puntapié a link -->
-          <div class="f2-avanzado" style="margin-bottom:var(--s3)">
+          <div class="f2-avanzado f2-campo-puntapie" style="margin-bottom:var(--s3)">
             <div class="control-label" style="margin-bottom:var(--s2)" data-cliente="Llevar al lector a un link">Modo puntapié a link</div>
             <div class="puntapie-row">
               <button type="button" class="puntapie-toggle" id="f2-puntapie-toggle" role="switch" aria-checked="false" aria-label="Incluir enlace de destino" onclick="togglePuntapie()">
@@ -516,6 +520,11 @@
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
           </div>
         </div>
+
+        <button type="button" class="mas-opciones solo-cliente" id="btn-mas-opciones" aria-expanded="false" onclick="toggleMasOpciones()">
+          <span class="mas-opciones-texto">Más opciones</span>
+          <small>Mercados de referencia, clientes y link de destino</small>
+        </button>
 
         <!-- Regiones -->
         <div class="fase2-grupo f2-avanzado f2-regiones">

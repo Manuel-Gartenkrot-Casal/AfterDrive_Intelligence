@@ -42,6 +42,32 @@ def test_la_nota_se_lee_como_documento_con_los_datos_marcados(pagina):
     assert pagina.evaluate("document.getElementById('lectura-generacion').open")
 
 
+def test_los_datos_se_marcan_tambien_en_la_traduccion(pagina):
+    _abrir(pagina, NOTA)
+    texto = pagina.locator("#nota-texto")
+    expect(texto.locator("mark.dato")).to_have_count(3)   # el paso en negrita no cuenta como dato
+    pagina.locator(".idiomas-nota button", has_text="Español").click()
+    expect(texto.locator("h1")).to_have_text("Repuestos para eléctricos: el canal independiente")
+    expect(texto.locator("mark.dato.ok")).to_have_text("72 %")
+    expect(texto.locator("mark.dato.duda")).to_have_text("US$ 2.65 billones")
+    expect(pagina.locator(".lectura-aviso", has_text="Dato dudoso")).to_contain_text("US$ 2.65 billones")
+
+
+def test_la_barra_de_iconos_sigue_andando_con_la_nota_abierta(pagina):
+    _abrir(pagina, NOTA)
+    pagina.locator('.sidebar a[data-seccion="fuentes"]').click()
+    expect(pagina.locator("#modal-art.open")).to_have_count(0)
+    assert pagina.url.endswith("#fuentes")
+    assert not pagina.evaluate("document.getElementById('contenido').inert")
+    # Editando el texto, pregunta antes de salir.
+    _abrir(pagina, NOTA)
+    pagina.locator(".lectura-barra").get_by_role("button", name="✎ Editar").click()
+    pagina.locator('.sidebar a[data-seccion="inicio"]').click()
+    pagina.click("#confirmar-no")
+    expect(pagina.locator("#editor-nota")).to_be_visible()
+    assert pagina.url.endswith("#historial")
+
+
 def test_la_vista_previa_cambia_de_red_con_el_switch(pagina):
     _abrir(pagina, NOTA)
     panel = pagina.locator(".modal-sidebar")

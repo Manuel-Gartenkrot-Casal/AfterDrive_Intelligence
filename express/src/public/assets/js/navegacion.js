@@ -62,18 +62,21 @@ async function irASeccion(id, opts) {
 }
 
 function initSecciones() {
+  // Con una nota abierta (vista Cliente), la barra de íconos sigue andando: cierra la nota y va a la sección.
+  var ir = async function(id) { if (await cerrarNotaParaNavegar()) irASeccion(id); };
   document.querySelectorAll('.nav-link').forEach(function(a) {
     a.addEventListener('click', function(ev) {
       ev.preventDefault();
-      irASeccion(a.dataset.seccion);
+      ir(a.dataset.seccion);
     });
   });
   window.addEventListener('popstate', function() {
+    if (notaAbierta()) cerrar();
     irASeccion(seccionDelHash() || 'inicio', { desdeHash: true });
   });
   $('ir-inicio').addEventListener('click', function(ev) {
     ev.preventDefault();
-    irASeccion('inicio');
+    ir('inicio');
   });
   try { localStorage.removeItem('ad-seccion'); } catch(e) {}   // lo guardaban versiones anteriores
   irASeccion('inicio', { forzar: true });
@@ -122,7 +125,8 @@ function toggleMasOpciones() {
   var sec = document.querySelector('.fase2-section');
   var abierto = sec.classList.toggle('mas-abiertas');
   $('btn-mas-opciones').setAttribute('aria-expanded', abierto);
-  $('btn-mas-opciones').textContent = abierto ? 'Menos opciones' : 'Más opciones';
+  $('btn-mas-opciones').querySelector('.mas-opciones-texto').textContent = abierto ? 'Menos opciones' : 'Más opciones';
+  if (abierto) document.querySelector('.f2-regiones').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 /* Tarjeta "Última nota" de la bienvenida */

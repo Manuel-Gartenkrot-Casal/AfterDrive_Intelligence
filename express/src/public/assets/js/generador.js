@@ -26,20 +26,39 @@ function abrirModal() {
   if (!$('modal-art').classList.contains('open')) _focoAntesNota = document.activeElement;
   $('modal-art').classList.add('open');
   document.body.classList.add('modal-abierto');
-  document.querySelector('.app-container').inert = true;
-  $('actividad-dock').inert = true;
+  fondoInerte(true);
   $('art-body').scrollTop = 0;
   $('modal-art').querySelector('.modal-close').focus();
 }
 function cerrar() {
   $('modal-art').classList.remove('open');
   document.body.classList.remove('modal-abierto');
-  document.querySelector('.app-container').inert = false;
-  $('actividad-dock').inert = false;
+  fondoInerte(false);
   var foco = _focoAntesNota;
   if (!foco || !foco.isConnected || !foco.getClientRects().length) foco = $('contenido');
   foco.focus({preventScroll: true});
 }
+/* Con la nota abierta, lo de atrás no responde. Salvo la barra de íconos (vista Cliente
+   en escritorio): queda a la vista junto a la nota y se puede usar para ir a otra sección. */
+function fondoInerte(si) {
+  var riel = si && document.documentElement.getAttribute('data-modo') === 'cliente' && window.matchMedia('(min-width: 901px)').matches;
+  document.querySelector('.app-container').inert = si && !riel;
+  [$('contenido'), $('menu-movil'), document.querySelector('.header-right')].forEach(function(el) {
+    if (el) el.inert = si && riel;
+  });
+  $('actividad-dock').inert = si;
+}
+function notaAbierta() { return $('modal-art').classList.contains('open'); }
+
+// Ir a otra sección con la nota abierta la cierra (si se está editando el texto, pregunta antes).
+async function cerrarNotaParaNavegar() {
+  if (!notaAbierta()) return true;
+  if ($('editor-nota') && !(await confirmar({ titulo: '¿Salir sin guardar?', mensaje: 'Estás editando el texto de la nota y los cambios no se guardaron.',
+                                                accion: 'Salir sin guardar', cancelar: 'Seguir editando' }))) return false;
+  cerrar();
+  return true;
+}
+
 document.addEventListener('keydown', function(ev) {
   if (!$('modal-art').classList.contains('open') || $('confirmar').open) return;
   if (ev.key === 'Escape') {
@@ -138,14 +157,70 @@ var _idiomaPrincipal = 'pt';
 function idiomaNotaElegido() {
   return {es:'Español rioplatense', pt:'Português do Brasil', en:'English'}[_idiomaPrincipal] || 'Português do Brasil';
 }
+var TONOS = { comercial: 'Comercial', analitico: 'Analítico-Técnico', periodistico: 'Periodístico', divulgativo: 'Divulgativo', ejecutivo: 'Ejecutivo' };
+var LARGOS = { corto: 'Corto', medio: 'Medio', largo: 'Largo' };
+
+/* El resumen de la nota: en Desarrollador, una línea ("2 categorías · Comercial · …");
+   en Cliente, el panel "Tu nota" con cada cosa en su renglón. */
 function resumenCrear() {
   pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
   pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
+  pintarChipsSelect('f2-persona');
+  pintarChipsSelect('f2-largo');
   var n = _f2CategoriasActivas.size;
   $('idioma-nota-valor').textContent = tr(idiomaNotaElegido());
-  var tonos = {comercial:'Comercial', analitico:'Analítico-Técnico', periodistico:'Periodístico', divulgativo:'Divulgativo', ejecutivo:'Ejecutivo'};
-  $('crear-resumen').textContent = (n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') : tr('Elegí las categorías de tu nota'))
-    + ' · ' + tr(tonos[$('f2-persona').value]) + ' · ' + tr(idiomaNotaElegido());
+  var fila = function(clave, valor, clase) {
+    return '<span class="cr-item' + (clase ? ' ' + clase : '') + '"><span class="cr-k">' + escHtml(tr(clave)) + '</span><span class="cr-v">' + escHtml(valor) + '</span></span>';
+  };
+  $('crear-resumen').innerHTML = fila('Temas', n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') : tr('Elegí las categorías de tu nota'), n ? '' : 'falta')
+    + fila('Tono', tr(TONOS[$('f2-persona').value]))
+    + fila('Extensión', tr(LARGOS[$('f2-largo').value] || ''), 'cr-largo')
+    + fila('Idioma', tr(idiomaNotaElegido()));
+}
+
+/* Vista Cliente: el tono y el largo se eligen con botones (el select queda para
+   Desarrollador y para guardar; los botones solo cambian su valor). */
+var AYUDA_CHIPS = {
+  'f2-persona': { comercial: 'Muestra el valor y llama a la acción', analitico: 'Datos, cifras y precisión técnica',
+                  periodistico: 'Cuenta qué pasó y por qué importa', divulgativo: 'Explica simple, para cualquiera',
+                  ejecutivo: 'Directo, para quien decide' },
+  'f2-largo': { corto: '500 a 700 palabras', medio: '700 a 1000 palabras', largo: '1000 a 1400 palabras' }
+};
+function pintarChipsSelect(id) {
+  var sel = $(id), cont = $(id + '-chips');
+  if (!sel || !cont) return;
+  if (!cont.children.length) {
+    cont.innerHTML = Array.from(sel.options).map(function(o) {
+      var nombre = id === 'f2-largo' ? LARGOS[o.value] : TONOS[o.value];
+      return '<button type="button" role="radio" class="f2-chip" data-valor="' + escHtml(o.value) + '" aria-checked="false" tabindex="-1">'
+        + '<b>' + escHtml(nombre || o.textContent) + '</b><small>' + escHtml((AYUDA_CHIPS[id] || {})[o.value] || '') + '</small></button>';
+    }).join('');
+    cont.addEventListener('click', function(ev) {
+      var b = ev.target.closest('.f2-chip');
+      if (b) elegirChip(id, b.dataset.valor);
+    });
+    // Radios: las flechas mueven la elección.
+    cont.addEventListener('keydown', function(ev) {
+      var paso = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      if (!paso) return;
+      ev.preventDefault();
+      var i = (sel.selectedIndex + paso + sel.options.length) % sel.options.length;
+      elegirChip(id, sel.options[i].value);
+      cont.querySelector('[aria-checked="true"]').focus();
+    });
+  }
+  cont.querySelectorAll('.f2-chip').forEach(function(b) {
+    var on = b.dataset.valor === sel.value;
+    b.setAttribute('aria-checked', on);
+    b.tabIndex = on ? 0 : -1;
+  });
+}
+function elegirChip(id, valor) {
+  var sel = $(id);
+  if (sel.value === valor) return;
+  sel.value = valor;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  pintarChipsSelect(id);
 }
 
 function marcarCrear() { resumenCrear(); if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }

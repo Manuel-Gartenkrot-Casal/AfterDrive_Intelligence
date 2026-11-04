@@ -85,6 +85,24 @@ def _es_anio_obvio(dato: str) -> bool:
     return actual - 1 <= anio <= actual + 1
 
 
+_ABREVIATURA_FINAL = re.compile(r"(?:\b[A-Z]\.[A-Z]?\.?|Ltda\.|Inc\.|Corp\.)$")
+
+
+def _es_frase(span: str) -> bool:
+    """Una oración en negrita ("1. Elegí las aplicaciones con más circulación."), no un nombre.
+
+    Un nombre lleva mayúscula más allá de la primera palabra ("Mercado Libre") o es
+    corto; una oración termina en punto o solo empieza con mayúscula.
+    """
+    s = re.sub(r"^\d+[.)]\s*", "", span.strip())
+    palabras = s.split()
+    if len(palabras) <= 1:
+        return False
+    if re.search(r"[.:!?]$", s) and not _ABREVIATURA_FINAL.search(s):
+        return True
+    return len(palabras) > 3 and not any(p[:1].isupper() for p in palabras[1:])
+
+
 def extraer_datos(nota: str) -> list[tuple[str, str]]:
     """[(dato, tipo)] con tipo "cifra" o "nombre", sin repetir, en orden de aparición."""
     texto = _sin_links(nota)
@@ -102,8 +120,10 @@ def extraer_datos(nota: str) -> list[tuple[str, str]]:
         inicio_linea = texto.rfind("\n", 0, m.start()) + 1
         if re.fullmatch(r"\s*(?:[-*+]|\d+[.)])\s*", texto[inicio_linea:m.start()]) and len(span.split()) == 1:
             continue  # "- **Revisá** tus proveedores": un verbo destacado, no un dato
-        if _NUMERO.search(span):
+        if _NUMERO.search(re.sub(r"^\d+[.)]\s*", "", span)):
             continue  # la cifra se toma abajo, sola
+        if _es_frase(span):
+            continue  # el comienzo de un paso o una idea destacada, no un nombre
         palabras = span.split()
         # Nombre propio: alguna palabra con mayúscula (un concepto en negrita va en minúscula).
         if any(p[:1].isupper() for p in palabras) and not any(x in _plano(span) for x in SIEMPRE_PERMITIDOS):

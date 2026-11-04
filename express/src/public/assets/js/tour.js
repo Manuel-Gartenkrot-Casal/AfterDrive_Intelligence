@@ -19,7 +19,7 @@ var PASOS_TOUR = [
     texto: 'A la izquierda, las notas que esperan que las leas. A la derecha, lo que el sistema está haciendo ahora.' },
   { seccion: 'crear', el: '.f2-categorias', titulo: 'Crear una nota: el tema',
     texto: 'Elegí una o más categorías: son el tema de la nota. Las noticias de contexto se eligen según lo que marques.' },
-  { seccion: 'crear', el: '.f2-opciones', titulo: 'Tono, largo y tema puntual',
+  { seccion: 'crear', el: ['.f2-opciones', '.f2-campo-tono'], titulo: 'Tono, largo y tema puntual',   // en Cliente, .f2-opciones no tiene caja propia
     texto: 'El tono (comercial, analítico, periodístico…), el largo aproximado y, si querés, un tema puntual. Con "Puntapié" la nota lleva al lector a un link tuyo.' },
   { seccion: 'crear', el: ['#btn-mas-opciones', '.f2-regiones'], titulo: 'Regiones y clientes',
     texto: 'La región define el idioma y el mercado: con Brasil la nota sale en portugués. También podés sumar clientes para mencionarlos como casos reales.' },
