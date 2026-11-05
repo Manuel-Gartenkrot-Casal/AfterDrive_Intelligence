@@ -481,7 +481,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
 
     clientes_docs = []
     for cid in clientes_ids:
-        doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
+        doc = clientes.buscar(col_clientes, cid)
         if doc and clientes.modo(doc) == clientes.MENCIONAR:
             clientes_docs.append(doc)
 
