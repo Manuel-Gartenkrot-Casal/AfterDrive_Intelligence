@@ -207,6 +207,70 @@ def estado(base=None) -> dict:
     }
 
 
+# ── JSON de la IA: tolerante ──────────────────────────────────────────────────
+
+def _escapar_comillas(texto: str) -> str:
+    """Escapa las comillas dobles que quedaron sueltas dentro de un valor ("la tecnología" adentro de un
+    texto rompe el JSON): una comilla dentro de un string que no va seguida de , } ] o : no lo cierra."""
+    salida, en_texto, i = [], False, 0
+    while i < len(texto):
+        c = texto[i]
+        if c == "\\" and en_texto:
+            salida.append(texto[i:i + 2])
+            i += 2
+            continue
+        if c == '"':
+            if not en_texto:
+                en_texto = True
+            else:
+                resto = texto[i + 1:].lstrip()
+                if not resto or resto[0] in ",}]:":
+                    en_texto = False
+                else:
+                    salida.append('\\"')
+                    i += 1
+                    continue
+        salida.append(c)
+        i += 1
+    return "".join(salida)
+
+
+def _leer_json(texto: str):
+    from afterdrive.ia.lm_studio import _extraer_json
+
+    try:
+        return _extraer_json(texto)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    inicio, fin = texto.find("{"), texto.rfind("}")
+    if inicio == -1 or fin < inicio:
+        raise json.JSONDecodeError("sin objeto JSON en la respuesta", texto, 0)
+    crudo = texto[inicio:fin + 1]
+    for candidato in (crudo, _escapar_comillas(crudo)):
+        try:
+            return json.loads(candidato, strict=False)   # strict=False: acepta saltos de línea dentro de los textos
+        except json.JSONDecodeError:
+            continue
+    return json.loads(_escapar_comillas(crudo), strict=False)
+
+
+_SYSTEM_JSON = """Te paso una respuesta que debía ser un JSON y no se puede leer. Devolvé exactamente el mismo
+contenido como JSON válido: escapá las comillas dobles dentro de los textos y los saltos de línea como \\n.
+No cambies, agregues ni saques nada. Respondé SOLO el JSON."""
+
+
+def _pedir_json(system: str, user: str, max_tokens: int, tarea: str):
+    """Le pide un JSON a la IA. Si no se puede leer, lo repara; si tampoco, le pide que lo corrija (una vez)."""
+    from afterdrive.ia import llm
+
+    texto = llm.completar(system, user, temperature=0.2, max_tokens=max_tokens, tarea=tarea)
+    try:
+        return _leer_json(texto)
+    except (json.JSONDecodeError, ValueError):
+        print("[PROMPTS IA] La respuesta de la IA no era un JSON válido: se le pide que la corrija...", flush=True)
+    return _leer_json(llm.completar(_SYSTEM_JSON, texto, temperature=0.0, max_tokens=max_tokens, tarea=tarea))
+
+
 # ── Análisis de las notas ─────────────────────────────────────────────────────
 
 def _promedio(valores) -> float | None:
@@ -286,7 +350,7 @@ Explicá por qué las notas se quedan en 7 u 8 en vez de 9 o 10: qué se repite,
 está cumpliendo o falta, y en qué pieza habría que tocar. Basate solo en los datos que te paso; si algo no
 tiene datos, no lo afirmes.
 
-Respondé SOLO un JSON:
+Respondé SOLO un JSON válido. Dentro de los textos no uses comillas dobles: usá «» o comillas simples.
 {"resumen": "2 o 3 oraciones",
  "problemas": [{"titulo": "corto", "detalle": "qué pasa y por qué", "evidencia": "qué dato lo muestra",
                 "pieza": "clave de la pieza a cambiar", "pedido": "el cambio concreto que le harías al prompt"}]}
@@ -296,7 +360,6 @@ Como mucho 6 problemas, del más importante al menos importante."""
 def analizar(limite: int = NOTAS_ANALISIS, base=None) -> dict:
     """Estadísticas de las últimas notas y el diagnóstico de la IA. Se guarda: el último se ve en Prompts."""
     from afterdrive.ia import llm
-    from afterdrive.ia.lm_studio import _extraer_json
 
     notas = _notas(limite, base)
     if not notas:
@@ -309,8 +372,7 @@ def analizar(limite: int = NOTAS_ANALISIS, base=None) -> dict:
         user = (f"## Calificaciones de las últimas {est['notas']} notas\n{json.dumps(est, ensure_ascii=False)}\n\n"
                 f"## Piezas del prompt (la copia de la IA)\n{_piezas_texto(_copia_docs(base), base)}")
         try:
-            data = _extraer_json(llm.completar(_SYSTEM_ANALISIS, user, temperature=0.2, max_tokens=1600,
-                                               tarea="evaluacion"))
+            data = _pedir_json(_SYSTEM_ANALISIS, user, 2500, "evaluacion")
             doc["diagnostico"] = _diagnostico(data)
         except Exception as e:
             doc["error"] = f"La IA no pudo analizar las notas: {e}"
@@ -342,7 +404,7 @@ funciona, el formato de cada pieza (títulos ##, listas) y las llaves como {exte
 persona mantené el rol arriba y las secciones ## Tu tarea, ## Estructura (lista numerada) y ## Estilo. No
 inventes datos de Alephee: lo que se puede afirmar está en el enfoque Alephee.
 
-Respondé SOLO un JSON:
+Respondé SOLO un JSON válido: en "contenido", escapá las comillas dobles (\\") y los saltos de línea (\\n).
 {"comentario": "una oración sobre qué cambiaste",
  "cambios": [{"clave": "clave de la pieza", "explicacion": "qué cambiaste y por qué", "contenido": "la pieza completa nueva"}]}"""
 
@@ -355,9 +417,6 @@ def _pedido_del_diagnostico(diagnostico: dict) -> str:
 
 def _proponer(pedido: str, claves: list[str], docs: dict, diagnostico: dict | None, base=None) -> tuple[list, str]:
     """Lo que la IA reescribiría: [{clave, titulo, antes, despues, explicacion, errores, avisos}], comentario."""
-    from afterdrive.ia import llm
-    from afterdrive.ia.lm_studio import _extraer_json
-
     user = f"## Qué hay que resolver\n{pedido}\n\n"
     if claves:
         user += "## Piezas que se pueden cambiar\n" + ", ".join(claves) + "\n\n"
@@ -365,7 +424,7 @@ def _proponer(pedido: str, claves: list[str], docs: dict, diagnostico: dict | No
         user += "## Diagnóstico de las notas\n" + json.dumps(diagnostico, ensure_ascii=False)[:4000] + "\n\n"
     user += f"## Piezas del prompt (la copia de la IA)\n{_piezas_texto(docs, base)}"
     try:
-        data = _extraer_json(llm.completar(_SYSTEM_MEJORA, user, temperature=0.3, max_tokens=4000, tarea="correccion"))
+        data = _pedir_json(_SYSTEM_MEJORA, user, 6000, "correccion")
     except Exception as e:
         raise ErrorPromptIA(f"La IA no pudo reescribir los prompts: {e}") from e
     data = data if isinstance(data, dict) else {}
@@ -396,9 +455,6 @@ Respondé SOLO un JSON: {"cambios": [{"clave": "...", "contenido": "la pieza com
 
 def _reparar(cambios: list[dict]) -> None:
     """A los cambios que no pasaron la validación, se los devuelve a la IA con los errores (una vez)."""
-    from afterdrive.ia import llm
-    from afterdrive.ia.lm_studio import _extraer_json
-
     rotos = [c for c in cambios if c["errores"]]
     if not rotos:
         return
@@ -406,7 +462,7 @@ def _reparar(cambios: list[dict]) -> None:
     user = "\n\n".join(f"<pieza clave=\"{c['clave']}\">\n## Errores\n" + "\n".join(f"- {e}" for e in c["errores"])
                        + f"\n## Texto\n{c['despues']}\n</pieza>" for c in rotos)
     try:
-        data = _extraer_json(llm.completar(_SYSTEM_REPARAR, user, temperature=0.1, max_tokens=4000, tarea="correccion"))
+        data = _pedir_json(_SYSTEM_REPARAR, user, 6000, "correccion")
     except Exception as e:
         print(f"[PROMPTS IA] [AVISO] No se pudieron corregir: {e}", flush=True)
         return

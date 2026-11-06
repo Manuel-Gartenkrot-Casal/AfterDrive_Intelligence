@@ -64,6 +64,12 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
         </button>
       </div>
+      <!-- Vista Desarrollador: la barra es una consola (otro aspecto que la de Cliente, mismas funciones). -->
+      <div class="dev-cabeza solo-dev" aria-hidden="true">
+        <span class="dev-cabeza-icono">&gt;_</span>
+        <span class="dev-cabeza-texto"><b>Desarrollador</b><small>consola</small></span>
+        <span class="dev-cabeza-punto"></span>
+      </div>
       <ul class="nav-lista">
         <li><a class="nav-link" href="#inicio" data-seccion="inicio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg>Inicio</a></li>
         <li><a class="nav-link" href="#crear" data-seccion="crear"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Crear nota</a></li>
@@ -665,7 +671,7 @@
           <span class="pv-sub">Los edita y aprueba el equipo</span>
         </button>
         <button type="button" role="tab" class="pv-tab" id="pv-ia" data-vista="ia" aria-selected="false" aria-controls="pia-vista">
-          <span class="pv-titulo"><span class="pia-chispa" aria-hidden="true">✦</span> Prompts de la IA</span><span class="pv-uso" hidden>En uso</span>
+          <span class="pv-titulo"><span class="pia-chispa" aria-hidden="true">✦</span> Prompt IA</span><span class="pv-uso" hidden>En uso</span>
           <span class="pv-sub" id="pv-ia-sub">Una copia que la IA mejora sola</span>
         </button>
       </div>
@@ -740,7 +746,7 @@
           <header class="prompts-cabeza">
             <div class="prompts-cabeza-texto">
               <span class="prompts-cabeza-grupo"><span aria-hidden="true">✦</span> Copia de la IA</span>
-              <h3>Prompts de la IA</h3>
+              <h3>Prompt IA</h3>
               <p>La IA lee cómo salen calificadas las notas y mejora sola esta copia. Los prompts actuales no se tocan nunca.</p>
             </div>
             <span class="prompts-estado" id="pia-uso-estado"></span>
@@ -764,7 +770,6 @@
                 <span class="pa-meta"><span id="pia-archivo-lineas"></span></span>
               </div>
               <div class="pa-herramientas">
-                <span class="pia-leyenda" aria-hidden="true"><i class="pone"></i>Lo que cambió la IA</span>
                 <label class="sr-only" for="pia-persona">Persona</label>
                 <select id="pia-persona" class="select-field" title="Persona con la que se arma el prompt">
                   <option value="comercial">Comercial</option>
@@ -773,9 +778,14 @@
                   <option value="divulgativo">Divulgativo</option>
                   <option value="ejecutivo">Ejecutivo</option>
                 </select>
+                <button type="button" class="btn btn-sm" id="pia-ver-historial" aria-pressed="false">Historial<span class="pia-historial-cuenta" id="pia-historial-cuenta"></span></button>
               </div>
             </div>
             <div class="prompt-archivo" id="pia-archivo" translate="no" aria-label="Prompt completo de la IA"></div>
+            <!-- Los cambios de la IA, con sus diferencias: solo acá, como el Historial de los actuales. -->
+            <div class="prompts-panel pia-historial" id="pia-historial" hidden>
+              <ol class="pia-mejoras" id="pia-mejoras"></ol>
+            </div>
           </div>
           <!-- Pedirle un cambio a la IA: una caja para escribirle, con la pieza y el envío adentro. -->
           <section class="pia-composer" aria-labelledby="pia-t-pedido">
@@ -785,11 +795,16 @@
               <textarea id="pia-pedido" class="pia-pedido" rows="1" maxlength="1500"
                         placeholder="Contale a la IA qué querés cambiar en los prompts…"></textarea>
               <div class="pia-composer-pie">
-                <label class="pia-composer-pieza" title="Pieza que puede cambiar">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
-                  <span class="sr-only">Pieza</span>
-                  <select id="pia-pieza"><option value="">La IA elige qué piezas cambiar</option></select>
-                </label>
+                <!-- Pieza que puede cambiar: una lista propia (el desplegable del sistema no seguía el diseño). -->
+                <div class="pia-pieza">
+                  <input type="hidden" id="pia-pieza" value="">
+                  <button type="button" class="pia-pieza-btn" id="pia-pieza-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pia-pieza-menu" title="Pieza que puede cambiar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+                    <span id="pia-pieza-texto">La IA elige qué piezas cambiar</span>
+                    <svg class="pia-pieza-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div class="pia-pieza-menu" id="pia-pieza-menu" role="listbox" aria-label="Pieza que puede cambiar" tabindex="-1" hidden></div>
+                </div>
                 <span class="pia-composer-ayuda">Ctrl + Enter para enviar</span>
                 <button type="button" class="pia-enviar" id="pia-pedir" aria-label="Cambiar con IA" title="Cambiar con IA" disabled>
                   <svg class="ico-enviar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
@@ -807,10 +822,6 @@
           <details class="pia-caja" id="pia-analisis-caja" open>
             <summary><span>Análisis de las notas</span><span class="pia-caja-meta" id="pia-analisis-fecha"></span></summary>
             <div id="pia-diagnostico"></div>
-          </details>
-          <details class="pia-caja" id="pia-historial-caja">
-            <summary><span>Historial de mejoras</span><span class="pia-caja-meta" id="pia-historial-cuenta"></span></summary>
-            <ol class="pia-mejoras" id="pia-mejoras"></ol>
           </details>
           <footer class="prompts-acciones">
             <button type="button" class="btn btn-sm prompts-descartar" id="pia-restablecer-todo">Volver toda la copia a los actuales</button>

@@ -209,3 +209,24 @@ def test_la_vista_previa_arma_el_prompt_de_cada_juego(api, monkeypatch, base):
         partes = c.post("/api/prompts/vista-previa", json={"juego": juego}).get_json()["partes"]
         return next(p["texto"] for p in partes if p["clave"] == "seo")
     assert seo("actuales") == redaccion.PIEZAS["seo"] and seo("ia") == SEO_IA
+
+
+def test_un_json_roto_de_la_ia_se_repara(monkeypatch, base):
+    """Una comilla suelta dentro de un texto (pasó en producción: «Expecting ',' delimiter») no tira el análisis."""
+    base.notas_fase2.insert_one(_nota(7, 4))
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    respuestas = ['{"resumen": "Usan "la tecnología" en general", "problemas": [{"titulo": "Foco", "pieza": "seo"}]}']
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: respuestas.pop(0))
+    a = prompts_ia.analizar(base=base)
+    assert a["diagnostico"]["resumen"] == 'Usan "la tecnología" en general' and not a.get("error")
+    # Si ni así se puede leer, se le pide a la IA que lo corrija.
+    pedidos = []
+    respuestas[:] = ['{"resumen": "x", "problemas": [ {"titulo": "A" "pieza": "seo"} ]}',
+                     '{"resumen": "x", "problemas": [{"titulo": "A", "pieza": "seo"}]}']
+
+    def completar(system, user, **kw):
+        pedidos.append(system)
+        return respuestas.pop(0)
+    monkeypatch.setattr(llm, "completar", completar)
+    a = prompts_ia.analizar(base=base)
+    assert a["diagnostico"]["problemas"][0]["titulo"] == "A" and len(pedidos) == 2 and "JSON válido" in pedidos[1]

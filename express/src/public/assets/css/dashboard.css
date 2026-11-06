@@ -3537,10 +3537,35 @@ details.pia-caja > :not(summary) { padding: 14px; }
   border-radius: 17px 17px 0 0; background: var(--bg); color: var(--text-hi); font: 0.95rem/1.5 var(--font); }
 .pia-pedido::placeholder { color: var(--text-lo); }
 .pia-composer-pie { display: flex; align-items: center; gap: 10px; padding: 6px 8px 8px 12px; border-radius: 0 0 17px 17px; background: var(--bg); }
-.pia-composer-pieza { display: inline-flex; align-items: center; gap: 6px; max-width: 60%; padding: 4px 6px 4px 10px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--well); color: var(--text-mid); font-size: 0.78rem; }
-.pia-composer-pieza select { min-width: 0; max-width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.pia-composer-pieza:focus-within { border-color: var(--brand); }
+/* La pieza del pedido: un botón redondeado que abre una lista propia (no el desplegable del sistema). */
+.pia-pieza { position: relative; min-width: 0; max-width: 60%; }
+.pia-pieza-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--well); color: var(--text-mid); font: 0.78rem var(--font); }
+.pia-pieza-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pia-pieza-btn:hover, .pia-pieza-btn[aria-expanded="true"] { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); color: var(--text-hi); }
+.pia-pieza-btn.con-pieza { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); background: var(--brand-soft); color: var(--brand); }
+.pia-pieza-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pia-pieza-flecha { flex: none; transition: transform 150ms; }
+.pia-pieza-btn[aria-expanded="true"] .pia-pieza-flecha { transform: rotate(180deg); }
+.pia-pieza-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 40; width: 260px; max-height: 320px; overflow-y: auto; padding: 6px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-float); scrollbar-width: thin;
+  animation: seccionEntrada 140ms ease-out; }
+.pia-pieza-menu[hidden] { display: none; }
+.pia-pieza-grupo { margin: 8px 10px 4px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-lo); }
+.pia-pieza-op { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--text-mid); font: 0.84rem var(--font); text-align: left; cursor: pointer; }
+.pia-pieza-op:hover, .pia-pieza-op:focus-visible { background: var(--well); color: var(--text-hi); outline: none; }
+.pia-pieza-op.elegida { color: var(--brand); font-weight: 600; background: var(--brand-soft); }
+.pia-pieza-check { width: 14px; flex: none; color: var(--brand); }
+.pia-pieza-marca { margin-left: auto; color: var(--brand); font-size: 0.75rem; }
+.pia-historial-cuenta:not(:empty) { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font: 600 0.7rem/18px var(--mono); }
+.pia-historial { padding: 14px; max-height: 560px; overflow-y: auto; background: var(--bg); }
+.pia-historial[hidden], #pia-archivo[hidden] { display: none; }
+.pia-ver-cambios { margin-top: 10px; }
+.pia-cambio { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.pia-cambio summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.pia-explicacion { flex-basis: 100%; color: var(--text-lo); font-size: 0.78rem; }
+.pia-cambio .prompts-diff { margin-top: 8px; max-height: 300px; }
 .pia-composer-ayuda { margin-left: auto; font-size: 0.72rem; color: var(--text-lo); }
 .pia-enviar { position: relative; display: grid; place-items: center; width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; cursor: pointer;
   color: #fff; background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, var(--info))); transition: transform 120ms, opacity 120ms; }
@@ -3560,8 +3585,6 @@ details.pia-caja > :not(summary) { padding: 14px; }
 .prompts-seccion .prompts-item.activo { box-shadow: inset 3px 0 0 var(--brand); color: var(--brand); }
 .prompts-seccion .prompts-item.activo .prompts-item-nombre { color: var(--text-hi); }
 .pa-bloque.pia-elegida { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 70%, transparent); background: color-mix(in srgb, var(--brand) 8%, transparent); }
-.pia-leyenda { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-lo); }
-.pia-leyenda i { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--ok) 35%, transparent); }
 .pa-pieza { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo); }
 .pa-bloque.pia-cambiada { border-left-color: var(--brand); background: color-mix(in srgb, var(--brand) 5%, transparent); }
 .pa-bloque.pia-cambiada .pa-pieza { color: var(--brand); }
@@ -3601,3 +3624,56 @@ details.pia-caja > :not(summary) { padding: 14px; }
 
 /* La terminal es de la vista Desarrollador: en la vista Cliente no se muestra. */
 html[data-modo="cliente"] .terminal { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BARRA LATERAL DE LA VISTA DESARROLLADOR (escritorio): una consola, bien
+   distinta de la de Cliente. Encabezado ">_ Modo desarrollador", secciones
+   numeradas en monoespaciada, títulos de cada ajuste como comentarios de
+   código (// proveedor de ia) y turquesa como color de acento, sobre una
+   grilla de puntos. Las funciones son las mismas de siempre.
+   ═══════════════════════════════════════════════════════════════════════ */
+.dev-cabeza { display: none; }
+@media (min-width: 901px) {
+  [data-modo="dev"] .sidebar { --dev: var(--info); counter-reset: dev-seccion; gap: 12px; padding: 12px 10px;
+    border: 1px solid color-mix(in srgb, var(--dev) 30%, var(--border));
+    background: radial-gradient(color-mix(in srgb, var(--dev) 14%, transparent) 1px, transparent 1.2px) 0 0 / 14px 14px, var(--bg);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dev) 8%, transparent), var(--raised); }
+  [data-modo="dev"] .dev-cabeza { display: flex; align-items: center; gap: 10px; padding: 8px 8px 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--dev) 35%, var(--border)); }
+  .dev-cabeza-icono { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 8px;
+    background: color-mix(in srgb, var(--dev, var(--info)) 16%, var(--bg)); color: var(--dev, var(--info));
+    border: 1px solid color-mix(in srgb, var(--dev, var(--info)) 40%, transparent); font: 700 0.8rem var(--mono); }
+  .dev-cabeza-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; white-space: nowrap; }
+  .dev-cabeza-texto b { font-size: 0.82rem; color: var(--text-hi); }
+  .dev-cabeza-texto small { font: 0.68rem var(--mono); color: var(--dev, var(--info)); }
+  .dev-cabeza-punto { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--dev, var(--info));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--dev, var(--info)) 20%, transparent); animation: nodeBeat 2.4s infinite; }
+  /* Secciones: 01, 02… en monoespaciada; la actual, en turquesa con "▸". */
+  [data-modo="dev"] .nav-link { counter-increment: dev-seccion; gap: 10px; padding-block: 7px; border-radius: 7px;
+    font: 500 0.8rem var(--mono); letter-spacing: -0.01em; }
+  [data-modo="dev"] .nav-link::after { content: counter(dev-seccion, decimal-leading-zero); order: -1; width: 18px; flex: none;
+    font: 0.68rem var(--mono); color: var(--text-lo); }
+  [data-modo="dev"] .nav-link > svg { width: 15px; height: 15px; }
+  [data-modo="dev"] .nav-link:hover { background: color-mix(in srgb, var(--dev) 8%, var(--bg)); }
+  [data-modo="dev"] .nav-link[aria-current="page"] { background: color-mix(in srgb, var(--dev) 14%, var(--bg)); color: var(--dev); }
+  [data-modo="dev"] .nav-link[aria-current="page"]::before { background: var(--dev); left: 0; height: 100%; border-radius: 0 2px 2px 0; }
+  [data-modo="dev"] .nav-link[aria-current="page"]::after { content: '▸'; color: var(--dev); }
+  [data-modo="dev"] .nav-badge { background: var(--dev); color: var(--bg); font-family: var(--mono); }
+  [data-modo="dev"] .nav-actividad i { background: var(--dev); }
+  /* Ajustes: un panel de sistema, con los títulos como comentarios. */
+  [data-modo="dev"] .sidebar-pie { border-top: 1px dashed color-mix(in srgb, var(--dev) 35%, var(--border)); }
+  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta { font: 0.68rem var(--mono); text-transform: lowercase; letter-spacing: 0; color: var(--text-lo); }
+  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta::before { content: '// '; color: var(--dev); }
+  [data-modo="dev"] .modo-switch { border-radius: 8px; padding: 3px; }
+  [data-modo="dev"] .modo-switch button { border-radius: 6px; font: 0.74rem var(--mono); padding: 6px 8px; }
+  [data-modo="dev"] .modo-switch button[aria-checked="true"] { color: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .provider-toggle { border-radius: 8px; }
+  [data-modo="dev"] .sidebar-pie .provider-toggle .prov-btn { border-radius: 6px; font-family: var(--mono); font-size: 0.7rem; white-space: nowrap; }
+  [data-modo="dev"] .sidebar-pie .provider-toggle .prov-btn.active { color: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .ajuste { border-radius: 8px; }
+  [data-modo="dev"] .sidebar-pie .ajuste-nombre { font: 600 0.74rem var(--mono); }
+  [data-modo="dev"] .sidebar-pie .ajuste.active .ajuste-switch { background: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .ajuste.active .ajuste-estado { color: var(--dev); }
+  [data-modo="dev"] .sidebar-ayuda { border-top-style: dashed; }
+  [data-modo="dev"] .sidebar-ayuda .ayuda-btn { font: 0.8rem var(--mono); }
+}

@@ -968,8 +968,17 @@ def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
     expect(pagina.locator("#pia-resultado")).to_contain_text("La IA cambió 1 pieza de la copia")
     expect(pagina.locator("#pia-resultado")).to_contain_text("Suma una regla.")
     bloque = pagina.locator('#pia-archivo .pa-bloque[data-clave="seo"]')
-    expect(bloque).to_have_class(re.compile("pia-cambiada"))
-    expect(bloque.locator(".pa-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
+    expect(bloque).to_have_class(re.compile("pia-cambiada"))                  # marcada, con el texto limpio
+    expect(bloque).to_contain_text("Palabra clave en un subtítulo.")
+    expect(bloque.locator(".pa-linea.pone")).to_have_count(0)
+    # Las diferencias se ven en el Historial, como en los actuales.
+    pagina.click("#pia-ver-historial")
+    expect(pagina.locator("#pia-archivo")).to_be_hidden()
+    cambio = pagina.locator("#pia-historial .pia-cambio").first
+    cambio.locator("summary").click()
+    expect(cambio.locator(".diff-linea.pone").last).to_contain_text("Palabra clave en un subtítulo.")
+    pagina.click("#pia-ver-historial")
+    expect(pagina.locator("#pia-archivo")).to_be_visible()
     expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("✦ 1")
     assert encoladas == [{}]
     # Tocar una pieza la marca en la lista y en el prompt.
@@ -977,12 +986,17 @@ def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
     expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_have_class(re.compile("activo"))
     expect(bloque).to_have_class(re.compile("pia-elegida"))
     # El pedido a mano también va a la cola: enviar se habilita al escribir (o con una sugerencia).
+    # La pieza del pedido se elige en una lista propia.
+    pagina.click("#pia-pieza-btn")
+    pagina.locator('#pia-pieza-menu [role="option"][data-clave="seo"]').click()
+    expect(pagina.locator("#pia-pieza-btn")).to_contain_text("SEO")
+    expect(pagina.locator("#pia-pieza-menu")).to_be_hidden()
     expect(pagina.locator("#pia-pedir")).to_be_disabled()
     pagina.locator(".pia-sugerencia", has_text="Que use voseo en toda la nota").click()
     expect(pagina.locator("#pia-pedido")).to_have_value("Que use voseo en toda la nota")
     pagina.click("#pia-pedir")
     expect(pagina.locator("#pia-pedido")).to_have_value("")
-    assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": []}
+    assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": ["seo"]}
 
 
 def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):

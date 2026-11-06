@@ -35,6 +35,20 @@ function initPromptsIA() {
   });
   $('pia-restablecer-todo').addEventListener('click', function() { restablecerPromptIA(null); });
   $('pia-persona').addEventListener('change', pintarArchivoIA);
+  $('pia-ver-historial').addEventListener('click', function() { verHistorialIA($('pia-historial').hidden); });
+  $('pia-pieza-btn').addEventListener('click', function() { abrirMenuPiezaIA($('pia-pieza-menu').hidden); });
+  $('pia-pieza-btn').addEventListener('keydown', function(ev) {
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); abrirMenuPiezaIA(true); }
+  });
+  $('pia-pieza-menu').addEventListener('keydown', function(ev) {
+    var ops = [].slice.call($('pia-pieza-menu').querySelectorAll('[role="option"]')), i = ops.indexOf(document.activeElement);
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      ops[(i + (ev.key === 'ArrowDown' ? 1 : -1) + ops.length) % ops.length].focus();
+    } else if (ev.key === 'Escape') { ev.preventDefault(); abrirMenuPiezaIA(false); $('pia-pieza-btn').focus(); }
+    else if ((ev.key === 'Enter' || ev.key === ' ') && i >= 0) { ev.preventDefault(); ops[i].click(); }
+  });
+  document.addEventListener('click', function(ev) { if (!ev.target.closest('.pia-pieza')) abrirMenuPiezaIA(false); });
   var sw = $('pia-auto');
   sw.addEventListener('click', cambiarAutoIA);
   sw.addEventListener('keydown', function(ev) { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); cambiarAutoIA(); } });
@@ -100,15 +114,55 @@ function pintarPromptsIA() {
   if (e.auto) partes.push(e.faltan ? tr('la próxima, en') + ' ' + e.faltan + ' ' + tr(e.faltan === 1 ? 'nota' : 'notas')
                                    : tr('la próxima, después de la próxima nota'));
   $('pia-estado').textContent = partes.join(' · ');
-  var sel = $('pia-pieza'), previa = sel.value;
-  sel.innerHTML = '<option value="">' + escHtml(tr('La IA elige qué piezas cambiar')) + '</option>'
-    + e.copia.map(function(c) { return '<option value="' + escHtml(c.clave) + '">' + escHtml(tr(c.titulo)) + '</option>'; }).join('');
-  sel.value = previa;
+  pintarMenuPiezaIA(e.copia);
   $('pia-restablecer-todo').hidden = !e.cambiadas;
   pintarListaIA(e.copia);
   pintarDiagnosticoIA(e.analisis);
   pintarMejorasIA(e.mejoras || []);
   if (PIA.vista === 'ia') pintarArchivoIA();
+}
+
+/* ── Pieza del pedido: una lista propia, con el estilo de la caja ────── */
+
+function pintarMenuPiezaIA(copia) {
+  var elegida = $('pia-pieza').value, grupos = { base: tr('Base del prompt'), persona: tr('Personas') };
+  var opcion = function(clave, titulo, cambiada) {
+    var si = clave === elegida;
+    return '<button type="button" role="option" class="pia-pieza-op' + (si ? ' elegida' : '') + '" aria-selected="' + si + '" data-clave="' + escHtml(clave) + '">'
+      + '<span class="pia-pieza-check" aria-hidden="true">' + (si ? '✓' : '') + '</span><span>' + escHtml(titulo) + '</span>'
+      + (cambiada ? '<span class="pia-pieza-marca" title="' + escHtml(tr('Cambiada por la IA')) + '">✦</span>' : '') + '</button>';
+  };
+  var html = opcion('', tr('La IA elige qué piezas cambiar'), false);
+  ['base', 'persona'].forEach(function(g) {
+    html += '<p class="pia-pieza-grupo">' + escHtml(grupos[g]) + '</p>'
+      + copia.filter(function(c) { return c.grupo === g; }).map(function(c) { return opcion(c.clave, tr(c.titulo), c.cambiada); }).join('');
+  });
+  $('pia-pieza-menu').innerHTML = html;
+  $('pia-pieza-menu').querySelectorAll('[role="option"]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      $('pia-pieza').value = b.dataset.clave;
+      $('pia-pieza-texto').textContent = b.dataset.clave ? b.textContent.replace('✦', '').replace('✓', '').trim() : tr('La IA elige qué piezas cambiar');
+      $('pia-pieza-btn').classList.toggle('con-pieza', !!b.dataset.clave);
+      pintarMenuPiezaIA((PIA.estado && PIA.estado.copia) || []);
+      abrirMenuPiezaIA(false);
+      $('pia-pieza-btn').focus();
+    });
+  });
+}
+
+function abrirMenuPiezaIA(si) {
+  var menu = $('pia-pieza-menu');
+  menu.hidden = !si;
+  $('pia-pieza-btn').setAttribute('aria-expanded', si ? 'true' : 'false');
+  if (si) (menu.querySelector('[aria-selected="true"]') || menu.querySelector('[role="option"]')).focus();
+}
+
+/* ── Historial: los cambios de la IA, con sus diferencias, solo acá ─── */
+
+function verHistorialIA(si) {
+  $('pia-historial').hidden = !si;
+  $('pia-archivo').hidden = si;
+  $('pia-ver-historial').setAttribute('aria-pressed', si ? 'true' : 'false');
 }
 
 /* ── La lista de piezas, como la de los actuales ─────────────────────── */
@@ -194,7 +248,7 @@ async function pintarArchivoIA() {
       + (PIA.recien.indexOf(parte.clave) >= 0 ? ' recien' : '') + (parte.clave === PIA.elegida ? ' pia-elegida' : '')
       + '" data-clave="' + escHtml(parte.clave) + '">'
       + '<div class="pa-bloque-cabeza">' + cabeza + '</div>'
-      + (cambiada ? _diffPrompt(antes, parte.texto, num) : _filasPrompt(parte.texto.split('\n'), '', num)) + '</section>';
+      + _filasPrompt(parte.texto.split('\n'), '', num) + '</section>';
   });
   caja.innerHTML = html;
   $('pia-archivo-lineas').textContent = lineas + ' ' + tr('líneas');
@@ -287,8 +341,9 @@ function pintarResultadoIA(mejora, d) {
     + '<ul>' + aplicadas.map(function(c) {
       return '<li><button type="button" class="pia-ir" data-clave="' + escHtml(c.clave) + '">' + escHtml(tr(c.titulo)) + '</button>'
         + (c.explicacion ? ' ' + escHtml(c.explicacion) : '') + '</li>';
-    }).join('') + '</ul><p class="pia-nota">' + escHtml(tr('Abajo, en el prompt de la IA, lo nuevo está marcado en verde y lo que salió, en rojo.')) + '</p>';
-  caja.querySelectorAll('.pia-ir').forEach(function(b) { b.addEventListener('click', function() { irAPiezaIA(b.dataset.clave, true); }); });
+    }).join('') + '</ul><button type="button" class="btn btn-sm pia-ver-cambios">' + escHtml(tr('Ver los cambios en el Historial')) + '</button>';
+  caja.querySelectorAll('.pia-ir').forEach(function(b) { b.addEventListener('click', function() { verHistorialIA(false); irAPiezaIA(b.dataset.clave, true); }); });
+  caja.querySelector('.pia-ver-cambios').addEventListener('click', function() { verHistorialIA(true); verPromptEnPantalla($('pia-historial')); });
 }
 
 async function deshacerPromptIA(clave, btn) {
@@ -359,13 +414,28 @@ var _ORIGEN_MEJORA = { automatica: 'Automática', manual: 'Analizar y mejorar', 
 
 function pintarMejorasIA(mejoras) {
   $('pia-historial-cuenta').textContent = mejoras.length ? mejoras.length : '';
-  $('pia-mejoras').innerHTML = mejoras.length ? mejoras.map(function(m) {
+  $('pia-mejoras').innerHTML = mejoras.length ? mejoras.map(function(m, i) {
     var aplicadas = (m.cambios || []).filter(function(c) { return c.aplicado; });
     return '<li class="pia-mejora' + (aplicadas.length ? '' : ' sin-cambios') + '">'
       + '<div class="pia-mejora-cabeza"><span class="pia-origen ' + escHtml(m.origen) + '">' + escHtml(tr(_ORIGEN_MEJORA[m.origen] || m.origen)) + '</span>'
       + '<span class="pia-caja-meta">' + escHtml(hace(m.fecha)) + '</span></div>'
       + (m.origen === 'pedido' && m.pedido ? '<p class="pia-pedido-eco">“' + escHtml(m.pedido) + '”</p>' : '')
-      + (aplicadas.length ? '<p>' + aplicadas.map(function(c) { return '<b>' + escHtml(tr(c.titulo)) + '</b>' + (c.explicacion ? ': ' + escHtml(c.explicacion) : ''); }).join('<br>') + '</p>' : '')
+      + (m.resumen ? '<p>' + escHtml(m.resumen) + '</p>' : '')
+      + aplicadas.map(function(c, j) {
+        return '<details class="pia-cambio"><summary><b>' + escHtml(tr(c.titulo)) + '</b>'
+          + (c.explicacion ? '<span class="pia-explicacion">' + escHtml(c.explicacion) + '</span>' : '') + '</summary>'
+          + '<div class="prompts-diff" translate="no" data-mejora="' + i + '" data-cambio="' + (m.cambios || []).indexOf(c) + '"></div></details>';
+      }).join('')
       + (m.error ? '<p class="pia-aviso">' + escHtml(m.error) + '</p>' : '') + '</li>';
   }).join('') : '<li class="pia-vacio">' + escHtml(tr('Todavía no hubo mejoras.')) + '</li>';
+  // Las diferencias se arman al abrir cada cambio.
+  $('pia-mejoras').querySelectorAll('details.pia-cambio').forEach(function(det) {
+    det.addEventListener('toggle', function() {
+      var caja = det.querySelector('.prompts-diff');
+      if (det.open && !caja.innerHTML) {
+        var c = mejoras[+caja.dataset.mejora].cambios[+caja.dataset.cambio];
+        caja.innerHTML = diffPromptHtml(c.antes, c.despues);
+      }
+    });
+  });
 }
