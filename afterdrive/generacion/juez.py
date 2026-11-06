@@ -12,6 +12,11 @@ guarda: si contara sola, la IA se enseñaría a sí misma.
 
 Ante la duda no pasa: si el modelo no responde o el JSON viene roto, el juicio
 queda con error y la nota espera a una persona.
+
+Checklist de Alephee: el juez también revisa cómo aparece Alephee, con el bloque
+"Enfoque Alephee" activo (redaccion.py) como la única verdad sobre la empresa.
+Cada punto es sí, no o no aplica (por ejemplo, si la nota no nombra a Alephee);
+un "no" frena la aprobación automática y queda como motivo.
 """
 
 from __future__ import annotations
@@ -21,6 +26,18 @@ import math
 from afterdrive.calibracion import ETIQUETAS
 from afterdrive.ia import llm
 from afterdrive.ia.lm_studio import _extraer_json
+
+# Checklist específica de Alephee: código -> qué se pregunta (lo que el juez responde).
+CHECKLIST_ALEPHEE = {
+    "mencion_con_motivo": "Si nombra a Alephee, lo hace donde resuelve un problema que la nota planteó, no de relleno.",
+    "nada_inventado": "No le atribuye a Alephee funciones, precios, cifras, clientes ni casos que no estén en el "
+                      "enfoque Alephee, las noticias o el pedido.",
+    "beneficio_concreto": "Lo que aporta Alephee se dice en concreto (catálogo, marketplaces, stock, fitment), "
+                          "no con frases generales.",
+    "informa_primero": "El cuerpo informa: Alephee no es el tema salvo que el pedido lo diga, y no hay tono "
+                       "publicitario (superlativos, \"la mejor solución\").",
+    "cta_unico": "Hay una sola llamada a la acción, al final, con un link a Alephee o al puntapié.",
+}
 
 CONFIANZA_MIN = 0.8
 UMBRAL_DEFAULT = 7          # puntaje del evaluador (0 a 9) si todavía no hay umbral calibrado
@@ -44,8 +61,24 @@ Solo un JSON, sin texto alrededor:
  "calificacion": entero 1 a 5 (la que le pondría el equipo),
  "etiquetas": [códigos de la lista de abajo que apliquen],
  "comentario": "una o dos oraciones concretas: lo mejor y lo que hay que arreglar",
- "motivos": ["por qué no pasa", ...] (vacío si pasa)}
+ "motivos": ["por qué no pasa", ...] (vacío si pasa),
+ "alephee": {"código de la checklist": true, false o null si no aplica}}
 """
+
+
+def _checklist_alephee() -> str:
+    from afterdrive.ia import redaccion
+
+    puntos = "\n".join(f"- {k}: {v}" for k, v in CHECKLIST_ALEPHEE.items())
+    return ("## Checklist de Alephee (respondé cada punto en \"alephee\": true, false o null si no aplica)\n"
+            f"{puntos}\n\nLo único que se puede afirmar de Alephee es lo que dice este bloque:\n"
+            f"{redaccion.texto('enfoque_alephee')}")
+
+
+def _alephee(valor) -> dict:
+    """{código: True | False | None} con los puntos de la checklist; lo que no vino, None (no se sabe)."""
+    valor = valor if isinstance(valor, dict) else {}
+    return {k: valor[k] if isinstance(valor.get(k), bool) else None for k in CHECKLIST_ALEPHEE}
 
 
 def _lista_etiquetas() -> str:
@@ -86,9 +119,10 @@ def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
     if reglas:
         user += "## Lo que el equipo viene corrigiendo (respetalo al juzgar)\n" + \
                 "\n".join(f"- {r}" for r in reglas) + "\n\n"
+    user += _checklist_alephee() + "\n\n"
     user += f"## Noticias de contexto\n{(noticias_texto or '')[:NOTICIAS_MAX]}\n\n## Nota a juzgar\n{nota}"
     try:
-        data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=800, tarea="evaluacion"))
+        data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=1000, tarea="evaluacion"))
     except Exception as e:
         return {"error": f"No se pudo juzgar la nota: {e}"}
     if not isinstance(data.get("pasa"), bool):
@@ -100,6 +134,7 @@ def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
         "etiquetas": [e for e in _lista(data.get("etiquetas")) if isinstance(e, str) and e in ETIQUETAS],
         "comentario": str(data.get("comentario") or "")[:300],
         "motivos": [str(m)[:200] for m in _lista(data.get("motivos")) if str(m).strip()][:5],
+        "alephee": _alephee(data.get("alephee")),
         "modelo": "evaluacion",
     }
 
@@ -128,6 +163,12 @@ def filtro_duro(doc: dict, umbral: int | None = None) -> list[str]:
     return motivos
 
 
+def fallas_alephee(juicio: dict | None) -> list[str]:
+    """Los puntos de la checklist de Alephee que el juez marcó en falso, como motivos."""
+    checklist = (juicio or {}).get("alephee") or {}
+    return [f"checklist de Alephee: {CHECKLIST_ALEPHEE[k]}" for k in CHECKLIST_ALEPHEE if checklist.get(k) is False]
+
+
 def decidir(doc: dict, confianza_min: float = CONFIANZA_MIN) -> dict:
     """Junta el filtro duro y el juicio guardado en la nota. Solo pasa si los dos dicen que sí."""
     umbral = (doc.get("calibracion_usada") or {}).get("umbral")
@@ -141,5 +182,6 @@ def decidir(doc: dict, confianza_min: float = CONFIANZA_MIN) -> dict:
         motivos += juicio.get("motivos") or ["el juez dijo que no pasa"]
     elif juicio.get("confianza", 0) < confianza_min:
         motivos.append(f"el juez no está seguro (confianza {juicio['confianza']:.2f} < {confianza_min})")
+    motivos += fallas_alephee(juicio)
     return {"pasa": not motivos, "motivos": motivos, "umbral": umbral if umbral is not None else UMBRAL_DEFAULT,
             "confianza_min": confianza_min}

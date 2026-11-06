@@ -186,3 +186,11 @@ def test_partes_y_prompt_son_el_mismo_texto():
         partes = redaccion.system_prompt_partes("divulgativo", compacto=compacto, directiva="D")
         assert "\n\n".join(t for _, t in partes) == redaccion.system_prompt("divulgativo", compacto=compacto, directiva="D")
         assert partes[-1] == ("directiva", "D")
+
+
+def test_el_enfoque_alephee_pide_que_resuelve_productos_y_casos():
+    original = redaccion.PIEZAS["enfoque_alephee"]
+    assert all(f"### {s}" in original for s in pe.SECCIONES_ALEPHEE)
+    sin_casos = original.replace("### Casos", "### Otros")
+    avisos = pe.validar("enfoque_alephee", sin_casos)["avisos"]
+    assert avisos and '"### Casos"' in avisos[0] and "Qué resuelve" not in avisos[0]

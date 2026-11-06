@@ -71,6 +71,9 @@ class ColFake:
 
     def find(self, *a, **k):
         docs = self.docs
+        estados = ((a[0] if a else {}).get("estado") or {}).get("$in") if a and isinstance(a[0], dict) else None
+        if estados:   # el único filtro que usa la generación: las aprobadas o publicadas
+            docs = [d for d in docs if d.get("estado") in estados]
 
         class Cursor:
             def sort(self, *a):
@@ -958,3 +961,43 @@ def test_metricas_del_archivo():
     ])
     a = metricas.resumen(base=base)["notas"]["archivo"]
     assert a == {"evaluadas": 4, "con_archivo": 3, "porcentaje": 0.75, "antiguedad_media_dias": 300, "reutilizados": 2}
+
+
+# ── Memoria de notas previas ─────────────────────────────────────────────────
+
+
+def _nota_previa(titulo, angulo="", clave="", estado="borrador"):
+    return {"contenido": f"# {titulo}\n\nTexto.", "estado": estado,
+            "plan": {"angulo": angulo, "palabra_clave": clave} if angulo or clave else None}
+
+
+def test_el_plan_recibe_angulos_palabras_clave_y_temas_ya_tratados(entorno):
+    llamadas, col, _ = entorno
+    col.docs.extend([
+        _nota_previa("Publicada hace meses", "El costo de no tener catálogo", "catálogo de autopartes", "publicado"),
+        *[_nota_previa(f"Nota {i}", f"Ángulo {i}", f"clave {i % 3}") for i in range(60)],
+    ])
+    g.generar_nota(["autopartes"])
+    plan_user = llamadas["plan_user"]
+    titulos = plan_user.split("## Notas ya publicadas")[1].split("##")[0]
+    assert titulos.count("\n- ") == g.TITULOS_AL_PLAN and "Nota 59" in titulos
+    angulos = plan_user.split("## Ángulos de las últimas notas")[1].split("##")[0]
+    assert "Ángulo 59" in angulos and "Ángulo 10" in angulos and "Ángulo 9\n" not in angulos   # las últimas 50
+    assert "clave 2, clave 1, clave 0\n" in plan_user                                         # sin repetir
+    tratados = plan_user.split("## Temas que el blog ya trató")[1]
+    assert "Publicada hace meses (El costo de no tener catálogo)" in tratados
+
+
+def test_la_memoria_no_repite_lo_que_ya_esta_en_los_titulos():
+    recientes = [g._resumen_nota(_nota_previa("Misma nota", "Un ángulo", "una clave", "aprobada"))]
+    tratadas = [*recientes, g._resumen_nota(_nota_previa("Otra aprobada", estado="aprobada"))]
+    m = g.memoria(recientes, tratadas)
+    assert m.titulos == ["Misma nota"] and m.tratados == ["Otra aprobada"]
+    assert m.angulos == ["Un ángulo"] and m.palabras_clave == ["una clave"]
+
+
+def test_el_umbral_de_parecido_es_085(monkeypatch):
+    monkeypatch.delenv("NOTA_PARECIDO_MAX", raising=False)
+    assert g.parecido_maximo() == 0.85
+    monkeypatch.setenv("NOTA_PARECIDO_MAX", "0.9")
+    assert g.parecido_maximo() == 0.9

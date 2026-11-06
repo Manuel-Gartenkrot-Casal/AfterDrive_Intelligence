@@ -42,6 +42,7 @@ CACHE_S = 60
 LARGO_MAX = 4000            # caracteres por pieza
 LARGO_MAX_IDENTIDAD = 600   # va en la misma línea que el rol de la persona
 MOTIVO_MAX = 300
+SECCIONES_ALEPHEE = ("Qué resuelve", "Productos", "Casos")
 
 _NOMBRES_PERSONAS = {
     "analitico": "Analítico-técnico",
@@ -56,7 +57,8 @@ _CATALOGO = [
     ("audiencia", "Audiencia", "base", "Para quién se escribe y qué le importa."),
     ("reglas_datos", "Reglas de datos", "base", "De dónde salen los hechos, cómo se citan y qué no se inventa."),
     ("oficio", "Oficio del sector", "base", "Terminología y criterios del aftermarket automotor."),
-    ("enfoque_alephee", "Enfoque Alephee", "base", "Cómo y cuánto aparece Alephee en el cuerpo de la nota."),
+    ("enfoque_alephee", "Enfoque Alephee", "base",
+     "Qué resuelve, productos y casos de Alephee (lo único que la nota puede afirmar) y cómo nombrarla."),
     ("formato", "Formato", "base", "Markdown, títulos y extensión. {extension} se reemplaza por el largo elegido."),
     ("seo", "SEO", "base", "Título, palabra clave y enlaces."),
     ("salida", "Respuesta", "base", "Qué devuelve el modelo: solo la nota, sin comentarios."),
@@ -133,6 +135,11 @@ def validar(clave: str, contenido: str) -> dict:
         if not cuerpo:
             errores.append("Tiene título pero no tiene reglas debajo.")
 
+    if clave == "enfoque_alephee":
+        faltan = [s for s in SECCIONES_ALEPHEE if not re.search(rf"^###\s+{s}", texto, flags=re.M | re.I)]
+        if faltan:
+            avisos.append("Conviene que tenga las secciones " + ", ".join(f"\"### {s}\"" for s in faltan)
+                          + ": la nota y el juez solo pueden afirmar de Alephee lo que está acá.")
     if clave == "formato" and "{extension}" not in texto:
         errores.append("Falta {extension} en Formato: ahí va el largo elegido en Crear nota.")
     if clave != "formato" and "{extension}" in texto:

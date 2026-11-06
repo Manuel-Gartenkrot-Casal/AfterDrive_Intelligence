@@ -171,3 +171,37 @@ def test_switch_de_aprobacion_automatica(api, monkeypatch):
     assert c.get("/api/aprobacion-auto").get_json()["activo"] is False
     assert c.post("/api/aprobacion-auto", json={"activo": True}).get_json()["activo"] is True
     assert c.post("/api/aprobacion-auto", json={}).status_code == 400
+
+
+# ── Checklist de Alephee ─────────────────────────────────────────────────────
+
+
+def test_el_juez_recibe_la_checklist_y_el_enfoque_alephee(monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+
+    def completar(system, user, **k):
+        pedidos.append(user)
+        return json.dumps({"pasa": True, "confianza": 0.9, "calificacion": 4, "motivos": [],
+                           "alephee": {"mencion_con_motivo": True, "nada_inventado": False, "cta_unico": "sí",
+                                       "otro": False}})
+    monkeypatch.setattr(llm, "completar", completar)
+    j = juez.juzgar(NOTA, "noticias")
+    assert "## Checklist de Alephee" in pedidos[0] and "## Enfoque Alephee" in pedidos[0]
+    assert all(k in pedidos[0] for k in juez.CHECKLIST_ALEPHEE)
+    assert j["alephee"] == {"mencion_con_motivo": True, "nada_inventado": False, "beneficio_concreto": None,
+                            "informa_primero": None, "cta_unico": None}
+
+
+def test_un_no_de_la_checklist_frena_la_aprobacion_automatica():
+    juicio = {**BUENA["juicio"], "alephee": {"nada_inventado": False, "cta_unico": None, "informa_primero": True}}
+    d = juez.decidir({**BUENA, "juicio": juicio})
+    assert not d["pasa"] and d["motivos"] == [f"checklist de Alephee: {juez.CHECKLIST_ALEPHEE['nada_inventado']}"]
+    # "No aplica" (null) no frena: por ejemplo, una nota que no nombra a Alephee.
+    todo_ok = {k: None for k in juez.CHECKLIST_ALEPHEE}
+    assert juez.decidir({**BUENA, "juicio": {**BUENA["juicio"], "alephee": todo_ok}})["pasa"]
+
+
+def test_un_juicio_viejo_sin_checklist_sigue_andando():
+    assert juez.decidir(BUENA)["pasa"]
+    assert juez.fallas_alephee(None) == []

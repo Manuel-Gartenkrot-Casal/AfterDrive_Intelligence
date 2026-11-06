@@ -15,6 +15,7 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 | Agregar o usar un endpoint | [07 API](07-api.md) |
 | Desplegar o revisar producción | [08 Despliegue](08-despliegue.md) |
 | Saber qué está roto o pendiente | [09 Deuda y mejoras](09-deuda-y-mejoras.md) |
+| Preparar o dar la demo de noviembre | [Guion de la demo](demo-noviembre.md) |
 
 ## Primer día en el proyecto
 
@@ -45,7 +46,7 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 |---|---|
 | `CONTEXT.md` | Glosario del dominio |
 | `tests/` | Tests con `pytest`: auth, configuración, Corridas, cola, historial, HubSpot, generación, LLM, redacción, saneo, scheduler, scraper. `tests/e2e/`: el dashboard en un navegador |
-| `scripts/demo_mode.py` | Pipeline acelerado para demos en vivo |
+| `scripts/demo_mode.py`, `scripts/demo_datos.json` | Demo de punta a punta (noticia → nota → revisión → HubSpot de pruebas) y sus noticias de ejemplo. Guion en [`demo-noviembre.md`](demo-noviembre.md) |
 | `scripts/manual/` | Pruebas manuales: conexión con NVIDIA y smoke test del dashboard con Playwright |
 | `data/*.json` | Volcados de artículos de ejemplo |
 | `render.yaml`, `Dockerfile`, `docker-compose.yml` | Despliegue (ver [08](08-despliegue.md)) |

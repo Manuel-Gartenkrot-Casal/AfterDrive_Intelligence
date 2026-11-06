@@ -44,7 +44,7 @@ import sys
 from dataclasses import dataclass, field
 
 from afterdrive import calibracion, clientes
-from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
+from afterdrive.db import ESTADO_APROBADA, ESTADO_BORRADOR, ESTADO_PUBLICADO, db, registrar_nota_descartada
 from afterdrive.generacion import (
     calidad,
     contexto_noticias,
@@ -297,12 +297,18 @@ CRITICOS = ("sin_alucinaciones", "sin_paywall", "no_repetitivo", "estructura_cor
 MAX_INTENTOS = 2
 
 
+PARECIDO_MAX = 0.85
+
+
 def parecido_maximo() -> float:
-    """Similitud (coseno) a partir de la cual una nota repite a una reciente."""
+    """Similitud (coseno) a partir de la cual una nota repite a una reciente.
+
+    0.85: con 0.93 salían notas casi iguales a otras (mismo tema y ángulo con
+    otras palabras). Más bajo es más exigente: más notas se reescriben."""
     try:
-        return float(os.getenv("NOTA_PARECIDO_MAX", "0.93"))
+        return float(os.getenv("NOTA_PARECIDO_MAX", str(PARECIDO_MAX)))
     except ValueError:
-        return 0.93
+        return PARECIDO_MAX
 
 
 def fallas_criticas(evaluacion: dict | None) -> list[str]:
@@ -351,16 +357,75 @@ def _coseno(a, b) -> float:
     return contexto_noticias._coseno(a, b)
 
 
-def _recientes(limite: int = 15) -> list[dict]:
-    """Las últimas notas: sus títulos van al plan y sus vectores detectan repeticiones."""
+MEMORIA_NOTAS = 50         # notas recientes cuyos ángulos y palabras clave no se repiten
+TITULOS_AL_PLAN = 15       # de esas, cuántos títulos van al plan
+TRATADAS_MAX = 40          # aprobadas o publicadas que se recuerdan como temas ya tratados
+
+
+def _resumen_nota(d: dict) -> dict:
+    plan_nota = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+    return {"titulo": calibracion._titulo(d.get("contenido", "")), "embedding": d.get("embedding"),
+            "embedding_modelo": d.get("embedding_modelo"), "estado": d.get("estado"),
+            "angulo": " ".join(str(plan_nota.get("angulo") or "").split())[:160],
+            "palabra_clave": " ".join(str(plan_nota.get("palabra_clave") or "").split())[:80]}
+
+
+_CAMPOS_MEMORIA = {"contenido": 1, "embedding": 1, "embedding_modelo": 1, "estado": 1,
+                   "plan.angulo": 1, "plan.palabra_clave": 1}
+
+
+def _recientes(limite: int = MEMORIA_NOTAS) -> list[dict]:
+    """Las últimas notas: sus títulos, ángulos y palabras clave van al plan, y sus vectores
+    detectan repeticiones."""
     try:
-        docs = list(col_notas_fase2.find({}, {"contenido": 1, "embedding": 1, "embedding_modelo": 1})
-                    .sort("generado_en", -1).limit(limite))
+        docs = list(col_notas_fase2.find({}, _CAMPOS_MEMORIA).sort("generado_en", -1).limit(limite))
     except Exception as e:
         print(f"  [AVISO] No se pudieron leer las notas recientes: {e}", flush=True)
         return []
-    return [{"titulo": calibracion._titulo(d.get("contenido", "")), "embedding": d.get("embedding"),
-             "embedding_modelo": d.get("embedding_modelo")} for d in docs]
+    return [_resumen_nota(d) for d in docs]
+
+
+def _tratadas(limite: int = TRATADAS_MAX) -> list[dict]:
+    """Las aprobadas o publicadas más recientes: temas que el blog ya cubrió (o está por cubrir)."""
+    estados = (ESTADO_APROBADA, ESTADO_PUBLICADO)
+    try:
+        docs = list(col_notas_fase2.find({"estado": {"$in": list(estados)}}, _CAMPOS_MEMORIA)
+                    .sort("generado_en", -1).limit(limite))
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer las notas aprobadas: {e}", flush=True)
+        return []
+    return [_resumen_nota(d) for d in docs if d.get("estado") in estados]
+
+
+@dataclass
+class Memoria:
+    """Lo que la nota nueva tiene que evitar repetir."""
+    titulos: list[str] = field(default_factory=list)          # las últimas notas
+    angulos: list[str] = field(default_factory=list)          # de las últimas MEMORIA_NOTAS
+    palabras_clave: list[str] = field(default_factory=list)   # de las últimas MEMORIA_NOTAS
+    tratados: list[str] = field(default_factory=list)         # aprobadas o publicadas: "título (ángulo)"
+
+
+def _unicos(valores) -> list[str]:
+    vistos, salida = set(), []
+    for v in valores:
+        clave = v.lower()
+        if v and clave not in vistos:
+            vistos.add(clave)
+            salida.append(v)
+    return salida
+
+
+def memoria(recientes: list[dict], tratadas: list[dict]) -> Memoria:
+    titulos = _unicos(r["titulo"] for r in recientes[:TITULOS_AL_PLAN])
+    ya = {t.lower() for t in titulos}
+    return Memoria(
+        titulos=titulos,
+        angulos=_unicos(r["angulo"] for r in recientes),
+        palabras_clave=_unicos(r["palabra_clave"] for r in recientes),
+        tratados=_unicos(f"{t['titulo']} ({t['angulo']})" if t["angulo"] else t["titulo"]
+                         for t in tratadas if t["titulo"] and t["titulo"].lower() not in ya),
+    )
 
 
 def _parecida(emb, modelo: str, recientes: list[dict]) -> dict | None:
@@ -536,11 +601,18 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print(f"  Umbral del evaluador calibrado con las calificaciones: {cal.umbral}/9", flush=True)
 
     recientes = _recientes()
+    # Memoria: títulos de las últimas notas, ángulos y palabras clave de las últimas 50,
+    # y las aprobadas o publicadas como temas ya tratados.
+    mem = memoria(recientes, _tratadas())
+    if mem.angulos or mem.tratados:
+        print(f"  Memoria: {len(mem.angulos)} ángulo(s), {len(mem.palabras_clave)} palabra(s) clave y "
+              f"{len(mem.tratados)} tema(s) ya tratado(s)", flush=True)
     print("  Planificando la nota...", flush=True)
     estructura = redaccion.persona(persona)["estructura"]
     plan_nota = plan.planificar(
         noticias, _pedido(categorias, tema, indicaciones), estructura,
-        publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
+        publicadas=mem.titulos, angulos=mem.angulos, palabras_clave=mem.palabras_clave, tratados=mem.tratados,
+        reglas=cal.reglas,
         contexto=contexto_noticias.formatear(noticias, max_chars=5000), idioma=voz.idioma,
         notas_blog=[f"{n.titulo}: {n.resumen}" if n.resumen else n.titulo for n in blog],
     )
