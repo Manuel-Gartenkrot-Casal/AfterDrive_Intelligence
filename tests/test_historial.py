@@ -67,6 +67,55 @@ def test_listar_mezcla_colecciones_por_fecha_y_pagina_sin_huecos(base):
     assert vistos == [str(_oid(m)) for m in (7, 5, 3, 1)]
 
 
+class _BaseEspia:
+    """La base de mongomock, anotando cuántos documentos pide cada find()."""
+
+    def __init__(self, base):
+        self.base, self.pedidos = base, []
+
+    def __getitem__(self, nombre):
+        col, pedidos = self.base[nombre], self.pedidos
+
+        class Col:
+            def count_documents(self, *a, **k):
+                return col.count_documents(*a, **k)
+
+            def find(self, *a, **k):
+                cursor = col.find(*a, **k)
+
+                class Cursor:
+                    def sort(self, *s):
+                        cursor.sort(*s)
+                        return self
+
+                    def limit(self, n):
+                        pedidos.append((nombre, n))
+                        return cursor.limit(n)
+                return Cursor()
+        return Col()
+
+
+def test_una_pagina_fuera_de_rango_no_trae_documentos(base):
+    espia = _BaseEspia(base)
+    r = historial.listar("generados_aprobados", pagina=100_000, por_pagina=20, base=espia)
+    assert r["items"] == [] and r["total"] == 4 and r["paginas"] == 1
+    assert espia.pedidos == []
+
+
+def test_cada_coleccion_pide_como_mucho_lo_que_tiene(base):
+    espia = _BaseEspia(base)
+    r = historial.listar("generados_aprobados", pagina=2, por_pagina=3, base=espia)
+    assert [i["id"] for i in r["items"]] == [str(_oid(1))]
+    assert all(n <= base[col].count_documents({}) for col, n in espia.pedidos)
+
+
+def test_una_coleccion_vacia_no_se_consulta(base):
+    espia = _BaseEspia(base)
+    historial.listar("scrapeados_descartados", q="nissan", base=espia)
+    historial.listar("generados_descartados", q="no-existe", base=espia)
+    assert [col for col, _ in espia.pedidos] == ["articulos_descartados"]
+
+
 def test_listar_nunca_devuelve_embeddings(base):
     r = historial.listar("generados_aprobados", base=base)
     assert all("embedding" not in i and "contenido" not in i for i in r["items"])
