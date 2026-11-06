@@ -939,7 +939,7 @@ def _prompts_ia(accion):
 
 @app.route("/api/prompts-ia", methods=["GET"])
 def prompts_ia_estado():
-    """Con qué prompts escribe la redacción, la copia de la IA, el último análisis y las propuestas pendientes."""
+    """Con qué prompts escribe la redacción, si la mejora es automática, la copia, el último análisis y las mejoras."""
     return _prompts_ia(lambda pi: jsonify({"success": True, **pi.estado()}))
 
 
@@ -950,31 +950,32 @@ def prompts_ia_usar():
     return _prompts_ia(lambda pi: jsonify({"success": True, **pi.usar(body.get("usar", ""))}))
 
 
-@app.route("/api/prompts-ia/analizar", methods=["POST"])
-def prompts_ia_analizar():
-    """Estadísticas de las últimas notas y el diagnóstico de la IA."""
-    return _prompts_ia(lambda pi: jsonify({"success": True, "analisis": pi.analizar()}))
-
-
-@app.route("/api/prompts-ia/proponer", methods=["POST"])
-def prompts_ia_proponer():
-    """{"pedido", "claves": [...]}: la IA reescribe piezas de la copia. Queda pendiente hasta aplicarla."""
+@app.route("/api/prompts-ia/auto", methods=["POST"])
+def prompts_ia_auto():
+    """{"auto": bool}: si la IA mejora sola la copia de los prompts cada pocas notas."""
     body = request.get_json(silent=True) or {}
-    claves = body.get("claves") if isinstance(body.get("claves"), list) else None
-    return _prompts_ia(lambda pi: jsonify({"success": True, "propuesta": pi.proponer(body.get("pedido", ""), claves)}))
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.set_auto(bool(body.get("auto")))}))
 
 
-@app.route("/api/prompts-ia/propuestas/<pid>/aplicar", methods=["POST"])
-def prompts_ia_aplicar(pid):
-    """{"claves": [...]} opcional: solo esas piezas de la propuesta."""
+@app.route("/api/prompts-ia/mejorar", methods=["POST"])
+def prompts_ia_mejorar():
+    """Encola una mejora de la copia: {"pedido"?, "claves"?}. Sin pedido, la IA analiza las notas y
+    con ese diagnóstico cambia la copia. Corre en la cola (el registro se ve en la terminal)."""
     body = request.get_json(silent=True) or {}
-    claves = body.get("claves") if isinstance(body.get("claves"), list) else None
-    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.aplicar(pid, claves)}))
+    pedido = " ".join(str(body.get("pedido") or "").split())[:1500]
+    if pedido and len(pedido) < 8:
+        return jsonify({"success": False, "error": "Contá qué querés cambiar en los prompts."}), 400
+    claves = [c for c in body.get("claves") or [] if isinstance(c, str)] if isinstance(body.get("claves"), list) else []
+    argv = (["--pedido", pedido] if pedido else []) + (["--claves", *claves] if claves else [])
+    return _encolar("script", {"modulo": "afterdrive.prompts_ia", "argv": argv},
+                    etiqueta="Cambiar prompts con IA" if pedido else "Mejorar prompts con IA")
 
 
-@app.route("/api/prompts-ia/propuestas/<pid>", methods=["DELETE"])
-def prompts_ia_descartar(pid):
-    return _prompts_ia(lambda pi: pi.descartar(pid) or jsonify({"success": True}))
+@app.route("/api/prompts-ia/deshacer", methods=["POST"])
+def prompts_ia_deshacer():
+    """{"clave"}: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.deshacer(str(body.get("clave") or ""))}))
 
 
 @app.route("/api/prompts-ia/pieza/<clave>", methods=["GET"])

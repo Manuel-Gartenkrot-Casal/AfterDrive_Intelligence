@@ -104,13 +104,13 @@ Los sitios que se revisan para buscar noticias.
 
 Las instrucciones que recibe la IA al escribir cada nota, en piezas (identidad, audiencia, reglas de datos, enfoque Alephee, formato, SEO y una por persona). Cada cambio a mano pasa por borrador, revisión y aprobación.
 
-**Mejorar con IA** ayuda a cambiarlos sin escribirlos vos:
+**Prompts con IA**, arriba de todo, los mejora sin que los escribas vos. La IA lee cómo salen calificadas las notas (la crítica, el juez, tus calificaciones y la checklist de Alephee), encuentra qué se repite y en qué pieza tocar, y cambia una **copia** de los prompts. Los prompts actuales no cambian nunca desde acá.
 
-1. **Por qué las notas no sacan más**: la IA lee las calificaciones de las últimas 40 notas y te dice qué se repite (por ejemplo, el tono o dos llamadas a la acción) y en qué pieza tocar.
-2. **Pedile un cambio**: escribí lo que querés (o tocá **Pedir este cambio** en un problema del análisis). La IA propone cómo quedarían las piezas y ves las diferencias antes de aplicarlas.
-3. **Copia de la IA**: los cambios se aplican a una copia de los prompts. Los actuales no cambian nunca desde acá.
-
-Arriba de Prompts elegís con cuáles escribe la redacción: **Prompts actuales** o **Copia de la IA**. Podés volver a los actuales cuando quieras, y con **Volver al actual** borrar los cambios de una pieza.
+- **Mejora automática**: prendida, la IA mejora la copia sola cada 5 notas nuevas.
+- **Analizar y mejorar ahora** lo hace en el momento.
+- **Ver qué cambió** muestra el último análisis, cada cambio con sus diferencias y un lugar para pedirle un cambio a mano (por ejemplo, "que use voseo en toda la nota").
+- Si un cambio no te gusta, **Deshacer el último**; **Volver al actual** borra los cambios de una pieza.
+- En **Escribir con** elegís con cuáles escribe la redacción: **Prompts actuales** o **Copia de la IA**.
 
 ## Corridas
 
@@ -124,7 +124,7 @@ La **API paga** se elige en la vista Desarrollador, en **Proveedor de IA**, y se
 
 ## Vista Cliente y Desarrollador
 
-- **Cliente** muestra lo esencial. Para pasar a Desarrollador, tocá tu usuario abajo de la barra lateral.
+- **Cliente** muestra lo esencial. Para pasar a Desarrollador o cerrar sesión, tocá tu usuario abajo de la barra lateral.
 - **Desarrollador** suma la consola de procesos, las estadísticas técnicas y la elección del proveedor de IA.
 
 ## Preguntas frecuentes

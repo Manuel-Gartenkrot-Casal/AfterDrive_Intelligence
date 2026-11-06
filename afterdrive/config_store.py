@@ -221,18 +221,18 @@ def set_blog_pruebas_config(activo: bool):
 
 # ── Prompts con IA ────────────────────────────────────────────────────────────
 
-# Con qué juego de prompts escribe la redacción: los actuales (aprobados) o la copia
-# que modificó la IA. Ver prompts_ia.py.
-DEFAULT_PROMPTS_JUEGO = {"usar": "actuales"}
+# Prompts con IA (prompts_ia.py): con qué prompts escribe la redacción (los actuales, aprobados,
+# o la copia que mejora la IA) y si la IA mejora la copia sola cada pocas notas.
+DEFAULT_PROMPTS_IA = {"usar": "actuales", "auto": True}
 
 
-def get_prompts_juego() -> str:
-    usar = _get_section("prompts_juego", DEFAULT_PROMPTS_JUEGO)["usar"]
-    return usar if usar in ("actuales", "ia") else "actuales"
+def get_prompts_ia_config() -> dict:
+    c = _get_section("prompts_ia", DEFAULT_PROMPTS_IA)
+    return {"usar": c["usar"] if c.get("usar") in ("actuales", "ia") else "actuales", "auto": bool(c.get("auto", True))}
 
 
-def set_prompts_juego(usar: str):
-    _set_section("prompts_juego", {"usar": usar})
+def set_prompts_ia_config(valor: dict):
+    _set_section("prompts_ia", {"usar": valor.get("usar", "actuales"), "auto": bool(valor.get("auto", True))})
 
 
 # ── Aprobación automática (vista Desarrollador) ───────────────────────────────

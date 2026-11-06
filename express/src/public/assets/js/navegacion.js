@@ -193,10 +193,10 @@ document.addEventListener('keydown', function(e) {
 /* ═══════════════════════════════════════════════════════════════════════
    MARCO DE LA VISTA CLIENTE (escritorio)
    Arriba una barra fina con el logo y "afterdrive" como siempre, el idioma, el
-   estado, el tema y salir. A la izquierda la barra de secciones, ordenada como la
-   de ChatGPT: arriba "Nueva nota" y el buscador (el botón que la pliega, chico al
-   costado); en el medio las secciones; abajo el perfil, que abre Ayuda y el paso
-   a la vista Desarrollador. Plegada muestra solo los íconos; desplegada, también
+   estado y el tema. A la izquierda la barra de secciones, ordenada como la de
+   ChatGPT: arriba "Nueva nota" (el botón que la pliega, chico al costado); en el
+   medio las secciones; abajo el perfil, que abre Ayuda, el paso a la vista
+   Desarrollador y Cerrar sesión. El buscador se abre con ⌘K / Ctrl+K. Plegada muestra solo los íconos; desplegada, también
    los nombres (se recuerda en ad-riel). En Desarrollador y en el celular todo
    queda como siempre.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -210,7 +210,7 @@ function pintarMiga(id) {
   if (miga) miga.textContent = tr(NOMBRE_SECCION[id] || '');
 }
 
-// Pie de la barra (vista Cliente): quién está conectado, con la inicial como avatar.
+// Pie de la barra (vista Cliente): quién está conectado.
 var _perfilCargado = false;
 async function cargarPerfil() {
   if (_perfilCargado) return;
@@ -220,7 +220,6 @@ async function cargarPerfil() {
     var nombre = (s && s.usuario) || '';
     if (!nombre) return;
     $('perfil-nombre').textContent = nombre;
-    $('perfil-avatar').textContent = nombre.trim().charAt(0).toUpperCase();
   } catch (e) { _perfilCargado = false; }
 }
 

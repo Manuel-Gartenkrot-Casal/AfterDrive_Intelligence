@@ -81,7 +81,7 @@ function initBuscador() {
   var q = $('buscador-q'), d = $('buscador');
   if (!q) return;
   // Mac: ⌘K. El resto: Ctrl K.
-  if (!/Mac|iPhone|iPad/.test(navigator.platform || '')) $('buscador-atajo').textContent = 'Ctrl K';
+  if ($('buscador-atajo') && !/Mac|iPhone|iPad/.test(navigator.platform || '')) $('buscador-atajo').textContent = 'Ctrl K';
   q.addEventListener('input', function() { buscarEnBuscador(q.value); });
   q.addEventListener('keydown', function(ev) {
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {

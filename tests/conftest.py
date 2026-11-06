@@ -53,14 +53,14 @@ def prompts_en_memoria(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def prompts_ia_en_memoria(monkeypatch):
-    """La copia de los prompts de la IA y la elección del juego, en memoria (por defecto, los actuales)."""
+    """La copia de los prompts de la IA y su configuración, en memoria (los actuales, mejora automática prendida)."""
     from afterdrive import prompts_ia
     db = mongomock.MongoClient().db
-    juego = {"usar": "actuales"}
+    config = {"usar": "actuales", "auto": True}
     monkeypatch.setattr(prompts_ia, "_base", lambda base=None: db if base is None else base)
-    monkeypatch.setattr(prompts_ia, "juego", lambda: juego["usar"])
-    monkeypatch.setattr(prompts_ia, "_guardar_juego", lambda cual: juego.__setitem__("usar", cual))
-    return juego
+    monkeypatch.setattr(prompts_ia, "_config", lambda: dict(config))
+    monkeypatch.setattr(prompts_ia, "_guardar_config", lambda **cambios: config.update(cambios))
+    return config
 
 
 @pytest.fixture(autouse=True)

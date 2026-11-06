@@ -216,6 +216,12 @@ def _generar(params: dict | None, programada: bool = False) -> dict:
         return {"success": False, "error": "Cancelada."}
     if resultado.get("success"):
         print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
+        # Prompts con IA: cada pocas notas nuevas, la IA mejora sola la copia de los prompts.
+        try:
+            from afterdrive import prompts_ia
+            prompts_ia.mejora_automatica()
+        except Exception as e:   # la nota ya está guardada: la mejora queda para la próxima
+            print(f"[PROMPTS IA] [AVISO] No se pudo mejorar la copia: {e}", flush=True)
         if programada and resultado.get("id"):
             try:
                 from afterdrive import aprobacion_auto

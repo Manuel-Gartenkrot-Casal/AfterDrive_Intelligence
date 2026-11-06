@@ -98,11 +98,11 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 
 | | |
 |---|---|
-| `GET /api/prompts-ia` | Con qué prompts escribe la redacción (`usar`: `actuales` o `ia`), la copia pieza por pieza, el último análisis y las propuestas pendientes |
+| `GET /api/prompts-ia` | Con qué prompts escribe la redacción (`usar`: `actuales` o `ia`), si la mejora es automática (`auto`, `auto_cada`, `faltan`), la copia pieza por pieza, el último análisis y las últimas mejoras |
 | `POST /api/prompts-ia/usar` | `{"usar": "actuales" \| "ia"}` |
-| `POST /api/prompts-ia/analizar` | Estadísticas de las últimas 40 notas y el diagnóstico de la IA (sin IA, solo las estadísticas) |
-| `POST /api/prompts-ia/proponer` | `{"pedido", "claves"?}`: la IA reescribe piezas de la copia. Queda pendiente con el antes, el después y la validación de cada pieza |
-| `POST /api/prompts-ia/propuestas/<id>/aplicar`, `DELETE /api/prompts-ia/propuestas/<id>` | Aplicarla a la copia (solo las piezas sin errores) o descartarla |
+| `POST /api/prompts-ia/auto` | `{"auto": bool}`: que la IA mejore la copia sola cada 5 notas nuevas |
+| `POST /api/prompts-ia/mejorar` | Encola una mejora (202, se sigue como cualquier Corrida). Sin cuerpo: analiza las notas y con ese diagnóstico la IA cambia la copia. `{"pedido", "claves"?}`: un cambio a mano. Los cambios válidos se aplican directo en la copia |
+| `POST /api/prompts-ia/deshacer` | `{"clave"}`: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA |
 | `GET /api/prompts-ia/pieza/<clave>` | El texto actual y el de la copia de una pieza, con sus cambios |
 | `POST /api/prompts-ia/restablecer` | `{"clave"?}`: la copia (o esa pieza) vuelve a ser igual a los prompts actuales |
 

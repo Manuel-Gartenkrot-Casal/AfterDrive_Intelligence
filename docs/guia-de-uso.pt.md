@@ -104,13 +104,13 @@ Os sites verificados para buscar notícias.
 
 As instruções que a IA recebe ao escrever cada post, em partes (identidade, público, regras de dados, enfoque Alephee, formato, SEO e uma por persona). Cada mudança manual passa por rascunho, revisão e aprovação.
 
-**Melhorar com IA** ajuda a mudá-los sem você escrever:
+**Prompts com IA**, no topo, melhora os prompts sem você escrever. A IA lê como os posts são avaliados (a crítica, o juiz, as suas avaliações e o checklist da Alephee), encontra o que se repete e qual parte mudar, e altera uma **cópia** dos prompts. Os prompts atuais nunca mudam por aqui.
 
-1. **Por que os posts não têm nota maior**: a IA lê as avaliações dos últimos 40 posts e diz o que se repete (por exemplo, o tom ou duas chamadas para ação) e qual parte mudar.
-2. **Peça uma mudança**: escreva o que você quer (ou toque em **Pedir esta mudança** em um problema da análise). A IA propõe como as partes ficariam e você vê as diferenças antes de aplicá-las.
-3. **Cópia da IA**: as mudanças são aplicadas a uma cópia dos prompts. Os atuais nunca mudam por aqui.
-
-No topo de Prompts você escolhe com quais a redação escreve: **Prompts atuais** ou **Cópia da IA**. Dá para voltar aos atuais quando quiser e, com **Voltar ao atual**, apagar as mudanças de uma parte.
+- **Melhoria automática**: ligada, a IA melhora a cópia sozinha a cada 5 posts novos.
+- **Analisar e melhorar agora** faz isso na hora.
+- **Ver o que mudou** mostra a última análise, cada mudança com as diferenças e um lugar para pedir uma mudança manual (por exemplo, "que use voseo em todo o post").
+- Se não gostar de uma mudança, **Desfazer o último**; **Voltar ao atual** apaga as mudanças de uma parte.
+- Em **Escrever com** você escolhe com quais a redação escreve: **Prompts atuais** ou **Cópia da IA**.
 
 ## Execuções
 
@@ -124,7 +124,7 @@ A **API paga** é escolhida na visualização Desenvolvedor, em **Provedor de IA
 
 ## Visualização Cliente e Desenvolvedor
 
-- **Cliente** mostra o essencial. Para passar para Desenvolvedor, toque no seu usuário embaixo da barra lateral.
+- **Cliente** mostra o essencial. Para passar para Desenvolvedor ou sair, toque no seu usuário embaixo da barra lateral.
 - **Desenvolvedor** adiciona o console de processos, as estatísticas técnicas e a escolha do provedor de IA.
 
 ## Perguntas frequentes

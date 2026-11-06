@@ -104,13 +104,13 @@ The sites checked for news.
 
 The instructions the AI gets when writing each post, in pieces (identity, audience, data rules, Alephee focus, format, SEO and one per persona). Every manual change goes through draft, review and approval.
 
-**Improve with AI** helps you change them without writing them yourself:
+**AI prompts**, at the top, improves them without you writing them. The AI reads how posts are rated (the critique, the judge, your ratings and the Alephee checklist), finds what keeps happening and which piece to change, and edits a **copy** of the prompts. The current prompts never change from here.
 
-1. **Why posts don't score higher**: the AI reads the ratings of the last 40 posts and tells you what keeps happening (for example, the tone or two calls to action) and which piece to change.
-2. **Ask for a change**: write what you want (or tap **Ask for this change** on a problem from the analysis). The AI proposes how the pieces would look and you see the differences before applying them.
-3. **AI copy**: changes are applied to a copy of the prompts. The current ones never change from here.
-
-At the top of Prompts you choose which ones writing uses: **Current prompts** or **AI copy**. You can go back to the current ones whenever you want, and **Back to current** deletes the changes to a piece.
+- **Automatic improvement**: when on, the AI improves the copy on its own every 5 new posts.
+- **Analyze and improve now** does it right away.
+- **See what changed** shows the latest analysis, each change with its differences and a box to ask for a change manually (for example, "use voseo throughout the post").
+- If you don't like a change, **Undo the last one**; **Back to current** deletes the changes to a piece.
+- In **Write with** you choose which ones writing uses: **Current prompts** or **AI copy**.
 
 ## Runs
 
@@ -124,7 +124,7 @@ The **Paid API** is chosen in the Developer view, under **AI provider**, and sta
 
 ## Client and Developer view
 
-- **Client** shows the essentials. To switch to Developer, tap your user at the bottom of the sidebar.
+- **Client** shows the essentials. To switch to Developer or log out, tap your user at the bottom of the sidebar.
 - **Developer** adds the process console, technical statistics and the choice of AI provider.
 
 ## FAQ

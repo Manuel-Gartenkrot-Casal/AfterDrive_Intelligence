@@ -155,10 +155,19 @@ def test_marco_de_la_vista_cliente_y_buscador(pagina):
     expect(pagina.locator(".header-title")).to_be_visible()
     expect(pagina.locator("#header-miga")).to_be_hidden()
     expect(pagina.locator(".rail-cabeza #rail-nueva")).to_be_visible()
-    expect(pagina.locator(".header-right #buscador-btn")).to_have_count(0)
-    for control in (".selector-idioma", "#themeBtn", "#btn-salir"):
+    expect(pagina.locator("#buscador-btn")).to_have_count(0)            # el buscador se abre con Ctrl+K
+    for control in (".selector-idioma", "#themeBtn"):
         expect(pagina.locator(".header-right " + control)).to_be_visible()
+    expect(pagina.locator(".header-right #btn-salir")).to_be_hidden()   # salir pasa al menú del perfil
     expect(pagina.locator(".rail-pie #ayuda-btn")).to_be_visible()
+    expect(pagina.locator(".rail-pie .perfil-avatar svg")).to_be_visible()
+    pagina.click("#ayuda-btn")
+    menu = pagina.locator("#ayuda-menu")
+    expect(menu.locator(".ayuda-salir")).to_have_text("Cerrar sesión")
+    expect(menu.locator(".ayuda-dev")).to_be_visible()
+    assert menu.locator(".ayuda-dev").bounding_box()["height"] <= 44   # del alto de los demás
+    pagina.keyboard.press("Escape")
+    pagina.click("#ayuda-btn")
     assert pagina.locator(".sidebar").bounding_box()["width"] <= 57
     # Las secciones en el orden de siempre.
     orden = pagina.evaluate("[...document.querySelectorAll('.nav-link')].map(a => a.dataset.seccion)")
@@ -186,6 +195,6 @@ def test_marco_de_la_vista_cliente_y_buscador(pagina):
     expect(pagina.locator("#modal-titulo")).to_contain_text(NOTA)
     pagina.keyboard.press("Escape")
     # Sin escribir, lleva a una sección.
-    pagina.click("#buscador-btn")
+    pagina.keyboard.press("Control+k")
     pagina.locator(".buscador-item", has_text="Fuentes").click()
     pagina.wait_for_function("location.hash === '#fuentes'")

@@ -922,52 +922,59 @@ def test_gasto_de_meses_anteriores_en_el_tablero(pagina):
     expect(pagina.locator("#g-gasto .gasto-meses-titulo")).to_have_text("Meses anteriores")
 
 
-def test_prompts_con_ia_analiza_propone_y_elige_la_copia(pagina):
-    """Mejorar con IA: el diagnóstico sugiere un pedido, la propuesta muestra las diferencias y
-    se aplica a la copia; arriba se elige con qué prompts escribe la redacción."""
-    analisis = {"fecha": "2026-11-06T12:00:00Z", "id": "a1",
-                "estadisticas": {"notas": 12, "redaccion": 7.5, "juez": 3.9, "humana": None,
-                                 "errores": [{"tipo": "tono", "nombre": "Tono", "veces": 7, "ejemplos": ["Tutea."]}],
-                                 "alephee": [], "por_juego": {}},
-                "diagnostico": {"resumen": "Pierden puntos por el tono.", "problemas": [
-                    {"titulo": "Tuteo", "detalle": "", "evidencia": "7 de 12", "pieza": "seo", "titulo_pieza": "SEO",
-                     "pedido": "Que el SEO pida la palabra clave en un subtítulo"}]}}
-    propuesta = {"id": "p-e2e", "pedido": "Que el SEO pida la palabra clave en un subtítulo", "comentario": "",
-                 "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "## SEO\n- Título corto.",
-                              "despues": "## SEO\n- Título corto.\n- Palabra clave en un subtítulo.",
-                              "explicacion": "Suma una regla.", "errores": [], "avisos": []}]}
-    aplicados = []
-    pagina.route("**/api/prompts-ia/analizar", lambda r: r.fulfill(json={"success": True, "analisis": analisis}))
-    pagina.route("**/api/prompts-ia/proponer", lambda r: r.fulfill(json={"success": True, "propuesta": propuesta}))
+def test_prompts_con_ia_mejora_la_copia_y_se_elige_con_que_escribir(pagina):
+    """Prompts con IA: "Analizar y mejorar ahora" corre en la cola y aplica los cambios directo en la
+    copia (se ven con sus diferencias); la mejora automática y con qué prompts escribe la redacción."""
+    estado = {"usar": "actuales", "auto": True, "auto_cada": 5, "faltan": 3, "cambiadas": 0, "analisis": None, "mejoras": [],
+              "copia": [{"clave": "seo", "titulo": "SEO", "grupo": "base", "cambiada": False, "cambios": 0,
+                         "actualizado": None, "desactualizada": False}]}
+    mejora = {"id": "m1", "fecha": "2026-11-06T12:00:00Z", "origen": "manual", "resumen": "Pierden puntos por el SEO.",
+              "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "## SEO\n- Título corto.",
+                           "despues": "## SEO\n- Título corto.\n- Palabra clave en un subtítulo.",
+                           "explicacion": "Suma una regla.", "errores": [], "avisos": [], "aplicado": True}]}
+    encoladas = []
 
-    def aplicar(r):
-        aplicados.append(r.request.url)
-        r.fulfill(json={"success": True, "usar": "actuales", "cambiadas": 1, "analisis": analisis, "propuestas": [],
-                        "copia": [{"clave": "seo", "titulo": "SEO", "grupo": "base", "cambiada": True, "cambios": 1,
-                                   "actualizado": "2026-11-06T12:01:00Z", "desactualizada": False}]})
-    pagina.route("**/api/prompts-ia/propuestas/p-e2e/aplicar", aplicar)
+    def mejorar(r):
+        encoladas.append(r.request.post_data_json)
+        estado.update(cambiadas=1, mejoras=[mejora], faltan=5,
+                      copia=[{**estado["copia"][0], "cambiada": True, "cambios": 1, "actualizado": mejora["fecha"]}])
+        r.fulfill(status=202, json={"success": True, "id": "pia-e2e", "posicion": 0})
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json={"success": True, **estado}) if r.request.method == "GET" else r.continue_())
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/corridas/pia-e2e/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA] Analizando las calificaciones de las últimas notas...", "[OK] Copia de la IA mejorada: SEO."],
+        "siguiente": 2, "estado": "ok"}))
 
     pagina.click('.nav-link[data-seccion="prompts"]')
-    expect(pagina.locator('#pia-usar [data-usar="actuales"]')).to_have_attribute("aria-checked", "true")
-    pagina.click("#pia-abrir")
-    expect(pagina.locator("#pia-panel")).to_be_visible()
-    expect(pagina.locator("#pia-copia")).to_contain_text("la IA todavía no cambió nada")
-    pagina.click("#pia-analizar")
-    expect(pagina.locator("#pia-diagnostico .pia-resumen")).to_contain_text("Pierden puntos por el tono.")
-    expect(pagina.locator("#pia-diagnostico .pia-kpi").nth(1)).to_contain_text("7,5")
-    pagina.locator("#pia-diagnostico").get_by_role("button", name="Pedir este cambio").click()
-    expect(pagina.locator("#pia-pedido")).to_have_value("Que el SEO pida la palabra clave en un subtítulo")
-    expect(pagina.locator("#pia-pieza")).to_have_value("seo")
-    pagina.click("#pia-proponer")
-    prop = pagina.locator(".pia-propuesta")
-    expect(prop.locator(".diff-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
-    prop.get_by_role("button", name="Aplicar a la copia de la IA").click()
-    expect(pagina.locator("#pia-copia .pia-copia-fila")).to_contain_text("SEO")
+    hero = pagina.locator("#pia-hero")
+    expect(hero).to_contain_text("Prompts con IA")
+    expect(pagina.locator("#pia-estado")).to_contain_text("la próxima, en 3 notas")
+    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
+    hero.get_by_role("button", name="Analizar y mejorar ahora").click()
+    expect(pagina.locator("#pia-panel")).to_be_visible()                       # se abre con lo que cambió
+    assert encoladas == [None] or encoladas == [{}]
     expect(pagina.locator("#pia-cambiadas")).to_have_text("1")
-    assert aplicados
-    # Elegir la copia de la IA (API de verdad) y volver a los actuales.
+    expect(pagina.locator("#pia-copia .pia-copia-fila")).to_contain_text("SEO")
+    cambio = pagina.locator("#pia-mejoras .pia-cambio").first
+    cambio.locator("summary").click()
+    expect(cambio.locator(".diff-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
+    # El pedido a mano también va a la cola.
+    pagina.fill("#pia-pedido", "Que use voseo en toda la nota")
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-pedido")).to_have_value("")
+    assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": []}
+    assert pagina.errores == []
+
+
+def test_prompts_con_ia_elegir_la_copia_y_la_mejora_automatica(pagina):
+    pagina.click('.nav-link[data-seccion="prompts"]')
     pagina.click('#pia-usar [data-usar="ia"]')
     expect(pagina.locator('#pia-usar [data-usar="ia"]')).to_have_attribute("aria-checked", "true")
     pagina.click('#pia-usar [data-usar="actuales"]')
     expect(pagina.locator('#pia-usar [data-usar="actuales"]')).to_have_attribute("aria-checked", "true")
+    pagina.click("#pia-auto")
+    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "false")
+    expect(pagina.locator("#pia-auto-estado")).to_have_text("Apagada")
+    pagina.click("#pia-auto")
+    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
     assert pagina.errores == []
