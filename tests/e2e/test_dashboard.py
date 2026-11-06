@@ -972,8 +972,14 @@ def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
     expect(bloque.locator(".pa-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
     expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("✦ 1")
     assert encoladas == [{}]
-    # El pedido a mano también va a la cola.
-    pagina.fill("#pia-pedido", "Que use voseo en toda la nota")
+    # Tocar una pieza la marca en la lista y en el prompt.
+    pagina.click('#pia-lista .prompts-item[data-clave="seo"]')
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_have_class(re.compile("activo"))
+    expect(bloque).to_have_class(re.compile("pia-elegida"))
+    # El pedido a mano también va a la cola: enviar se habilita al escribir (o con una sugerencia).
+    expect(pagina.locator("#pia-pedir")).to_be_disabled()
+    pagina.locator(".pia-sugerencia", has_text="Que use voseo en toda la nota").click()
+    expect(pagina.locator("#pia-pedido")).to_have_value("Que use voseo en toda la nota")
     pagina.click("#pia-pedir")
     expect(pagina.locator("#pia-pedido")).to_have_value("")
     assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": []}

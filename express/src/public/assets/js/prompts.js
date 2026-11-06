@@ -105,8 +105,22 @@ function pintarListaPrompts() {
   });
   $('prompts-lista').innerHTML = html;
   $('prompts-lista').querySelectorAll('.prompts-item').forEach(function(b) {
-    b.addEventListener('click', function() { elegirPrompt(b.dataset.clave); });
+    b.addEventListener('click', async function() {
+      await elegirPrompt(b.dataset.clave);
+      if (b.dataset.clave === PROMPTS.clave) verPromptEnPantalla($('pe-archivo-cuerpo'));
+    });
   });
+}
+
+/* Al tocar una pieza de la lista, la página baja hasta el prompt (si no se ve entero arriba):
+   así no hay que buscarlo. También lo usa la pestaña de la IA (promptsia.js). */
+function verPromptEnPantalla(archivo) {
+  var caja = archivo && archivo.closest('.prompts-trabajo');
+  if (!caja) return;
+  var r = caja.getBoundingClientRect(), alto = window.innerHeight || document.documentElement.clientHeight;
+  if (r.top < 70 || r.top > alto * 0.45) {
+    caja.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
 }
 
 async function elegirPrompt(clave, forzar) {

@@ -756,10 +756,6 @@
           <p class="pia-estado" id="pia-estado"></p>
           <div class="pia-progreso" id="pia-progreso" role="status" hidden></div>
           <section class="pia-resultado" id="pia-resultado" aria-live="polite" hidden></section>
-          <details class="pia-caja" id="pia-analisis-caja" open>
-            <summary><span>Análisis de las notas</span><span class="pia-caja-meta" id="pia-analisis-fecha"></span></summary>
-            <div id="pia-diagnostico"></div>
-          </details>
           <div class="prompts-trabajo">
             <div class="prompts-barra">
               <div class="pa-nombre">
@@ -781,17 +777,37 @@
             </div>
             <div class="prompt-archivo" id="pia-archivo" translate="no" aria-label="Prompt completo de la IA"></div>
           </div>
-          <section class="pia-caja pia-pedir" aria-labelledby="pia-t-pedido">
-            <h4 id="pia-t-pedido">Pedile un cambio</h4>
-            <label class="sr-only" for="pia-pedido">Qué querés cambiar</label>
-            <textarea id="pia-pedido" class="input-field pia-pedido" rows="2" maxlength="1500"
-                      placeholder="Por ejemplo: que use voseo en toda la nota y que haya una sola llamada a la acción, al final"></textarea>
-            <div class="pia-pedido-pie">
-              <label class="sr-only" for="pia-pieza">Pieza</label>
-              <select id="pia-pieza" class="select-field"><option value="">La IA elige qué piezas cambiar</option></select>
-              <button type="button" class="btn btn-primary btn-sm" id="pia-pedir">Cambiar con IA</button>
+          <!-- Pedirle un cambio a la IA: una caja para escribirle, con la pieza y el envío adentro. -->
+          <section class="pia-composer" aria-labelledby="pia-t-pedido">
+            <h4 id="pia-t-pedido"><span class="pia-chispa" aria-hidden="true">✦</span> Pedile un cambio a la IA</h4>
+            <div class="pia-composer-caja">
+              <label class="sr-only" for="pia-pedido">Qué querés cambiar</label>
+              <textarea id="pia-pedido" class="pia-pedido" rows="1" maxlength="1500"
+                        placeholder="Contale a la IA qué querés cambiar en los prompts…"></textarea>
+              <div class="pia-composer-pie">
+                <label class="pia-composer-pieza" title="Pieza que puede cambiar">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+                  <span class="sr-only">Pieza</span>
+                  <select id="pia-pieza"><option value="">La IA elige qué piezas cambiar</option></select>
+                </label>
+                <span class="pia-composer-ayuda">Ctrl + Enter para enviar</span>
+                <button type="button" class="pia-enviar" id="pia-pedir" aria-label="Cambiar con IA" title="Cambiar con IA" disabled>
+                  <svg class="ico-enviar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                  <span class="pia-girando" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+            <div class="pia-sugerencias" aria-label="Ideas">
+              <button type="button" class="pia-sugerencia">Que use voseo en toda la nota</button>
+              <button type="button" class="pia-sugerencia">Una sola llamada a la acción, al final</button>
+              <button type="button" class="pia-sugerencia">Títulos más cortos y concretos</button>
+              <button type="button" class="pia-sugerencia">Menos tono publicitario al nombrar a Alephee</button>
             </div>
           </section>
+          <details class="pia-caja" id="pia-analisis-caja" open>
+            <summary><span>Análisis de las notas</span><span class="pia-caja-meta" id="pia-analisis-fecha"></span></summary>
+            <div id="pia-diagnostico"></div>
+          </details>
           <details class="pia-caja" id="pia-historial-caja">
             <summary><span>Historial de mejoras</span><span class="pia-caja-meta" id="pia-historial-cuenta"></span></summary>
             <ol class="pia-mejoras" id="pia-mejoras"></ol>

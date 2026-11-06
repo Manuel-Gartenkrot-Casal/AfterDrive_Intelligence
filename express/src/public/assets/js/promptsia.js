@@ -11,7 +11,7 @@
    nunca. "Usar estos prompts" elige con cuáles escribe la redacción.
    Ver afterdrive/prompts_ia.py. Usa _filasPrompt y _diffPrompt de prompts.js. */
 
-var PIA = { estado: null, vista: 'actuales', corriendo: false, recien: [] };
+var PIA = { estado: null, vista: 'actuales', corriendo: false, recien: [], elegida: null };
 
 function initPromptsIA() {
   document.querySelectorAll('#prompts-vistas [role="tab"]').forEach(function(b) {
@@ -28,12 +28,24 @@ function initPromptsIA() {
   $('pia-pedido').addEventListener('keydown', function(ev) {
     if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); $('pia-pedir').click(); }
   });
+  // La caja crece con lo que se escribe; enviar se habilita con un pedido de verdad.
+  $('pia-pedido').addEventListener('input', ajustarPedidoIA);
+  document.querySelectorAll('.pia-sugerencia').forEach(function(b) {
+    b.addEventListener('click', function() { $('pia-pedido').value = b.textContent.trim(); ajustarPedidoIA(); $('pia-pedido').focus(); });
+  });
   $('pia-restablecer-todo').addEventListener('click', function() { restablecerPromptIA(null); });
   $('pia-persona').addEventListener('change', pintarArchivoIA);
   var sw = $('pia-auto');
   sw.addEventListener('click', cambiarAutoIA);
   sw.addEventListener('keydown', function(ev) { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); cambiarAutoIA(); } });
   document.addEventListener('seccion', function(ev) { if (ev.detail === 'prompts') cargarPromptsIA(); });
+}
+
+function ajustarPedidoIA() {
+  var t = $('pia-pedido');
+  t.style.height = 'auto';
+  t.style.height = Math.min(220, Math.max(52, t.scrollHeight)) + 'px';
+  $('pia-pedir').disabled = PIA.corriendo || t.value.trim().length < 8;
 }
 
 function verVistaPrompts(vista) {
@@ -108,7 +120,8 @@ function pintarListaIA(copia) {
   ['base', 'persona'].forEach(function(g) {
     html += '<p class="prompts-grupo">' + escHtml(grupos[g]) + '</p>';
     copia.filter(function(c) { return c.grupo === g; }).forEach(function(c) {
-      html += '<button type="button" class="prompts-item ' + (c.cambiada ? 'estado-ia' : 'estado-original') + '" data-clave="' + escHtml(c.clave) + '">'
+      html += '<button type="button" class="prompts-item ' + (c.cambiada ? 'estado-ia' : 'estado-original') + (c.clave === PIA.elegida ? ' activo' : '')
+        + '" data-clave="' + escHtml(c.clave) + '"' + (c.clave === PIA.elegida ? ' aria-current="true"' : '') + '>'
         + '<span class="prompts-item-punto" aria-hidden="true"></span>'
         + '<span class="prompts-item-nombre">' + escHtml(tr(c.titulo)) + '</span>'
         + '<span class="prompts-chip ' + (c.cambiada ? 'ia' : 'original') + '">'
@@ -117,15 +130,29 @@ function pintarListaIA(copia) {
   });
   $('pia-lista').innerHTML = html;
   $('pia-lista').querySelectorAll('.prompts-item').forEach(function(b) {
-    b.addEventListener('click', function() { irAPiezaIA(b.dataset.clave); });
+    b.addEventListener('click', function() { irAPiezaIA(b.dataset.clave, true); });
   });
 }
 
-async function irAPiezaIA(clave) {
+/* La pieza elegida queda marcada en la lista y en el prompt. */
+function marcarPiezaIA(clave) {
+  PIA.elegida = clave;
+  $('pia-lista').querySelectorAll('.prompts-item').forEach(function(b) {
+    var si = b.dataset.clave === clave;
+    b.classList.toggle('activo', si);
+    if (si) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+  });
+  $('pia-archivo').querySelectorAll('.pa-bloque').forEach(function(s) { s.classList.toggle('pia-elegida', s.dataset.clave === clave); });
+}
+
+async function irAPiezaIA(clave, bajar) {
+  PIA.elegida = clave;
   if (clave.indexOf('persona_') === 0 && $('pia-persona').value !== clave.slice(8)) {
     $('pia-persona').value = clave.slice(8);
     await pintarArchivoIA();
   }
+  marcarPiezaIA(clave);
+  if (bajar) verPromptEnPantalla($('pia-archivo'));
   var bloque = $('pia-archivo').querySelector('.pa-bloque[data-clave="' + clave + '"]');
   if (!bloque) return;
   $('pia-archivo').scrollTop = bloque.offsetTop - 8;
@@ -164,7 +191,8 @@ async function pintarArchivoIA() {
         + '<button type="button" class="btn btn-xs" data-restablecer="' + escHtml(parte.clave) + '">' + escHtml(tr('Volver al actual')) + '</button></span>';
     }
     html += '<section class="pa-bloque' + (cambiada ? ' pia-cambiada' : '') + (parte.editable ? '' : ' automatico')
-      + (PIA.recien.indexOf(parte.clave) >= 0 ? ' recien' : '') + '" data-clave="' + escHtml(parte.clave) + '">'
+      + (PIA.recien.indexOf(parte.clave) >= 0 ? ' recien' : '') + (parte.clave === PIA.elegida ? ' pia-elegida' : '')
+      + '" data-clave="' + escHtml(parte.clave) + '">'
       + '<div class="pa-bloque-cabeza">' + cabeza + '</div>'
       + (cambiada ? _diffPrompt(antes, parte.texto, num) : _filasPrompt(parte.texto.split('\n'), '', num)) + '</section>';
   });
@@ -209,7 +237,8 @@ async function mejorarPromptsIA(pedido, clave) {
   PIA.corriendo = true;
   var btn = pedido ? $('pia-pedir') : $('pia-mejorar'), texto = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = tr(pedido ? 'La IA está cambiando la copia…' : 'Analizando y mejorando…');
+  if (pedido) btn.classList.add('cargando');
+  else btn.textContent = tr('Analizando y mejorando…');
   var prog = $('pia-progreso');
   prog.hidden = false;
   prog.textContent = tr('En cola…');
@@ -224,7 +253,8 @@ async function mejorarPromptsIA(pedido, clave) {
     PIA.estado = await pedir('/api/prompts-ia');
     var mejora = (PIA.estado.mejoras || [])[0];
     PIA.recien = mejora ? (mejora.cambios || []).filter(function(c) { return c.aplicado; }).map(function(c) { return c.clave; }) : [];
-    if (pedido && d.estado === 'ok') $('pia-pedido').value = '';
+    if (PIA.recien.length) PIA.elegida = PIA.recien[0];
+    if (pedido && d.estado === 'ok') { $('pia-pedido').value = ''; ajustarPedidoIA(); }
     verVistaPrompts('ia');
     pintarPromptsIA();
     pintarResultadoIA(mejora, d);
@@ -234,8 +264,10 @@ async function mejorarPromptsIA(pedido, clave) {
   finally {
     PIA.corriendo = false;
     btn.disabled = false;
+    btn.classList.remove('cargando');
     btn.innerHTML = texto;
     prog.hidden = true;
+    ajustarPedidoIA();
   }
 }
 
@@ -256,7 +288,7 @@ function pintarResultadoIA(mejora, d) {
       return '<li><button type="button" class="pia-ir" data-clave="' + escHtml(c.clave) + '">' + escHtml(tr(c.titulo)) + '</button>'
         + (c.explicacion ? ' ' + escHtml(c.explicacion) : '') + '</li>';
     }).join('') + '</ul><p class="pia-nota">' + escHtml(tr('Abajo, en el prompt de la IA, lo nuevo está marcado en verde y lo que salió, en rojo.')) + '</p>';
-  caja.querySelectorAll('.pia-ir').forEach(function(b) { b.addEventListener('click', function() { irAPiezaIA(b.dataset.clave); }); });
+  caja.querySelectorAll('.pia-ir').forEach(function(b) { b.addEventListener('click', function() { irAPiezaIA(b.dataset.clave, true); }); });
 }
 
 async function deshacerPromptIA(clave, btn) {
