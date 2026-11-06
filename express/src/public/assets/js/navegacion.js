@@ -192,12 +192,13 @@ document.addEventListener('keydown', function(e) {
 
 /* ═══════════════════════════════════════════════════════════════════════
    MARCO DE LA VISTA CLIENTE (escritorio)
-   Arriba una barra fina con el logo y "afterdrive" como siempre, el buscador,
-   "+ Nueva nota", el idioma, el estado, el tema y salir. A la izquierda la barra
-   de secciones, que se despliega: plegada muestra solo los íconos; desplegada,
-   también el nombre de cada sección, como la barra de antes (se recuerda en
-   ad-riel); el botón que la despliega va arriba de todo. Ayuda baja al pie. En
-   Desarrollador y en el celular todo queda como siempre.
+   Arriba una barra fina con el logo y "afterdrive" como siempre, el idioma, el
+   estado, el tema y salir. A la izquierda la barra de secciones, ordenada como la
+   de ChatGPT: arriba "Nueva nota" y el buscador (el botón que la pliega, chico al
+   costado); en el medio las secciones; abajo el perfil, que abre Ayuda y el paso
+   a la vista Desarrollador. Plegada muestra solo los íconos; desplegada, también
+   los nombres (se recuerda en ad-riel). En Desarrollador y en el celular todo
+   queda como siempre.
    ═══════════════════════════════════════════════════════════════════════ */
 var NOMBRE_SECCION = { inicio: 'Inicio', crear: 'Nueva nota', historial: 'Notas', programacion: 'Programación',
                        fuentes: 'Fuentes', prompts: 'Prompts', corridas: 'Actividad' };
@@ -209,12 +210,27 @@ function pintarMiga(id) {
   if (miga) miga.textContent = tr(NOMBRE_SECCION[id] || '');
 }
 
+// Pie de la barra (vista Cliente): quién está conectado, con la inicial como avatar.
+var _perfilCargado = false;
+async function cargarPerfil() {
+  if (_perfilCargado) return;
+  _perfilCargado = true;
+  try {
+    var s = await pedir('/api/sesion');
+    var nombre = (s && s.usuario) || '';
+    if (!nombre) return;
+    $('perfil-nombre').textContent = nombre;
+    $('perfil-avatar').textContent = nombre.trim().charAt(0).toUpperCase();
+  } catch (e) { _perfilCargado = false; }
+}
+
 function ajustarMarcoCliente() {
   var pie = $('rail-pie');
   if (!pie) return;
   var enRiel = document.documentElement.getAttribute('data-modo') === 'cliente' && _escritorio.matches;
   var ayuda = document.querySelector('.sidebar-ayuda');
   if (enRiel && ayuda.parentNode !== pie) pie.appendChild(ayuda);
+  if (enRiel) cargarPerfil();
   else if (!enRiel && ayuda.parentNode === pie) pie.parentNode.insertBefore(ayuda, pie);
   pintarRiel();
 }

@@ -920,3 +920,54 @@ def test_gasto_de_meses_anteriores_en_el_tablero(pagina):
     meses = pagina.locator("#g-gasto .gasto-meses li")
     expect(meses).to_have_count(6)
     expect(pagina.locator("#g-gasto .gasto-meses-titulo")).to_have_text("Meses anteriores")
+
+
+def test_prompts_con_ia_analiza_propone_y_elige_la_copia(pagina):
+    """Mejorar con IA: el diagnóstico sugiere un pedido, la propuesta muestra las diferencias y
+    se aplica a la copia; arriba se elige con qué prompts escribe la redacción."""
+    analisis = {"fecha": "2026-11-06T12:00:00Z", "id": "a1",
+                "estadisticas": {"notas": 12, "redaccion": 7.5, "juez": 3.9, "humana": None,
+                                 "errores": [{"tipo": "tono", "nombre": "Tono", "veces": 7, "ejemplos": ["Tutea."]}],
+                                 "alephee": [], "por_juego": {}},
+                "diagnostico": {"resumen": "Pierden puntos por el tono.", "problemas": [
+                    {"titulo": "Tuteo", "detalle": "", "evidencia": "7 de 12", "pieza": "seo", "titulo_pieza": "SEO",
+                     "pedido": "Que el SEO pida la palabra clave en un subtítulo"}]}}
+    propuesta = {"id": "p-e2e", "pedido": "Que el SEO pida la palabra clave en un subtítulo", "comentario": "",
+                 "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "## SEO\n- Título corto.",
+                              "despues": "## SEO\n- Título corto.\n- Palabra clave en un subtítulo.",
+                              "explicacion": "Suma una regla.", "errores": [], "avisos": []}]}
+    aplicados = []
+    pagina.route("**/api/prompts-ia/analizar", lambda r: r.fulfill(json={"success": True, "analisis": analisis}))
+    pagina.route("**/api/prompts-ia/proponer", lambda r: r.fulfill(json={"success": True, "propuesta": propuesta}))
+
+    def aplicar(r):
+        aplicados.append(r.request.url)
+        r.fulfill(json={"success": True, "usar": "actuales", "cambiadas": 1, "analisis": analisis, "propuestas": [],
+                        "copia": [{"clave": "seo", "titulo": "SEO", "grupo": "base", "cambiada": True, "cambios": 1,
+                                   "actualizado": "2026-11-06T12:01:00Z", "desactualizada": False}]})
+    pagina.route("**/api/prompts-ia/propuestas/p-e2e/aplicar", aplicar)
+
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    expect(pagina.locator('#pia-usar [data-usar="actuales"]')).to_have_attribute("aria-checked", "true")
+    pagina.click("#pia-abrir")
+    expect(pagina.locator("#pia-panel")).to_be_visible()
+    expect(pagina.locator("#pia-copia")).to_contain_text("la IA todavía no cambió nada")
+    pagina.click("#pia-analizar")
+    expect(pagina.locator("#pia-diagnostico .pia-resumen")).to_contain_text("Pierden puntos por el tono.")
+    expect(pagina.locator("#pia-diagnostico .pia-kpi").nth(1)).to_contain_text("7,5")
+    pagina.locator("#pia-diagnostico").get_by_role("button", name="Pedir este cambio").click()
+    expect(pagina.locator("#pia-pedido")).to_have_value("Que el SEO pida la palabra clave en un subtítulo")
+    expect(pagina.locator("#pia-pieza")).to_have_value("seo")
+    pagina.click("#pia-proponer")
+    prop = pagina.locator(".pia-propuesta")
+    expect(prop.locator(".diff-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
+    prop.get_by_role("button", name="Aplicar a la copia de la IA").click()
+    expect(pagina.locator("#pia-copia .pia-copia-fila")).to_contain_text("SEO")
+    expect(pagina.locator("#pia-cambiadas")).to_have_text("1")
+    assert aplicados
+    # Elegir la copia de la IA (API de verdad) y volver a los actuales.
+    pagina.click('#pia-usar [data-usar="ia"]')
+    expect(pagina.locator('#pia-usar [data-usar="ia"]')).to_have_attribute("aria-checked", "true")
+    pagina.click('#pia-usar [data-usar="actuales"]')
+    expect(pagina.locator('#pia-usar [data-usar="actuales"]')).to_have_attribute("aria-checked", "true")
+    assert pagina.errores == []

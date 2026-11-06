@@ -25,6 +25,7 @@ window.onload = function() {
   cargarEstadoHubspot();
   initAgenda();
   initPrompts();
+  initPromptsIA();
   fase2Init();
   cargarUltimaNota();
   loadTrustedUrls();

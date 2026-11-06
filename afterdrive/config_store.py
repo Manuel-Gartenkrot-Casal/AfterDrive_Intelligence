@@ -219,6 +219,22 @@ def set_blog_pruebas_config(activo: bool):
     _set_section("blog_pruebas", {"activo": bool(activo)})
 
 
+# ── Prompts con IA ────────────────────────────────────────────────────────────
+
+# Con qué juego de prompts escribe la redacción: los actuales (aprobados) o la copia
+# que modificó la IA. Ver prompts_ia.py.
+DEFAULT_PROMPTS_JUEGO = {"usar": "actuales"}
+
+
+def get_prompts_juego() -> str:
+    usar = _get_section("prompts_juego", DEFAULT_PROMPTS_JUEGO)["usar"]
+    return usar if usar in ("actuales", "ia") else "actuales"
+
+
+def set_prompts_juego(usar: str):
+    _set_section("prompts_juego", {"usar": usar})
+
+
 # ── Aprobación automática (vista Desarrollador) ───────────────────────────────
 
 # Prendido = las notas de la generación programada que pasan el filtro y el

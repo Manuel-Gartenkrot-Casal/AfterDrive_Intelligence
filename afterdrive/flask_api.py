@@ -922,6 +922,74 @@ def hubspot_traducciones():
     return jsonify({"success": True, **r}), 202
 
 
+# ── Prompts con IA: análisis de las calificaciones y una copia de los prompts que cambia la IA ──
+
+
+def _prompts_ia(accion):
+    """Corre una acción de prompts_ia: ErrorPromptIA y ErrorPrompt son un 400 con su mensaje."""
+    from afterdrive import prompts_editables, prompts_ia
+
+    try:
+        return accion(prompts_ia)
+    except (prompts_ia.ErrorPromptIA, prompts_editables.ErrorPrompt) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/prompts-ia", methods=["GET"])
+def prompts_ia_estado():
+    """Con qué prompts escribe la redacción, la copia de la IA, el último análisis y las propuestas pendientes."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.estado()}))
+
+
+@app.route("/api/prompts-ia/usar", methods=["POST"])
+def prompts_ia_usar():
+    """{"usar": "actuales" | "ia"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.usar(body.get("usar", ""))}))
+
+
+@app.route("/api/prompts-ia/analizar", methods=["POST"])
+def prompts_ia_analizar():
+    """Estadísticas de las últimas notas y el diagnóstico de la IA."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, "analisis": pi.analizar()}))
+
+
+@app.route("/api/prompts-ia/proponer", methods=["POST"])
+def prompts_ia_proponer():
+    """{"pedido", "claves": [...]}: la IA reescribe piezas de la copia. Queda pendiente hasta aplicarla."""
+    body = request.get_json(silent=True) or {}
+    claves = body.get("claves") if isinstance(body.get("claves"), list) else None
+    return _prompts_ia(lambda pi: jsonify({"success": True, "propuesta": pi.proponer(body.get("pedido", ""), claves)}))
+
+
+@app.route("/api/prompts-ia/propuestas/<pid>/aplicar", methods=["POST"])
+def prompts_ia_aplicar(pid):
+    """{"claves": [...]} opcional: solo esas piezas de la propuesta."""
+    body = request.get_json(silent=True) or {}
+    claves = body.get("claves") if isinstance(body.get("claves"), list) else None
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.aplicar(pid, claves)}))
+
+
+@app.route("/api/prompts-ia/propuestas/<pid>", methods=["DELETE"])
+def prompts_ia_descartar(pid):
+    return _prompts_ia(lambda pi: pi.descartar(pid) or jsonify({"success": True}))
+
+
+@app.route("/api/prompts-ia/pieza/<clave>", methods=["GET"])
+def prompts_ia_pieza(clave):
+    """El texto actual y el de la copia de la IA de una pieza, con sus cambios."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.pieza(clave)}))
+
+
+@app.route("/api/prompts-ia/restablecer", methods=["POST"])
+def prompts_ia_restablecer():
+    """{"clave"} opcional: la copia (o esa pieza) vuelve a ser igual a los prompts actuales."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, "restablecidas": pi.restablecer(body.get("clave") or None)}))
+
+
 # ── Cola de Corridas ──────────────────────────────────────────────────────────
 
 

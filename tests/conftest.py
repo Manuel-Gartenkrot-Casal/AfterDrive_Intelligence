@@ -52,6 +52,18 @@ def prompts_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def prompts_ia_en_memoria(monkeypatch):
+    """La copia de los prompts de la IA y la elección del juego, en memoria (por defecto, los actuales)."""
+    from afterdrive import prompts_ia
+    db = mongomock.MongoClient().db
+    juego = {"usar": "actuales"}
+    monkeypatch.setattr(prompts_ia, "_base", lambda base=None: db if base is None else base)
+    monkeypatch.setattr(prompts_ia, "juego", lambda: juego["usar"])
+    monkeypatch.setattr(prompts_ia, "_guardar_juego", lambda cual: juego.__setitem__("usar", cual))
+    return juego
+
+
+@pytest.fixture(autouse=True)
 def sin_fotos_de_otras_notas(monkeypatch):
     """La generación no lee la base real para saber qué fotos usaron otras notas: sin Mongo,
     cada nota de los tests esperaba 15 s a que la conexión fallara."""

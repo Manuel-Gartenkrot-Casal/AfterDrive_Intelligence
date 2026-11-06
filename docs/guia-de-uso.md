@@ -100,9 +100,23 @@ Los sitios que se revisan para buscar noticias.
 - **Pausar** deja de revisarla sin borrarla.
 - **Buscar recomendaciones** sugiere sitios nuevos del sector: los busca en internet y también le pide ideas a la IA (cada sitio se verifica antes de sugerirlo).
 
+## Prompts
+
+Las instrucciones que recibe la IA al escribir cada nota, en piezas (identidad, audiencia, reglas de datos, enfoque Alephee, formato, SEO y una por persona). Cada cambio a mano pasa por borrador, revisión y aprobación.
+
+**Mejorar con IA** ayuda a cambiarlos sin escribirlos vos:
+
+1. **Por qué las notas no sacan más**: la IA lee las calificaciones de las últimas 40 notas y te dice qué se repite (por ejemplo, el tono o dos llamadas a la acción) y en qué pieza tocar.
+2. **Pedile un cambio**: escribí lo que querés (o tocá **Pedir este cambio** en un problema del análisis). La IA propone cómo quedarían las piezas y ves las diferencias antes de aplicarlas.
+3. **Copia de la IA**: los cambios se aplican a una copia de los prompts. Los actuales no cambian nunca desde acá.
+
+Arriba de Prompts elegís con cuáles escribe la redacción: **Prompts actuales** o **Copia de la IA**. Podés volver a los actuales cuando quieras, y con **Volver al actual** borrar los cambios de una pieza.
+
 ## Corridas
 
 Lo que el sistema está ejecutando (buscar noticias, generar una nota) y lo que espera su turno, con el registro de cada paso. Corre una cosa a la vez: lo que pidas mientras tanto queda en cola. Una corrida pendiente se puede cancelar.
+
+Mientras algo corre, abajo aparece la **terminal** con el registro en vivo y, en la pestaña **Cola**, lo que espera. Se agranda arrastrando su borde de arriba, se maximiza o se oculta con los botones de la derecha, y se cierra con la ×.
 
 ## API paga
 
@@ -110,7 +124,7 @@ La **API paga** se elige en la vista Desarrollador, en **Proveedor de IA**, y se
 
 ## Vista Cliente y Desarrollador
 
-- **Cliente** muestra lo esencial.
+- **Cliente** muestra lo esencial. Para pasar a Desarrollador, tocá tu usuario abajo de la barra lateral.
 - **Desarrollador** suma la consola de procesos, las estadísticas técnicas y la elección del proveedor de IA.
 
 ## Preguntas frecuentes

@@ -100,9 +100,23 @@ Os sites verificados para buscar notícias.
 - **Pausar** deixa de verificá-la sem excluí-la.
 - **Buscar recomendações** sugere sites novos do setor: busca na internet e também pede ideias à IA (cada site é verificado antes de ser sugerido).
 
+## Prompts
+
+As instruções que a IA recebe ao escrever cada post, em partes (identidade, público, regras de dados, enfoque Alephee, formato, SEO e uma por persona). Cada mudança manual passa por rascunho, revisão e aprovação.
+
+**Melhorar com IA** ajuda a mudá-los sem você escrever:
+
+1. **Por que os posts não têm nota maior**: a IA lê as avaliações dos últimos 40 posts e diz o que se repete (por exemplo, o tom ou duas chamadas para ação) e qual parte mudar.
+2. **Peça uma mudança**: escreva o que você quer (ou toque em **Pedir esta mudança** em um problema da análise). A IA propõe como as partes ficariam e você vê as diferenças antes de aplicá-las.
+3. **Cópia da IA**: as mudanças são aplicadas a uma cópia dos prompts. Os atuais nunca mudam por aqui.
+
+No topo de Prompts você escolhe com quais a redação escreve: **Prompts atuais** ou **Cópia da IA**. Dá para voltar aos atuais quando quiser e, com **Voltar ao atual**, apagar as mudanças de uma parte.
+
 ## Execuções
 
 O que o sistema está executando (buscar notícias, gerar um post) e o que aguarda a vez, com o registro de cada etapa. Roda uma coisa por vez: o que você pedir enquanto isso fica na fila. Uma execução pendente pode ser cancelada.
+
+Enquanto algo roda, embaixo aparece o **terminal** com o registro ao vivo e, na aba **Fila**, o que aguarda. Ele cresce arrastando a borda de cima, é maximizado ou ocultado com os botões da direita e fecha com o ×.
 
 ## API paga
 
@@ -110,7 +124,7 @@ A **API paga** é escolhida na visualização Desenvolvedor, em **Provedor de IA
 
 ## Visualização Cliente e Desenvolvedor
 
-- **Cliente** mostra o essencial.
+- **Cliente** mostra o essencial. Para passar para Desenvolvedor, toque no seu usuário embaixo da barra lateral.
 - **Desenvolvedor** adiciona o console de processos, as estatísticas técnicas e a escolha do provedor de IA.
 
 ## Perguntas frequentes

@@ -236,3 +236,10 @@ def test_index_carga_todos_los_js_que_existen():
     en_disco = sorted(p.name for p in Path("express/src/public/assets/js").glob("*.js"))
     assert sorted(cargados) == en_disco and cargados[0] == "base.js" and cargados[-1] == "arranque.js"
 
+
+
+def test_la_sesion_dice_quien_esta_conectado(api):
+    c = api[0].app.test_client()
+    assert c.get("/api/sesion").status_code == 401   # sin sesión, la guardia la frena
+    c.post("/api/login", json=OK)
+    assert c.get("/api/sesion").get_json() == {"usuario": OK["usuario"]}

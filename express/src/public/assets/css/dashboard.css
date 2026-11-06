@@ -1444,37 +1444,6 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .modal-footer .btn { min-height: 40px; font-size: 0.85rem; }
 .modal-body > :is(h1,h2,h3,p,ul,ol) { max-width: 75ch; margin-left: auto; margin-right: auto; }
 .modal-body > h1 { max-width: 45ch; }
-.actividad-dock {
-  position: fixed;
-  right: 24px;
-  bottom: 16px;
-  z-index: 100;
-  width: min(460px,calc(100vw - 32px));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-  box-shadow: var(--shadow-float);
-}
-.actividad-dock summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; font-weight: 500; }
-.actividad-chevron { margin-left: auto; transition: transform 180ms; }
-.actividad-dock[open] .actividad-chevron { transform: rotate(180deg); }
-.actividad-punto { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-.actividad-dock[data-estado="en_curso"] .actividad-punto { background: var(--info); animation: nodeBeat 1.2s infinite; }
-.actividad-dock[data-estado="error"] .actividad-punto { background: var(--err); }
-.actividad-dock[data-estado="pendiente"] .actividad-punto { background: var(--warn); }
-.actividad-detalle { padding: 0 16px 16px; }
-.actividad-detalle p { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 10px; }
-#actividad-log {
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 0.75rem/1.7 var(--mono);
-  padding: 12px;
-  margin-bottom: 12px;
-  background: var(--well);
-  border-radius: var(--r-sm);
-}
 .contenido > .activa { animation: seccionEntrada 180ms ease-out; }
 @keyframes seccionEntrada { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @supports (interpolate-size: allow-keywords) {
@@ -1482,7 +1451,7 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
   details::details-content { height: 0; overflow: clip; transition: height 200ms ease, content-visibility 200ms allow-discrete; }
   details[open]::details-content { height: auto; }
 }
-html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.actividad-dock) {
+html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.terminal) {
   transition: background-color 240ms ease, color 160ms ease, border-color 240ms ease;
 }
 @media (max-width: 1100px) {
@@ -1533,8 +1502,6 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
   .modal-sidebar { max-height: 110px; }
   .hist-item { flex-wrap: wrap; }
   .hist-lado { flex-direction: row; align-items: center; }
-  .actividad-dock { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
-  .actividad-dock summary { font-size: 0.85rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after,*::details-content {
@@ -1553,11 +1520,12 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    no entra se desplaza dentro del panel. La vista Desarrollador conserva la
    distribución anterior: suma consola y estadísticas debajo y estirar los
    paneles las encimaba.
-   --shell-pie es el lugar que se deja al final del contenido para el dock de
-   actividad, que flota encima.
+   --shell-pie es el aire que se deja al final del contenido. En escritorio la
+   terminal ocupa su propia fila debajo del contenido (no flota encima).
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
-body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
+/* En el celular la terminal flota abajo: se deja su alto al final de la página. */
+@media (max-width: 900px) { body:has(.terminal:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 24px); } }
 /* En el celular scrollea la página: el lugar para el dock va al final de todo. */
 @media (max-width: 900px) {
   [data-modo="cliente"] .app-container { padding-bottom: var(--shell-pie); }
@@ -2114,14 +2082,6 @@ body.trabajando .nav-actividad { display: inline-flex; }
 body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .nav-badge:not(:empty) { font-variant-numeric: tabular-nums; }
 
-/* Dock de actividad corriendo: franja que avanza arriba. */
-.actividad-dock[data-estado="en_curso"] { overflow: hidden; }
-.actividad-dock[data-estado="en_curso"]::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
-  background: linear-gradient(90deg, transparent, var(--info), transparent);
-  background-size: 50% 100%; background-repeat: no-repeat;
-  animation: franja 1.4s linear infinite;
-}
 @keyframes franja { from { background-position: -50% 0; } to { background-position: 150% 0; } }
 
 /* Pasos de la nota: el actual late, los hechos quedan tildados. */
@@ -2745,7 +2705,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .fuentes-seccion .fuentes-grupo { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
   .fuentes-seccion .fuentes-cols { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
   .fuentes-seccion :is(.fuentes-lista, #sug-list) { flex: 1 1 0; min-height: 80px; max-height: none; overflow-y: auto; }
-  [data-modo] .fuentes-seccion { min-height: 0; }
+  /* Con poco alto (ventana baja o la terminal abierta) la sección no se aplasta por
+     debajo de esto: el área de contenido scrollea y las tarjetas no se desbordan. */
+  [data-modo] .fuentes-seccion { min-height: 440px; }
   .fuentes-seccion .section-head { margin-bottom: var(--s4); }
 
   /* Barra lateral en vista Desarrollador: menos aire entre ítems y ajustes. */
@@ -3176,7 +3138,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
    despliega (--ancho-riel): plegada, solo íconos; desplegada, también los nombres,
    como antes. Abajo, el botón que la despliega y Ayuda.
    ═══════════════════════════════════════════════════════════════════════ */
-.header-miga, .header-nueva, .rail-pie, .rail-cabeza, .buscador-btn, .icono-riel, .ayuda-dev { display: none; }
+.header-miga, .rail-pie, .rail-cabeza, .buscador-btn, .icono-riel, .ayuda-dev, .perfil-avatar, .perfil-texto, .perfil-chevron, .ayuda-menu-titulo { display: none; }
 @media (min-width: 901px) {
   html[data-modo="cliente"] { scrollbar-gutter: auto; }   /* sin la franja reservada a la derecha */
   [data-modo="cliente"] { --linea-suave: color-mix(in srgb, var(--border) 55%, var(--bg)); --icono-riel: color-mix(in srgb, var(--text-lo) 72%, var(--bg));
@@ -3200,13 +3162,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .header-right .status-pill { height: 38px; padding: 0 14px; }
   [data-modo="cliente"] .header-right .theme-toggle { width: 38px; height: 38px; }
   [data-modo="cliente"] .header-right .theme-toggle svg { width: 17px; height: 17px; }
-  [data-modo="cliente"] .header-nueva { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 15px; border-radius: 10px; font-size: 13.5px; font-weight: 600; box-shadow: none; }
-  [data-modo="cliente"] .buscador-btn { display: flex; align-items: center; gap: 8px; width: 300px; height: 38px; padding: 0 12px; border: 1px solid var(--linea-suave);
-    border-radius: 9px; background: color-mix(in srgb, var(--well) 60%, var(--bg)); color: var(--text-lo); font: 13px var(--font); cursor: text; text-align: left; }
-  [data-modo="cliente"] .buscador-btn span { flex: 1; }
-  [data-modo="cliente"] .buscador-btn kbd { font: 11px var(--font); padding: 1px 6px; border: 1px solid var(--linea-suave); border-radius: 5px; background: var(--bg); color: var(--text-lo); }
   [data-modo="cliente"] .ayuda-dev { display: block; }
-  [data-seccion="crear"][data-modo="cliente"] .header-nueva { display: none; }
 
   [data-modo="cliente"] .layout { grid-template-columns: var(--ancho-riel) minmax(0, 1fr); gap: 0; transition: grid-template-columns 200ms var(--ease-out); }
   [data-modo="cliente"] .sidebar { width: var(--ancho-riel); padding: 14px 0 0; gap: 6px; align-items: center; border-radius: 0; box-shadow: none;
@@ -3224,26 +3180,9 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .nav-actividad { display: none; }
   [data-modo="cliente"] .sidebar-pie { display: none; }
   [data-modo="cliente"] .rail-pie { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: auto; }
-  /* Arriba de la barra: el botón para desplegarla (plegada, solo el ícono; desplegada,
-     "Secciones" a la izquierda y el botón a la derecha), separado de las secciones. */
-  [data-modo="cliente"] .rail-cabeza { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 10px 10px;
-    margin-bottom: 4px; border-bottom: 1px solid var(--linea-suave); }
-  [data-modo="cliente"] .rail-titulo { display: none; }
-  [data-modo="cliente"] .rail-toggle { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: transparent;
-    color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; }
-  [data-modo="cliente"] .rail-toggle:hover { background: var(--well); color: var(--text-hi); }
-  [data-modo="cliente"][data-riel="abierto"] .rail-cabeza { justify-content: space-between; padding-left: 12px; padding-right: 0; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-titulo { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--text-lo); white-space: nowrap; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn { width: 36px; height: 36px; padding: 0; box-shadow: none; border: 0;
-    border-radius: 9px; background: transparent; color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; font: inherit; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn:hover { background: var(--well); color: var(--text-hi); }
-  [data-modo="cliente"] .rail-pie .ayuda-btn svg { width: 18px; height: 18px; }
   [data-modo="cliente"] .rail-pie .sidebar-ayuda { padding: 0; margin: 0; border: 0; }
   [data-modo="cliente"] .rail-pie > * { margin-top: 0; margin-bottom: 0; }
   [data-modo="cliente"] .rail-pie { padding-bottom: 12px; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn span { display: none; }
-  [data-modo="cliente"] .rail-pie .ayuda-menu { left: calc(100% + 12px); }
   [data-modo="cliente"] .contenido { margin: 0; padding: 24px 32px var(--shell-pie); }
   /* Barra desplegada: cada sección con su ícono y su nombre, como la barra de antes. */
   [data-modo="cliente"][data-riel="abierto"] .sidebar { align-items: stretch; padding-inline: 10px; }
@@ -3253,9 +3192,6 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"][data-riel="abierto"] .nav-link[aria-current="page"] { color: var(--brand); font-weight: 600; }
   [data-modo="cliente"][data-riel="abierto"] .nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; font-size: 0.7rem; line-height: 20px; }
   [data-modo="cliente"][data-riel="abierto"] .rail-pie { align-items: stretch; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 12px;
-    font-size: 0.9rem; color: var(--text-mid); white-space: nowrap; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn span { display: inline; }
   /* Con una nota abierta, la ruta de la sección no asoma junto al logo. */
   [data-modo="cliente"] body.modal-abierto .header-miga, body.modal-abierto [data-modo="cliente"] .header-miga { visibility: hidden; }
   /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
@@ -3395,4 +3331,229 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .f2-acciones-ayuda { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-lo); }
   [data-modo="cliente"] .f2-acciones .f2-pasos { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 0; }
   [data-modo="cliente"] .f2-acciones .f2-pasos li { width: 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TERMINAL (corridas.js): panel de abajo como el de VS Code. En escritorio va
+   en una fila propia de la grilla, debajo del contenido y a la derecha de la
+   barra lateral: el contenido se achica y scrollea, nada queda encimado (antes
+   flotaba y su alto se le restaba a las pantallas, que se aplastaban). En el
+   celular flota abajo. El alto (--terminal-alto) se cambia arrastrando el borde.
+   ═══════════════════════════════════════════════════════════════════════ */
+.terminal { --terminal-alto: 240px; position: relative; display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg); color: var(--text-hi); border-top: 1px solid var(--border); }
+.terminal[hidden] { display: none; }
+.terminal-borde { position: absolute; left: 0; right: 0; top: -4px; height: 8px; z-index: 3; cursor: ns-resize; touch-action: none; }
+.terminal-borde::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background 120ms 80ms; }
+.terminal-borde:hover::after, .terminal-borde:focus-visible::after, body.arrastrando-terminal .terminal-borde::after { background: var(--brand); }
+.terminal-borde:focus-visible { outline: none; }
+body.arrastrando-terminal, body.arrastrando-terminal * { cursor: ns-resize !important; user-select: none; }
+
+.terminal-barra { display: flex; align-items: center; gap: 14px; height: 36px; flex: none; padding: 0 8px 0 16px; }
+.terminal-pestanas { display: flex; align-self: stretch; gap: 18px; }
+.terminal-pestana { display: inline-flex; align-items: center; gap: 6px; padding: 0 1px; border: 0; border-bottom: 1px solid transparent; background: none;
+  font: 600 11px/1 var(--font); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-lo); cursor: pointer; }
+.terminal-pestana:hover { color: var(--text-mid); }
+.terminal-pestana[aria-selected="true"] { color: var(--text-hi); border-bottom-color: var(--brand); }
+.terminal-cuenta:not(:empty) { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--well); border: 1px solid var(--border);
+  font: 600 10px/14px var(--mono); letter-spacing: 0; text-align: center; color: var(--text-mid); }
+.terminal-tarea { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--border);
+  font: 500 12.5px var(--font); color: var(--text-mid); white-space: nowrap; }
+.terminal-tarea #actividad-titulo { overflow: hidden; text-overflow: ellipsis; }
+.terminal-paso { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--text-lo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.terminal-acciones { display: flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+.terminal-icono { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-lo);
+  display: grid; place-items: center; cursor: pointer; }
+.terminal-icono:hover { background: var(--well); color: var(--text-hi); }
+.terminal-icono:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.terminal-icono .ico-restaurar, .terminal.maximizada .terminal-icono .ico-max { display: none; }
+.terminal.maximizada .terminal-icono .ico-restaurar { display: block; }
+
+.terminal-log, .terminal-cola { height: var(--terminal-alto); margin: 0; padding: 2px 16px 12px; overflow: auto; scrollbar-width: thin;
+  font: 12.5px/1.6 var(--mono); color: var(--text-mid); background: transparent; }
+.terminal-log { white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal-log:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
+.terminal:not([data-abierta]) :is(.terminal-log, .terminal-cola) { display: none; }
+.terminal-cola[hidden], .terminal-log[hidden] { display: none; }
+.t-ok { color: var(--ok); }
+.t-err { color: var(--err); }
+.t-aviso { color: var(--warn); }
+.t-tenue { color: var(--text-lo); }
+.terminal-fila { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.terminal-fila-n { width: 18px; color: var(--text-lo); text-align: right; }
+.terminal-fila-nombre { flex: 1; min-width: 0; color: var(--text-hi); font-family: var(--font); font-size: 13px; }
+.terminal-vacio { padding: 8px 0; color: var(--text-lo); }
+
+.actividad-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.terminal[data-estado="en_curso"] .actividad-punto { background: var(--info); animation: nodeBeat 1.2s infinite; }
+.terminal[data-estado="error"] .actividad-punto, .terminal[data-estado="interrumpida"] .actividad-punto { background: var(--err); }
+.terminal[data-estado="pendiente"] .actividad-punto, .terminal[data-estado="cancelada"] .actividad-punto { background: var(--warn); }
+/* Corriendo: una franja que avanza sobre el borde de arriba. */
+.terminal[data-estado="en_curso"]::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--info), transparent) no-repeat; background-size: 50% 100%; animation: franja 1.4s linear infinite; }
+
+@media (min-width: 901px) {
+  .layout:has(> .terminal:not([hidden])) { grid-template-rows: minmax(0, 1fr) auto; }
+  .layout > .sidebar { grid-column: 1; grid-row: 1 / -1; }
+  .layout > .contenido { grid-column: 2; grid-row: 1; }
+  .layout > .terminal { grid-column: 2; grid-row: 2; }
+  /* Vista Desarrollador: tarjetas separadas, la terminal también. */
+  [data-modo="dev"] .layout:has(> .terminal:not([hidden])) { row-gap: 12px; }
+  [data-modo="dev"] .terminal { border: 1px solid var(--border); border-radius: var(--r-lg); }
+  [data-modo="dev"] .terminal-borde { top: -11px; height: 12px; }
+  [data-modo="dev"] .terminal-borde::after { top: 5px; }
+}
+@media (max-width: 900px) {
+  .terminal { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 100; border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: var(--shadow-float); }
+  .terminal-paso { display: none; }
+  .terminal[data-estado="en_curso"]::before { left: 12px; right: 12px; }
+  .terminal-tarea { flex: 1 1 0; }
+  .terminal-barra { padding-left: 12px; gap: 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BARRA LATERAL DE LA VISTA CLIENTE (escritorio), ordenada como la de ChatGPT:
+   - Arriba, lo que se usa: "Nueva nota" (la acción principal) y el buscador.
+     El botón que pliega la barra es secundario: chico y gris, al costado.
+     Plegada, quedan los tres como íconos (el de plegar primero).
+   - En el medio, las secciones (como estaban).
+   - Abajo, el perfil: quién está conectado. Al tocarlo abre Ayuda y, aparte y
+     con su propio estilo, el paso a la vista Desarrollador.
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 901px) {
+  [data-modo="cliente"] .sidebar { padding-top: 12px; }
+  [data-modo="cliente"] .rail-cabeza { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 10px; flex-direction: column-reverse; }
+  [data-modo="cliente"] .rail-toggle { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; flex: none;
+    color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; opacity: 0.85; }
+  [data-modo="cliente"] .rail-toggle:hover { background: var(--well); color: var(--text-hi); opacity: 1; }
+  [data-modo="cliente"] .rail-nueva { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px;
+    background: var(--brand); color: #fff; cursor: pointer; font: 600 13.5px var(--font); white-space: nowrap; overflow: hidden;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--brand) 60%, black); transition: filter 120ms; }
+  [data-modo="cliente"] .rail-nueva:hover { filter: brightness(1.08); }
+  [data-modo="cliente"] .rail-nueva span { display: none; }
+  [data-modo="cliente"] .buscador-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; margin: 2px 0 6px;
+    border: 0; border-radius: 9px; background: transparent; color: var(--icono-riel); cursor: pointer; font: 13px var(--font); }
+  [data-modo="cliente"] .buscador-btn:hover { background: var(--well); color: var(--text-hi); }
+  [data-modo="cliente"] .buscador-btn :is(span, kbd) { display: none; }
+  [data-modo="cliente"] .nav-lista { padding-top: 8px; border-top: 1px solid var(--linea-suave); width: 100%; }
+  [data-modo="cliente"] :is(.rail-nueva, .rail-toggle, .buscador-btn):focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  [data-modo="cliente"][data-riel="abierto"] .rail-cabeza { flex-direction: row; padding: 0; gap: 6px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-nueva { display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    flex: 1 1 auto; width: auto; padding: 0 12px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-nueva span { display: inline; }
+  [data-modo="cliente"][data-riel="abierto"] .buscador-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px;
+    width: 100%; padding: 0 12px; margin: 4px 0 6px; color: var(--text-mid); font-size: 0.9rem; font-weight: 500; }
+  [data-modo="cliente"][data-riel="abierto"] .buscador-btn span { display: inline; flex: 1; text-align: left; }
+  [data-modo="cliente"][data-riel="abierto"] .buscador-btn kbd { display: inline; font: 11px var(--font); padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--linea-suave); background: var(--bg); color: var(--text-lo); }
+  [data-modo="cliente"][data-riel="abierto"] .nav-lista { padding-top: 10px; }
+
+  /* Pie: el perfil. */
+  [data-modo="cliente"] .rail-pie { width: 100%; padding: 8px 10px 10px; border-top: 1px solid var(--linea-suave); }
+  [data-modo="cliente"] .rail-pie .sidebar-ayuda { position: static; padding: 0; margin: 0; border: 0; width: 100%; }
+  [data-modo="cliente"] .rail-pie :is(.ayuda-icono, .ayuda-texto) { display: none; }
+  [data-modo="cliente"] .rail-pie .ayuda-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 48px;
+    padding: 0; border-radius: 10px; color: var(--text-hi); }
+  [data-modo="cliente"] .rail-pie .perfil-avatar { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%;
+    background: var(--brand-soft); color: var(--brand); font: 700 13px var(--font); text-transform: uppercase; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn { justify-content: flex-start; padding: 0 8px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .perfil-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: left; line-height: 1.25; }
+  [data-modo="cliente"] .rail-pie .perfil-nombre { font-size: 0.875rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [data-modo="cliente"] .rail-pie .perfil-sub { font-size: 0.75rem; font-weight: 400; color: var(--text-lo); white-space: nowrap; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .perfil-chevron { display: block; flex: none; color: var(--text-lo); }
+  /* El menú sube desde el perfil (fijo: la barra recorta lo que se sale de ella). */
+  [data-modo="cliente"] .rail-pie .ayuda-menu { position: fixed; left: calc(var(--ancho-riel) + 8px); bottom: 10px; width: 280px; max-height: min(460px, 75dvh); }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-menu { left: 10px; bottom: 66px; }
+  [data-modo="cliente"] .ayuda-menu-titulo { display: block; padding: 6px 10px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-lo); }
+  /* La vista Desarrollador: separada de la ayuda y con otro aspecto (código, borde punteado). */
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 10px;
+    border: 1px dashed color-mix(in srgb, var(--info) 55%, var(--border)); border-radius: 10px;
+    background: color-mix(in srgb, var(--info) 7%, var(--bg)); position: relative; }
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev::before { content: ''; position: absolute; left: 4px; right: 4px; top: -7px; border-top: 1px solid var(--border); }
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev:hover, [data-modo="cliente"] .ayuda-menu .ayuda-dev:focus-visible {
+    background: color-mix(in srgb, var(--info) 14%, var(--bg)); border-style: solid; color: var(--text-hi); }
+  .ayuda-dev-icono { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 7px;
+    background: var(--text-hi); color: var(--bg); font: 700 11px var(--mono); }
+  .ayuda-dev-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ayuda-dev-nombre { font-weight: 600; font-size: 0.85rem; }
+  .ayuda-dev-sub { font-size: 0.75rem; color: var(--text-lo); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROMPTS CON IA (promptsia.js): arriba, con qué prompts escribe la redacción
+   y "Mejorar con IA"; el panel tiene tres pasos: diagnóstico, pedido (con las
+   propuestas y sus diferencias) y la copia de la IA.
+   ═══════════════════════════════════════════════════════════════════════ */
+.pia-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.pia-usar { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--well); }
+.pia-usar-etiqueta { padding: 0 10px 0 8px; font-size: 0.78rem; color: var(--text-lo); }
+.pia-usar [role="radio"] { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-mid); font: 500 0.82rem var(--font); cursor: pointer; }
+.pia-usar [role="radio"]:hover { color: var(--text-hi); }
+.pia-usar [role="radio"][aria-checked="true"] { background: var(--bg); color: var(--text-hi); box-shadow: 0 1px 2px color-mix(in srgb, var(--text-hi) 12%, transparent); }
+.pia-usar [data-usar="ia"][aria-checked="true"] { color: var(--brand); }
+.pia-usar [role="radio"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.pia-cuenta:not(:empty) { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--brand-soft); color: var(--brand);
+  font: 600 0.7rem/18px var(--mono); text-align: center; }
+.pia-abrir { gap: 6px; }
+.pia-abrir span, .pia-chispa { color: var(--brand); }
+.pia-abrir.activo { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+
+.pia-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 20px; }
+.pia-panel[hidden] { display: none; }
+.pia-bloque { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.pia-copia { grid-column: 1 / -1; }
+.pia-cabeza { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.pia-cabeza > div { flex: 1; min-width: 0; }
+.pia-cabeza h3 { font-size: 0.98rem; margin: 0 0 2px; }
+.pia-cabeza p { font-size: 0.8rem; color: var(--text-lo); margin: 0; }
+.pia-num { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%; background: var(--brand-soft); color: var(--brand);
+  font: 700 0.75rem var(--mono); }
+.pia-vacio { color: var(--text-lo); font-size: 0.85rem; padding: 8px 0; list-style: none; }
+.pia-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pia-kpi { padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); }
+.pia-kpi strong { display: block; font: 600 1.15rem var(--mono); color: var(--text-hi); }
+.pia-kpi strong small { font-size: 0.7rem; color: var(--text-lo); font-weight: 500; }
+.pia-kpi span { font-size: 0.72rem; color: var(--text-lo); }
+.pia-compara { margin-top: 10px; font-size: 0.8rem; color: var(--text-mid); }
+.pia-sub { margin: 16px 0 6px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-lo); }
+.pia-fallas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.84rem; }
+.pia-fallas li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 8px; align-items: baseline; }
+.pia-veces { font: 600 0.75rem var(--mono); color: var(--warn); }
+.pia-ejemplo { grid-column: 1 / -1; color: var(--text-lo); font-size: 0.78rem; }
+.pia-resumen { display: flex; gap: 8px; margin: 16px 0 8px; padding: 12px; border-radius: var(--r-md); background: var(--brand-soft); color: var(--text-hi); font-size: 0.86rem; }
+.pia-problemas { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 0.84rem; }
+.pia-problemas p { margin: 3px 0 0; color: var(--text-mid); }
+.pia-problemas .btn { margin-top: 6px; }
+.pia-problema-cabeza { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pia-pieza-chip { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--well); font-size: 0.72rem; color: var(--text-mid); }
+.pia-evidencia { font-size: 0.78rem; color: var(--text-lo) !important; }
+.pia-error { color: var(--err); font-size: 0.8rem; margin: 6px 0 0; }
+.pia-aviso { display: block; color: var(--warn); font-size: 0.78rem; margin: 4px 0 0; }
+.pia-fecha { margin-top: 12px; font-size: 0.72rem; color: var(--text-lo); }
+.pia-pedido { width: 100%; min-height: 84px; resize: vertical; font: 0.88rem/1.5 var(--font); }
+.pia-pedido-pie { display: flex; gap: 8px; margin-top: 8px; }
+.pia-pedido-pie select { flex: 1; min-width: 0; }
+.pia-propuesta { margin-top: 14px; border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--border)); border-radius: var(--r-md); overflow: hidden; }
+.pia-propuesta > header { display: flex; gap: 10px; padding: 12px 14px; background: var(--brand-soft); font-size: 0.84rem; }
+.pia-propuesta > header p { margin: 2px 0 0; color: var(--text-mid); }
+.pia-pedido-eco { font-style: italic; }
+.pia-cambio { padding: 12px 14px; border-top: 1px solid var(--border); }
+.pia-cambio h5 { margin: 0 0 4px; font-size: 0.86rem; }
+.pia-cambio > p { margin: 0 0 8px; font-size: 0.8rem; color: var(--text-mid); }
+.pia-cambio .prompts-diff { max-height: 260px; }
+.pia-cambio h5 .pia-no-aplica { color: var(--err); font-weight: 500; }
+.pia-propuesta > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--well); }
+.pia-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pia-copia-fila { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; }
+.pia-copia-fila > div b { margin-right: 8px; }
+.pia-copia-meta { font-size: 0.75rem; color: var(--text-lo); }
+.pia-copia-fila .prompts-diff { grid-column: 1 / -1; max-height: 280px; }
+@media (max-width: 1100px) {
+  .pia-panel { grid-template-columns: minmax(0, 1fr); }
+  .pia-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

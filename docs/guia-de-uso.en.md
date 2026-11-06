@@ -100,9 +100,23 @@ The sites checked for news.
 - **Pause** stops checking it without deleting it.
 - **Find recommendations** suggests new industry sites: it searches the web and also asks the AI for ideas (each site is checked before it's suggested).
 
+## Prompts
+
+The instructions the AI gets when writing each post, in pieces (identity, audience, data rules, Alephee focus, format, SEO and one per persona). Every manual change goes through draft, review and approval.
+
+**Improve with AI** helps you change them without writing them yourself:
+
+1. **Why posts don't score higher**: the AI reads the ratings of the last 40 posts and tells you what keeps happening (for example, the tone or two calls to action) and which piece to change.
+2. **Ask for a change**: write what you want (or tap **Ask for this change** on a problem from the analysis). The AI proposes how the pieces would look and you see the differences before applying them.
+3. **AI copy**: changes are applied to a copy of the prompts. The current ones never change from here.
+
+At the top of Prompts you choose which ones writing uses: **Current prompts** or **AI copy**. You can go back to the current ones whenever you want, and **Back to current** deletes the changes to a piece.
+
 ## Runs
 
 What the system is running (fetching news, generating a post) and what's waiting its turn, with a log of every step. It runs one thing at a time: anything you request meanwhile is queued. A pending run can be canceled.
+
+While something runs, the **terminal** shows up at the bottom with the live log and, in the **Queue** tab, what's waiting. Drag its top edge to make it taller, maximize or hide it with the buttons on the right, and close it with the ×.
 
 ## Paid API
 
@@ -110,7 +124,7 @@ The **Paid API** is chosen in the Developer view, under **AI provider**, and sta
 
 ## Client and Developer view
 
-- **Client** shows the essentials.
+- **Client** shows the essentials. To switch to Developer, tap your user at the bottom of the sidebar.
 - **Developer** adds the process console, technical statistics and the choice of AI provider.
 
 ## FAQ

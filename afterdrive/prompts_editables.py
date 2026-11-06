@@ -14,7 +14,8 @@ Interfaz:
     restaurar(clave, version, motivo="", base=None) -> dict
                                                    una versión archivada (0 = el texto original) vuelve
                                                    a revisión: hay que aprobarla de nuevo
-    activos() -> {clave: contenido}                lo que usa redaccion.py (caché de CACHE_S segundos)
+    activos() -> {clave: contenido}                lo que usa redaccion.py (caché de CACHE_S segundos); con la
+                                                   copia de la IA elegida, sus piezas pisan a estas (prompts_ia.py)
 
 Recorrido de una pieza: Borrador → Validar → Enviar a revisión → Aprobar y
 activar → Activa. El login es de un solo admin: las aprobaciones son pasos de
@@ -340,6 +341,12 @@ def activos(base=None) -> dict:
     except Exception as e:
         print(f"[AVISO] Prompts editados no disponibles, se usan los originales: {e}", flush=True)
         datos = {}
+    # Con "Usar la copia de la IA" prendido (Prompts con IA), las piezas que cambió la IA pisan a las actuales.
+    try:
+        from afterdrive import prompts_ia
+        datos = {**datos, **prompts_ia.en_uso(base)}
+    except Exception as e:
+        print(f"[AVISO] Copia de la IA no disponible, se usan los prompts actuales: {e}", flush=True)
     if base is None:
         _cache.update(hasta=time.monotonic() + CACHE_S, datos=datos)
     return datos

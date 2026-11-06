@@ -508,6 +508,14 @@ def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabr
 DOMINIOS_PROPIOS = ("alephee.com",)
 
 
+def _prompts_juego() -> str:
+    try:
+        from afterdrive import prompts_ia
+        return prompts_ia.juego()
+    except Exception:
+        return "actuales"
+
+
 def generar_nota(
     categorias: list[str],
     clientes_ids: list[str] | None = None,
@@ -733,6 +741,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "parecida_a": mejor.parecida,
         "enlaces_quitados": mejor.enlaces_quitados,
         "calibracion_usada": cal.como_dict(),
+        # Con qué prompts se escribió: los actuales o la copia de la IA (Prompts con IA compara los dos).
+        "prompts_juego": _prompts_juego(),
         "largo": largo,
         "proveedor": llm.proveedor_activo(),
         "correcciones_usadas": cal.reglas,

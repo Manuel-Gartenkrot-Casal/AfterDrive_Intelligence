@@ -22,6 +22,7 @@ Login y guardia en `afterdrive/auth.py`.
 | `GET /api/health` | Lo consulta el dashboard para el indicador "Online" |
 | `GET /api/db-check` | Diagnóstico de la conexión a Mongo (sin credenciales) |
 | `POST /api/login`, `POST /api/logout` | |
+| `GET /api/sesion` | `{usuario}`: quién está conectado (el perfil del pie de la barra lateral) |
 
 **Corridas (la cola)**
 
@@ -92,6 +93,18 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `PATCH /api/fase2/clientes/<slug>` | `{"modo"}`: si se puede nombrar. Pasar a `no_mencionar` la saca de los clientes de la nota automática |
 | `GET /api/fase2/ultima-nota`, `GET /api/fase2/notas/<id>` | Leer una nota |
 | `POST /api/evaluate-article` | Checklist de calidad a demanda |
+
+**Prompts con IA** (`prompts_ia.py`)
+
+| | |
+|---|---|
+| `GET /api/prompts-ia` | Con qué prompts escribe la redacción (`usar`: `actuales` o `ia`), la copia pieza por pieza, el último análisis y las propuestas pendientes |
+| `POST /api/prompts-ia/usar` | `{"usar": "actuales" \| "ia"}` |
+| `POST /api/prompts-ia/analizar` | Estadísticas de las últimas 40 notas y el diagnóstico de la IA (sin IA, solo las estadísticas) |
+| `POST /api/prompts-ia/proponer` | `{"pedido", "claves"?}`: la IA reescribe piezas de la copia. Queda pendiente con el antes, el después y la validación de cada pieza |
+| `POST /api/prompts-ia/propuestas/<id>/aplicar`, `DELETE /api/prompts-ia/propuestas/<id>` | Aplicarla a la copia (solo las piezas sin errores) o descartarla |
+| `GET /api/prompts-ia/pieza/<clave>` | El texto actual y el de la copia de una pieza, con sus cambios |
+| `POST /api/prompts-ia/restablecer` | `{"clave"?}`: la copia (o esa pieza) vuelve a ser igual a los prompts actuales |
 
 Los endpoints viejos que corrían fuera de la cola (`/api/add-url`, `/api/discover-sources`, `/api/stream/*`, `/api/fase2/stream/*`, `/api/fase2/generar`, `/api/fase2/scrape`, Fase 1) se borraron.
 

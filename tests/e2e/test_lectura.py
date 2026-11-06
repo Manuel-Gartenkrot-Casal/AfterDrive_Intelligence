@@ -150,11 +150,12 @@ def test_la_vista_desarrollador_sigue_con_los_pasos(pagina):
 
 
 def test_marco_de_la_vista_cliente_y_buscador(pagina):
-    # Arriba: el logo y "afterdrive" como siempre (no el nombre de la sección), "+ Nueva nota",
-    # idioma, tema y salir; a la izquierda, la barra de íconos con Ayuda abajo.
+    # Arriba: el logo y "afterdrive" como siempre (no el nombre de la sección), idioma, tema y
+    # salir; a la izquierda, la barra con "Nueva nota" y el buscador arriba y el perfil abajo.
     expect(pagina.locator(".header-title")).to_be_visible()
     expect(pagina.locator("#header-miga")).to_be_hidden()
-    expect(pagina.locator(".header-nueva")).to_be_visible()
+    expect(pagina.locator(".rail-cabeza #rail-nueva")).to_be_visible()
+    expect(pagina.locator(".header-right #buscador-btn")).to_have_count(0)
     for control in (".selector-idioma", "#themeBtn", "#btn-salir"):
         expect(pagina.locator(".header-right " + control)).to_be_visible()
     expect(pagina.locator(".rail-pie #ayuda-btn")).to_be_visible()
