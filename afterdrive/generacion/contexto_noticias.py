@@ -31,6 +31,10 @@ entre las viejas y las ordena solo por parecido.
 Tendencia antes que recencia: una noticia que cubren varios medios distintos
 en la última semana (el mismo tema, por embeddings o, sin ellos, por las
 palabras del título) pesa más que una recién publicada que nadie más levantó.
+Desde qué parecido dos noticias son "el mismo tema" no es un número fijo: la
+escala del coseno cambia mucho de un modelo de embeddings a otro (con uno, dos
+noticias distintas del rubro dan 0,90; con otro, 0,30). Se calibra en cada
+nota con las candidatas (ver calibrar_tendencia).
 
 Medios variados: un medio que alimentó muchas de las últimas notas pierde
 puntos, y una nota lleva como mucho MAX_POR_FUENTE noticias del mismo medio
@@ -63,8 +67,11 @@ PESO_RECENCIA = 0.15
 PESO_NO_USADA = 0.10
 PESO_FUENTE_FRECUENTE = 0.15   # se resta: el medio alimentó muchas de las últimas notas
 TENDENCIA_DIAS = 7             # la ventana en la que se cuenta quién más cubrió el tema
-TENDENCIA_SIMILITUD = 0.80     # coseno desde el que dos noticias son el mismo tema
 TENDENCIA_PALABRAS = 0.35      # sin embeddings: parte de palabras del título en común
+TENDENCIA_TITULOS_IGUALES = 0.5   # títulos así de parecidos en dos medios: seguro es la misma noticia
+TENDENCIA_MIN_PARES = 30          # menos pares que esto no alcanzan para calibrar: se miran las palabras
+TENDENCIA_MIN_IGUALES = 3         # pares de títulos casi iguales para usarlos de referencia
+TENDENCIA_DESVIOS = 4             # cuántos desvíos por encima del parecido típico es "la misma noticia"
 TENDENCIA_SATURA = 3           # con 3 medios más cubriéndolo, la tendencia es máxima
 MAX_POR_FUENTE = 2             # noticias del mismo medio en una nota
 PENALIDAD_MISMA_FUENTE = 0.10  # por cada noticia ya elegida de ese medio
@@ -124,14 +131,55 @@ def _normalizado(v):
     return [x / norma for x in v] if norma else None
 
 
-def tendencias(noticias: list[Noticia], ahora: datetime.datetime) -> None:
+def _jaccard(a: set[str], b: set[str]) -> float:
+    return len(a & b) / len(a | b) if a and b else 0.0
+
+
+def calibrar_tendencia(sim, medio: list[str], pal: list[set[str]], con_vector: list[bool]) -> float | None:
+    """Desde qué coseno dos noticias de medios distintos son la misma noticia, o None si no se puede saber.
+
+    Se miran todos los pares de medios distintos con vector. Casi todos son noticias distintas,
+    así que su reparto dice qué es "parecido normal" con este modelo, y la misma noticia en
+    dos medios es un valor atípico: está TENDENCIA_DESVIOS desvíos (robustos: mediana y MAD)
+    por encima de la mediana, y además en el 1 % más parecido de los pares.
+    Si además hay al menos TENDENCIA_MIN_IGUALES pares con títulos casi iguales (seguro la
+    misma noticia), el umbral sube hasta la mitad entre ese piso y lo que suelen dar esos pares.
+    Con menos de TENDENCIA_MIN_PARES pares no se calibra (None): se usan las palabras del título.
+    """
+    import numpy as np
+
+    n = len(medio)
+    if n < 2:
+        return None
+    i, j = np.triu_indices(n, k=1)
+    validos = np.array([medio[a] != medio[b] and con_vector[a] and con_vector[b] for a, b in zip(i, j, strict=True)],
+                       dtype=bool)
+    if validos.sum() < TENDENCIA_MIN_PARES:
+        return None
+    i, j = i[validos], j[validos]
+    cosenos = sim[i, j]
+    mediana = float(np.median(cosenos))
+    desvio = 1.4826 * float(np.median(np.abs(cosenos - mediana)))   # MAD llevado a la escala del desvío estándar
+    piso = max(mediana + TENDENCIA_DESVIOS * desvio, float(np.quantile(cosenos, 0.99)))
+    iguales = [float(c) for a, b, c in zip(i, j, cosenos, strict=True)
+               if min(len(pal[a]), len(pal[b])) >= 3 and _jaccard(pal[a], pal[b]) >= TENDENCIA_TITULOS_IGUALES]
+    umbral = piso
+    if len(iguales) >= TENDENCIA_MIN_IGUALES:
+        umbral = max(piso, (float(np.median(iguales)) + piso) / 2)
+    return min(0.995, umbral)
+
+
+def tendencias(noticias: list[Noticia], ahora: datetime.datetime) -> float | None:
     """Le pone a cada noticia su `tendencia` (0 a 1): cuántos OTROS medios publicaron el mismo
     tema en los últimos TENDENCIA_DIAS días. Satura en TENDENCIA_SATURA medios.
 
-    El mismo tema: coseno de embeddings >= TENDENCIA_SIMILITUD, o, si alguna de las dos no
-    tiene vector, títulos con TENDENCIA_PALABRAS de palabras en común. Solo pueden ser
-    tendencia las de los últimos 2 × TENDENCIA_DIAS días.
+    El mismo tema: coseno de embeddings por encima del umbral calibrado (calibrar_tendencia),
+    o, si no hay vector o no se pudo calibrar, títulos con TENDENCIA_PALABRAS de palabras en
+    común. Solo pueden ser tendencia las de los últimos 2 × TENDENCIA_DIAS días.
+    Devuelve el umbral usado (None: solo palabras).
     """
+    import numpy as np
+
     for n in noticias:
         n.tendencia = 0.0
     corte = ahora - datetime.timedelta(days=TENDENCIA_DIAS)
@@ -139,35 +187,28 @@ def tendencias(noticias: list[Noticia], ahora: datetime.datetime) -> None:
     evaluar = [n for n in noticias if n.fecha and n.fecha >= limite]
     en_ventana = [i for i, n in enumerate(evaluar) if n.fecha >= corte]
     if not en_ventana:
-        return
-    vec = [_normalizado(n.embedding) for n in evaluar]
+        return None
     pal = [_palabras(n.titulo) for n in evaluar]
     medio = [fuente_de(n) for n in evaluar]
-    iguales = _mismo_tema(vec, pal, en_ventana)
+    vec = [_normalizado(n.embedding) for n in evaluar]
+    largos = Counter(len(v) for v in vec if v)
+    largo = largos.most_common(1)[0][0] if largos else 0   # vectores de otro largo = otro modelo: no se comparan
+    con_vector = [bool(v) and len(v) == largo for v in vec]
+    sim, umbral = None, None
+    if largo:
+        m = np.array([v if ok else [0.0] * largo for v, ok in zip(vec, con_vector, strict=True)], dtype=float)
+        sim = m @ m.T
+        umbral = calibrar_tendencia(sim, medio, pal, con_vector)
+
+    def iguales(i: int, j: int) -> bool:
+        if umbral is not None and con_vector[i] and con_vector[j]:
+            return bool(sim[i, j] >= umbral)
+        return _jaccard(pal[i], pal[j]) >= TENDENCIA_PALABRAS
+
     for i, n in enumerate(evaluar):
         otros = {medio[j] for j in en_ventana if medio[j] != medio[i] and iguales(i, j)}
         n.tendencia = min(1.0, len(otros) / TENDENCIA_SATURA)
-
-
-def _mismo_tema(vec: list, pal: list[set[str]], columnas: list[int]):
-    """f(i, j) -> bool: si las noticias i y j hablan del mismo tema."""
-    def una(i: int, j: int) -> bool:
-        a, b = vec[i], vec[j]
-        if a and b and len(a) == len(b):
-            return sum(x * y for x, y in zip(a, b, strict=True)) >= TENDENCIA_SIMILITUD
-        pa, pb = pal[i], pal[j]
-        return bool(pa and pb) and len(pa & pb) / len(pa | pb) >= TENDENCIA_PALABRAS
-
-    if not (all(vec) and len({len(v) for v in vec}) == 1):
-        return una
-    try:   # con numpy (si está instalado) se comparan todas de una vez
-        import numpy as np
-    except ImportError:
-        return una
-    m = np.array(vec, dtype=float)
-    parecido = m @ m[columnas].T >= TENDENCIA_SIMILITUD
-    columna = {j: k for k, j in enumerate(columnas)}
-    return lambda i, j: bool(parecido[i, columna[j]])
+    return umbral
 
 
 def rankear(noticias: list[Noticia], consulta_vec: list[float] | None, ahora: datetime.datetime,
@@ -177,7 +218,7 @@ def rankear(noticias: list[Noticia], consulta_vec: list[float] | None, ahora: da
     Sin vector de consulta (embeddings caídos) mandan la tendencia y la recencia.
     uso_fuentes: {medio: parte de las últimas notas que lo usaron} (ver fuentes_recientes).
     """
-    tendencias(noticias, ahora)
+    rankear.umbral_tendencia = tendencias(noticias, ahora)   # para el log de seleccionar()
     uso_fuentes = uso_fuentes or {}
     for n in noticias:
         dias = max(0.0, (ahora - n.fecha).total_seconds() / 86400) if n.fecha else 60.0
@@ -390,7 +431,12 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
             n.liberada = True
         noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
-    elegidas = elegir(rankear(noticias, vec, ahora, fuentes_recientes()), limite)
+    ranking = rankear(noticias, vec, ahora, fuentes_recientes())
+    umbral = getattr(rankear, "umbral_tendencia", None)
+    print("  Tendencia: " + (f"mismo tema desde un parecido de {umbral:.2f} (calibrado con estas noticias)."
+                             if umbral is not None else "por las palabras del título (no alcanzan los vectores para calibrar)."),
+          flush=True)
+    elegidas = elegir(ranking, limite)
     medios = Counter(fuente_de(n) for n in elegidas)
     en_tendencia = sum(n.tendencia > 0 for n in elegidas)
     print(f"  Noticias elegidas: {len(elegidas)} de {len(medios)} medio(s)"

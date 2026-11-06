@@ -1005,18 +1005,80 @@ def test_el_umbral_de_parecido_es_085(monkeypatch):
 
 # ── Tendencia y medios variados ───────────────────────────────────────────────
 
-def test_una_noticia_en_tendencia_le_gana_a_una_mas_reciente_que_nadie_levanto():
+def _pozo(base_comun=0.0, dims=48, semilla=7):
+    """40 noticias de 40 medios, cada una de otro tema, y una historia que cubren 4 medios:
+    2 con títulos casi iguales y 2 contadas con otras palabras (solo el vector las une).
+    base_comun > 0 suma a todos los vectores una parte en común: el coseno entre noticias
+    distintas sube mucho (como con algunos modelos de embeddings) y un umbral fijo ya no sirve."""
+    import random
+    azar = random.Random(semilla)
     ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
-    hace = lambda d: ahora - datetime.timedelta(days=d)  # noqa: E731
-    ns = [
-        Noticia(1, "Suben los precios de las bujías", "", url="https://a.com/1", fecha=hace(3), embedding=[1, 0, 0]),
-        Noticia(2, "Bujías más caras", "", url="https://b.com/1", fecha=hace(3), embedding=[0.99, 0.1, 0]),
-        Noticia(3, "Las bujías aumentan", "", url="https://c.com/1", fecha=hace(4), embedding=[0.98, 0.12, 0]),
-        Noticia(4, "Un lanzamiento que nadie más cubrió", "", url="https://d.com/1", fecha=hace(0), embedding=[0, 1, 0]),
-    ]
-    orden = [n.id for n in contexto_noticias.rankear(ns, None, ahora)]
-    assert orden.index(4) == 3
-    assert ns[0].tendencia == pytest.approx(2 / 3) and ns[3].tendencia == 0
+    comun = [azar.gauss(0, 1) for _ in range(dims)]
+    historia = [azar.gauss(0, 1) for _ in range(dims)]
+
+    def vec(centro, ruido):
+        return [base_comun * c + x + azar.gauss(0, ruido) for c, x in zip(comun, centro, strict=True)]
+    letras = "bcdfghjklmnprstvz"
+    palabra = lambda: "".join(azar.choice(letras) + azar.choice("aeiou") for _ in range(3))  # noqa: E731
+    ns = [Noticia(i, " ".join(palabra() for _ in range(5)), "", url=f"https://medio{i}.com/n",
+                  fecha=ahora - datetime.timedelta(days=i % 6), embedding=vec([azar.gauss(0, 1) for _ in range(dims)], 0))
+          for i in range(40)]
+    titulos = ["Bosch sube 8% las bujías desde diciembre", "Bosch sube 8% las bujías a partir de diciembre",
+               "Aumentan los encendidos de la marca alemana el mes próximo", "Fin de año caro para quien cambia el encendido"]
+    ns += [Noticia(100 + k, t, "", url=f"https://historia{k}.com/n", fecha=ahora - datetime.timedelta(days=1),
+                   embedding=vec(historia, 0.15)) for k, t in enumerate(titulos)]
+    return ns, ahora
+
+
+@pytest.mark.parametrize("base_comun", [0.0, 3.0])
+def test_la_tendencia_se_calibra_sola_con_las_noticias(base_comun):
+    ns, ahora = _pozo(base_comun)
+    umbral = contexto_noticias.tendencias(ns, ahora)
+    assert umbral is not None
+    historia = [n for n in ns if n.id >= 100]
+    assert all(n.tendencia == 1.0 for n in historia)          # las 4, también las contadas con otras palabras
+    assert sum(n.tendencia > 0 for n in ns if n.id < 100) == 0
+
+
+def test_con_parecidos_altos_un_umbral_fijo_marcaba_todo_y_el_calibrado_no():
+    ns, ahora = _pozo(base_comun=3.0)
+    contexto_noticias.tendencias(ns, ahora)
+    import math
+    a, b = ns[0].embedding, ns[1].embedding
+    coseno = sum(x * y for x, y in zip(a, b, strict=True)) / math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+    assert coseno > 0.8                                       # con 0,80 fijo, dos noticias distintas eran "tendencia"
+    assert ns[0].tendencia == 0 and ns[1].tendencia == 0
+
+
+def test_una_noticia_en_tendencia_le_gana_a_una_mas_reciente_que_nadie_levanto():
+    ns, ahora = _pozo()
+    sola = Noticia(999, "Un lanzamiento que nadie más cubrió", "", url="https://solitario.com/n", fecha=ahora,
+                   embedding=[1.0] + [0.0] * 47)
+    orden = [n.id for n in contexto_noticias.rankear(ns + [sola], None, ahora)]
+    assert orden.index(999) > max(orden.index(i) for i in range(100, 104))
+
+
+def test_con_pocas_noticias_no_calibra_y_mira_las_palabras():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ayer = ahora - datetime.timedelta(days=1)
+    ns = [Noticia(1, "Bosch sube los precios de las bujías", "", url="https://a.com/1", fecha=ayer, embedding=[1, 0]),
+          Noticia(2, "Bujías: Bosch sube precios", "", url="https://b.com/1", fecha=ayer, embedding=[0, 1])]
+    assert contexto_noticias.tendencias(ns, ahora) is None
+    assert ns[0].tendencia > 0 and ns[1].tendencia > 0
+
+
+def test_calibrar_sin_titulos_iguales_toma_los_valores_atipicos():
+    import numpy as np
+    ns, _ = _pozo()
+    m = np.array([contexto_noticias._normalizado(n.embedding) for n in ns])
+    sim = m @ m.T
+    medios = [contexto_noticias.fuente_de(n) for n in ns]
+    umbral = contexto_noticias.calibrar_tendencia(sim, medios, [set() for _ in ns], [True] * len(ns))
+    cosenos = sim[np.triu_indices(len(ns), k=1)]
+    assert umbral >= float(np.quantile(cosenos, 0.99))
+    historia = [k for k, n in enumerate(ns) if n.id >= 100]
+    assert all(sim[a, b] >= umbral for a in historia for b in historia if a < b)
+    assert ((cosenos >= umbral).sum()) == 6        # solo los 6 pares de la historia
 
 
 def test_la_tendencia_cuenta_medios_distintos_no_notas_del_mismo_medio():
