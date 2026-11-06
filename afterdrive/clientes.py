@@ -6,6 +6,7 @@ Interfaz:
     normalizar_modo(valor) -> "mencionar" | "no_mencionar" | None
     parsear_lista(texto) -> [{"nombre", "descripcion", "alias"}]   la lista que pasan, una por línea
     no_mencionar(col=None) -> [dict]                               las que ninguna nota puede nombrar
+    buscar(col, id_o_nombre) -> dict | None                        un cliente por slug o nombre exacto
     nombrados(texto, clientes) -> [nombre]                         cuáles aparecen en el texto
 
 Cada cliente de la colección `clientes` tiene un `modo`:
@@ -63,6 +64,21 @@ def parsear_lista(texto: str) -> list[dict]:
         resultado.append({"nombre": nombre, "descripcion": (partes[1] if len(partes) > 1 else "")[:MAX_DESCRIPCION],
                           "alias": alias})
     return resultado
+
+
+def buscar(col, id_o_nombre: str) -> dict | None:
+    """El cliente con ese slug o ese nombre (sin distinguir mayúsculas), o None.
+
+    El nombre se compara entero y literal: "Mann+Hummel" o "Bosch (AR)" se
+    encuentran tal cual, y "Bosch" no toma por error a "Bosch Car Service".
+    """
+    texto = (id_o_nombre or "").strip()
+    if not texto:
+        return None
+    for s in dict.fromkeys((texto, slug(texto))):
+        if s and (doc := col.find_one({"slug": s})):
+            return doc
+    return col.find_one({"nombre": {"$regex": f"^{re.escape(texto)}$", "$options": "i"}})
 
 
 def no_mencionar(col=None) -> list[dict]:

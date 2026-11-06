@@ -94,12 +94,16 @@ def test_crear_nota_tono_y_largo_con_botones(pagina):
     tonos.get_by_role("radio", name="Divulgativo").click()
     expect(pagina.locator("#f2-persona")).to_have_value("divulgativo")
     expect(tonos.get_by_role("radio", name="Divulgativo")).to_have_attribute("aria-checked", "true")
-    pagina.locator("#f2-largo-chips").get_by_role("radio", name="Corto").click()
-    expect(pagina.locator("#f2-largo")).to_have_value("corto")
+    # Otros tests guardan el largo en el mismo servidor: se elige uno distinto del actual.
+    antes = pagina.locator("#f2-largo").input_value()
+    otro = "corto" if antes != "corto" else "medio"
+    nombres = {"corto": "Corto", "medio": "Medio", "largo": "Largo"}
+    pagina.locator("#f2-largo-chips").get_by_role("radio", name=nombres[otro]).click()
+    expect(pagina.locator("#f2-largo")).to_have_value(otro)
     expect(pagina.locator("#crear-resumen")).to_contain_text("Divulgativo")
     expect(pagina.locator("#barra-crear")).to_be_visible()     # el largo se guarda: avisa el cambio
     pagina.locator('#barra-crear [data-accion="descartar"]').click()
-    expect(pagina.locator("#f2-largo-chips").get_by_role("radio", name="Medio")).to_have_attribute("aria-checked", "true")
+    expect(pagina.locator("#f2-largo-chips").get_by_role("radio", name=nombres[antes])).to_have_attribute("aria-checked", "true")
     # En escritorio, "Tu nota" queda a la derecha del formulario.
     panel, form = pagina.locator(".f2-acciones").bounding_box(), pagina.locator(".fase2-grupos").bounding_box()
     assert panel["x"] > form["x"] + form["width"]

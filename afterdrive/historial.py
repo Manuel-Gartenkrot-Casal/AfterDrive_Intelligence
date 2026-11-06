@@ -248,11 +248,17 @@ def listar(seccion: str, pagina: int = 1, por_pagina: int = 20, q: str = "", est
     # cada una, se mezclan por fecha y se corta la página. Es exacto porque
     # ninguna página puede necesitar más que eso de una sola colección.
     salto = (pagina - 1) * por_pagina
-    candidatos, total = [], 0
-    for coleccion in cfg["colecciones"]:
-        total += b[coleccion].count_documents(filtro)
-        cursor = b[coleccion].find(filtro, _SIN_EMBEDDING).sort("_id", -1).limit(salto + por_pagina)
-        candidatos += [(doc["_id"], coleccion, doc) for doc in cursor]
+    cuentas = {coleccion: b[coleccion].count_documents(filtro) for coleccion in cfg["colecciones"]}
+    total = sum(cuentas.values())
+    candidatos = []
+    # Una página fuera de rango no trae nada: antes pedir ?pagina=100000 cargaba
+    # en memoria todos los documentos de cada colección para devolver vacío.
+    if salto < total:
+        for coleccion, cuenta in cuentas.items():
+            if not cuenta:
+                continue
+            cursor = b[coleccion].find(filtro, _SIN_EMBEDDING).sort("_id", -1).limit(min(salto + por_pagina, cuenta))
+            candidatos += [(doc["_id"], coleccion, doc) for doc in cursor]
 
     candidatos.sort(key=lambda t: t[0].generation_time, reverse=True)
     pagina_docs = candidatos[salto:salto + por_pagina]

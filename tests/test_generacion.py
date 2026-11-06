@@ -775,6 +775,18 @@ def test_un_cliente_marcado_no_mencionar_no_se_usa_como_caso(entorno, monkeypatc
     assert "Clientes a mencionar" not in llamadas["system"]
 
 
+def test_un_cliente_con_caracteres_especiales_se_encuentra_por_nombre(entorno, monkeypatch):
+    import mongomock
+    llamadas, _, _ = entorno
+    col = mongomock.MongoClient().db.clientes
+    col.insert_many([{"slug": "mann-hummel", "nombre": "Mann+Hummel", "descripcion": "Filtros"},
+                     {"slug": "mann-hummel-ar", "nombre": "Mann+Hummel AR", "descripcion": "Otra"}])
+    monkeypatch.setattr(g, "col_clientes", col)
+    g.generar_nota(["autopartes"], clientes_ids=["Mann+Hummel", "Frenos (AR"])
+    assert "Clientes a mencionar" in llamadas["system"]
+    assert "Mann+Hummel" in llamadas["system"] and "Mann+Hummel AR" not in llamadas["system"]
+
+
 # ── Noticias de notas rechazadas vuelven a estar disponibles ──────────────────
 
 

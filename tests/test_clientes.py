@@ -20,6 +20,42 @@ def test_parsear_lista_con_descripcion_alias_y_vinetas():
     assert lista[1]["descripcion"] == "" and lista[1]["alias"] == ["CSA", "Competidor"]
 
 
+@pytest.fixture
+def col_clientes():
+    col = mongomock.MongoClient().db.clientes
+    col.insert_many([
+        {"slug": clientes.slug(n), "nombre": n}
+        for n in ("Bosch", "Bosch Car Service", "Mann+Hummel", "Frenos (AR)", "Repuestos Núñez")
+    ])
+    return col
+
+
+@pytest.mark.parametrize("pedido, esperado", [
+    ("bosch", "Bosch"),                         # por slug
+    ("bosch-car-service", "Bosch Car Service"),
+    ("Bosch Car Service", "Bosch Car Service"),  # por el slug del nombre
+    ("BOSCH", "Bosch"),
+    ("Mann+Hummel", "Mann+Hummel"),             # caracteres de regex, literales
+    ("Frenos (AR)", "Frenos (AR)"),
+    ("Frenos (AR", "Frenos (AR)"),              # por slug, sin romper la búsqueda
+    ("Repuestos Núñez", "Repuestos Núñez"),
+    ("  bosch  ", "Bosch"),
+])
+def test_buscar_un_cliente_por_slug_o_nombre(col_clientes, pedido, esperado):
+    assert clientes.buscar(col_clientes, pedido)["nombre"] == esperado
+
+
+@pytest.mark.parametrize("pedido", ["Bos", "Car Service", "Hummel", ".*", "", "   ", None])
+def test_buscar_no_toma_otro_cliente_por_coincidencia_parcial(col_clientes, pedido):
+    assert clientes.buscar(col_clientes, pedido) is None
+
+
+def test_buscar_por_nombre_cuando_el_slug_guardado_es_otro():
+    col = mongomock.MongoClient().db.clientes
+    col.insert_one({"slug": "id-viejo", "nombre": "A+B Repuestos"})
+    assert clientes.buscar(col, "a+b repuestos")["slug"] == "id-viejo"
+
+
 def test_parsear_lista_acepta_tabulaciones_de_una_planilla():
     assert clientes.parsear_lista("ACME\tFabricante de frenos")[0]["descripcion"] == "Fabricante de frenos"
 

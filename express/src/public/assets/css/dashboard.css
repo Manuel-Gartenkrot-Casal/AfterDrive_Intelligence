@@ -2998,18 +2998,27 @@ mark.cambio { padding: 0 1px; border-radius: 3px; color: inherit; }
 .lectura-doc #nota-texto li { margin-bottom: 6px; }
 .lectura-doc #nota-texto strong { color: var(--text-hi); }
 .lectura-meta { display: flex; flex-wrap: wrap; gap: 14px; font-family: var(--font); font-size: 0.8rem !important; color: var(--text-lo); margin-bottom: 22px !important; line-height: 1.4; }
-mark.dato { color: inherit; padding: 0 1px; border-radius: 2px; background: linear-gradient(transparent 62%, color-mix(in srgb, var(--ok) 30%, transparent) 0); }
-mark.dato.duda { background: linear-gradient(transparent 58%, color-mix(in srgb, #E8A317 45%, transparent) 0); }
-mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, var(--err) 35%, transparent) 0); }
-.lectura-aviso { display: flex; align-items: center; gap: 12px; margin: -4px 0 18px; padding: 10px 12px; border-radius: 10px;
-  font-family: var(--font); font-size: 0.82rem; line-height: 1.4; background: color-mix(in srgb, #E8A317 14%, var(--bg)); color: var(--text-mid); }
-.lectura-aviso.err { background: color-mix(in srgb, var(--err) 10%, var(--bg)); }
-.lectura-aviso > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* Datos verificados: lo respaldado apenas se nota (subrayado punteado); lo dudoso o sin
+   respaldo, un fondo suave con una línea abajo, del alto del texto (no un resaltador). */
+mark.dato { color: inherit; background: none; padding: 0; border-radius: 0; text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--ok) 70%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+mark.dato.duda, mark.dato.sin { text-decoration: none; padding: 0 2px; margin: 0 -1px; border-radius: 3px;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+mark.dato.duda { background: color-mix(in srgb, #E8A317 16%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, #E8A317 75%, transparent); }
+mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--err) 70%, transparent); }
+.lectura-aviso { display: flex; align-items: center; gap: 12px; margin: -6px 0 20px; padding: 9px 10px 9px 12px; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #E8A317 30%, var(--border)); border-left: 3px solid #E8A317;
+  font-family: var(--font); font-size: 0.8rem; line-height: 1.45; background: color-mix(in srgb, #E8A317 7%, var(--bg)); color: var(--text-mid); }
+.lectura-aviso.err { border-color: color-mix(in srgb, var(--err) 28%, var(--border)); border-left-color: var(--err); background: color-mix(in srgb, var(--err) 6%, var(--bg)); }
+.lectura-aviso > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .lectura-aviso b { color: var(--text-hi); font-weight: 600; }
-.lectura-aviso-icono { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.8rem;
-  background: color-mix(in srgb, #E8A317 30%, var(--bg)); color: var(--warn); }
+.lectura-aviso-titulo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.lectura-aviso-titulo q { quotes: none; font-weight: 500; color: var(--text-hi); padding: 0 6px; border-radius: 4px; background: var(--well);
+  font-variant-numeric: tabular-nums; }
+.lectura-aviso-icono { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.72rem;
+  background: color-mix(in srgb, #E8A317 25%, var(--bg)); color: var(--warn); }
 .lectura-aviso.err .lectura-aviso-icono { background: var(--err); color: #fff; }
-.lectura-aviso .btn { min-height: 30px; padding: 4px 10px; flex-shrink: 0; }
+.lectura-aviso .btn { min-height: 28px; padding: 3px 10px; flex-shrink: 0; font-size: 0.78rem; }
 .lectura-generacion { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--border); font-family: var(--font); font-size: 0.85rem; }
 .lectura-generacion > summary { cursor: pointer; font-weight: 600; color: var(--text-mid); padding: 4px 0; }
 .lectura-generacion .acordeon { margin-top: 10px; }
@@ -3226,6 +3235,10 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
   /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
   [data-modo="cliente"] .modal-overlay:has(> .modal.lectura) { left: var(--ancho-riel); }
   [data-modo="cliente"] .modal.lectura { width: calc(100vw - var(--ancho-riel)); }
+  /* La barra de la nota, a la altura del encabezado: la línea de abajo sigue a la del logo. */
+  [data-modo="cliente"] .modal.lectura .modal-header { height: 52px; min-height: 52px; padding: 0 16px 0 20px; border-bottom-color: var(--linea-suave); }
+  [data-modo="cliente"] .modal.lectura .lectura-acciones .btn { min-height: 34px; }
+  [data-modo="cliente"] .modal.lectura .modal-close { width: 34px; height: 34px; }
 }
 
 /* Buscar o saltar a… (buscador.js) */
@@ -3242,3 +3255,118 @@ mark.dato.sin { background: linear-gradient(transparent 58%, color-mix(in srgb, 
 .buscador-item small { flex-shrink: 0; font-size: 12px; color: var(--text-lo); }
 .buscador-item[aria-selected="true"] { background: var(--brand-soft); color: var(--brand); }
 .buscador-vacio { padding: 14px 10px; font-size: 13px; color: var(--text-lo); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CREAR NOTA (generador.js: resumenCrear, pintarChipsSelect)
+   El resumen es una línea en Desarrollador y en el celular. En la vista Cliente
+   el formulario va en tres pasos (temas, enfoque, estilo) y, en escritorio, a la
+   derecha queda fijo el panel "Tu nota" con el botón Generar. Los campos son los
+   mismos en las dos vistas: el tono y el largo se eligen con botones que cambian
+   el valor de su select.
+   ═══════════════════════════════════════════════════════════════════════ */
+.cr-k { display: none; }
+.cr-item + .cr-item::before { content: ' · '; }
+
+[data-modo="cliente"] .fase2-section { --linea-crear: var(--linea-suave, var(--border)); padding: 28px 32px 32px; }
+[data-modo="cliente"] .fase2-header { margin-bottom: 24px; }
+[data-modo="cliente"] .fase2-title { font-size: 1.5rem; }
+[data-modo="cliente"] .fase2-grupos { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin: 0; min-width: 0; }
+[data-modo="cliente"] .fase2-grupo { padding: 0; border: 0; border-radius: 0; background: none; }
+[data-modo="cliente"] .f2-opciones { display: contents; }
+/* Orden: 1 temas, 2 enfoque (tema puntual e indicaciones), 3 estilo (tono y largo), más opciones. */
+[data-modo="cliente"] .f2-categorias { order: 1; }
+[data-modo="cliente"] .f2-titulo-enfoque { order: 2; }
+[data-modo="cliente"] .f2-campo-tema { order: 3; }
+[data-modo="cliente"] .f2-campo-indicaciones { order: 4; }
+[data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child { order: 5; }
+[data-modo="cliente"] .f2-campo-tono { order: 6; }
+[data-modo="cliente"] .f2-campo-largo { order: 7; }
+[data-modo="cliente"] .f2-campo-idioma { display: none; }   /* va en el resumen */
+[data-modo="cliente"] .mas-opciones { order: 8; }
+[data-modo="cliente"] .f2-campo-puntapie { order: 9; }
+[data-modo="cliente"] .f2-regiones { order: 10; }
+[data-modo="cliente"] .f2-clientes { order: 11; }
+
+/* Títulos de los pasos, con su número. */
+[data-modo="cliente"] :is(.f2-categorias > .fase2-grupo-title, .f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child) {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 0.98rem; font-weight: 600; color: var(--text-hi); }
+[data-modo="cliente"] :is(.f2-categorias > .fase2-grupo-title, .f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child)::before {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 0.75rem; font-weight: 700; background: var(--brand-soft); color: var(--brand); }
+[data-modo="cliente"] .f2-categorias > .fase2-grupo-title::before { content: '1'; }
+[data-modo="cliente"] .f2-titulo-enfoque::before { content: '2'; }
+[data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child::before { content: '3'; }
+[data-modo="cliente"] :is(.f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child) { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--linea-crear); }
+[data-modo="cliente"] .f2-campo { margin-bottom: 18px !important; }
+[data-modo="cliente"] :is(.f2-campo-largo, .f2-campo-indicaciones) { margin-bottom: 0 !important; }
+[data-modo="cliente"] #f2-tema { min-height: 46px; font-size: 0.95rem; }
+
+/* Temas: píldoras con su tilde. */
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) { display: flex; flex-wrap: wrap; gap: 8px; }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .toggle-item {
+  width: auto; min-height: 36px; padding: 6px 14px 6px 10px; gap: 8px; flex-direction: row-reverse; justify-content: flex-end;
+  border: 1px solid var(--border); border-radius: var(--r-pill); box-shadow: none; }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .toggle-item:hover { border-color: var(--border-strong); background: var(--well); }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .toggle-item.active { border-color: var(--brand); background: var(--brand-soft); }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .toggle-item.active .toggle-label { color: var(--brand); }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .selection-check { width: 16px; height: 16px; border-radius: 50%; }
+[data-modo="cliente"] :is(#f2-categorias-grid, #f2-regiones-grid) .toggle-item:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Tono y largo: botones (el select queda oculto, es el que se guarda). */
+[data-modo="cliente"] :is(#f2-persona, #f2-largo) { position: absolute; width: 1px !important; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+[data-modo="cliente"] :is(.f2-campo-tono, .f2-campo-largo) { position: relative; }
+.f2-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+.f2-chips-largo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.f2-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg); color: var(--text-hi); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast); }
+.f2-chip b { font-size: 0.86rem; font-weight: 600; }
+.f2-chip small { font-size: 0.76rem; line-height: 1.35; color: var(--text-lo); }
+.f2-chip:hover { border-color: var(--border-strong); background: var(--well); }
+.f2-chip[aria-checked="true"] { border-color: var(--brand); background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--brand); }
+.f2-chip[aria-checked="true"] b { color: var(--brand); }
+.f2-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* Más opciones: una fila al final del formulario. */
+[data-modo="cliente"] .mas-opciones { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; margin: 28px 0 0; padding: 18px 0 4px;
+  border: 0; border-top: 1px solid var(--linea-crear); border-radius: 0; background: none; box-shadow: none; color: var(--text-hi); font: inherit; text-align: left; cursor: pointer; }
+[data-modo="cliente"] .mas-opciones-texto { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 600; }
+[data-modo="cliente"] .mas-opciones-texto::after { content: ''; width: 7px; height: 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  transform: translateY(-2px) rotate(45deg); transition: transform var(--t-fast); }
+[data-modo="cliente"] .mas-opciones[aria-expanded="true"] .mas-opciones-texto::after { transform: translateY(1px) rotate(-135deg); }
+[data-modo="cliente"] .mas-opciones small { font-size: 0.78rem; color: var(--text-lo); }
+[data-modo="cliente"] .mas-opciones:hover .mas-opciones-texto { color: var(--brand); }
+[data-modo="cliente"] .fase2-section.mas-abiertas .mas-opciones { box-shadow: none; color: var(--text-hi); }
+[data-modo="cliente"] .fase2-section.mas-abiertas :is(.f2-campo-puntapie, .f2-regiones, .f2-clientes) { margin-top: 18px; }
+[data-modo="cliente"] :is(.f2-regiones, .f2-clientes) > .fase2-grupo-title { margin-bottom: 10px; }
+
+@media (max-width: 900px) {
+  [data-modo="cliente"] .fase2-section { padding: 20px 16px; }
+  [data-modo="cliente"] .f2-acciones-titulo, [data-modo="cliente"] .f2-acciones-ayuda { display: none; }
+  .f2-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .f2-chips-largo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .f2-chip { padding: 9px 10px; }
+}
+
+/* Escritorio: el formulario a la izquierda y "Tu nota" fijo a la derecha. */
+@media (min-width: 901px) {
+  [data-modo="cliente"] .fase2-section { display: grid; grid-template-columns: minmax(0, 1fr) 300px; column-gap: 40px; align-items: start; }
+  [data-modo="cliente"] .fase2-header { grid-column: 1 / -1; }
+  [data-modo="cliente"] .fase2-grupos { grid-column: 1; grid-row: 2; }
+  [data-modo="cliente"] .fase2-section > :is(#f2-status, .barra-guardar) { grid-column: 1; }
+  [data-modo="cliente"] .f2-acciones { grid-column: 2; grid-row: 2 / span 3; position: sticky; top: 16px; flex-direction: column; flex-wrap: nowrap;
+    align-items: stretch; gap: 14px; margin: 0; padding: 18px; border: 1px solid var(--linea-crear); border-radius: 12px; box-shadow: none;
+    background: color-mix(in srgb, var(--well) 60%, var(--bg)); }
+  [data-modo="cliente"] .f2-acciones-titulo { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-lo); }
+  [data-modo="cliente"] .crear-resumen { display: flex; flex-direction: column; flex: none; min-width: 0; margin-top: -6px; }
+  [data-modo="cliente"] .cr-item { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0;
+    border-bottom: 1px solid var(--linea-crear); font-size: 0.85rem; }
+  [data-modo="cliente"] .cr-item + .cr-item::before { content: none; }
+  [data-modo="cliente"] .cr-k { display: inline; color: var(--text-lo); }
+  [data-modo="cliente"] .cr-v { color: var(--text-hi); font-weight: 600; text-align: right; }
+  [data-modo="cliente"] .cr-item.falta .cr-v { color: var(--brand); font-weight: 500; }
+  [data-modo="cliente"] .f2-acciones .btn-large { width: 100%; margin: 0; }
+  [data-modo="cliente"] .f2-acciones-ayuda { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-lo); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 0; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li { width: 100%; }
+}
