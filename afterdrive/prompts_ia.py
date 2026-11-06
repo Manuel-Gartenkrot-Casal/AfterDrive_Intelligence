@@ -246,12 +246,20 @@ def _leer_json(texto: str):
     if inicio == -1 or fin < inicio:
         raise json.JSONDecodeError("sin objeto JSON en la respuesta", texto, 0)
     crudo = texto[inicio:fin + 1]
-    for candidato in (crudo, _escapar_comillas(crudo)):
+    for candidato in (crudo, _escapar_comillas(crudo), _sumar_comas(_escapar_comillas(crudo))):
         try:
             return json.loads(candidato, strict=False)   # strict=False: acepta saltos de línea dentro de los textos
         except json.JSONDecodeError:
             continue
-    return json.loads(_escapar_comillas(crudo), strict=False)
+    return json.loads(_sumar_comas(_escapar_comillas(crudo)), strict=False)
+
+
+def _sumar_comas(texto: str) -> str:
+    """Agrega la coma que la IA a veces olvida entre dos elementos que terminan y empiezan en renglones
+    distintos ("}\n  {" o "\"\n  \"") — el error de producción era «Expecting ',' delimiter» al principio
+    de un renglón."""
+    import re
+    return re.sub(r'(["}\]0-9]|true|false|null)(\s*\n\s*)(["{\[])', r"\1,\2\3", texto)
 
 
 _SYSTEM_JSON = """Te paso una respuesta que debía ser un JSON y no se puede leer. Devolvé exactamente el mismo

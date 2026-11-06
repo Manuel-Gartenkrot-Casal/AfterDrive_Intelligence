@@ -671,7 +671,7 @@ def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):
     # Contexto propio: abrir() marca el recorrido como visto en cada carga.
     from tests.e2e.conftest import _SIN_CDN, CLAVE, USUARIO
     ctx = navegador.new_context(viewport={"width": 1366, "height": 900}, locale="es-AR")
-    ctx.add_init_script(f"localStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
+    ctx.add_init_script(f"sessionStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
     pg = ctx.new_page()
     pg.errores = []
     pg.on("pageerror", lambda e: pg.errores.append(str(e)))
@@ -736,7 +736,7 @@ def test_ayuda_abre_la_documentacion(pagina):
 def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     from tests.e2e.conftest import _SIN_CDN, CLAVE, USUARIO
     ctx = navegador.new_context(viewport={"width": 1366, "height": 900}, locale="es-AR")
-    ctx.add_init_script(f"localStorage.setItem('ad-tour-visto','1');localStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
+    ctx.add_init_script(f"localStorage.setItem('ad-tour-visto','1');sessionStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
     pg = ctx.new_page()
     pg.errores = []
     pg.on("pageerror", lambda e: pg.errores.append(str(e)))

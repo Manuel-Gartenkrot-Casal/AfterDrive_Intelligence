@@ -88,7 +88,7 @@ function initSecciones() {
 function setModo(modo) {
   modo = modo === 'dev' ? 'dev' : 'cliente';
   document.documentElement.setAttribute('data-modo', modo);
-  try { localStorage.setItem('ad-modo', modo); } catch(e) {}
+  try { sessionStorage.setItem('ad-modo', modo); } catch(e) {}   // al volver a entrar, arranca en Cliente
 
   document.querySelectorAll('.modo-switch button').forEach(function(b) {
     b.setAttribute('aria-checked', b.dataset.modo === modo);

@@ -286,3 +286,25 @@ def test_en_la_vista_cliente_no_hay_terminal(pagina):
     pagina.evaluate("refrescarCorridas()")
     pagina.wait_for_function("!document.getElementById('actividad-dock').hidden")
     expect(pagina.locator("#actividad-dock")).to_be_hidden()
+
+
+@pytest.mark.parametrize("pagina", ["dev"], indirect=True)
+def test_en_desarrollador_ayuda_lleva_a_cliente_y_la_vista_no_queda_guardada(pagina):
+    """En Desarrollador: Inicio se llama Métricas, la vista se cambia desde Ayuda (a Cliente) y,
+    al volver a entrar, se arranca en Cliente."""
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_have_text("Métricas")
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_be_visible()
+    expect(pagina.locator(".sidebar-pie .modo-switch")).to_be_hidden()
+    pagina.click("#ayuda-btn")
+    menu = pagina.locator("#ayuda-menu")
+    expect(menu.locator(".ayuda-dev")).to_be_hidden()
+    expect(menu.locator(".ayuda-salir")).to_be_visible()
+    menu.locator(".ayuda-cliente").click()
+    pagina.click("#confirmar-si")
+    expect(pagina.locator("html")).to_have_attribute("data-modo", "cliente")
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_be_hidden()
+    pasar_a_dev(pagina)
+    pagina.click("#confirmar-si")
+    expect(pagina.locator("html")).to_have_attribute("data-modo", "dev")
+    # La vista dura lo que la pestaña (sessionStorage): no queda guardada para la próxima vez que se entra.
+    assert pagina.evaluate("[sessionStorage.getItem('ad-modo'), localStorage.getItem('ad-modo')]") == ["dev", None]

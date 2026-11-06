@@ -230,3 +230,8 @@ def test_un_json_roto_de_la_ia_se_repara(monkeypatch, base):
     monkeypatch.setattr(llm, "completar", completar)
     a = prompts_ia.analizar(base=base)
     assert a["diagnostico"]["problemas"][0]["titulo"] == "A" and len(pedidos) == 2 and "JSON válido" in pedidos[1]
+
+
+def test_tambien_se_repara_la_coma_que_falta_entre_dos_problemas():
+    roto = '{"resumen": "x",\n "problemas": [\n  {"titulo": "A", "pieza": "seo"}\n  {"titulo": "B", "pieza": "formato"}\n ]}'
+    assert [p["titulo"] for p in prompts_ia._leer_json(roto)["problemas"]] == ["A", "B"]
