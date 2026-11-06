@@ -657,63 +657,21 @@
         <h2 class="section-title" id="prompts-title">Prompts de redacción</h2>
         <p class="section-sub">Las instrucciones que recibe la IA al escribir cada nota. Cada cambio pasa por borrador, revisión y aprobación antes de usarse; la versión anterior queda guardada.</p>
       </div>
-      <!-- Prompts con IA (promptsia.js): la IA analiza las calificaciones de las notas y mejora sola una
-           copia de los prompts. Los prompts actuales (abajo) no se tocan nunca desde acá. -->
-      <section class="pia-hero" id="pia-hero" aria-labelledby="pia-titulo">
-        <div class="pia-hero-cabeza">
-          <span class="pia-hero-icono" aria-hidden="true">✦</span>
-          <div class="pia-hero-texto">
-            <h3 id="pia-titulo">Prompts con IA</h3>
-            <p>La IA lee cómo salen calificadas las notas y mejora sola una copia de los prompts. Los prompts actuales no se tocan nunca: vos elegís con cuáles escribe la redacción.</p>
-          </div>
-          <div class="ajuste pia-auto" id="pia-auto" role="switch" tabindex="0" aria-checked="true" aria-label="Mejora automática">
-            <span class="ajuste-texto"><span class="ajuste-nombre">Mejora automática</span><span class="ajuste-estado" id="pia-auto-estado">Prendida</span></span>
-            <span class="ajuste-switch" aria-hidden="true"></span>
-          </div>
-        </div>
-        <div class="pia-hero-cuerpo">
-          <div class="pia-usar" id="pia-usar" role="radiogroup" aria-label="Prompts con los que escribe la redacción">
-            <span class="pia-usar-etiqueta">Escribir con</span>
-            <button type="button" role="radio" data-usar="actuales" aria-checked="true">Prompts actuales</button>
-            <button type="button" role="radio" data-usar="ia" aria-checked="false"><span aria-hidden="true">✦</span> Copia de la IA<span class="pia-cuenta" id="pia-cambiadas"></span></button>
-          </div>
-          <p class="pia-estado" id="pia-estado"></p>
-          <div class="pia-acciones">
-            <button type="button" class="btn" id="pia-abrir" aria-expanded="false" aria-controls="pia-panel">Ver qué cambió</button>
-            <button type="button" class="btn btn-primary" id="pia-mejorar"><span aria-hidden="true">✦</span> Analizar y mejorar ahora</button>
-          </div>
-        </div>
-        <div class="pia-progreso" id="pia-progreso" role="status" hidden></div>
-      </section>
-      <div class="pia-panel" id="pia-panel" hidden>
-        <section class="pia-bloque pia-diagnostico" aria-labelledby="pia-t-diag">
-          <header class="pia-cabeza"><div><h3 id="pia-t-diag">Último análisis</h3>
-            <p>Lo que la IA encontró en las calificaciones de las últimas 40 notas.</p></div></header>
-          <div id="pia-diagnostico" aria-live="polite"></div>
-        </section>
-        <section class="pia-bloque pia-pedir" aria-labelledby="pia-t-pedido">
-          <header class="pia-cabeza"><div><h3 id="pia-t-pedido">Pedile un cambio a mano</h3>
-            <p>La IA lo aplica directo en la copia. Si no te gusta, lo deshacés.</p></div></header>
-          <label class="sr-only" for="pia-pedido">Qué querés cambiar</label>
-          <textarea id="pia-pedido" class="input-field pia-pedido" rows="3" maxlength="1500"
-                    placeholder="Por ejemplo: que use voseo en toda la nota y que haya una sola llamada a la acción, al final"></textarea>
-          <div class="pia-pedido-pie">
-            <label class="sr-only" for="pia-pieza">Pieza</label>
-            <select id="pia-pieza" class="select-field"><option value="">La IA elige qué piezas cambiar</option></select>
-            <button type="button" class="btn btn-primary btn-sm" id="pia-pedir">Cambiar con IA</button>
-          </div>
-        </section>
-        <section class="pia-bloque pia-copia" aria-labelledby="pia-t-copia">
-          <header class="pia-cabeza"><div><h3 id="pia-t-copia">Cambios de la IA</h3>
-            <p>Un duplicado de los prompts: las piezas sin cambios son iguales a las actuales.</p></div>
-            <button type="button" class="btn btn-sm" id="pia-restablecer-todo">Volver todo a los actuales</button>
-          </header>
-          <ul class="pia-lista" id="pia-copia"></ul>
-          <h4 class="pia-sub">Últimas mejoras</h4>
-          <ol class="pia-mejoras" id="pia-mejoras"></ol>
-        </section>
+      <!-- Dos juegos de prompts, en pestañas (promptsia.js): los actuales, que se editan con aprobación,
+           y la copia que mejora la IA. "En uso" marca con cuál escribe la redacción. -->
+      <div class="prompts-vistas" id="prompts-vistas" role="tablist" aria-label="Juegos de prompts">
+        <button type="button" role="tab" class="pv-tab" id="pv-actuales" data-vista="actuales" aria-selected="true" aria-controls="prompts-actuales">
+          <span class="pv-titulo">Prompts actuales</span><span class="pv-uso" hidden>En uso</span>
+          <span class="pv-sub">Los edita y aprueba el equipo</span>
+        </button>
+        <button type="button" role="tab" class="pv-tab" id="pv-ia" data-vista="ia" aria-selected="false" aria-controls="pia-vista">
+          <span class="pv-titulo"><span class="pia-chispa" aria-hidden="true">✦</span> Prompts de la IA</span><span class="pv-uso" hidden>En uso</span>
+          <span class="pv-sub" id="pv-ia-sub">Una copia que la IA mejora sola</span>
+        </button>
       </div>
-      <div class="prompts-layout">
+      <p class="pv-aviso" id="pv-aviso" hidden>La redacción está escribiendo con los prompts de la IA. Estos siguen guardados tal cual.
+        <button type="button" class="btn btn-xs" id="pv-volver">Volver a los actuales</button></p>
+      <div class="prompts-layout" id="prompts-actuales" role="tabpanel" aria-labelledby="pv-actuales">
         <nav class="prompts-lista" id="prompts-lista" aria-label="Piezas del prompt"></nav>
         <div class="prompts-editor" id="prompts-editor" aria-live="polite">
           <header class="prompts-cabeza">
@@ -773,6 +731,73 @@
             <button type="button" class="btn" id="pe-rechazar">Devolver a borrador</button>
             <button type="button" class="btn btn-primary" id="pe-enviar">Enviar a revisión</button>
             <button type="button" class="btn btn-primary" id="pe-aprobar">Aprobar y activar</button>
+          </footer>
+        </div>
+      </div>
+      <div class="prompts-layout pia-vista" id="pia-vista" role="tabpanel" aria-labelledby="pv-ia" hidden>
+        <nav class="prompts-lista" id="pia-lista" aria-label="Piezas de la copia de la IA"></nav>
+        <div class="prompts-editor pia-editor">
+          <header class="prompts-cabeza">
+            <div class="prompts-cabeza-texto">
+              <span class="prompts-cabeza-grupo"><span aria-hidden="true">✦</span> Copia de la IA</span>
+              <h3>Prompts de la IA</h3>
+              <p>La IA lee cómo salen calificadas las notas y mejora sola esta copia. Los prompts actuales no se tocan nunca.</p>
+            </div>
+            <span class="prompts-estado" id="pia-uso-estado"></span>
+          </header>
+          <div class="pia-controles">
+            <button type="button" class="btn btn-primary" id="pia-mejorar"><span aria-hidden="true">✦</span> Analizar y mejorar ahora</button>
+            <button type="button" class="btn" id="pia-usar">Usar estos prompts</button>
+            <div class="ajuste pia-auto" id="pia-auto" role="switch" tabindex="0" aria-checked="true" aria-label="Mejora automática">
+              <span class="ajuste-texto"><span class="ajuste-nombre">Mejora automática</span><span class="ajuste-estado" id="pia-auto-estado">Prendida</span></span>
+              <span class="ajuste-switch" aria-hidden="true"></span>
+            </div>
+          </div>
+          <p class="pia-estado" id="pia-estado"></p>
+          <div class="pia-progreso" id="pia-progreso" role="status" hidden></div>
+          <section class="pia-resultado" id="pia-resultado" aria-live="polite" hidden></section>
+          <details class="pia-caja" id="pia-analisis-caja" open>
+            <summary><span>Análisis de las notas</span><span class="pia-caja-meta" id="pia-analisis-fecha"></span></summary>
+            <div id="pia-diagnostico"></div>
+          </details>
+          <div class="prompts-trabajo">
+            <div class="prompts-barra">
+              <div class="pa-nombre">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+                <b>Prompt completo de la IA</b>
+                <span class="pa-meta"><span id="pia-archivo-lineas"></span></span>
+              </div>
+              <div class="pa-herramientas">
+                <span class="pia-leyenda" aria-hidden="true"><i class="pone"></i>Lo que cambió la IA</span>
+                <label class="sr-only" for="pia-persona">Persona</label>
+                <select id="pia-persona" class="select-field" title="Persona con la que se arma el prompt">
+                  <option value="comercial">Comercial</option>
+                  <option value="analitico">Analítico-técnico</option>
+                  <option value="periodistico">Periodístico</option>
+                  <option value="divulgativo">Divulgativo</option>
+                  <option value="ejecutivo">Ejecutivo</option>
+                </select>
+              </div>
+            </div>
+            <div class="prompt-archivo" id="pia-archivo" translate="no" aria-label="Prompt completo de la IA"></div>
+          </div>
+          <section class="pia-caja pia-pedir" aria-labelledby="pia-t-pedido">
+            <h4 id="pia-t-pedido">Pedile un cambio</h4>
+            <label class="sr-only" for="pia-pedido">Qué querés cambiar</label>
+            <textarea id="pia-pedido" class="input-field pia-pedido" rows="2" maxlength="1500"
+                      placeholder="Por ejemplo: que use voseo en toda la nota y que haya una sola llamada a la acción, al final"></textarea>
+            <div class="pia-pedido-pie">
+              <label class="sr-only" for="pia-pieza">Pieza</label>
+              <select id="pia-pieza" class="select-field"><option value="">La IA elige qué piezas cambiar</option></select>
+              <button type="button" class="btn btn-primary btn-sm" id="pia-pedir">Cambiar con IA</button>
+            </div>
+          </section>
+          <details class="pia-caja" id="pia-historial-caja">
+            <summary><span>Historial de mejoras</span><span class="pia-caja-meta" id="pia-historial-cuenta"></span></summary>
+            <ol class="pia-mejoras" id="pia-mejoras"></ol>
+          </details>
+          <footer class="prompts-acciones">
+            <button type="button" class="btn btn-sm prompts-descartar" id="pia-restablecer-todo">Volver toda la copia a los actuales</button>
           </footer>
         </div>
       </div>

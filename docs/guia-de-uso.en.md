@@ -104,19 +104,19 @@ The sites checked for news.
 
 The instructions the AI gets when writing each post, in pieces (identity, audience, data rules, Alephee focus, format, SEO and one per persona). Every manual change goes through draft, review and approval.
 
-**AI prompts**, at the top, improves them without you writing them. The AI reads how posts are rated (the critique, the judge, your ratings and the Alephee checklist), finds what keeps happening and which piece to change, and edits a **copy** of the prompts. The current prompts never change from here.
+Prompts has two tabs: **Current prompts** (the ones above) and **AI prompts**, which improves them without you writing them. The AI reads how posts are rated (the critique, the judge, your ratings and the Alephee checklist), finds what keeps happening and which piece to change, and edits a **copy** of the prompts. The current prompts never change from here.
 
 - **Automatic improvement**: when on, the AI improves the copy on its own every 5 new posts.
 - **Analyze and improve now** does it right away.
-- **See what changed** shows the latest analysis, each change with its differences and a box to ask for a change manually (for example, "use voseo throughout the post").
+- The tab shows the full AI prompt with what changed marked in green (what was removed, in red), the post analysis, the history and a box to ask for a change manually (for example, "use voseo throughout the post").
 - If you don't like a change, **Undo the last one**; **Back to current** deletes the changes to a piece.
-- In **Write with** you choose which ones writing uses: **Current prompts** or **AI copy**.
+- **Use these prompts** makes writing use the AI ones; the tab in use says **In use**.
 
 ## Runs
 
 What the system is running (fetching news, generating a post) and what's waiting its turn, with a log of every step. It runs one thing at a time: anything you request meanwhile is queued. A pending run can be canceled.
 
-While something runs, the **terminal** shows up at the bottom with the live log and, in the **Queue** tab, what's waiting. Drag its top edge to make it taller, maximize or hide it with the buttons on the right, and close it with the ×.
+In the Developer view, while something runs, the **terminal** shows up at the bottom with the live log and, in the **Queue** tab, what's waiting. Drag its top edge to make it taller, maximize or hide it with the buttons on the right, and close it with the ×.
 
 ## Paid API
 

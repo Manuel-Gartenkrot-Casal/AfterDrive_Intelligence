@@ -703,15 +703,18 @@ def prompts_restaurar(clave):
 def prompts_vista_previa():
     """El system prompt completo, con un texto sin aprobar en lugar de la pieza activa.
 
-    {"persona", "clave", "contenido", "largo", "compacto"}: sin clave, el prompt activo.
+    {"persona", "clave", "contenido", "largo", "compacto", "juego"}: sin clave, el prompt activo.
+    "juego": "actuales" o "ia" arma el prompt con ese juego (Prompts con IA), sea cual sea el que está en uso.
     """
     from afterdrive.ia import redaccion
 
     body = request.get_json(silent=True) or {}
 
     def armar(pe):
+        from afterdrive import prompts_ia
+
         clave = body.get("clave") or ""
-        piezas = {}
+        piezas = prompts_ia.textos(body["juego"]) if body.get("juego") in prompts_ia.JUEGOS else {}
         if clave:
             if clave not in pe.CLAVES:
                 raise pe.ErrorPrompt("Pieza del prompt desconocida.")

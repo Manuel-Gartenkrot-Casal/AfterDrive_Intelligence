@@ -9,6 +9,7 @@ Interfaz:
     en_uso(base=None) -> {clave: contenido}     lo que la copia pisa de los actuales (vacío con "actuales")
     estado(base=None) -> dict                   juego, auto, la copia, el último análisis y las últimas mejoras
     pieza(clave, base=None) -> dict             el texto actual y el de la copia de una pieza
+    textos(juego, base=None) -> {clave: contenido}  todas las piezas de "actuales" o de "ia" (para mostrarlas)
     estadisticas(notas) -> dict                 promedios y lo que más falla (sin IA)
     analizar(limite=NOTAS_ANALISIS, base=None) -> dict
     mejorar(pedido=None, claves=None, origen="manual", base=None) -> dict
@@ -53,7 +54,7 @@ NOTAS_ANALISIS = 40
 AUTO_CADA = 5           # notas nuevas entre una mejora automática y la siguiente
 PEDIDO_MAX = 1500
 EJEMPLOS_POR_TIPO = 4
-CAMBIOS_MAX = 4         # piezas que puede reescribir una mejora
+CAMBIOS_MAX = 13        # piezas que puede reescribir una mejora (todas)
 MEJORAS_A_LA_VISTA = 8
 
 ASPECTOS = {"gramatica": "Gramática", "ortografia": "Ortografía", "redaccion": "Redacción", "tono": "Tono",
@@ -132,6 +133,21 @@ def en_uso(base=None) -> dict:
         return {}
     return {c: d["contenido"] for c, d in _copia_docs(base).items()
             if d.get("contenido") and not pe.validar(c, d["contenido"])["errores"]}
+
+
+def textos(cual: str, base=None) -> dict:
+    """{clave: contenido} de todas las piezas de un juego: "actuales" (lo aprobado o el original) o "ia"
+    (la copia: lo que cambió la IA y, en lo demás, lo actual). Para mostrar cada juego por separado."""
+    datos = _originales()
+    datos.update(pe.aprobados(base))
+    if cual == "ia":
+        datos.update({c: d["contenido"] for c, d in _copia_docs(base).items() if d.get("contenido")})
+    return datos
+
+
+def _originales() -> dict:
+    from afterdrive.ia import redaccion
+    return {c: redaccion.PIEZAS[c] for c in pe.CLAVES}
 
 
 def _texto_copia(clave: str, docs: dict, base=None) -> str:
@@ -321,7 +337,7 @@ _SYSTEM_MEJORA = """Sos especialista en prompts. Te paso las piezas en Markdown 
 escribe notas para un blog del aftermarket automotor, el diagnóstico de por qué las notas no sacan mejor
 calificación y lo que hay que resolver.
 
-Reescribí SOLO las piezas que hagan falta (como mucho 4). Cambios mínimos y concretos: conservá lo que
+Reescribí todas las piezas que hagan falta para resolverlo, y solo esas. Cambios mínimos y concretos: conservá lo que
 funciona, el formato de cada pieza (títulos ##, listas) y las llaves como {extension}. En las piezas de
 persona mantené el rol arriba y las secciones ## Tu tarea, ## Estructura (lista numerada) y ## Estilo. No
 inventes datos de Alephee: lo que se puede afirmar está en el enfoque Alephee.
@@ -371,6 +387,39 @@ def _proponer(pedido: str, claves: list[str], docs: dict, diagnostico: dict | No
     return cambios, str(data.get("comentario") or "").strip()[:400]
 
 
+_SYSTEM_REPARAR = """Sos especialista en prompts. Estas piezas en Markdown de un prompt no pasaron la validación.
+Corregí cada una para que cumpla lo que dicen los errores, sin perder el cambio que se quiso hacer. En las
+piezas de persona: el rol arriba y las secciones ## Tu tarea, ## Estructura (lista numerada) y ## Estilo.
+
+Respondé SOLO un JSON: {"cambios": [{"clave": "...", "contenido": "la pieza completa corregida"}]}"""
+
+
+def _reparar(cambios: list[dict]) -> None:
+    """A los cambios que no pasaron la validación, se los devuelve a la IA con los errores (una vez)."""
+    from afterdrive.ia import llm
+    from afterdrive.ia.lm_studio import _extraer_json
+
+    rotos = [c for c in cambios if c["errores"]]
+    if not rotos:
+        return
+    print(f"[PROMPTS IA] Corrigiendo {len(rotos)} pieza(s) que no pasaron la validación...", flush=True)
+    user = "\n\n".join(f"<pieza clave=\"{c['clave']}\">\n## Errores\n" + "\n".join(f"- {e}" for e in c["errores"])
+                       + f"\n## Texto\n{c['despues']}\n</pieza>" for c in rotos)
+    try:
+        data = _extraer_json(llm.completar(_SYSTEM_REPARAR, user, temperature=0.1, max_tokens=4000, tarea="correccion"))
+    except Exception as e:
+        print(f"[PROMPTS IA] [AVISO] No se pudieron corregir: {e}", flush=True)
+        return
+    nuevos = {c.get("clave"): str(c.get("contenido") or "").replace("\r\n", "\n").strip()
+              for c in (data.get("cambios") or [] if isinstance(data, dict) else []) if isinstance(c, dict)}
+    for c in rotos:
+        texto = nuevos.get(c["clave"])
+        if texto:
+            v = pe.validar(c["clave"], texto)
+            if not v["errores"]:
+                c.update(despues=texto, errores=[], avisos=v["avisos"])
+
+
 def _aplicar(cambios: list[dict], origen: str, pedido: str, base=None) -> list[str]:
     """Pasa a la copia los cambios sin errores. Cada uno guarda el texto anterior (para deshacer)."""
     b, ahora, aplicadas = _base(base), _ahora(), []
@@ -417,7 +466,6 @@ def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base
             mejora["error"] = "La IA no encontró nada para mejorar en los prompts."
         else:
             mejora["resumen"] = diagnostico["resumen"]
-            claves = claves or sorted({p["pieza"] for p in diagnostico["problemas"] if p.get("pieza")})
     if not mejora.get("error"):
         print("[PROMPTS IA] La IA está reescribiendo la copia de los prompts...", flush=True)
         try:
@@ -425,6 +473,7 @@ def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base
                                             _copia_docs(base), diagnostico, base)
         except ErrorPromptIA as e:
             cambios, comentario, mejora["error"] = [], "", str(e)
+        _reparar(cambios)
         mejora["comentario"] = comentario
         aplicadas = _aplicar(cambios, mejora["origen"], pedido or mejora.get("resumen", ""), base)
         mejora["cambios"] = cambios

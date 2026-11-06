@@ -104,19 +104,19 @@ Los sitios que se revisan para buscar noticias.
 
 Las instrucciones que recibe la IA al escribir cada nota, en piezas (identidad, audiencia, reglas de datos, enfoque Alephee, formato, SEO y una por persona). Cada cambio a mano pasa por borrador, revisión y aprobación.
 
-**Prompts con IA**, arriba de todo, los mejora sin que los escribas vos. La IA lee cómo salen calificadas las notas (la crítica, el juez, tus calificaciones y la checklist de Alephee), encuentra qué se repite y en qué pieza tocar, y cambia una **copia** de los prompts. Los prompts actuales no cambian nunca desde acá.
+Prompts tiene dos pestañas: **Prompts actuales** (los de arriba) y **Prompts de la IA**, que los mejora sin que los escribas vos. La IA lee cómo salen calificadas las notas (la crítica, el juez, tus calificaciones y la checklist de Alephee), encuentra qué se repite y en qué pieza tocar, y cambia una **copia** de los prompts. Los prompts actuales no cambian nunca desde acá.
 
 - **Mejora automática**: prendida, la IA mejora la copia sola cada 5 notas nuevas.
 - **Analizar y mejorar ahora** lo hace en el momento.
-- **Ver qué cambió** muestra el último análisis, cada cambio con sus diferencias y un lugar para pedirle un cambio a mano (por ejemplo, "que use voseo en toda la nota").
+- La pestaña muestra el prompt completo de la IA con lo que cambió marcado en verde (lo que sacó, en rojo), el análisis de las notas, el historial y un lugar para pedirle un cambio a mano (por ejemplo, "que use voseo en toda la nota").
 - Si un cambio no te gusta, **Deshacer el último**; **Volver al actual** borra los cambios de una pieza.
-- En **Escribir con** elegís con cuáles escribe la redacción: **Prompts actuales** o **Copia de la IA**.
+- **Usar estos prompts** hace que la redacción escriba con los de la IA; la pestaña que está en uso dice **En uso**.
 
 ## Corridas
 
 Lo que el sistema está ejecutando (buscar noticias, generar una nota) y lo que espera su turno, con el registro de cada paso. Corre una cosa a la vez: lo que pidas mientras tanto queda en cola. Una corrida pendiente se puede cancelar.
 
-Mientras algo corre, abajo aparece la **terminal** con el registro en vivo y, en la pestaña **Cola**, lo que espera. Se agranda arrastrando su borde de arriba, se maximiza o se oculta con los botones de la derecha, y se cierra con la ×.
+En la vista Desarrollador, mientras algo corre, abajo aparece la **terminal** con el registro en vivo y, en la pestaña **Cola**, lo que espera. Se agranda arrastrando su borde de arriba, se maximiza o se oculta con los botones de la derecha, y se cierra con la ×.
 
 ## API paga
 

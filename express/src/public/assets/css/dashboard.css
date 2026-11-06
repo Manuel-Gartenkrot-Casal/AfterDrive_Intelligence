@@ -1525,7 +1525,7 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
 /* En el celular la terminal flota abajo: se deja su alto al final de la página. */
-@media (max-width: 900px) { body:has(.terminal:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 24px); } }
+@media (max-width: 900px) { html[data-modo="dev"] body:has(.terminal:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 24px); } }
 /* En el celular scrollea la página: el lugar para el dock va al final de todo. */
 @media (max-width: 900px) {
   [data-modo="cliente"] .app-container { padding-bottom: var(--shell-pie); }
@@ -3479,65 +3479,77 @@ body.arrastrando-terminal, body.arrastrando-terminal * { cursor: ns-resize !impo
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   PROMPTS CON IA (promptsia.js): una tarjeta destacada arriba de Prompts (no
-   es un botón más): qué hace, la mejora automática, con qué prompts escribe la
-   redacción y "Analizar y mejorar ahora". Debajo, el panel con el último
-   análisis, el pedido a mano y los cambios de la IA (con deshacer).
+   PROMPTS CON IA (promptsia.js): dos pestañas, "Prompts actuales" y "Prompts de
+   la IA". La de la IA tiene la misma forma que el editor: la lista de piezas y
+   el prompt completo (con lo que cambió la IA en verde y lo que sacó en rojo),
+   más los controles, el análisis, el pedido y el historial.
    ═══════════════════════════════════════════════════════════════════════ */
-.pia-hero { position: relative; margin-bottom: 20px; padding: 20px 22px; border-radius: var(--r-lg); overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--brand) 38%, var(--border));
-  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--brand) 16%, var(--bg)) 0%, transparent 55%),
-              radial-gradient(120% 140% at 100% 100%, color-mix(in srgb, var(--info) 12%, var(--bg)) 0%, transparent 55%), var(--bg); }
-.pia-hero-cabeza { display: flex; align-items: flex-start; gap: 14px; }
-.pia-hero-icono { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 12px; color: #fff; font-size: 1.15rem;
-  background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, var(--info)));
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand) 35%, transparent); }
-.pia-hero-texto { flex: 1; min-width: 0; }
-.pia-hero-texto h3 { margin: 0 0 4px; font-size: 1.12rem; }
-.pia-hero-texto p { margin: 0; max-width: 72ch; font-size: 0.86rem; color: var(--text-mid); line-height: 1.5; }
-.pia-auto { flex: none; width: 210px; background: var(--bg); }
-.pia-hero-cuerpo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--brand) 18%, var(--border)); }
-.pia-estado { flex: 1; min-width: 200px; margin: 0; font-size: 0.8rem; color: var(--text-lo); }
-.pia-acciones { display: flex; gap: 8px; margin-left: auto; }
-.pia-acciones .btn-primary span { margin-right: 4px; }
-.pia-progreso { margin-top: 12px; padding: 8px 12px; border-radius: var(--r-md); background: color-mix(in srgb, var(--info) 10%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--info) 30%, var(--border)); font: 0.8rem var(--mono); color: var(--text-mid); }
-.pia-progreso[hidden] { display: none; }
-.pia-progreso::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--info);
-  animation: nodeBeat 1.2s infinite; vertical-align: 1px; }
-.pia-usar { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--well); }
-.pia-usar-etiqueta { padding: 0 10px 0 8px; font-size: 0.78rem; color: var(--text-lo); }
-.pia-usar [role="radio"] { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 8px; background: transparent;
-  color: var(--text-mid); font: 500 0.82rem var(--font); cursor: pointer; }
-.pia-usar [role="radio"]:hover { color: var(--text-hi); }
-.pia-usar [role="radio"][aria-checked="true"] { background: var(--bg); color: var(--text-hi); box-shadow: 0 1px 2px color-mix(in srgb, var(--text-hi) 12%, transparent); }
-.pia-usar [data-usar="ia"][aria-checked="true"] { color: var(--brand); }
-.pia-usar [role="radio"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.pia-cuenta:not(:empty) { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--brand-soft); color: var(--brand);
-  font: 600 0.7rem/18px var(--mono); text-align: center; }
+.prompts-vistas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-bottom: 16px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--well); }
+.pv-tab { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 10px; padding: 10px 16px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text-mid); text-align: left; cursor: pointer; font: inherit; }
+.pv-tab:hover { color: var(--text-hi); }
+.pv-tab[aria-selected="true"] { background: var(--bg); color: var(--text-hi); box-shadow: 0 1px 3px color-mix(in srgb, var(--text-hi) 10%, transparent); }
+.pv-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.pv-titulo { font-weight: 600; font-size: 0.92rem; }
+.pv-uso { justify-self: start; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600;
+  color: var(--st-editada); background: color-mix(in srgb, var(--st-editada) 14%, transparent); }
+.pv-uso[hidden] { display: none; }
+.pv-sub { grid-column: 1 / -1; font-size: 0.76rem; color: var(--text-lo); }
+.pv-tab[data-vista="ia"][aria-selected="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 40%, transparent), 0 1px 3px color-mix(in srgb, var(--text-hi) 10%, transparent); }
+.pv-aviso { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 16px; padding: 10px 14px; border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border)); background: var(--brand-soft); font-size: 0.84rem; color: var(--text-hi); }
+.pv-aviso[hidden] { display: none; }
 .pia-chispa { color: var(--brand); }
 
-.pia-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 20px; }
-.pia-panel[hidden] { display: none; }
-.pia-bloque { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
-.pia-copia { grid-column: 1 / -1; }
-.pia-cabeza { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
-.pia-cabeza > div { flex: 1; min-width: 0; }
-.pia-cabeza h3 { font-size: 0.98rem; margin: 0 0 2px; }
-.pia-cabeza p { font-size: 0.8rem; color: var(--text-lo); margin: 0; }
-.pia-vacio { color: var(--text-lo); font-size: 0.85rem; padding: 8px 0; list-style: none; }
+.prompts-seccion .estado-ia { --st: var(--brand); }
+.prompts-chip.ia { color: var(--brand); background: var(--brand-soft); font-family: var(--mono); }
+.pia-editor { display: flex; flex-direction: column; gap: 14px; }
+.pia-editor > .prompts-cabeza { margin-bottom: 0; }
+.pia-controles { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pia-controles .pia-auto { margin-left: auto; width: 220px; }
+.pia-usar.pia-usando, #pia-usar.pia-usando { color: var(--text-mid); }
+.pia-estado { margin: -4px 0 0; font-size: 0.8rem; color: var(--text-lo); }
+.pia-progreso { padding: 8px 12px; border-radius: var(--r-md); background: color-mix(in srgb, var(--info) 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--info) 30%, var(--border)); font: 0.8rem var(--mono); color: var(--text-mid); }
+.pia-progreso[hidden], .pia-resultado[hidden] { display: none; }
+.pia-progreso::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--info);
+  animation: nodeBeat 1.2s infinite; vertical-align: 1px; }
+.pia-resultado { padding: 14px 16px; border-radius: var(--r-md); font-size: 0.86rem; animation: seccionEntrada 220ms ease-out;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--border)); background: color-mix(in srgb, var(--ok) 8%, var(--bg)); }
+.pia-resultado.sin-cambios { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); background: color-mix(in srgb, var(--warn) 8%, var(--bg)); }
+.pia-resultado p { margin: 6px 0 0; color: var(--text-mid); }
+.pia-resultado ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--text-mid); }
+.pia-ir { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.pia-nota { font-size: 0.78rem; color: var(--text-lo) !important; }
+.pia-caja { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); }
+details.pia-caja > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+details.pia-caja[open] > summary { border-bottom: 1px solid var(--border); }
+details.pia-caja > :not(summary) { padding: 14px; }
+.pia-caja-meta { margin-left: auto; font-size: 0.75rem; font-weight: 500; color: var(--text-lo); }
+.pia-pedir { padding: 14px; }
+.pia-pedir h4 { margin: 0 0 8px; font-size: 0.9rem; }
+.pia-pedido { width: 100%; min-height: 64px; resize: vertical; font: 0.88rem/1.5 var(--font); }
+.pia-pedido-pie { display: flex; gap: 8px; margin-top: 8px; }
+.pia-pedido-pie select { flex: 1; min-width: 0; }
+.pia-leyenda { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-lo); }
+.pia-leyenda i { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--ok) 35%, transparent); }
+.pa-pieza { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo); }
+.pa-bloque.pia-cambiada { border-left-color: var(--brand); background: color-mix(in srgb, var(--brand) 5%, transparent); }
+.pa-bloque.pia-cambiada .pa-pieza { color: var(--brand); }
+.pia-marca-ia { padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; color: var(--brand); background: var(--brand-soft); }
+.pia-bloque-acciones { margin-left: auto; display: flex; gap: 6px; }
+.pia-bloque-acciones .btn-xs { min-height: 26px; padding: 2px 8px; font-size: 0.72rem; }
+.pa-bloque.recien { animation: piaRecien 1.8s ease-out; }
+@keyframes piaRecien { 0%, 30% { box-shadow: inset 0 0 0 2px var(--brand); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+
+.pia-vacio { color: var(--text-lo); font-size: 0.85rem; padding: 4px 0; list-style: none; margin: 0; }
 .pia-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .pia-kpi { padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); }
 .pia-kpi strong { display: block; font: 600 1.15rem var(--mono); color: var(--text-hi); }
 .pia-kpi strong small { font-size: 0.7rem; color: var(--text-lo); font-weight: 500; }
 .pia-kpi span { font-size: 0.72rem; color: var(--text-lo); }
 .pia-compara { margin-top: 10px; font-size: 0.8rem; color: var(--text-mid); }
-.pia-sub { margin: 18px 0 8px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-lo); }
-.pia-fallas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.84rem; }
-.pia-fallas li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 8px; align-items: baseline; }
-.pia-veces { font: 600 0.75rem var(--mono); color: var(--warn); }
-.pia-ejemplo { grid-column: 1 / -1; color: var(--text-lo); font-size: 0.78rem; }
 .pia-resumen { display: flex; gap: 8px; margin: 14px 0 8px; padding: 12px; border-radius: var(--r-md); background: var(--brand-soft); color: var(--text-hi); font-size: 0.86rem; }
 .pia-problemas { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 0.84rem; }
 .pia-problemas p { margin: 3px 0 0; color: var(--text-mid); }
@@ -3546,32 +3558,18 @@ body.arrastrando-terminal, body.arrastrando-terminal * { cursor: ns-resize !impo
 .pia-evidencia { font-size: 0.78rem; color: var(--text-lo) !important; }
 .pia-error { color: var(--err); font-size: 0.8rem; margin: 6px 0 0; }
 .pia-aviso { display: block; color: var(--warn); font-size: 0.78rem; margin: 4px 0 0; }
-.pia-fecha { margin-top: 12px; font-size: 0.72rem; color: var(--text-lo); }
-.pia-pedido { width: 100%; min-height: 84px; resize: vertical; font: 0.88rem/1.5 var(--font); }
-.pia-pedido-pie { display: flex; gap: 8px; margin-top: 8px; }
-.pia-pedido-pie select { flex: 1; min-width: 0; }
-.pia-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.pia-copia-fila { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--border);
-  border-radius: var(--r-md); background: var(--well); font-size: 0.86rem; }
-.pia-copia-fila > div b { margin-right: 8px; }
-.pia-copia-meta { font-size: 0.75rem; color: var(--text-lo); }
-.pia-copia-fila .prompts-diff { grid-column: 1 / -1; max-height: 280px; }
-.pia-mejoras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.pia-mejora { padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--r-md); font-size: 0.84rem; }
+.pia-mejoras { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.pia-mejora { padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--r-md); font-size: 0.84rem; }
 .pia-mejora.sin-cambios { border-left-color: var(--border-strong); }
 .pia-mejora > p { margin: 6px 0 0; color: var(--text-mid); }
 .pia-mejora-cabeza { display: flex; align-items: center; gap: 10px; }
 .pia-origen { padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background: var(--well); color: var(--text-mid); border: 1px solid var(--border); }
 .pia-origen.automatica { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
 .pia-pedido-eco { font-style: italic; }
-.pia-cambio { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
-.pia-cambio summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
-.pia-explicacion { flex-basis: 100%; color: var(--text-lo); font-size: 0.78rem; }
-.pia-cambio .prompts-diff { margin-top: 8px; max-height: 260px; }
-.pia-no-aplica { color: var(--err); font-weight: 500; }
 @media (max-width: 1100px) {
-  .pia-panel { grid-template-columns: minmax(0, 1fr); }
   .pia-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pia-hero-cabeza { flex-wrap: wrap; }
-  .pia-auto { width: 100%; }
+  .pia-controles .pia-auto { margin-left: 0; width: 100%; }
 }
+
+/* La terminal es de la vista Desarrollador: en la vista Cliente no se muestra. */
+html[data-modo="cliente"] .terminal { display: none !important; }

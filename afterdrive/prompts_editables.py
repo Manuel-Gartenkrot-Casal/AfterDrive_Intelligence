@@ -331,13 +331,18 @@ def invalidar_cache() -> None:
     _cache["hasta"] = 0.0
 
 
+def aprobados(base=None) -> dict:
+    """{clave: contenido} de las piezas aprobadas, sin la copia de la IA (sin caché)."""
+    return {d["clave"]: d["contenido"] for d in _col(base).find({"estado": ACTIVO}, {"clave": 1, "contenido": 1})
+            if d.get("clave") in CLAVES and d.get("contenido")}
+
+
 def activos(base=None) -> dict:
     """{clave: contenido} de las piezas aprobadas. Si Mongo falla, {} (y se reintenta en CACHE_S)."""
     if base is None and time.monotonic() < _cache["hasta"]:
         return _cache["datos"]
     try:
-        datos = {d["clave"]: d["contenido"] for d in _col(base).find({"estado": ACTIVO}, {"clave": 1, "contenido": 1})
-                 if d.get("clave") in CLAVES and d.get("contenido")}
+        datos = aprobados(base)
     except Exception as e:
         print(f"[AVISO] Prompts editados no disponibles, se usan los originales: {e}", flush=True)
         datos = {}

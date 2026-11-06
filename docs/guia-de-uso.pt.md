@@ -104,19 +104,19 @@ Os sites verificados para buscar notícias.
 
 As instruções que a IA recebe ao escrever cada post, em partes (identidade, público, regras de dados, enfoque Alephee, formato, SEO e uma por persona). Cada mudança manual passa por rascunho, revisão e aprovação.
 
-**Prompts com IA**, no topo, melhora os prompts sem você escrever. A IA lê como os posts são avaliados (a crítica, o juiz, as suas avaliações e o checklist da Alephee), encontra o que se repete e qual parte mudar, e altera uma **cópia** dos prompts. Os prompts atuais nunca mudam por aqui.
+Prompts tem duas abas: **Prompts atuais** (os de cima) e **Prompts da IA**, que melhora os prompts sem você escrever. A IA lê como os posts são avaliados (a crítica, o juiz, as suas avaliações e o checklist da Alephee), encontra o que se repete e qual parte mudar, e altera uma **cópia** dos prompts. Os prompts atuais nunca mudam por aqui.
 
 - **Melhoria automática**: ligada, a IA melhora a cópia sozinha a cada 5 posts novos.
 - **Analisar e melhorar agora** faz isso na hora.
-- **Ver o que mudou** mostra a última análise, cada mudança com as diferenças e um lugar para pedir uma mudança manual (por exemplo, "que use voseo em todo o post").
+- A aba mostra o prompt completo da IA com o que mudou marcado em verde (o que saiu, em vermelho), a análise dos posts, o histórico e um lugar para pedir uma mudança manual (por exemplo, "que use voseo em todo o post").
 - Se não gostar de uma mudança, **Desfazer o último**; **Voltar ao atual** apaga as mudanças de uma parte.
-- Em **Escrever com** você escolhe com quais a redação escreve: **Prompts atuais** ou **Cópia da IA**.
+- **Usar estes prompts** faz a redação escrever com os da IA; a aba em uso mostra **Em uso**.
 
 ## Execuções
 
 O que o sistema está executando (buscar notícias, gerar um post) e o que aguarda a vez, com o registro de cada etapa. Roda uma coisa por vez: o que você pedir enquanto isso fica na fila. Uma execução pendente pode ser cancelada.
 
-Enquanto algo roda, embaixo aparece o **terminal** com o registro ao vivo e, na aba **Fila**, o que aguarda. Ele cresce arrastando a borda de cima, é maximizado ou ocultado com os botões da direita e fecha com o ×.
+Na visualização Desenvolvedor, enquanto algo roda, embaixo aparece o **terminal** com o registro ao vivo e, na aba **Fila**, o que aguarda. Ele cresce arrastando a borda de cima, é maximizado ou ocultado com os botões da direita e fecha com o ×.
 
 ## API paga
 

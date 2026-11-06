@@ -178,7 +178,7 @@ async function refrescarArchivoPrompt(irAPieza) {
   var persona = $('pe-persona').value, texto = _promptTexto(), clave = PROMPTS.clave;
   var cuerpo = function(extra) {
     return { method: 'POST', headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify(Object.assign({ persona: persona }, extra || {})) };
+             body: JSON.stringify(Object.assign({ persona: persona, juego: 'actuales' }, extra || {})) };
   };
   try {
     var activas = await pedir('/api/prompts/vista-previa', cuerpo());

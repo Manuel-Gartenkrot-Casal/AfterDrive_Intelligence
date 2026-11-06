@@ -89,27 +89,39 @@ def test_mejorar_analiza_y_aplica_directo_a_la_copia_sin_tocar_los_actuales(monk
     pedidos = _ia(monkeypatch, DIAGNOSTICO, {"comentario": "Dos reglas nuevas.", "cambios": [
         {"clave": "seo", "explicacion": "Palabra clave en un subtítulo.", "contenido": SEO_IA},
         {"clave": "formato", "explicacion": "Una sola CTA.", "contenido": FORMATO_IA},
-        {"clave": "identidad", "contenido": "No estaba en el diagnóstico."}]})
+        {"clave": "identidad", "contenido": "Sos un redactor B2B. También fuera del diagnóstico: se aplica."}]})
     m = prompts_ia.mejorar(base=base)
     assert m["origen"] == "manual" and m["resumen"].startswith("Pierden puntos") and not m.get("error")
-    assert [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [("seo", True), ("formato", True)]
-    # La reescritura recibe el pedido armado con el diagnóstico y solo las piezas diagnosticadas.
-    assert "Pedir la palabra clave en un subtítulo" in pedidos[1][1] and "formato, seo" in pedidos[1][1]
+    # Se aplican todos los cambios válidos, también los de piezas que no nombró el diagnóstico.
+    assert [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [("seo", True), ("formato", True), ("identidad", True)]
+    assert "Pedir la palabra clave en un subtítulo" in pedidos[1][1]
     assert pedidos[1][2]["tarea"] == "correccion"
     assert prompts_ia.pieza("seo", base=base)["ia"] == SEO_IA
     assert base.prompts.count_documents({}) == 0                     # los actuales siguen intactos
     assert pe.activos(base=base) == {}                               # y la redacción los usa
     prompts_ia.usar("ia", base=base)
     assert prompts_ia_en_memoria["usar"] == "ia"
-    assert pe.activos(base=base) == {"seo": SEO_IA, "formato": FORMATO_IA}
+    assert pe.activos(base=base)["seo"] == SEO_IA and pe.activos(base=base)["formato"] == FORMATO_IA
     e = prompts_ia.estado(base)
-    assert e["cambiadas"] == 2 and e["mejoras"][0]["id"] == m["id"]
+    assert e["cambiadas"] == 3 and e["mejoras"][0]["id"] == m["id"]
+    # Cada juego se puede ver entero, sea cual sea el que está en uso.
+    assert prompts_ia.textos("actuales", base)["seo"] == redaccion.PIEZAS["seo"]
+    assert prompts_ia.textos("ia", base)["seo"] == SEO_IA and prompts_ia.textos("ia", base)["oficio"] == redaccion.PIEZAS["oficio"]
+
+
+def test_una_pieza_invalida_se_le_devuelve_a_la_ia_para_corregirla(monkeypatch, base):
+    persona = redaccion.PIEZAS["persona_comercial"] + "\n- Voseo siempre."
+    pedidos = _ia(monkeypatch, {"cambios": [{"clave": "persona_comercial", "contenido": "Solo un rol, sin secciones."}]},
+                  {"cambios": [{"clave": "persona_comercial", "contenido": persona}]})
+    m = prompts_ia.mejorar("Que la persona Comercial use voseo siempre", base=base)
+    assert m["cambios"][0]["aplicado"] and m["cambios"][0]["despues"] == persona and not m.get("error")
+    assert "## Errores" in pedidos[1][1]                                # la corrección recibió los errores
 
 
 def test_un_pedido_se_aplica_y_se_puede_deshacer(monkeypatch, base):
     _ia(monkeypatch, {"cambios": [
         {"clave": "seo", "explicacion": "Subtítulos.", "contenido": SEO_IA},
-        {"clave": "persona_comercial", "contenido": "Solo un rol, sin secciones."}]})   # inválida: no se aplica
+        {"clave": "persona_comercial", "contenido": "Solo un rol, sin secciones."}]})   # inválida aunque se corrija: no se aplica
     m = prompts_ia.mejorar("Que las notas usen la palabra clave en un subtítulo", base=base)
     assert m["origen"] == "pedido" and [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [
         ("seo", True), ("persona_comercial", False)]
@@ -183,3 +195,17 @@ def test_la_linea_de_comandos_mejora_y_avisa(monkeypatch, capsys):
     assert prompts_ia.main(["--pedido", "Que use voseo siempre"]) == 1
     assert "[ERROR]" in capsys.readouterr().out
     assert prompts_ia.main(["--auto"]) == 0
+
+
+def test_la_vista_previa_arma_el_prompt_de_cada_juego(api, monkeypatch, base):
+    from afterdrive import prompts_ia as pi
+    monkeypatch.setattr(pi, "_base", lambda b=None: base)
+    base.prompts_ia.insert_one({"clave": "seo", "contenido": SEO_IA, "cambios": []})
+    flask_api, _ = api
+    c = flask_api.app.test_client()
+    c.post("/api/login", json={"usuario": "admin", "password": "secreta123"})
+    pi.usar("ia")                                                    # en uso la copia: igual se puede ver cada juego
+    def seo(juego):
+        partes = c.post("/api/prompts/vista-previa", json={"juego": juego}).get_json()["partes"]
+        return next(p["texto"] for p in partes if p["clave"] == "seo")
+    assert seo("actuales") == redaccion.PIEZAS["seo"] and seo("ia") == SEO_IA

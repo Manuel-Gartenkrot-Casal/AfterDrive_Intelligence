@@ -796,7 +796,7 @@ def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, b
 def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     pg = pagina
     pg.click('.sidebar a[data-seccion="prompts"]')
-    pg.click('.prompts-item[data-clave="seo"]')
+    pg.click('#prompts-lista .prompts-item[data-clave="seo"]')
     expect(pg.locator("#pe-titulo")).to_have_text("SEO")
     expect(pg.locator("#pe-estado")).to_contain_text("Activa")
     # Se ve el prompt completo, con la pieza elegida resaltada; Editar la abre en su lugar.
@@ -820,7 +820,7 @@ def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     expect(pg.locator(".pa-bloque.elegido .pa-linea.pone")).to_contain_text("Regla e2e.")
     pg.click("#pe-enviar")
     expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
-    expect(pg.locator('.prompts-item[data-clave="seo"] .prompts-chip')).to_have_text("En revisión")
+    expect(pg.locator('#prompts-lista .prompts-item[data-clave="seo"] .prompts-chip')).to_have_text("En revisión")
     expect(pg.locator("#nav-badge-prompts")).to_have_text("1")
 
     # Aprobar pide confirmación con el diff a la vista; cancelar no activa nada.
@@ -922,15 +922,15 @@ def test_gasto_de_meses_anteriores_en_el_tablero(pagina):
     expect(pagina.locator("#g-gasto .gasto-meses-titulo")).to_have_text("Meses anteriores")
 
 
-def test_prompts_con_ia_mejora_la_copia_y_se_elige_con_que_escribir(pagina):
-    """Prompts con IA: "Analizar y mejorar ahora" corre en la cola y aplica los cambios directo en la
-    copia (se ven con sus diferencias); la mejora automática y con qué prompts escribe la redacción."""
+def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
+    """Prompts con IA: "Analizar y mejorar ahora" corre en la cola, aplica los cambios en la copia y al
+    terminar muestra el prompt de la IA con lo que cambió marcado y qué cambió arriba."""
+    seo_ia = "## SEO\n- Título corto.\n- Palabra clave en un subtítulo."
     estado = {"usar": "actuales", "auto": True, "auto_cada": 5, "faltan": 3, "cambiadas": 0, "analisis": None, "mejoras": [],
               "copia": [{"clave": "seo", "titulo": "SEO", "grupo": "base", "cambiada": False, "cambios": 0,
                          "actualizado": None, "desactualizada": False}]}
     mejora = {"id": "m1", "fecha": "2026-11-06T12:00:00Z", "origen": "manual", "resumen": "Pierden puntos por el SEO.",
-              "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "## SEO\n- Título corto.",
-                           "despues": "## SEO\n- Título corto.\n- Palabra clave en un subtítulo.",
+              "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "x", "despues": seo_ia,
                            "explicacion": "Suma una regla.", "errores": [], "avisos": [], "aplicado": True}]}
     encoladas = []
 
@@ -939,42 +939,60 @@ def test_prompts_con_ia_mejora_la_copia_y_se_elige_con_que_escribir(pagina):
         estado.update(cambiadas=1, mejoras=[mejora], faltan=5,
                       copia=[{**estado["copia"][0], "cambiada": True, "cambios": 1, "actualizado": mejora["fecha"]}])
         r.fulfill(status=202, json={"success": True, "id": "pia-e2e", "posicion": 0})
+
+    def vista_previa(r):
+        cuerpo = r.request.post_data_json or {}
+        if cuerpo.get("juego") == "ia" and estado["cambiadas"]:
+            r.fulfill(json={"success": True, "persona": "comercial", "prompt": "",
+                            "partes": [{"clave": "seo", "titulo": "SEO", "editable": True, "texto": seo_ia}]})
+        elif cuerpo.get("juego") in ("ia", "actuales"):
+            r.fulfill(json={"success": True, "persona": "comercial", "prompt": "",
+                            "partes": [{"clave": "seo", "titulo": "SEO", "editable": True, "texto": "## SEO\n- Título corto."}]})
+        else:
+            r.continue_()
     pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json={"success": True, **estado}) if r.request.method == "GET" else r.continue_())
     pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/prompts/vista-previa", vista_previa)
     pagina.route("**/api/corridas/pia-e2e/log?*", lambda r: r.fulfill(json={
         "lineas": ["[PROMPTS IA] Analizando las calificaciones de las últimas notas...", "[OK] Copia de la IA mejorada: SEO."],
         "siguiente": 2, "estado": "ok"}))
 
     pagina.click('.nav-link[data-seccion="prompts"]')
-    hero = pagina.locator("#pia-hero")
-    expect(hero).to_contain_text("Prompts con IA")
+    expect(pagina.locator('#pv-actuales .pv-uso')).to_be_visible()             # en uso, los actuales
+    pagina.click("#pv-ia")
+    expect(pagina.locator("#pia-vista")).to_be_visible()
+    expect(pagina.locator("#prompts-actuales")).to_be_hidden()
     expect(pagina.locator("#pia-estado")).to_contain_text("la próxima, en 3 notas")
-    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
-    hero.get_by_role("button", name="Analizar y mejorar ahora").click()
-    expect(pagina.locator("#pia-panel")).to_be_visible()                       # se abre con lo que cambió
-    assert encoladas == [None] or encoladas == [{}]
-    expect(pagina.locator("#pia-cambiadas")).to_have_text("1")
-    expect(pagina.locator("#pia-copia .pia-copia-fila")).to_contain_text("SEO")
-    cambio = pagina.locator("#pia-mejoras .pia-cambio").first
-    cambio.locator("summary").click()
-    expect(cambio.locator(".diff-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("Igual")
+    pagina.click("#pia-mejorar")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("La IA cambió 1 pieza de la copia")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("Suma una regla.")
+    bloque = pagina.locator('#pia-archivo .pa-bloque[data-clave="seo"]')
+    expect(bloque).to_have_class(re.compile("pia-cambiada"))
+    expect(bloque.locator(".pa-linea.pone")).to_contain_text("Palabra clave en un subtítulo.")
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("✦ 1")
+    assert encoladas == [{}]
     # El pedido a mano también va a la cola.
     pagina.fill("#pia-pedido", "Que use voseo en toda la nota")
     pagina.click("#pia-pedir")
     expect(pagina.locator("#pia-pedido")).to_have_value("")
     assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": []}
-    assert pagina.errores == []
 
 
-def test_prompts_con_ia_elegir_la_copia_y_la_mejora_automatica(pagina):
+def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):
     pagina.click('.nav-link[data-seccion="prompts"]')
-    pagina.click('#pia-usar [data-usar="ia"]')
-    expect(pagina.locator('#pia-usar [data-usar="ia"]')).to_have_attribute("aria-checked", "true")
-    pagina.click('#pia-usar [data-usar="actuales"]')
-    expect(pagina.locator('#pia-usar [data-usar="actuales"]')).to_have_attribute("aria-checked", "true")
+    pagina.click("#pv-ia")
+    pagina.get_by_role("button", name="Usar estos prompts").click()
+    expect(pagina.locator('#pv-ia .pv-uso')).to_be_visible()
+    expect(pagina.locator("#pia-uso-estado")).to_contain_text("En uso")
+    pagina.click("#pv-actuales")
+    expect(pagina.locator("#pv-aviso")).to_be_visible()                          # avisa que se usan los de la IA
+    pagina.click("#pv-volver")
+    expect(pagina.locator('#pv-actuales .pv-uso')).to_be_visible()
+    expect(pagina.locator("#pv-aviso")).to_be_hidden()
+    pagina.click("#pv-ia")
     pagina.click("#pia-auto")
     expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "false")
     expect(pagina.locator("#pia-auto-estado")).to_have_text("Apagada")
     pagina.click("#pia-auto")
     expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
-    assert pagina.errores == []
