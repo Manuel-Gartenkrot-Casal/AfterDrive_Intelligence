@@ -52,6 +52,14 @@ def prompts_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_fotos_de_otras_notas(monkeypatch):
+    """La generación no lee la base real para saber qué fotos usaron otras notas: sin Mongo,
+    cada nota de los tests esperaba 15 s a que la conexión fallara."""
+    from afterdrive.generacion import generar_nota_fase2
+    monkeypatch.setattr(generar_nota_fase2, "_fotos_de_otras_notas", lambda: set())
+
+
+@pytest.fixture(autouse=True)
 def sin_archivo_de_noticias(monkeypatch):
     """La generación no busca noticias viejas en la base real; los tests del archivo lo instalan a mano."""
     from afterdrive.generacion import contexto_noticias

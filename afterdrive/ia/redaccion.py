@@ -170,11 +170,26 @@ _FORMATO = """\
 
 # Cómo entra Alephee en la nota. Bloque nuevo, pedido en la reunión del equipo:
 # hasta ahora Alephee solo aparecía en el CTA y en "Nombrá las plataformas reales".
+# Lo único que la nota (y el juez, juez.py) puede afirmar de Alephee. El equipo lo
+# completa desde Prompts: qué resuelve, sus productos y los casos que se pueden contar.
 _ENFOQUE_ALEPHEE = """\
 ## Enfoque Alephee
-- Alephee conecta el catálogo de autopartes de distribuidores y repuesteros con los \
-principales marketplaces. Cuando la nota hable de catálogo, marketplaces o venta online, \
-mostrá dónde encaja, en una o dos oraciones y donde resuelva un problema que la nota planteó.
+Lo que se puede decir de Alephee está en este bloque: lo que no esté acá, en las noticias \
+o en el pedido, no se afirma.
+
+### Qué resuelve
+- Conecta el catálogo de autopartes de distribuidores y repuesteros con los principales \
+marketplaces.
+
+### Productos
+- La integración del catálogo de autopartes con los principales marketplaces.
+
+### Casos
+- Todavía no hay casos cargados: no nombres clientes de Alephee ni sus resultados.
+
+### Cómo nombrarla
+- Cuando la nota hable de catálogo, marketplaces o venta online, mostrá dónde encaja \
+Alephee, en una o dos oraciones y donde resuelva un problema que la nota planteó.
 - La nota informa primero: Alephee no es el tema salvo que el pedido lo diga. Nada de \
 tono publicitario en el cuerpo; la invitación va en la llamada a la acción.
 - No le atribuyas funciones, precios, cifras ni clientes que no estén en este bloque, en \

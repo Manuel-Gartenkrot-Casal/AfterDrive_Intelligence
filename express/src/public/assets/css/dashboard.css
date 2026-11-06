@@ -1874,6 +1874,12 @@ body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 5
 .revision-ok { color: var(--ok); }
 .revision-mal { color: var(--err); font-weight: 500; }
 .revision-sub { font-size: 0.75rem; color: var(--text-lo); margin-top: 6px; }
+.check-alephee ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.8125rem; color: var(--text-mid); }
+.check-alephee li { display: flex; gap: 6px; align-items: baseline; }
+.check-alephee .marca-check { width: 1em; text-align: center; font-weight: 600; flex: none; }
+.check-alephee .ok .marca-check { color: var(--ok); }
+.check-alephee .mal { color: var(--err); }
+.check-alephee .na { color: var(--text-lo); }
 .revision-lista { margin: 4px 0 0 18px; display: flex; flex-direction: column; gap: 3px; color: var(--text-mid); }
 .revision-lista.mal li { color: var(--err); }
 .revision-lista.dudoso li::marker { color: var(--warn); }

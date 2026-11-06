@@ -5,7 +5,7 @@ Tareas (todas hablan con el proveedor a través del módulo LLM, llm.py):
   clasificar_articulo   ¿vale la pena guardar este artículo scrapeado?
   fichar_articulo       resumen, hechos, cifras y empresas de un artículo guardado
   evaluar_lineamientos  checklist de calidad de una nota generada
-  generar_articulo      nota a partir de un contexto (lo usa scripts/demo_mode.py)
+  generar_articulo      nota a partir de un contexto (sin uso: ver docs/09)
 
 El nombre del archivo es histórico (empezó como cliente de LM Studio); el
 proveedor, el transporte, los fallbacks y los embeddings viven en llm.py.

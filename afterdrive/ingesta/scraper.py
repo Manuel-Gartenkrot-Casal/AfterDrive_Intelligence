@@ -13,7 +13,7 @@ import trafilatura
 from bs4 import BeautifulSoup
 from urllib3.util import parse_url
 
-from afterdrive.ingesta import imagen_articulo
+from afterdrive.ingesta import feeds, imagen_articulo
 from afterdrive.ingesta.resource_detector import (
     PERFIL_ALTO,
     PERFIL_MEDIO,
@@ -350,6 +350,51 @@ def _encontrar_links(html: str, base_url: str) -> list[str]:
     return con_fecha + sin_fecha
 
 
+FEEDS_POR_FUENTE = 2        # feeds anunciados por la portada que se prueban
+SITEMAPS_POR_INDICE = 3     # sitemaps de un índice que se leen (los de notas primero)
+
+
+def _xml_get(url: str) -> str | None:
+    """Un feed o sitemap: una descarga liviana, solo si la dirección es pública."""
+    return _http_get(url) if url_publica(url) else None
+
+
+def _es_nota_de_feed(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    if not url.startswith(("http://", "https://")) or not path or path == "/":
+        return False
+    if any(s in path for s in _PAGINAS_SALTAR):
+        return False
+    return not any(path.endswith(ext) for ext in (".pdf", ".jpg", ".png", ".mp4", ".zip", ".xml", ".json"))
+
+
+def _notas_del_feed(url: str, contenido: str | None) -> list[str]:
+    """Las notas desde el RSS, Atom o sitemap: la fuente misma, o el feed que anuncia su portada.
+
+    [] si no hay feed o no trae notas: entonces se buscan los links en el HTML como siempre.
+    """
+    if contenido and feeds.tipo(contenido):
+        candidatos = [(url, contenido)]
+    else:
+        candidatos = [(f, None) for f in feeds.descubrir(contenido or "", url)[:FEEDS_POR_FUENTE]]
+    for feed_url, xml in candidatos:
+        feed = feeds.leer(xml or _xml_get(feed_url) or "")
+        if feed is None:
+            continue
+        entradas = feed.entradas
+        if feed.tipo == "indice":
+            for hijo_url in feeds.sitemaps_de_notas(feed.sitemaps, SITEMAPS_POR_INDICE):
+                hijo = feeds.leer(_xml_get(hijo_url) or "")
+                entradas += hijo.entradas if hijo else []
+            entradas = feeds.ordenar(entradas)
+        links = list(dict.fromkeys(e.url for e in entradas if _es_nota_de_feed(e.url)))
+        if links:
+            nombre = {"rss": "RSS", "atom": "Atom", "sitemap": "Sitemap", "indice": "Sitemap"}[feed.tipo]
+            print(f"  -> {nombre} {feed_url[:70]}: {len(links)} notas", flush=True)
+            return links
+    return []
+
+
 def _fetch_and_extract(link: str) -> dict | None:
     html = _fetch(link)
     if not html:
@@ -376,12 +421,13 @@ def _procesar_individual(url: str, items: list):
 def _procesar_listado(url: str, max_articulos: int, items: list, omitir=None):
     print(f"\n>>> URL (listado): {url}", flush=True)
 
-    html = _fetch(url)
+    # Una fuente que es un feed o un sitemap se baja como XML, sin navegador.
+    html = (_xml_get(url) if feeds.parece_feed(url) else None) or _fetch(url)
     if not html:
         print("  [ERROR] No se pudo obtener HTML del listado", flush=True)
         return
 
-    enlaces = _encontrar_links(html, url)
+    enlaces = _notas_del_feed(url, html) or _encontrar_links(html, url)
     if not enlaces:
         print("  [ERROR] No se encontraron enlaces a artículos", flush=True)
         return

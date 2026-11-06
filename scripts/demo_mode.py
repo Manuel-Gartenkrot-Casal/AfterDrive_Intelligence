@@ -1,296 +1,249 @@
 """
-scripts/demo_mode.py (python -m scripts.demo_mode) — Pipeline optimizado para demo en tiempo real (<60 segundos).
+scripts/demo_mode.py — La demo de noviembre de punta a punta: noticia → nota → revisión → HubSpot de pruebas.
 
-Optimizaciones:
-  - Scraping: HTTP directo con requests (sin Playwright/headless), max 1 articulo por fuente
-  - Clasificacion: skip si LM Studio no responde en 3s
-  - Generacion: contexto reducido, sin dedup por embeddings
-  - Todo en secuencia con progreso visible
+    python -m scripts.demo_mode --solo-preparar   # el día antes: deja todo prendido y revisa lo que falta
+    python -m scripts.demo_mode                   # trae noticias y escribe una nota enfocada en Alephee
+    python -m scripts.demo_mode --hubspot         # además la aprueba y la sube como borrador al blog de pruebas
+    python -m scripts.demo_mode --datos-ejemplo   # plan B: sin internet, con las noticias de demo_datos.json
+    python -m scripts.demo_mode --limpiar         # borra las noticias de ejemplo que cargó --datos-ejemplo
+
+Usa el mismo camino que la app (scraper con RSS y sitemaps, clasificación,
+generar_nota con verificación, juez con la checklist de Alephee). Al preparar:
+prende el blog de pruebas, prende la API paga (si está configurada y bajo el
+tope) y suma las fuentes recomendadas para Alephee a Fuentes > Recomendadas.
+
+Nunca publica: a HubSpot sube un borrador y solo si el blog de pruebas está
+cargado y prendido. El guion de la demo está en docs/demo-noviembre.md.
 """
 
+from __future__ import annotations
+
+import argparse
 import datetime
+import json
+import pathlib
 import time
 
-import requests
-import trafilatura
+DATOS_EJEMPLO = pathlib.Path(__file__).with_name("demo_datos.json")
+FUENTES_DEMO = 2          # fuentes activas que se scrapean en vivo
+NOTAS_POR_FUENTE = 2
 
-from afterdrive.db import col_articulos, col_trusted_urls
+NOTA_DEMO = {
+    "categorias": ["marketplaces", "catalogacion", "autopartes"],
+    "persona": "comercial",
+    "tema": "vender autopartes en marketplaces con el catálogo al día",
+    "regiones": ["argentina"],
+    "largo": "corto",
+}
 
-# ── Configuracion demo ──────────────────────────────────────────────────────
 
-DEMO_MAX_ARTICLES_PER_SOURCE = 1
-DEMO_HTTP_TIMEOUT = 8  # segundos por request HTTP
-DEMO_MAX_SOURCES = 2
+def _titulo(texto: str) -> None:
+    print("\n" + "=" * 64 + f"\n  {texto}\n" + "=" * 64, flush=True)
 
 
-# ── Fetch HTTP rapido (sin Playwright) ──────────────────────────────────────
+def _ok(texto: str) -> None:
+    print(f"  [OK] {texto}", flush=True)
 
-def _fetch_html(url: str) -> str | None:
-    """HTTP GET directo, sin headless browser."""
+
+def _falta(texto: str) -> None:
+    print(f"  [FALTA] {texto}", flush=True)
+
+
+# ── 1. Preparar ──────────────────────────────────────────────────────────────
+
+
+def preparar() -> list[str]:
+    """Prende el blog de pruebas y la API paga, y suma las fuentes recomendadas. Devuelve lo que falta."""
+    from afterdrive import config_store, hubspot
+    from afterdrive.ia import modo_pago
+    from afterdrive.ingesta import fuentes_recomendadas
+
+    _titulo("1. Preparar: blog de pruebas, API paga y fuentes")
+    faltan = []
+
+    config_store.set_blog_pruebas_config(True)
+    if not hubspot.configurado():
+        faltan.append("HUBSPOT_TOKEN no está cargado: no se puede subir a HubSpot.")
+    elif not hubspot.blog_pruebas():
+        faltan.append("HUBSPOT_BLOG_PRUEBAS no está cargado: sin él la demo no sube nada a HubSpot.")
+    else:
+        _ok(f"Blog de pruebas prendido (id {hubspot.blog_pruebas()}).")
+
+    pago = modo_pago.activar()
+    if pago.get("success"):
+        _ok(f"API paga prendida hasta {pago.get('modo_pago_hasta') or '(sin fecha)'}.")
+    else:
+        faltan.append(f"API paga: {pago.get('error', 'no se pudo prender')}")
+
     try:
-        r = requests.get(
-            url,
-            timeout=DEMO_HTTP_TIMEOUT,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; AfterDriveBot/1.0)"},
-            allow_redirects=True,
-        )
-        r.raise_for_status()
-        return r.text
-    except Exception:
-        return None
+        n = fuentes_recomendadas.sembrar()
+        _ok(f"{n} fuente(s) sumadas a Recomendadas." if n else "Las fuentes recomendadas ya estaban.")
+    except Exception as e:
+        faltan.append(f"No se pudieron sumar las fuentes recomendadas: {e}")
+
+    for f in faltan:
+        _falta(f)
+    return faltan
 
 
-def _encontrar_links(html: str, base_url: str) -> list[str]:
-    """Extrae enlaces a articulos del HTML usando BeautifulSoup."""
-    from urllib.parse import urljoin
-
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html, "lxml")
-    links = []
-    seen = set()
-
-    # Buscar enlaces con patrones tipicos de articulos
-    for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
-        if not href or href in seen:
-            continue
-        full = urljoin(base_url, href)
-        # Filtrar por patrones de articulos (no footer, no nav, etc.)
-        patrones = ["/blog/", "/noticias/", "/articulo/", "/news/", "/post/", "/accesorios", "/repuestos"]
-        if any(p in full.lower() for p in patrones) and full not in seen:
-            seen.add(full)
-            links.append(full)
-    return links
+# ── 2. Noticias ──────────────────────────────────────────────────────────────
 
 
-def _extraer_articulo(html: str, url: str) -> dict | None:
-    """Extrae titulo y contenido de un HTML con trafilatura."""
-    try:
-        result = trafilatura.extract(
-            html, output_format="json", url=url,
-            include_links=False, include_images=False,
-        )
-        if not result:
-            return None
-        import json
-        data = json.loads(result)
-        titulo = data.get("title", "").strip()
-        texto = data.get("text", "").strip()
-        if not titulo or len(texto) < 100:
-            return None
-        return {"titulo": titulo, "cuerpo": texto, "url": url, "fuente": url}
-    except Exception:
-        return None
+def traer_noticias(fuentes: int = FUENTES_DEMO, por_fuente: int = NOTAS_POR_FUENTE) -> int:
+    """Scrapea unas pocas fuentes activas como lo hace la corrida programada. Devuelve cuántas guardó."""
+    from afterdrive.corridas import ya_procesadas
+    from afterdrive.db import col_trusted_urls
+    from afterdrive.ingesta.ingesta import ingerir
+    from afterdrive.ingesta.scraper import start
 
-
-# ── Scraping rapido ─────────────────────────────────────────────────────────
-
-def demo_scraping():
-    """Scraping rapido: HTTP directo, max 1 articulo por fuente."""
-    print("\n" + "=" * 60)
-    print("  FASE 1: SCRAPING (modo demo)")
-    print("=" * 60)
-
-    urls_confiables = list(col_trusted_urls.find({"estado": "activo"}).limit(DEMO_MAX_SOURCES))
-
-    if not urls_confiables:
-        print("  [WARN] No hay URLs confiables. Usando fuentes de ejemplo...")
-        urls_confiables = [
-            {"url": "https://www.aftermarketinternational.com"},
-            {"url": "https://www.lacasadelrenault.com.ar"},
-        ]
-
-    total_nuevos = 0
-    fuentes_procesadas = 0
-
-    for doc in urls_confiables:
-        url = doc["url"]
-        fuentes_procesadas += 1
-        print(f"\n  [{fuentes_procesadas}/{len(urls_confiables)}] {url}")
-
+    _titulo("2. Noticias: scraping de fuentes activas (RSS, sitemap o HTML)")
+    docs = list(col_trusted_urls.find({"estado": "activo"}, {"url": 1}).limit(fuentes))
+    if not docs:
+        _falta("No hay fuentes activas. Agregá una en Fuentes o usá --datos-ejemplo.")
+        return 0
+    guardadas = 0
+    for d in docs:
         t0 = time.time()
+        print(f"  {d['url']}", flush=True)
         try:
-            items = _scrape_fuente_rapida(url)
-            if items:
-                res = _guardar_rapido(items, col_articulos)
-                nuevos = res.get("aprobados", 0)
-                total_nuevos += nuevos
-                print(f"    [OK] {nuevos} articulo(s) nuevo(s) ({time.time() - t0:.1f}s)")
-            else:
-                print(f"    [SKIP] Sin articulos nuevos ({time.time() - t0:.1f}s)")
+            items = start([d["url"]], max_articulos=por_fuente, omitir=ya_procesadas).items
+            n = ingerir(items)["aprobados"] if items else 0
         except Exception as e:
-            print(f"    [ERROR] {e} ({time.time() - t0:.1f}s)")
+            print(f"    [ERROR] {e}", flush=True)
+            continue
+        guardadas += n
+        print(f"    {n} noticia(s) nueva(s) en {time.time() - t0:.0f}s", flush=True)
+    return guardadas
 
-    print(f"\n  Scraping completado: {total_nuevos} articulos nuevos en {fuentes_procesadas} fuentes")
-    return total_nuevos
 
-
-def _guardar_rapido(items: list[dict], coleccion) -> dict:
-    """Guardar items sin embeddings ni clasificacion IA (modo demo rapido)."""
+def cargar_ejemplos(base=None, ruta: pathlib.Path = DATOS_EJEMPLO, embeber: bool = True) -> int:
+    """Plan B sin internet: guarda las noticias de demo_datos.json marcadas con demo=True."""
     from pymongo import UpdateOne
 
-
-    urls_existentes = set()
-    for _col_name in ["afterdrive", "articulos_generados"]:
-        for doc in coleccion.find({}, {"url": 1, "_id": 0}):
-            if url := doc.get("url"):
-                urls_existentes.add(url)
-
-    aprobados = []
+    if base is None:
+        from afterdrive.db import db as base
+    items = json.loads(ruta.read_text(encoding="utf-8"))
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
     for item in items:
-        if item.get("url") not in urls_existentes:
-            aprobados.append(item)
-            urls_existentes.add(item.get("url"))
-
-    if aprobados:
-        operaciones = [
-            UpdateOne(
-                {"url": item["url"]},
-                {"$set": item, "$setOnInsert": {"usado_para_articulo": False}},
-                upsert=True,
-            )
-            for item in aprobados
-        ]
-        coleccion.bulk_write(operaciones)
-
-    return {
-        "total": len(items),
-        "aprobados": len(aprobados),
-        "rechazados": len(items) - len(aprobados),
-    }
+        item.update(demo=True, fecha=ahora)
+    if embeber:
+        try:
+            from afterdrive.ia import llm
+            from afterdrive.ingesta.embeddings import texto_para_embedding
+            modelo = llm.modelo_embeddings()
+            for item, vec in zip(items, llm.embeber([texto_para_embedding(i) for i in items]), strict=True):
+                if vec:
+                    item.update(embedding=vec, embedding_modelo=modelo)
+        except Exception as e:
+            print(f"  [AVISO] Sin embeddings para los ejemplos ({e}): se eligen por fecha.", flush=True)
+    base["articulos"].bulk_write([
+        UpdateOne({"url": i["url"]}, {"$set": i, "$setOnInsert": {"usado_para_articulo": False}}, upsert=True)
+        for i in items
+    ])
+    return len(items)
 
 
-def _scrape_fuente_rapida(url: str) -> list[dict]:
-    """Scrapea una fuente con HTTP directo, devuelve max 1 articulo."""
-    html = _fetch_html(url)
-    if not html:
-        return []
-
-    links = _encontrar_links(html, url)
-    if not links:
-        # Intentar extraer articulo directo de la URL raiz
-        art = _extraer_articulo(html, url)
-        return [art] if art else []
-
-    # Solo probar el primer link
-    for link in links[:DEMO_MAX_ARTICLES_PER_SOURCE]:
-        art_html = _fetch_html(link)
-        if art_html:
-            art = _extraer_articulo(art_html, link)
-            if art:
-                return [art]
-    return []
+def limpiar_ejemplos(base=None) -> int:
+    """Borra las noticias de ejemplo. Las notas que se escribieron con ellas quedan."""
+    if base is None:
+        from afterdrive.db import db as base
+    return base["articulos"].delete_many({"demo": True}).deleted_count
 
 
-# ── Generacion rapida ──────────────────────────────────────────────────────
+# ── 3. Nota y revisión ───────────────────────────────────────────────────────
 
-def demo_generacion():
-    """Generacion rapida: contexto reducido, sin embeddings."""
-    print("\n" + "=" * 60)
-    print("  FASE 2: GENERACION DE ARTICULO (modo demo)")
-    print("=" * 60)
 
-    from afterdrive.ia import llm
-    from afterdrive.ia.lm_studio import generar_articulo as lm_generar
+def escribir_nota() -> dict:
+    """Escribe una nota enfocada en Alephee y muestra lo que se ve en Revisión."""
+    from afterdrive.generacion import juez
+    from afterdrive.generacion.generar_nota_fase2 import generar_nota
 
-    if not llm.disponible():
-        print("  [ERROR] LM Studio no disponible")
+    _titulo("3. Nota: escribir, verificar y juzgar")
+    t0 = time.time()
+    r = generar_nota(NOTA_DEMO["categorias"], persona=NOTA_DEMO["persona"], tema=NOTA_DEMO["tema"],
+                     regiones=NOTA_DEMO["regiones"], largo=NOTA_DEMO["largo"])
+    if not r.get("success"):
+        _falta(f"No se escribió la nota: {r.get('error')}")
+        return r
+    meta = r.get("meta") or {}
+    _ok(f"Nota guardada en {time.time() - t0:.0f}s (id {r.get('id')}).")
+    print("\n" + (r.get("contenido") or "")[:600] + "\n  [...]\n", flush=True)
+
+    _titulo("4. Revisión: lo que ve el equipo antes de aprobar")
+    v = meta.get("verificacion") or {}
+    print(f"  Datos verificados: {len(v.get('respaldados') or [])} de {v.get('total', 0)}"
+          + (f" | sin respaldo: {', '.join(v['sin_respaldo'][:3])}" if v.get("sin_respaldo") else ""), flush=True)
+    j = meta.get("juicio") or {}
+    if j.get("error"):
+        print(f"  Juez: {j['error']}", flush=True)
+    else:
+        print(f"  Calificación de la IA: {j.get('calificacion')}/5 — {'pasa' if j.get('pasa') else 'no pasa'}"
+              + (f" ({j['comentario']})" if j.get("comentario") else ""), flush=True)
+        for clave, desc in juez.CHECKLIST_ALEPHEE.items():
+            valor = (j.get("alephee") or {}).get(clave)
+            marca = {True: "sí", False: "NO", None: "—"}[valor]
+            print(f"    [{marca:>2}] {desc}", flush=True)
+    fallas = juez.fallas_alephee(j)
+    if fallas:
+        print("  Para corregir antes de aprobar: " + "; ".join(fallas), flush=True)
+    return r
+
+
+# ── 4. HubSpot de pruebas ────────────────────────────────────────────────────
+
+
+def subir_a_pruebas(nota_id: str) -> dict | None:
+    """Aprueba la nota y la sube como borrador al blog de pruebas. Nunca publica."""
+    from afterdrive import historial, hubspot
+
+    _titulo("5. HubSpot: borrador en el blog de pruebas")
+    if not hubspot.configurado() or not hubspot.blog_pruebas():
+        _falta("Sin HUBSPOT_TOKEN y HUBSPOT_BLOG_PRUEBAS (prendido) no se sube: la demo nunca usa el blog real.")
         return None
+    historial.cambiar_estado("notas_fase2", nota_id, "aprobada")
+    item = historial.enviar_a_hubspot("notas_fase2", nota_id, publicar=False)
+    hs = (item or {}).get("hubspot") or {}
+    _ok(f"Borrador subido: {hs.get('url') or hs.get('id') or '(sin link)'}")
+    if item and item.get("aviso"):
+        print(f"  [AVISO] {item['aviso']}", flush=True)
+    return item
 
-    docs = list(col_articulos.find().sort("_id", -1).limit(10))
-    if not docs:
-        print("  [ERROR] No hay articulos en la DB para generar contexto")
-        return None
 
-    contexto = ""
-    for i, doc in enumerate(docs[:5], 1):
-        titulo = doc.get("titulo", "(sin titulo)")
-        cuerpo = doc.get("cuerpo", "")[:800]
-        contexto += f"[#{i}] {titulo}\n{cuerpo}\n\n"
+# ── Main ─────────────────────────────────────────────────────────────────────
 
-    print(f"  Contexto: {len(docs[:5])} articulos (~{len(contexto)} chars)")
-    print("  Generando articulo...")
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description="Demo de noviembre: noticia → nota → revisión → HubSpot de pruebas.")
+    p.add_argument("--solo-preparar", action="store_true", help="solo prender blog de pruebas, API paga y fuentes")
+    p.add_argument("--sin-scraping", action="store_true", help="no traer noticias: usar las que ya hay")
+    p.add_argument("--datos-ejemplo", action="store_true", help="cargar las noticias de demo_datos.json")
+    p.add_argument("--limpiar", action="store_true", help="borrar las noticias de ejemplo y salir")
+    p.add_argument("--hubspot", action="store_true", help="aprobar la nota y subirla como borrador de prueba")
+    args = p.parse_args(argv)
+
+    if args.limpiar:
+        print(f"[OK] {limpiar_ejemplos()} noticia(s) de ejemplo borradas.", flush=True)
+        return 0
 
     t0 = time.time()
-    try:
-        articulo = lm_generar(contexto, persona="analitico", tema="autopartes aftermarket")
-        elapsed = time.time() - t0
+    faltan = preparar()
+    if args.solo_preparar:
+        print("\nListo para la demo." if not faltan else f"\nFaltan {len(faltan)} cosa(s), ver arriba.", flush=True)
+        return 1 if faltan else 0
 
-        if articulo:
-            print(f"  [OK] Articulo generado ({elapsed:.1f}s, {len(articulo)} chars)")
+    if args.datos_ejemplo:
+        _titulo("2. Noticias: datos de ejemplo")
+        _ok(f"{cargar_ejemplos()} noticia(s) de ejemplo cargadas (se borran con --limpiar).")
+    elif not args.sin_scraping:
+        traer_noticias()
 
-            from afterdrive.db import db
-            col_gen = db["articulos_generados"]
-            col_gen.insert_one({
-                "contenido": articulo,
-                "fuentes": ["demo"],
-                "tema": "demo",
-                "docs_usados": [],
-                "generado_en": datetime.datetime.now(datetime.UTC).isoformat(),
-            })
-            print("  Articulo guardado en DB")
-            return articulo
-        else:
-            print("  [ERROR] Articulo vacio")
-            return None
-    except Exception as e:
-        print(f"  [ERROR] {e}")
-        return None
+    r = escribir_nota()
+    if r.get("success") and args.hubspot and r.get("id"):
+        subir_a_pruebas(r["id"])
 
-
-# ── Scheduler ──────────────────────────────────────────────────────────────
-
-def demo_scheduler():
-    """Mostrar que el scheduler esta configurado y funciona."""
-    print("\n" + "=" * 60)
-    print("  FASE 3: SCHEDULER (verificacion)")
-    print("=" * 60)
-
-    from afterdrive.scheduler import proximas
-    next_run = proximas()["scraping"]
-    if next_run:
-        print(f"  Scheduler activo. Proxima ejecucion: {next_run}")
-    else:
-        print("  Scheduler no activo (se inicia al arrancar Flask)")
-
-    print("  Configuracion: ejecucion periodica cada N dias")
-    print("  Intervalo ajustable desde el dashboard")
-
-
-# ── Main ──────────────────────────────────────────────────────────────────
-
-def run_demo():
-    """Ejecutar pipeline completo de demo."""
-    print("\n" + "#" * 60)
-    print("  AFTERDRIVE INTELLIGENCE — MODO DEMO")
-    print("  Pipeline completo en tiempo real")
-    print("#" * 60)
-
-    t_total = time.time()
-
-    nuevos = demo_scraping()
-    articulo = demo_generacion()
-    demo_scheduler()
-
-    elapsed_total = time.time() - t_total
-
-    print("\n" + "=" * 60)
-    print("  RESUMEN DE LA DEMO")
-    print("=" * 60)
-    print(f"  Tiempo total: {elapsed_total:.1f}s")
-    print(f"  Articulos scrapeados: {nuevos}")
-    print(f"  Articulo generado: {'Si' if articulo else 'No'}")
-    print("  Scheduler: Activo")
-    print("=" * 60)
-
-    if elapsed_total < 60:
-        print("\n  OK: Demo completada en menos de 60 segundos")
-    else:
-        print(f"\n  WARN: Demo tomo {elapsed_total:.0f}s (objetivo: <60s)")
-
-    return articulo
+    print(f"\nDemo terminada en {time.time() - t0:.0f}s.", flush=True)
+    return 0 if r.get("success") else 1
 
 
 if __name__ == "__main__":
-    run_demo()
+    raise SystemExit(main())

@@ -79,11 +79,34 @@ function juicioHtml(nota, sugerida) {
     html += '<p class="revision-sub">La IA no la aprobó sola: ' + escHtml(a.motivos.join('; ')) + '</p>';
   }
   if (j && j.error) html += '<p class="revision-sub">' + escHtml(j.error) + '</p>';
+  html += checklistAlepheeHtml(j);
   if (sugerida) {
     html += '<p class="revision-sub"><span class="marca">Sugerida por IA</span> Revisala y cambiala si hace falta: '
       + 'solo cuenta para el aprendizaje cuando la guardás.</p>';
   }
   return html;
+}
+
+// La checklist de Alephee del juez (ver CHECKLIST_ALEPHEE en generacion/juez.py).
+// Sin respuesta del juez (null) el punto no aplica a esta nota.
+var CHECKLIST_ALEPHEE = [
+  ['mencion_con_motivo', 'Nombra a Alephee donde resuelve algo'],
+  ['nada_inventado', 'No inventa nada sobre Alephee'],
+  ['beneficio_concreto', 'Dice en concreto qué aporta'],
+  ['informa_primero', 'Informa primero, sin tono publicitario'],
+  ['cta_unico', 'Una sola llamada a la acción, al final'],
+];
+
+function checklistAlepheeHtml(j) {
+  var a = j && !j.error && j.alephee;
+  if (!a || !CHECKLIST_ALEPHEE.some(function(c) { return a[c[0]] === true || a[c[0]] === false; })) return '';
+  return '<div class="check-alephee"><p class="revision-sub">Checklist de Alephee</p><ul>'
+    + CHECKLIST_ALEPHEE.map(function(c) {
+      var v = a[c[0]], clase = v === true ? 'ok' : v === false ? 'mal' : 'na';
+      var marca = v === true ? '✓' : v === false ? '✗' : '–';
+      return '<li class="' + clase + '"><span class="marca-check" aria-hidden="true">' + marca + '</span>'
+        + '<span>' + c[1] + '</span></li>';
+    }).join('') + '</ul></div>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
