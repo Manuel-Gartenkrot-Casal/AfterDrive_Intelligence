@@ -131,3 +131,34 @@ def test_periodo_anterior_para_la_variacion(base):
     assert metricas.resumen(14, base=base)["anterior"]["guardados"] == 1   # el de hace 20 días
     t = metricas.resumen(14, base=base)["tokens"]
     assert len(t["llamadas_por_dia"]) == 14 and sum(t["llamadas_por_dia"]) == t["llamadas"]
+
+
+def test_gasto_de_los_meses_anteriores(monkeypatch):
+    b = mongomock.MongoClient().db
+    hoy = datetime.datetime.now(datetime.UTC)
+    anterior = (hoy.replace(day=1) - datetime.timedelta(days=1)).strftime("%Y-%m")
+    hace_dos = (hoy.replace(day=1) - datetime.timedelta(days=40)).replace(day=1).strftime("%Y-%m")
+    b.consumo_ia.insert_many([
+        {"mes": anterior, "costo_usd": 1.25, "proveedor": "paga"},
+        {"mes": anterior, "costo_usd": 0.75},                          # las viejas no guardaban proveedor
+        {"mes": anterior, "costo_usd": 9.0, "proveedor": "nvidia"},    # gratis: no cuenta
+        {"mes": hace_dos, "costo_usd": 3.0, "proveedor": "paga"},
+        {"mes": hoy.strftime("%Y-%m"), "costo_usd": 5.0, "proveedor": "paga"},   # el mes en curso va aparte
+    ])
+    meses = metricas.resumen(7, base=b)["gasto"]["meses_anteriores"]
+    assert len(meses) == metricas.MESES_ANTERIORES
+    assert meses[0] == {"mes": anterior, "usd": 2.0} and meses[1] == {"mes": hace_dos, "usd": 3.0}
+    assert all(m["usd"] == 0 for m in meses[2:])
+
+
+def test_meses_anteriores_cruzan_el_cambio_de_anio():
+    meses = metricas._gasto_meses_anteriores(mongomock.MongoClient().db, datetime.datetime(2026, 2, 10), 3)
+    assert [m["mes"] for m in meses] == ["2026-01", "2025-12", "2025-11"]
+
+
+def test_costo_por_nota_promedia_las_que_usaron_la_api_paga():
+    b = mongomock.MongoClient().db
+    assert metricas.costo_por_nota(b) is None
+    b.notas_fase2.insert_many([{"costo": {"total_usd": 0.1}}, {"costo": {"total_usd": 0.3}},
+                               {"costo": {"total_usd": 0}}, {"titulo": "sin costo"}])
+    assert metricas.costo_por_nota(b) == 0.2

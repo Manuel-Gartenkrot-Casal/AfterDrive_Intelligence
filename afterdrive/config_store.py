@@ -24,13 +24,16 @@ DEFAULT_SCRAPING = {
     "max_articulos": 10,
 }
 
+# horas_extra: otras horas del día en que también se escribe una nota (además de `hora`).
+HORAS_EXTRA_MAX = 7
+
 DEFAULT_GENERACION = {
     "enabled": True,
     "hora": "11:00",
+    "horas_extra": [],
     "interval_days": 1,
     "persona": "comercial",
     "largo": "medio",
-    "tema": "",
     "puntapie_url": "",
 }
 
@@ -40,6 +43,8 @@ DEFAULT_FASE2 = {
     "clientes": [],
     "puntapie_activo": False,
     "puntapie_url": "",
+    # Cada nota usa 1 o 2 de las categorías marcadas, rotando (generacion/rotacion.py).
+    "rotar_categorias": False,
 }
 
 DEFAULT_PROVIDER = {
@@ -111,19 +116,23 @@ def set_scraping_config(
 
 
 def get_generacion_config() -> dict:
-    return _get_section("generacion", DEFAULT_GENERACION)
+    cfg = _get_section("generacion", DEFAULT_GENERACION)
+    cfg.pop("tema", None)   # lo guardaban versiones anteriores: ahora el tema es de un solo uso
+    return cfg
 
 
 def set_generacion_config(
     enabled: bool | None = None,
     interval_days: int | None = None,
     persona: str | None = None,
-    tema: str | None = None,
     puntapie_url: str | None = None,
     hora: str | None = None,
     largo: str | None = None,
+    horas_extra: list[str] | None = None,
 ):
     cfg = get_generacion_config()
+    if horas_extra is not None:
+        cfg["horas_extra"] = sorted(set(horas_extra))[:HORAS_EXTRA_MAX]
     if largo is not None:
         cfg["largo"] = largo
     if hora is not None:
@@ -134,8 +143,6 @@ def set_generacion_config(
         cfg["interval_days"] = max(1, int(interval_days))
     if persona is not None:
         cfg["persona"] = persona
-    if tema is not None:
-        cfg["tema"] = tema
     if puntapie_url is not None:
         cfg["puntapie_url"] = puntapie_url
     _set_section("generacion", cfg)
@@ -155,8 +162,11 @@ def set_fase2_config(
     clientes: list[str] | None = None,
     puntapie_activo: bool | None = None,
     puntapie_url: str | None = None,
+    rotar_categorias: bool | None = None,
 ):
     cfg = get_fase2_config()
+    if rotar_categorias is not None:
+        cfg["rotar_categorias"] = bool(rotar_categorias)
     if categorias is not None:
         cfg["categorias"] = categorias
     if regiones is not None:

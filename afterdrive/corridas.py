@@ -172,16 +172,20 @@ def parametros_guardados() -> dict | None:
     gen = config_store.get_generacion_config()
     if not fase2.get("categorias"):
         return None
+    categorias = list(fase2["categorias"])
+    if fase2.get("rotar_categorias"):
+        from afterdrive.generacion import rotacion
+        categorias = rotacion.rotar(categorias)
     puntapie_url = None
     if fase2.get("puntapie_activo"):
         puntapie_url = fase2.get("puntapie_url") or gen.get("puntapie_url") or None
     return {
-        "categorias": fase2["categorias"],
+        "categorias": categorias,
         "clientes_ids": fase2.get("clientes") or [],
         "puntapie_url": puntapie_url,
         "persona": gen.get("persona") or "comercial",
         "largo": gen.get("largo") or "medio",
-        "tema": gen.get("tema") or None,
+        "tema": None,   # el tema puntual es de un solo uso (Crear nota): las automáticas no lo llevan
         "regiones": fase2.get("regiones") or [],
     }
 

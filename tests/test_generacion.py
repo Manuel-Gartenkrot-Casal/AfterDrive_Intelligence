@@ -1001,3 +1001,82 @@ def test_el_umbral_de_parecido_es_085(monkeypatch):
     assert g.parecido_maximo() == 0.85
     monkeypatch.setenv("NOTA_PARECIDO_MAX", "0.9")
     assert g.parecido_maximo() == 0.9
+
+
+# ── Tendencia y medios variados ───────────────────────────────────────────────
+
+def test_una_noticia_en_tendencia_le_gana_a_una_mas_reciente_que_nadie_levanto():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    hace = lambda d: ahora - datetime.timedelta(days=d)  # noqa: E731
+    ns = [
+        Noticia(1, "Suben los precios de las bujías", "", url="https://a.com/1", fecha=hace(3), embedding=[1, 0, 0]),
+        Noticia(2, "Bujías más caras", "", url="https://b.com/1", fecha=hace(3), embedding=[0.99, 0.1, 0]),
+        Noticia(3, "Las bujías aumentan", "", url="https://c.com/1", fecha=hace(4), embedding=[0.98, 0.12, 0]),
+        Noticia(4, "Un lanzamiento que nadie más cubrió", "", url="https://d.com/1", fecha=hace(0), embedding=[0, 1, 0]),
+    ]
+    orden = [n.id for n in contexto_noticias.rankear(ns, None, ahora)]
+    assert orden.index(4) == 3
+    assert ns[0].tendencia == pytest.approx(2 / 3) and ns[3].tendencia == 0
+
+
+def test_la_tendencia_cuenta_medios_distintos_no_notas_del_mismo_medio():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(i, "Suben los precios de las bujías", "", url=f"https://mismo.com/{i}",
+                  fecha=ahora - datetime.timedelta(days=1)) for i in range(4)]
+    contexto_noticias.tendencias(ns, ahora)
+    assert all(n.tendencia == 0 for n in ns)
+
+
+def test_sin_embeddings_la_tendencia_sale_de_las_palabras_del_titulo():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ayer = ahora - datetime.timedelta(days=1)
+    ns = [Noticia(1, "Bosch sube los precios de las bujías", "", url="https://a.com/1", fecha=ayer),
+          Noticia(2, "Bujías: Bosch sube precios", "", url="https://b.com/1", fecha=ayer),
+          Noticia(3, "Récord de ventas de neumáticos", "", url="https://c.com/1", fecha=ayer)]
+    contexto_noticias.tendencias(ns, ahora)
+    assert ns[0].tendencia > 0 and ns[1].tendencia > 0 and ns[2].tendencia == 0
+
+
+def test_una_noticia_vieja_no_es_tendencia():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(1, "Suben las bujías", "", url="https://a.com/1", fecha=ahora - datetime.timedelta(days=40), embedding=[1, 0]),
+          Noticia(2, "Suben las bujías", "", url="https://b.com/1", fecha=ahora, embedding=[1, 0])]
+    contexto_noticias.tendencias(ns, ahora)
+    assert ns[0].tendencia == 0
+
+
+def test_una_nota_lleva_como_mucho_dos_noticias_del_mismo_medio():
+    ns = [Noticia(i, f"n{i}", "", url=f"https://mismo.com/{i}", puntaje=1 - i / 100) for i in range(4)]
+    ns += [Noticia(9, "otra", "", url="https://otro.com/1", puntaje=0.1)]
+    elegidas = contexto_noticias.elegir(ns, 3)
+    assert [n.id for n in elegidas] == [0, 1, 9]
+
+
+def test_si_no_alcanzan_los_medios_se_completa_igual():
+    ns = [Noticia(i, f"n{i}", "", url=f"https://mismo.com/{i}") for i in range(4)]
+    assert len(contexto_noticias.elegir(ns, 4)) == 4
+
+
+def test_la_segunda_del_mismo_medio_pierde_puntos():
+    ns = [Noticia(1, "a", "", url="https://a.com/1", puntaje=0.80), Noticia(2, "b", "", url="https://a.com/2", puntaje=0.75),
+          Noticia(3, "c", "", url="https://b.com/1", puntaje=0.70)]
+    assert [n.id for n in contexto_noticias.elegir(ns, 2)] == [1, 3]   # 0.75 - 0.10 < 0.70
+
+
+def test_un_medio_que_alimento_muchas_notas_recientes_baja():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(1, "x", "", url="https://www.repetido.com/1", fecha=ahora),
+          Noticia(2, "y", "", url="https://nuevo.com/1", fecha=ahora)]
+    orden = contexto_noticias.rankear(ns, None, ahora, {"repetido.com": 0.8})
+    assert [n.id for n in orden] == [2, 1]
+
+
+def test_fuentes_recientes_cuenta_una_vez_por_nota():
+    import mongomock
+    col = mongomock.MongoClient().db.notas_fase2
+    col.insert_many([
+        {"fuentes": [{"url": "https://www.a.com/1"}, {"url": "https://a.com/2"}, {"url": "https://b.com/1"}]},
+        {"fuentes": [{"url": "https://a.com/3"}]},
+        {"titulo": "sin fuentes"},
+    ])
+    assert contexto_noticias.fuentes_recientes(col) == {"a.com": 1.0, "b.com": 0.5}

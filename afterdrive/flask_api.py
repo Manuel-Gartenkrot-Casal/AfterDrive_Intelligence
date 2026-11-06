@@ -340,8 +340,18 @@ _LARGOS = ("corto", "medio", "largo")   # redaccion.LARGOS, sin importar el mód
 
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
+    from afterdrive import metricas
+    from afterdrive.ia import consumo
+
     cfg = config_store.get_generacion_config()
-    return jsonify({**cfg, "success": True, "zona": scheduler.ZONA, "next_execution": scheduler.proximas()["generacion"]})
+    # Para calcular cuántas notas por día entran en el presupuesto de la API paga.
+    presupuesto = {"costo_nota_usd": None, "tope_usd": consumo.tope()}
+    try:
+        presupuesto["costo_nota_usd"] = metricas.costo_por_nota()
+    except Exception as e:
+        print(f"[AVISO] No se pudo calcular el costo por nota: {e}", flush=True)
+    return jsonify({**cfg, **presupuesto, "success": True, "zona": scheduler.ZONA,
+                    "next_execution": scheduler.proximas()["generacion"]})
 
 
 @app.route("/api/generacion-config", methods=["POST"])
@@ -360,12 +370,19 @@ def set_generacion_config():
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
     if hora is not None and not _hora_valida(hora):
         return jsonify({"success": False, "error": _ERROR_HORA}), 400
+    horas_extra = body.get("horas_extra")
+    if horas_extra is not None:
+        if not isinstance(horas_extra, list) or not all(_hora_valida(h) for h in horas_extra):
+            return jsonify({"success": False, "error": "Se requiere 'horas_extra' como una lista de horas HH:MM (24 h)."}), 400
+        if len(set(horas_extra)) > config_store.HORAS_EXTRA_MAX:
+            return jsonify({"success": False,
+                            "error": f"Como máximo {config_store.HORAS_EXTRA_MAX} horarios extra por día."}), 400
 
     config_store.set_generacion_config(
         enabled=body.get("enabled"),
+        horas_extra=horas_extra,
         interval_days=days,
         persona=persona,
-        tema=body.get("tema"),
         puntapie_url=body.get("puntapie_url"),
         hora=hora,
         largo=largo,
@@ -391,6 +408,9 @@ def set_fase2_config():
     activo = body.get("puntapie_activo")
     if activo is not None and not isinstance(activo, bool):
         return jsonify({"success": False, "error": "Parámetro 'puntapie_activo' inválido."}), 400
+    rotar = body.get("rotar_categorias")
+    if rotar is not None and not isinstance(rotar, bool):
+        return jsonify({"success": False, "error": "Parámetro 'rotar_categorias' inválido."}), 400
     puntapie_url = body.get("puntapie_url")
     if puntapie_url is not None:
         if not isinstance(puntapie_url, str):
@@ -406,6 +426,7 @@ def set_fase2_config():
         clientes=listas.get("clientes"),
         puntapie_activo=activo,
         puntapie_url=puntapie_url,
+        rotar_categorias=rotar,
     )
     return jsonify({"success": True, **cfg})
 
@@ -1143,13 +1164,14 @@ def set_modo_pago():
 
 @app.route("/api/suggested-urls", methods=["GET"])
 def suggested_urls():
-    """Fuentes recomendadas: una por sitio, sin las que ya son confiables."""
+    """Fuentes recomendadas: una por sitio, sin las que ya son confiables, las de mayor puntaje primero
+    (relevancia y popularidad, ver discover_sources.py; las viejas sin puntaje van al final)."""
     from afterdrive.ingesta.discover_sources import dominio
 
     try:
         confiables = {dominio(d["url"]) for d in db["trusted_urls"].find({}, {"url": 1})}
         vistas, urls = set(), []
-        for d in db["suggested_urls"].find({}, {"_id": 0}).sort("fecha_sugerida", -1):
+        for d in db["suggested_urls"].find({}, {"_id": 0}).sort([("puntaje", -1), ("fecha_sugerida", -1)]):
             dom = d.get("dominio") or dominio(d.get("url", ""))
             if not dom or dom in confiables or dom in vistas:
                 continue
@@ -1420,6 +1442,8 @@ def _argv_generar(body: dict):
         extra.append(f"--persona={persona}")
     if tema:
         extra.append(f"--tema={tema}")
+    if body.get("rotar_categorias") is True:
+        extra.append("--rotar")
     if largo:
         extra.append(f"--largo={largo}")
     if indicaciones:

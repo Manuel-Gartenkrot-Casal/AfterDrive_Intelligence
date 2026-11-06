@@ -13,6 +13,8 @@ Interfaz:
     todas_las_fotos(noticias) -> list[Noticia]       una por foto (cada noticia guarda varias)
     mas_fotos(noticias, max_busquedas=5) -> list[Noticia]   relee las páginas que no tienen la lista
     imagen_de(noticia) -> {"url", "alt", "origen"}
+    tendencias(noticias, ahora) -> None   puntúa cuántos medios cubren el mismo tema esta semana
+    fuentes_recientes() -> {medio: proporción}   en qué parte de las últimas notas se usó cada medio
 
 Antes la generación de notas no leía las noticias scrapeadas: el modelo
 escribía solo con las categorías y los ejemplos de estilo, y los prompts le
@@ -26,6 +28,14 @@ para eso: con una vida media de 10 días una noticia de hace 3 meses casi no
 pesa, y solo mira las CANDIDATOS más recientes. seleccionar_archivo() busca
 entre las viejas y las ordena solo por parecido.
 
+Tendencia antes que recencia: una noticia que cubren varios medios distintos
+en la última semana (el mismo tema, por embeddings o, sin ellos, por las
+palabras del título) pesa más que una recién publicada que nadie más levantó.
+
+Medios variados: un medio que alimentó muchas de las últimas notas pierde
+puntos, y una nota lleva como mucho MAX_POR_FUENTE noticias del mismo medio
+(cada una que se suma de un medio ya elegido resta PENALIDAD_MISMA_FUENTE).
+
 Una noticia que ya alimentó una nota en los últimos DIAS_SIN_REPETIR días
 solo se usa si no alcanzan las demás: así dos notas seguidas no salen de la
 misma noticia. Al prompt va su ficha (resumen, hechos, cifras, empresas, ver
@@ -38,14 +48,27 @@ from __future__ import annotations
 import datetime
 import math
 import os
+import re
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field, replace
+from urllib.parse import urlparse
 
 CANDIDATOS = 200          # noticias recientes que se consideran
 CANDIDATOS_VECTOR = 100   # con Atlas Vector Search: las más parecidas de toda la base
 VIDA_MEDIA_DIAS = 10      # a los 10 días una noticia pesa la mitad por recencia
-PESO_SIMILITUD = 0.65
-PESO_RECENCIA = 0.25
+PESO_SIMILITUD = 0.50
+PESO_TENDENCIA = 0.20     # varios medios cubren el mismo tema esta semana
+PESO_RECENCIA = 0.15
 PESO_NO_USADA = 0.10
+PESO_FUENTE_FRECUENTE = 0.15   # se resta: el medio alimentó muchas de las últimas notas
+TENDENCIA_DIAS = 7             # la ventana en la que se cuenta quién más cubrió el tema
+TENDENCIA_SIMILITUD = 0.80     # coseno desde el que dos noticias son el mismo tema
+TENDENCIA_PALABRAS = 0.35      # sin embeddings: parte de palabras del título en común
+TENDENCIA_SATURA = 3           # con 3 medios más cubriéndolo, la tendencia es máxima
+MAX_POR_FUENTE = 2             # noticias del mismo medio en una nota
+PENALIDAD_MISMA_FUENTE = 0.10  # por cada noticia ya elegida de ese medio
+NOTAS_PARA_FUENTES = 15        # últimas notas que se miran para saber qué medios se repiten
 DIAS_SIN_REPETIR = 30
 ARCHIVO_DIAS_MIN = 90          # desde cuándo una noticia es "de archivo"
 ARCHIVO_CANDIDATOS = 400       # viejas que se miran (por fecha de guardado y por fecha de publicación)
@@ -71,6 +94,7 @@ class Noticia:
     refrescable: bool = True       # su `imagen` es la principal de la página: si deja de responder se relee
     liberada: bool = False         # solo alimentó notas rechazadas: vuelve a contar como no usada
     antiguedad_dias: int | None = None   # solo las del archivo: días desde su fecha
+    tendencia: float = 0.0         # 0 a 1: cuántos otros medios cubren el tema esta semana
 
 
 def _coseno(a, b) -> float:
@@ -82,17 +106,87 @@ def _coseno(a, b) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def rankear(noticias: list[Noticia], consulta_vec: list[float] | None, ahora: datetime.datetime) -> list[Noticia]:
-    """Ordena por utilidad para la nota: similitud, recencia y no usada.
+def fuente_de(n: Noticia) -> str:
+    """El medio de la noticia: el dominio de su URL (sin www.), o el nombre de la fuente."""
+    dom = urlparse(n.url or "").netloc.lower().removeprefix("www.")
+    return dom or (n.fuente or "").strip().lower() or f"id:{n.id}"
 
-    Sin vector de consulta (embeddings caídos) manda la recencia.
+
+def _palabras(titulo: str) -> set[str]:
+    plano = unicodedata.normalize("NFKD", (titulo or "").lower()).encode("ascii", "ignore").decode()
+    return {p for p in re.findall(r"[a-z0-9]+", plano) if len(p) >= 4}
+
+
+def _normalizado(v):
+    if not v:
+        return None
+    norma = math.sqrt(sum(x * x for x in v))
+    return [x / norma for x in v] if norma else None
+
+
+def tendencias(noticias: list[Noticia], ahora: datetime.datetime) -> None:
+    """Le pone a cada noticia su `tendencia` (0 a 1): cuántos OTROS medios publicaron el mismo
+    tema en los últimos TENDENCIA_DIAS días. Satura en TENDENCIA_SATURA medios.
+
+    El mismo tema: coseno de embeddings >= TENDENCIA_SIMILITUD, o, si alguna de las dos no
+    tiene vector, títulos con TENDENCIA_PALABRAS de palabras en común. Solo pueden ser
+    tendencia las de los últimos 2 × TENDENCIA_DIAS días.
     """
+    for n in noticias:
+        n.tendencia = 0.0
+    corte = ahora - datetime.timedelta(days=TENDENCIA_DIAS)
+    limite = ahora - datetime.timedelta(days=2 * TENDENCIA_DIAS)
+    evaluar = [n for n in noticias if n.fecha and n.fecha >= limite]
+    en_ventana = [i for i, n in enumerate(evaluar) if n.fecha >= corte]
+    if not en_ventana:
+        return
+    vec = [_normalizado(n.embedding) for n in evaluar]
+    pal = [_palabras(n.titulo) for n in evaluar]
+    medio = [fuente_de(n) for n in evaluar]
+    iguales = _mismo_tema(vec, pal, en_ventana)
+    for i, n in enumerate(evaluar):
+        otros = {medio[j] for j in en_ventana if medio[j] != medio[i] and iguales(i, j)}
+        n.tendencia = min(1.0, len(otros) / TENDENCIA_SATURA)
+
+
+def _mismo_tema(vec: list, pal: list[set[str]], columnas: list[int]):
+    """f(i, j) -> bool: si las noticias i y j hablan del mismo tema."""
+    def una(i: int, j: int) -> bool:
+        a, b = vec[i], vec[j]
+        if a and b and len(a) == len(b):
+            return sum(x * y for x, y in zip(a, b, strict=True)) >= TENDENCIA_SIMILITUD
+        pa, pb = pal[i], pal[j]
+        return bool(pa and pb) and len(pa & pb) / len(pa | pb) >= TENDENCIA_PALABRAS
+
+    if not (all(vec) and len({len(v) for v in vec}) == 1):
+        return una
+    try:   # con numpy (si está instalado) se comparan todas de una vez
+        import numpy as np
+    except ImportError:
+        return una
+    m = np.array(vec, dtype=float)
+    parecido = m @ m[columnas].T >= TENDENCIA_SIMILITUD
+    columna = {j: k for k, j in enumerate(columnas)}
+    return lambda i, j: bool(parecido[i, columna[j]])
+
+
+def rankear(noticias: list[Noticia], consulta_vec: list[float] | None, ahora: datetime.datetime,
+            uso_fuentes: dict[str, float] | None = None) -> list[Noticia]:
+    """Ordena por utilidad para la nota: similitud, tendencia, recencia, no usada y medio poco repetido.
+
+    Sin vector de consulta (embeddings caídos) mandan la tendencia y la recencia.
+    uso_fuentes: {medio: parte de las últimas notas que lo usaron} (ver fuentes_recientes).
+    """
+    tendencias(noticias, ahora)
+    uso_fuentes = uso_fuentes or {}
     for n in noticias:
         dias = max(0.0, (ahora - n.fecha).total_seconds() / 86400) if n.fecha else 60.0
         recencia = 0.5 ** (dias / VIDA_MEDIA_DIAS)
         similitud = _coseno(consulta_vec, n.embedding) if consulta_vec else 0.0
         peso_sim = PESO_SIMILITUD if consulta_vec else 0.0
-        n.puntaje = peso_sim * similitud + PESO_RECENCIA * recencia + PESO_NO_USADA * (0 if n.usada else 1)
+        n.puntaje = (peso_sim * similitud + PESO_TENDENCIA * n.tendencia + PESO_RECENCIA * recencia
+                     + PESO_NO_USADA * (0 if n.usada else 1)
+                     - PESO_FUENTE_FRECUENTE * uso_fuentes.get(fuente_de(n), 0.0))
     return sorted(noticias, key=lambda n: n.puntaje, reverse=True)
 
 
@@ -296,7 +390,11 @@ def seleccionar(consulta: str, limite: int = 5) -> list[Noticia]:
             n.liberada = True
         noticias.append(n)
     ahora = datetime.datetime.now(datetime.UTC)
-    elegidas = elegir(rankear(noticias, vec, ahora), limite)
+    elegidas = elegir(rankear(noticias, vec, ahora, fuentes_recientes()), limite)
+    medios = Counter(fuente_de(n) for n in elegidas)
+    en_tendencia = sum(n.tendencia > 0 for n in elegidas)
+    print(f"  Noticias elegidas: {len(elegidas)} de {len(medios)} medio(s)"
+          f"{f', {en_tendencia} en tendencia' if en_tendencia else ''}.", flush=True)
     _completar_fichas(elegidas, col_articulos)
     return elegidas
 
@@ -405,10 +503,50 @@ def urls_liberadas(col=None) -> set[str]:
     return rechazadas - en_uso
 
 
+def fuentes_recientes(col=None, notas: int = NOTAS_PARA_FUENTES) -> dict[str, float]:
+    """{medio: parte (0 a 1) de las últimas `notas` notas que usaron alguna noticia suya}. {} si Mongo falla."""
+    if col is None:
+        from afterdrive.db import db
+        col = db["notas_fase2"]
+    try:
+        docs = list(col.find({"fuentes.url": {"$exists": True}}, {"fuentes.url": 1}).sort("_id", -1).limit(notas))
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer los medios de las últimas notas: {e}", flush=True)
+        return {}
+    if not docs:
+        return {}
+    conteo = Counter()
+    for d in docs:
+        conteo.update({fuente_de(Noticia(None, "", "", url=f.get("url", "")))
+                       for f in d.get("fuentes") or [] if isinstance(f, dict) and f.get("url")})
+    return {medio: veces / len(docs) for medio, veces in conteo.items()}
+
+
 def elegir(ranking: list[Noticia], limite: int) -> list[Noticia]:
-    """Las mejores del ranking, dejando para el final las usadas hace poco."""
+    """Las mejores del ranking, dejando para el final las usadas hace poco y variando los medios.
+
+    De un mismo medio entran como mucho MAX_POR_FUENTE, y cada una que ya entró le resta
+    PENALIDAD_MISMA_FUENTE a las siguientes de ese medio. Si así no se llega a `limite`,
+    se completa sin el tope (mejor repetir medio que escribir con menos noticias).
+    """
+    elegidas: list[Noticia] = []
+    por_medio: Counter = Counter()
     frescas = [n for n in ranking if not n.usada_reciente]
-    return (frescas + [n for n in ranking if n.usada_reciente])[:limite]
+    grupos = (frescas, [n for n in ranking if n.usada_reciente])
+    for con_tope in (True, False):
+        for grupo in grupos:
+            quedan = [n for n in grupo if n not in elegidas]
+            while quedan and len(elegidas) < limite:
+                validas = [n for n in quedan if not con_tope or por_medio[fuente_de(n)] < MAX_POR_FUENTE]
+                if not validas:
+                    break
+                mejor = max(validas, key=lambda n: n.puntaje - PENALIDAD_MISMA_FUENTE * por_medio[fuente_de(n)])
+                elegidas.append(mejor)
+                por_medio[fuente_de(mejor)] += 1
+                quedan.remove(mejor)
+        if len(elegidas) >= limite:
+            break
+    return elegidas
 
 
 def _completar_fichas(noticias: list[Noticia], col) -> None:

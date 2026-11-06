@@ -60,6 +60,15 @@ def sin_fotos_de_otras_notas(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_medios_de_otras_notas(monkeypatch):
+    """La selección de noticias no lee la base real para saber qué medios usaron las últimas notas."""
+    from afterdrive.generacion import contexto_noticias
+    original = contexto_noticias.fuentes_recientes   # con una colección propia (la de un test), la de verdad
+    monkeypatch.setattr(contexto_noticias, "fuentes_recientes",
+                        lambda col=None, notas=15: {} if col is None else original(col, notas))
+
+
+@pytest.fixture(autouse=True)
 def sin_archivo_de_noticias(monkeypatch):
     """La generación no busca noticias viejas en la base real; los tests del archivo lo instalan a mano."""
     from afterdrive.generacion import contexto_noticias

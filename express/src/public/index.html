@@ -391,6 +391,14 @@
                   <span class="agenda-field-nombre">Frecuencia</span>
                   <span class="agenda-field-control">Cada <input type="number" id="dias-generacion" class="input-field" min="1" max="30" value="1" /> día(s)</span>
                 </label>
+                <div class="agenda-field agenda-field-horas">
+                  <span class="agenda-field-nombre" id="horas-extra-titulo">Más notas por día</span>
+                  <span class="agenda-field-control agenda-horas-extra">
+                    <span id="horas-extra-generacion" class="horas-extra-lista" role="group" aria-labelledby="horas-extra-titulo"></span>
+                    <button type="button" class="btn btn-sm" id="btn-hora-extra" onclick="agregarHoraExtra()">+ Horario</button>
+                  </span>
+                </div>
+                <p class="agenda-presupuesto" id="presupuesto-generacion" aria-live="polite" hidden></p>
                 <label class="agenda-field">
                   <span class="agenda-field-nombre">Tono</span>
                   <span class="agenda-field-control">
@@ -493,7 +501,9 @@
           <div class="fase2-grupo-title f2-titulo-enfoque solo-cliente">Enfoque</div>
           <div class="f2-campo f2-campo-tema" style="margin-bottom:var(--s4)">
             <label class="control-label" for="f2-tema" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</label>
-            <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…" />
+            <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…"
+                   aria-describedby="f2-tema-ayuda" />
+            <p id="f2-tema-ayuda" class="field-help">Solo para esta nota: no se guarda y las notas automáticas no lo usan.</p>
           </div>
 
           <!-- Indicaciones libres para la IA -->
@@ -525,6 +535,14 @@
           <div class="fase2-grupo-title" data-cliente="¿Sobre qué temas? Elegí uno o más">Categorías (seleccioná una o más)</div>
           <div class="toggles-grid" id="f2-categorias-grid">
             <div style="color:var(--text-lo);font-size:0.8rem">Cargando categorías...</div>
+          </div>
+          <div class="f2-rotacion">
+            <button type="button" class="puntapie-toggle" id="f2-rotar-toggle" role="switch" aria-checked="false"
+                    aria-describedby="f2-rotar-ayuda" onclick="toggleRotarCategorias()">
+              <div class="toggle-switch"></div>
+              <span>Rotar categorías automáticamente</span>
+            </button>
+            <p id="f2-rotar-ayuda" class="field-help">Cada nota usa 1 o 2 de las categorías marcadas, priorizando las que menos salieron en las últimas notas. Así no se repiten notas parecidas.</p>
           </div>
         </div>
 

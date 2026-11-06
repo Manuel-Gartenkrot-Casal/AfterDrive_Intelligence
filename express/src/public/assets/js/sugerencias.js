@@ -17,6 +17,12 @@ function renderSugerencias(urls) {
     item.className = 'suggestion-item';
     var titulo = u.titulo ? '<div class="suggestion-title">' + escHtml(u.titulo) + '</div>' : '';
     if (u.origen === 'ia') titulo += '<div class="suggestion-title">Sugerida por la IA (sitio verificado)</div>';
+    // Por qué se recomienda: qué parte de sus notas es del sector y en cuántas búsquedas apareció.
+    var datos = [];
+    if (typeof u.relevancia === 'number') datos.push(tr('Relevancia') + ' ' + Math.round(u.relevancia * 100) + ' %');
+    if (u.busquedas) datos.push(tr(u.busquedas === 1 ? 'aparece en 1 búsqueda' : 'aparece en ' + u.busquedas + ' búsquedas'));
+    if (u.sugerida_por_ia && u.origen !== 'ia') datos.push(tr('también la conoce la IA'));
+    if (datos.length) titulo += '<div class="suggestion-meta">' + escHtml(datos.join(' · ')) + '</div>';
     item.innerHTML =
       '<div class="suggestion-info"><div class="suggestion-url">' + escHtml(u.dominio || u.url) + '</div>' + titulo + '</div>' +
       '<div class="suggestion-actions">' +

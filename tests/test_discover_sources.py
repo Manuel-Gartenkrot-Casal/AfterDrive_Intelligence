@@ -42,6 +42,12 @@ def sitios(**portadas):
     return get
 
 
+@pytest.fixture(autouse=True)
+def sin_embeddings(monkeypatch):
+    """Sin embeddings la relevancia se mide solo por palabras (los tests de relevancia instalan unos falsos)."""
+    monkeypatch.setattr(ds, "_embeber", lambda textos: None)
+
+
 @pytest.fixture
 def base(monkeypatch):
     db = mongomock.MongoClient().db
@@ -181,3 +187,87 @@ def test_google_noticias_sugiere_el_sitio_del_medio(base, monkeypatch):
     assert guardadas[0]["url"] == "https://www.diarioautopartes.com/"
     assert not any("duckduckgo" in u or "bing" in u for u in pedidos)   # respondió el primero
     assert any("diarioautopartes" in u for u in pedidos)   # entró al sitio a verificarlo
+
+
+# ── Relevancia por significado y popularidad ──────────────────────────────────
+
+def _embeddings_falsos(monkeypatch):
+    """Un vector por tema: lo del sector apunta a un lado y el resto a otro, sin palabras clave en común."""
+    sector = ("repuesto", "bujía", "autopeça", "aftermarket", "taller", "amortiguador", "lubric", "neumát",
+              "distribuidora", "parts", "frenos", "mecânica", "refaccion", "parque automotor", "Bosch", "freios",
+              "caja de cambios", "aceite", "filtros de aire")
+    def embeber(textos):
+        return [[1.0, 0.05] if any(p.lower() in t.lower() for p in sector) else [0.05, 1.0] for t in textos]
+    monkeypatch.setattr(ds, "_embeber", embeber)
+
+
+def test_el_perfil_calibra_un_umbral_entre_el_sector_y_otros_temas(monkeypatch):
+    _embeddings_falsos(monkeypatch)
+    perfil = ds._perfil_sector(mongomock.MongoClient().db)
+    assert perfil is not None and 0.1 < perfil.umbral <= 1.0
+    assert perfil.parecido(ds._norma([1.0, 0.05])) >= perfil.umbral > perfil.parecido(ds._norma([0.05, 1.0]))
+
+
+def test_sin_embeddings_no_hay_perfil():
+    assert ds._perfil_sector(mongomock.MongoClient().db) is None
+
+
+def test_un_medio_del_sector_pasa_aunque_sus_titulares_no_usen_las_palabras_clave(monkeypatch):
+    _embeddings_falsos(monkeypatch)
+    monkeypatch.setattr(scraper, "url_publica", lambda url: True)
+    # Ninguno de estos titulares tiene una palabra del nicho, pero todos son del rubro.
+    notas = ["Nueva caja de cambios para utilitarios", "Bosch amplía su planta de Campinas",
+             "Cómo elegir el aceite correcto", "Ventas de filtros de aire en alza", "Freios: o que muda em 2027"]
+    assert all(not ds._keywords_en_texto(t) for t in notas)
+    html = "<title>Revista</title>" + "".join(f'<a href="https://revista.com/n/{i}">{t}</a>' for i, t in enumerate(notas))
+    monkeypatch.setattr(ds, "_transporte", {"get": lambda url, **k: Resp(text=html)})
+    perfil = ds._perfil_sector(mongomock.MongoClient().db)
+    assert not ds._verificar_sitio("https://revista.com/")[0]          # solo con palabras, no pasaba
+    e = ds._evaluar_sitio("https://revista.com/", perfil)
+    assert e.ok and e.relevancia == 1.0
+
+
+def test_la_popularidad_cuenta_busquedas_distintas_y_la_ia():
+    c = ds.Candidato("https://x.com/")
+    assert c.popularidad == 0
+    c.busquedas.update({"a", "b"})
+    c.apariciones = 2
+    assert c.popularidad == pytest.approx(2 / 3)
+    c.ia = True
+    assert c.popularidad == 1.0
+    assert ds.puntaje(0.6, 1.0) == 1.0 and ds.puntaje(0.3, 0.0) == 0.3
+
+
+def test_se_verifican_primero_los_mas_populares_y_se_guarda_el_puntaje(base, monkeypatch):
+    _sin_ia(monkeypatch)
+    rss_por_busqueda = {}
+    for i, q in enumerate(ds._BUSQUEDAS):
+        items = '<item><title>Nota</title><source url="https://popular.com">Popular</source></item>'
+        if i == 0:
+            items += '<item><title>Otra</title><source url="https://raro.com">Raro</source></item>'
+        rss_por_busqueda[q] = f"<rss><channel>{items}</channel></rss>"
+    visitados = []
+
+    def get(url, **k):
+        if "news.google.com" in url:
+            q = next(q for q in ds._BUSQUEDAS if ds.quote_plus(q) in url)
+            return Resp(text=rss_por_busqueda[q])
+        visitados.append(url)
+        return sitios(popular_com=portada("popular.com"), raro_com=portada("raro.com"))(url)
+    monkeypatch.setattr(ds, "_transporte", {"post": lambda url, **k: Resp(202), "get": get})
+    assert ds.discover(base)["guardadas"] == 2
+    assert visitados[0].startswith("https://popular.com")
+    guardadas = {g["dominio"]: g for g in base.suggested_urls.find()}
+    assert guardadas["popular.com"]["busquedas"] == len(ds._BUSQUEDAS) and guardadas["raro.com"]["busquedas"] == 1
+    assert guardadas["popular.com"]["puntaje"] > guardadas["raro.com"]["puntaje"]
+    assert guardadas["popular.com"]["relevancia"] == 1.0
+
+
+def test_un_resultado_sin_palabras_del_sector_igual_se_verifica(base, monkeypatch):
+    _sin_ia(monkeypatch)
+    rss = ('<rss><channel><item><title>Lanzamientos de la semana</title>'
+           '<source url="https://revistadelrubro.com">Revista</source></item></channel></rss>')
+    sitio = sitios(revistadelrubro_com=portada("revistadelrubro.com"))
+    monkeypatch.setattr(ds, "_transporte", {"post": lambda url, **k: Resp(202),
+                                            "get": lambda url, **k: Resp(text=rss) if "news.google" in url else sitio(url)})
+    assert [g["dominio"] for g in (ds.discover(base), base.suggested_urls.find())[1]] == ["revistadelrubro.com"]

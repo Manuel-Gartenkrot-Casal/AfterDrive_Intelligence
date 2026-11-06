@@ -2,6 +2,7 @@
 
 Interfaz:
     resumen(dias=14, base=None) -> dict
+    costo_por_nota(base=None) -> float | None   USD promedio de la API paga por nota
 
 Todo sale de colecciones que ya existen, sin guardar nada nuevo:
     articulos / articulos_descartados   lo que trajo el scraping, por día y por sitio
@@ -215,7 +216,42 @@ def _gasto(b, dias):
         "tope_usd": consumo.tope(),
         "por_tarea": {k: round(v, 4) for k, v in sorted(por_tarea.items(), key=lambda kv: -kv[1])},
         "por_dia": [round(por_dia.get(d, 0.0), 4) for d in dias],
+        "meses_anteriores": _gasto_meses_anteriores(b, hoy),
     }
+
+
+MESES_ANTERIORES = 6
+
+
+def _gasto_meses_anteriores(b, hoy: datetime.datetime, meses: int = MESES_ANTERIORES) -> list[dict]:
+    """[{"mes": "YYYY-MM", "usd": float}] de los `meses` anteriores al actual, del más reciente al más viejo.
+
+    Solo la API paga (los gratuitos no cuestan). Un mes sin gasto va con 0: así se ve que no se usó.
+    """
+    lista, anio, mes = [], hoy.year, hoy.month
+    for _ in range(meses):
+        anio, mes = (anio - 1, 12) if mes == 1 else (anio, mes - 1)
+        lista.append(f"{anio:04d}-{mes:02d}")
+    totales: dict[str, float] = defaultdict(float)
+    filtro = {"mes": {"$in": lista}, "proveedor": {"$in": ["paga", None]}}
+    for doc in b["consumo_ia"].find(filtro, {"mes": 1, "costo_usd": 1}):
+        totales[doc["mes"]] += float(doc.get("costo_usd") or 0)
+    return [{"mes": m, "usd": round(totales.get(m, 0.0), 4)} for m in lista]
+
+
+NOTAS_PARA_COSTO = 20
+
+
+def costo_por_nota(base=None, ultimas: int = NOTAS_PARA_COSTO) -> float | None:
+    """USD promedio que gastó la API paga en cada una de las últimas notas que la usaron.
+
+    None si ninguna la usó todavía: no hay con qué estimar.
+    """
+    b = _base(base)
+    costos = [float((d.get("costo") or {}).get("total_usd") or 0)
+              for d in b["notas_fase2"].find({"costo.total_usd": {"$gt": 0}}, {"costo.total_usd": 1})
+              .sort("_id", -1).limit(ultimas)]
+    return round(sum(costos) / len(costos), 4) if costos else None
 
 
 def _tokens(b, desde_corto, dias):

@@ -7,7 +7,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
 | `trusted_urls` | Fuentes de noticias | `url`, `nombre_fuente`, `estado` (`activo` / `inactivo`), `fecha_agregado`, `ultima_ejecucion` |
-| `suggested_urls` | Sitios recomendados, uno por dominio | `url`, `dominio`, `titulo`, `snippet`, `fecha_sugerida` |
+| `suggested_urls` | Sitios recomendados, uno por dominio | `url`, `dominio`, `titulo`, `snippet`, `fecha_sugerida`, `relevancia` (parte de titulares del sector), `popularidad`, `puntaje`, `busquedas` (en cuántas apareció), `sugerida_por_ia` |
 | `articulos` | **Noticias que la IA aprobó** | `url` (clave), `titulo`, `cuerpo`, `fecha` (publicación), `fuente`, `embedding`, `usado_para_articulo`, `usado_en` (cuándo alimentó una nota), `ficha` (resumen, hechos, cifras, empresas, fecha), `imagen` (`{url, alt}` de la foto principal del artículo; `null` si se buscó y no tenía), `imagenes` (hasta 8 `{url, alt}`: todas las fotos de la página, la principal primero; falta en los artículos guardados antes, y se completa la primera vez que una nota necesita más fotos) |
 | `articulos_descartados` | Noticias que la IA rechazó | `url`, `titulo`, `cuerpo` (hasta 5000 caracteres), `fuente`, `fecha`, `razon`, `fecha_descarte`. Las viejas solo tienen `url` |
 | `afterdrive_ejemplos` | **Notas reales del blog** (referencia de estilo) | `url`, `titulo`, `cuerpo`, `categoria`, `regiones`, `region_principal` |
@@ -34,7 +34,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`), `value` |
+| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`), `value`. `generacion` tiene `hora` y `horas_extra` (más notas por día); `fase2`, `rotar_categorias`. El tema puntual ya no se guarda |
 | `imagenes` | **En desuso**: imágenes que se generaban con NVIDIA. Ya nada la lee; se puede borrar | |
 | `imagenes_subidas` | Imágenes subidas desde la computadora, fotos de Pixabay guardadas y las diapositivas y el PDF de los carruseles (`carrusel: true`; al regenerar se borran las anteriores) | `contenido` (bytes), `mime`, `nombre`, `nota_id`, `fecha` |
 | `corridas` | **La cola y el historial de Corridas** (30 días) | `tipo`, `params`, `etiqueta`, `origen` (`manual` / `cron`), `ejecutor` (`servidor` / `github`), `estado`, `creada`, `inicio`, `fin`, `resultado`, `log` (últimas 500 líneas), `cancelar_pedido` |

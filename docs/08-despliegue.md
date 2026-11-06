@@ -53,6 +53,7 @@ Para activarlo:
 Detalles:
 
 - Corre al minuto 7 de cada hora: una tarea programada a las 05:30 se ejecuta a las 06:07. GitHub puede demorar el cron unos minutos; si se saltea una hora, la siguiente la recupera.
+- Con varios horarios de generación, cada uno que pasó desde la última revisión es una nota (11:00 y 11:30 en la misma hora = dos notas). Cada horario cuenta una vez aunque se hayan salteado días.
 - El repo es público: los minutos de Actions son gratis.
 - Los botones del dashboard (Buscar ahora, Generar nota…) siguen corriendo en Render.
 

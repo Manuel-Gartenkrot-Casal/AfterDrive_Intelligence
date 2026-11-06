@@ -95,10 +95,12 @@ var _f2RegionesActivas = new Set();
 var _f2Clientes = [];
 var _f2ClientesActivos = new Set();
 var _f2PuntapieActivo = false;
+var _f2RotarCategorias = false;
 
 
 async function fase2Init() {
-  ['f2-tema', 'f2-puntapie-url'].forEach(function(id) { $(id).addEventListener('input', marcarCrear); });
+  // El tema y las indicaciones son solo para la próxima nota: no se guardan ni marcan cambios.
+  $('f2-puntapie-url').addEventListener('input', marcarCrear);
   var form = formulario('crear', {
     leer: function() {
       return {
@@ -107,7 +109,7 @@ async function fase2Init() {
         clientes: Array.from(_f2ClientesActivos).sort(),
         puntapie_activo: _f2PuntapieActivo,
         puntapie_url: $('f2-puntapie-url').value.trim(),
-        tema: $('f2-tema').value.trim(),
+        rotar_categorias: _f2RotarCategorias,
         largo: $('f2-largo').value
       };
     },
@@ -119,8 +121,8 @@ async function fase2Init() {
       pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
       renderClientes();
       pintarPuntapie(st.puntapie_activo);
+      pintarRotarCategorias(!!st.rotar_categorias);
       $('f2-puntapie-url').value = st.puntapie_url;
-      $('f2-tema').value = st.tema;
       $('f2-largo').value = st.largo || 'medio';
       resumenCrear();
     },
@@ -129,13 +131,14 @@ async function fase2Init() {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           categorias: st.categorias, regiones: st.regiones, clientes: st.clientes,
-          puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url
+          puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url,
+          rotar_categorias: st.rotar_categorias
         })
       });
-      if (st.tema !== base.tema || st.largo !== base.largo) {
+      if (st.largo !== base.largo) {
         await pedir('/api/generacion-config', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ tema: st.tema, largo: st.largo })
+          body: JSON.stringify({ largo: st.largo })
         });
       }
     }
@@ -172,7 +175,8 @@ function resumenCrear() {
   var fila = function(clave, valor, clase) {
     return '<span class="cr-item' + (clase ? ' ' + clase : '') + '"><span class="cr-k">' + escHtml(tr(clave)) + '</span><span class="cr-v">' + escHtml(valor) + '</span></span>';
   };
-  $('crear-resumen').innerHTML = fila('Temas', n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') : tr('Elegí las categorías de tu nota'), n ? '' : 'falta')
+  var temas = n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') + (_f2RotarCategorias && n > 1 ? ' · ' + tr('rotando') : '') : tr('Elegí las categorías de tu nota');
+  $('crear-resumen').innerHTML = fila('Temas', temas, n ? '' : 'falta')
     + fila('Tono', tr(TONOS[$('f2-persona').value]))
     + fila('Extensión', tr(LARGOS[$('f2-largo').value] || ''), 'cr-largo')
     + fila('Idioma', tr(idiomaNotaElegido()));
@@ -258,13 +262,13 @@ async function fase2CargarConfig() {
       _f2ClientesActivos.add(c);
     });
     pintarPuntapie(!!d.puntapie_activo);
+    pintarRotarCategorias(!!d.rotar_categorias);
     if (d.puntapie_url) $('f2-puntapie-url').value = d.puntapie_url;
     renderClientes();
     var genR = await fetch('/api/generacion-config');
     var genD = await genR.json();
     if (genD.success) {
       if (genD.persona) $('f2-persona').value = genD.persona;
-      if (genD.tema) $('f2-tema').value = genD.tema;
       if (genD.largo) $('f2-largo').value = genD.largo;
       if (genD.puntapie_url && !d.puntapie_url) $('f2-puntapie-url').value = genD.puntapie_url;
     }
@@ -528,6 +532,19 @@ function togglePuntapie() {
   marcarCrear();
 }
 
+/* Rotación de categorías: cada nota (también las automáticas) usa 1 o 2 de las marcadas. */
+function pintarRotarCategorias(activo) {
+  _f2RotarCategorias = activo;
+  $('f2-rotar-toggle').classList.toggle('active', activo);
+  $('f2-rotar-toggle').setAttribute('aria-checked', activo);
+  if (typeof resumenCrear === 'function' && $('crear-resumen')) resumenCrear();
+}
+
+function toggleRotarCategorias() {
+  pintarRotarCategorias(!_f2RotarCategorias);
+  marcarCrear();
+}
+
 async function fase2Scrape() {
   var btn = $('btn-f2-scrape');
   setBtnLoading(btn, true);
@@ -579,6 +596,7 @@ async function fase2GenerarStream() {
     clientes: Array.from(_f2ClientesActivos),
     persona: $('f2-persona').value,
     tema: $('f2-tema').value.trim() || null,
+    rotar_categorias: _f2RotarCategorias,
     indicaciones: $('f2-indicaciones').value.trim() || null,
     largo: $('f2-largo').value,
     puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
@@ -607,6 +625,9 @@ async function fase2GenerarStream() {
     exito = fin.estado === 'ok' && fullOutput.indexOf('[OK]') >= 0;
 
     if (exito) {
+      // Se usan una sola vez: la próxima nota arranca sin tema ni indicaciones.
+      $('f2-tema').value = '';
+      $('f2-indicaciones').value = '';
       cargarUltimaNota();
       cargarResumenHistorial();
       st.className = 'feedback ok';

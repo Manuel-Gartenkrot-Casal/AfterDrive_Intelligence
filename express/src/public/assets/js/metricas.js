@@ -364,7 +364,21 @@ function _pintarGasto(d) {
     '<p class="gasto-nota">' + Math.round(usado * 100) + '% del tope mensual' + (usado >= 1 ? ' · se usa NVIDIA hasta el mes que viene' : '') + '</p>' +
     (tareas.length ? '<ul class="gasto-tareas">' + tareas.map(function(t) {
       return '<li><span>' + escHtml(nombres[t] || t) + '</span><b>' + _USD.format(g.por_tarea[t]) + '</b></li>';
-    }).join('') + '</ul>' : '<p class="tablero-vacio">Este mes todavía no se usó la API paga.</p>');
+    }).join('') + '</ul>' : '<p class="tablero-vacio">Este mes todavía no se usó la API paga.</p>') +
+    _htmlMesesAnteriores(g.meses_anteriores);
+}
+
+/* Lo gastado en la API paga en los meses anteriores, en chico: solo los dólares. */
+function _htmlMesesAnteriores(meses) {
+  if (!meses || !meses.length) return '';
+  var nombre = function(ym) {
+    var p = ym.split('-');
+    return new Date(+p[0], +p[1] - 1, 15).toLocaleDateString(localeUI(), { month: 'short', year: '2-digit' });
+  };
+  return '<div class="gasto-meses"><p class="gasto-meses-titulo">Meses anteriores</p><ul>' +
+    meses.map(function(m) {
+      return '<li' + (m.usd ? '' : ' class="sin-gasto"') + '><span>' + escHtml(nombre(m.mes)) + '</span><b>' + _USD.format(m.usd) + '</b></li>';
+    }).join('') + '</ul></div>';
 }
 
 var _NOMBRE_TAREA = { redaccion: 'Redacción', clasificacion: 'Clasificación', evaluacion: 'Evaluación',

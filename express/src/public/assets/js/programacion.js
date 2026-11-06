@@ -143,11 +143,94 @@ var AGENDA = {
   },
   generacion: {
     endpoint: '/api/generacion-config',
-    extra: function() { return { persona: $('persona-generacion').value }; },
-    cargarExtra: function(d) { if (d.persona) $('persona-generacion').value = d.persona; },
-    extraIds: ['persona-generacion']
+    extra: function() { return { persona: $('persona-generacion').value, horas_extra: leerHorasExtra() }; },
+    cargarExtra: function(d) {
+      if (d.persona) $('persona-generacion').value = d.persona;
+      pintarHorasExtra(d.horas_extra || []);
+    },
+    extraIds: ['persona-generacion'],
+    presupuesto: null   // {costo_nota_usd, tope_usd} de /api/generacion-config
   }
 };
+
+/* ── Más notas por día: horas extra de la generación ──────────────────── */
+var HORAS_EXTRA_MAX = 7;   // config_store.HORAS_EXTRA_MAX
+
+function leerHorasExtra() {
+  var vistas = {}, principal = $('hora-generacion').value;
+  return Array.from(document.querySelectorAll('#horas-extra-generacion input')).map(function(i) { return i.value; })
+    .filter(function(h) { if (!h || h === principal || vistas[h]) return false; vistas[h] = true; return true; })
+    .sort();
+}
+
+function pintarHorasExtra(horas) {
+  var cont = $('horas-extra-generacion');
+  cont.innerHTML = '';
+  horas.forEach(function(h) { _filaHoraExtra(cont, h); });
+  _estadoBotonHoraExtra();
+}
+
+function _filaHoraExtra(cont, hhmm) {
+  var fila = document.createElement('span');
+  fila.className = 'hora-extra';
+  fila.innerHTML = '<input type="time" step="300" required>' +
+    '<button type="button" class="icon-btn" title="Quitar este horario">✕</button>';
+  var input = fila.querySelector('input'), quitar = fila.querySelector('button');
+  input.value = hhmm;
+  var nombrar = function() {
+    input.setAttribute('aria-label', 'Horario extra ' + (input.value || ''));
+    quitar.setAttribute('aria-label', 'Quitar el horario de las ' + (input.value || ''));
+  };
+  nombrar();
+  input.addEventListener('input', function() { nombrar(); marcarProgramacion(); });
+  quitar.addEventListener('click', function() { fila.remove(); _estadoBotonHoraExtra(); marcarProgramacion(); });
+  cont.appendChild(fila);
+  return input;
+}
+
+function _estadoBotonHoraExtra() {
+  var n = document.querySelectorAll('#horas-extra-generacion .hora-extra').length;
+  $('btn-hora-extra').disabled = n >= HORAS_EXTRA_MAX;
+  $('btn-hora-extra').title = n >= HORAS_EXTRA_MAX ? 'Como máximo ' + (HORAS_EXTRA_MAX + 1) + ' notas por día' : '';
+}
+
+/* Suma un horario 3 h después del último (sin repetir ninguno). */
+function agregarHoraExtra() {
+  var usadas = [$('hora-generacion').value].concat(leerHorasExtra()).map(_minutos).filter(function(m) { return m !== null && !isNaN(m); });
+  var desde = usadas.length ? Math.max.apply(null, usadas) : 660, min = desde;
+  for (var i = 0; i < 48; i++) {
+    min = (min + 180 + (i ? 30 : 0)) % 1440;
+    if (usadas.indexOf(min) < 0) break;
+  }
+  var hhmm = (min < 600 ? '0' : '') + Math.floor(min / 60) + ':' + (min % 60 < 10 ? '0' : '') + (min % 60);
+  _filaHoraExtra($('horas-extra-generacion'), hhmm).focus();
+  _estadoBotonHoraExtra();
+  marcarProgramacion();
+}
+
+/* Cuántas notas entran en el presupuesto de la API paga con los horarios elegidos. */
+function pintarPresupuesto() {
+  var el = $('presupuesto-generacion'), p = AGENDA.generacion.presupuesto;
+  if (!el) return;
+  var porDia = 1 + leerHorasExtra().length;
+  var dias = Math.max(1, parseInt($('dias-generacion').value, 10) || 1);
+  if (!p || !p.costo_nota_usd || !p.tope_usd) {
+    el.hidden = porDia === 1;
+    el.classList.remove('aviso');
+    el.textContent = porDia > 1 ? 'Se escriben ' + porDia + ' notas automáticas por día.' : '';
+    return;
+  }
+  var usd = function(v) { return 'USD ' + v.toLocaleString(localeUI(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var notasMes = porDia * 30 / dias, mes = notasMes * p.costo_nota_usd;
+  var entran = Math.floor(p.tope_usd / (p.costo_nota_usd * 30 / dias));
+  el.hidden = false;
+  el.classList.toggle('aviso', mes > p.tope_usd);
+  el.textContent = 'Cada nota usa unos ' + usd(p.costo_nota_usd) + ' de la API paga: con ' + porDia +
+    (porDia === 1 ? ' nota' : ' notas') + (dias === 1 ? ' por día' : ' cada ' + dias + ' días') + ' son unos ' + usd(mes) +
+    ' por mes, de un tope de ' + usd(p.tope_usd) + '. ' +
+    (mes > p.tope_usd ? 'Se pasa del tope: al llegar, el resto del mes se escribe con el proveedor gratuito.'
+                      : 'Entran hasta ' + entran + (entran === 1 ? ' nota' : ' notas') + (dias === 1 ? ' por día.' : ' por tanda.'));
+}
 var _zona = 'America/Argentina/Buenos_Aires';
 
 function formatearProxima(iso) {
@@ -201,9 +284,10 @@ function aplicarAgenda(tipo, c) {
   AGENDA[tipo].cargarExtra(c);
   pintarActivo(tipo, c.enabled !== false);
   pintarDia();
+  pintarPresupuesto();
 }
 
-function marcarProgramacion() { if (FORMULARIOS.programacion) FORMULARIOS.programacion.marcar(); pintarDia(); }
+function marcarProgramacion() { if (FORMULARIOS.programacion) FORMULARIOS.programacion.marcar(); pintarDia(); pintarPresupuesto(); }
 
 /* El día de un vistazo: un eje de 24 h con la hora de cada tarea y la de ahora
    (en la zona del servidor). Sigue lo que se está editando, sin guardar. */
@@ -226,18 +310,27 @@ function pintarDia() {
   var minAhora = _minutos(ahora);
   html += '<span class="dia-ahora" style="left:' + pos(minAhora) + '"></span>';
   if ($('ley-ahora')) $('ley-ahora').textContent = ahora;
-  var anterior = null, dosFilas = false;
+  var marcas = [];
   Object.keys(AGENDA).forEach(function(tipo) {
-    var hora = $('hora-' + tipo).value, min = _minutos(hora);
-    if (min === null || isNaN(min)) return;
+    var horas = [$('hora-' + tipo).value].concat(tipo === 'generacion' ? leerHorasExtra() : []);
     var activa = $('sw-' + tipo).classList.contains('active');
     var nombre = $('agenda-' + tipo).querySelector('.agenda-card-title').textContent;
+    horas.forEach(function(hora) {
+      var min = _minutos(hora);
+      if (min !== null && !isNaN(min)) marcas.push({ tipo: tipo, hora: hora, min: min, activa: activa, nombre: nombre });
+    });
+  });
+  marcas.sort(function(a, b) { return a.min - b.min; });
+  var anterior = null, anteriorAlto = false, dosFilas = false;
+  marcas.forEach(function(m) {
     // Dos tareas cerca en pantalla: la segunda sube un renglón para no pisar a la primera.
-    var alto = anterior !== null && Math.abs(min - anterior) / 1440 * (eje.clientWidth || 800) < 170 ? ' alto' : '';
-    anterior = min;
+    var cerca = anterior !== null && Math.abs(m.min - anterior) / 1440 * (eje.clientWidth || 800) < 170;
+    var alto = cerca && !anteriorAlto ? ' alto' : '';
+    anterior = m.min;
+    anteriorAlto = !!alto;
     if (alto) dosFilas = true;
-    html += '<span class="dia-tarea' + (activa ? '' : ' pausada') + lado(min) + alto + '" data-tipo="' + tipo + '" style="left:' + pos(min) + '">'
-      + '<b>' + escHtml(nombre) + ' · ' + hora + '</b></span>';
+    html += '<span class="dia-tarea' + (m.activa ? '' : ' pausada') + lado(m.min) + alto + '" data-tipo="' + m.tipo + '" style="left:' + pos(m.min) + '">'
+      + '<b>' + escHtml(m.nombre) + ' · ' + m.hora + '</b></span>';
   });
   eje.innerHTML = html;
   eje.parentNode.classList.toggle('dos-filas', dosFilas);
@@ -268,7 +361,13 @@ function pintarResumenDia() {
   else if (s < g) texto = 'Primero se buscan noticias a las ' + hs + ' y, ' + _lapso(g - s) + ' después, se escribe la nota a las ' + hg + '.';
   else if (s === g) { texto = 'Las dos tareas están a la misma hora: conviene buscar noticias antes de escribir la nota.'; aviso = true; }
   else { texto = 'La nota se escribe a las ' + hg + ', antes de buscar noticias a las ' + hs + ': va a usar las del día anterior.'; aviso = true; }
-  el.textContent = texto;
+  var extra = leerHorasExtra(), masNotas = '';
+  if (activaG && extra.length) {
+    masNotas = extra.length === 1 ? 'También se escribe otra nota a las ' + extra[0] + '.'
+      : 'También se escriben notas a las ' + extra.slice(0, -1).join(', ') + ' y ' + extra[extra.length - 1] + '.';
+  }
+  // Cada frase en su span: así cada una se traduce entera (textos.js).
+  el.innerHTML = '<span>' + escHtml(texto) + '</span>' + (masNotas ? ' <span>' + escHtml(masNotas) + '</span>' : '');
   el.classList.toggle('aviso', aviso);
 }
 
@@ -291,6 +390,7 @@ async function cargarAgenda(tipo, forzar) {
     var d = await r.json();
     if (!d.success) return;
     if (d.zona) _zona = d.zona;
+    if (tipo === 'generacion') AGENDA.generacion.presupuesto = { costo_nota_usd: d.costo_nota_usd, tope_usd: d.tope_usd };
     var form = FORMULARIOS.programacion;
     var pisar = forzar || !form || !form.sucio();
     if (pisar) {
@@ -299,7 +399,8 @@ async function cargarAgenda(tipo, forzar) {
         interval_days: d.interval_days || 1,
         enabled: d.enabled !== false,
         max_articulos: d.max_articulos,
-        persona: d.persona
+        persona: d.persona,
+        horas_extra: d.horas_extra || []
       });
       if (!forzar && form) form.tomarBase();
     }

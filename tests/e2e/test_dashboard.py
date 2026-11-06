@@ -845,3 +845,78 @@ def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
     pg.click("#pa-si")
     expect(pg.locator("#pe-estado")).to_have_text("Activa · v2")
     assert "Regla e2e." not in pg.input_value("#pe-texto")
+
+
+def test_mas_notas_por_dia_en_programacion(pagina):
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    pagina.wait_for_function("document.getElementById('hora-generacion').value !== ''")
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(1)
+    pagina.click("#btn-hora-extra")
+    pagina.click("#btn-hora-extra")
+    extras = pagina.locator("#horas-extra-generacion input")
+    expect(extras).to_have_count(2)
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(3)
+    expect(pagina.locator("#agenda-dia-resumen")).to_contain_text("También se escriben notas a las")
+    expect(pagina.locator("#presupuesto-generacion")).to_contain_text("3 notas")
+    barra = pagina.locator("#barra-programacion")
+    with pagina.expect_response(lambda r: "/api/generacion-config" in r.url and r.request.method == "POST") as resp:
+        barra.locator('[data-accion="guardar"]').click()
+    horas = resp.value.request.post_data_json["horas_extra"]
+    assert len(horas) == 2
+    barra.wait_for(state="hidden")
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#horas-extra-generacion input")).to_have_count(2)
+    # Se sacan (el servidor de los tests es compartido).
+    pagina.locator("#horas-extra-generacion .icon-btn").first.click()
+    pagina.locator("#horas-extra-generacion .icon-btn").first.click()
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(1)
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
+def test_rotar_categorias_se_guarda(pagina):
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    toggle = pagina.locator("#f2-rotar-toggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    barra = pagina.locator("#barra-crear")
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator("#f2-rotar-toggle")).to_have_attribute("aria-checked", "true")
+    pagina.locator("#f2-rotar-toggle").click()
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
+def test_el_tema_puntual_es_de_un_solo_uso(pagina):
+    pedidos = []
+
+    def generar(ruta):
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "id": "t1", "estado": "pendiente"})
+    pagina.route("**/api/corridas/generacion", generar)
+    pagina.route("**/api/corridas/t1/log?*", lambda r: r.fulfill(json={
+        "success": True, "lineas": ["[OK] Nota generada"], "siguiente": 1, "estado": "ok"}))
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    pagina.locator("#f2-categorias-grid .toggle-item").first.click()
+    pagina.locator("#barra-crear").locator('[data-accion="descartar"]').click()   # no guardar la categoría
+    pagina.locator("#f2-categorias-grid .toggle-item").first.click()
+    pagina.fill("#f2-tema", "dropshipping en Argentina")
+    pagina.fill("#f2-indicaciones", "cerrá con una pregunta")
+    pagina.click("#btn-f2-generar")
+    expect(pagina.locator("#f2-status")).to_contain_text("correctamente", timeout=10000)
+    assert pedidos[0]["tema"] == "dropshipping en Argentina" and pedidos[0]["indicaciones"] == "cerrá con una pregunta"
+    expect(pagina.locator("#f2-tema")).to_have_value("")
+    expect(pagina.locator("#f2-indicaciones")).to_have_value("")
+
+
+def test_gasto_de_meses_anteriores_en_el_tablero(pagina):
+    pasar_a_dev(pagina)
+    pagina.click("#confirmar-si")
+    meses = pagina.locator("#g-gasto .gasto-meses li")
+    expect(meses).to_have_count(6)
+    expect(pagina.locator("#g-gasto .gasto-meses-titulo")).to_have_text("Meses anteriores")

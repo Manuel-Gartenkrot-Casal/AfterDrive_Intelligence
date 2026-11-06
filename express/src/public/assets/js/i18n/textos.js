@@ -17,6 +17,17 @@ var _FILAS_TEXTOS = [
   ['+ Nueva nota', '+ Novo post', '+ New post'],
   // ── Crear nota en la vista Cliente (generador.js) ──
   ['Tu nota', 'Seu post', 'Your post'],
+  ['Solo para esta nota: no se guarda y las notas automáticas no lo usan.', 'Só para este post: não é salvo e os posts automáticos não o usam.', 'Just for this post: it isn’t saved and automatic posts don’t use it.'],
+  ['Rotar categorías automáticamente', 'Alternar categorias automaticamente', 'Rotate categories automatically'],
+  ['Cada nota usa 1 o 2 de las categorías marcadas, priorizando las que menos salieron en las últimas notas. Así no se repiten notas parecidas.', 'Cada post usa 1 ou 2 das categorias marcadas, priorizando as que menos saíram nos últimos posts. Assim não se repetem posts parecidos.', 'Each post uses 1 or 2 of the selected categories, favoring the ones that came up least in recent posts. That way similar posts don’t repeat.'],
+  ['rotando', 'alternando', 'rotating'],
+  ['Más notas por día', 'Mais posts por dia', 'More posts per day'],
+  ['+ Horario', '+ Horário', '+ Time'],
+  ['Quitar este horario', 'Remover este horário', 'Remove this time'],
+  ['Meses anteriores', 'Meses anteriores', 'Previous months'],
+  ['Relevancia', 'Relevância', 'Relevance'],
+  ['aparece en 1 búsqueda', 'aparece em 1 busca', 'shows up in 1 search'],
+  ['también la conoce la IA', 'a IA também conhece', 'the AI knows it too'],
   ['Enfoque', 'Enfoque', 'Focus'],
   ['Temas', 'Temas', 'Topics'],
   ['Extensión', 'Extensão', 'Length'],
@@ -1165,6 +1176,10 @@ function _fotosDescartadas(x, cod) {
 
 var PATRONES = {
   pt: [
+    [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Também é escrito outro post às $1.'],
+    [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Também são escritos posts às $1 e $2.'],
+    [/^Se escriben (\d+) notas automáticas por día\.$/, 'São escritos $1 posts automáticos por dia.'],
+    [/^aparece en (\d+) búsquedas$/, 'aparece em $1 buscas'],
     [/^notas con archivo \((\d+) de (\d+)\)$/, 'notas com arquivo ($1 de $2)'],
     [/^Hay (\d+) errores$/, 'Há $1 erros'],
     [/^La usa la IA · v(\d+)$/, 'A IA a usa · v$1'],
@@ -1280,6 +1295,10 @@ var PATRONES = {
     [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
+    [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Another post is also written at $1.'],
+    [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Posts are also written at $1 and $2.'],
+    [/^Se escriben (\d+) notas automáticas por día\.$/, '$1 automatic posts are written per day.'],
+    [/^aparece en (\d+) búsquedas$/, 'shows up in $1 searches'],
     [/^notas con archivo \((\d+) de (\d+)\)$/, 'articles with archive ($1 of $2)'],
     [/^Hay (\d+) errores$/, 'There are $1 errors'],
     [/^La usa la IA · v(\d+)$/, 'Used by the AI · v$1'],

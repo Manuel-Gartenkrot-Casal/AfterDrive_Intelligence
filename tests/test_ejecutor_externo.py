@@ -131,3 +131,19 @@ def test_reiniciar_el_servidor_no_interrumpe_la_de_github(col):
     cola.recuperar_al_arrancar()
     estados = sorted((d["ejecutor"], d["estado"]) for d in col.find())
     assert estados == [("github", "en_curso"), ("github", "interrumpida"), ("servidor", "interrumpida")]
+
+
+def test_dos_horas_de_generacion_en_la_misma_ventana_son_dos_notas(config):
+    store, revisado = config
+    store["generacion"]["horas_extra"] = ["11:30", "18:00"]
+    revisado.update(scraping=_a(10, 7).isoformat(), generacion=_a(10, 7).isoformat())
+    assert ejecutor_externo.pendientes(_a(11, 45)) == ["generacion", "generacion"]
+    assert ejecutor_externo.pendientes(_a(12, 7)) == []
+    assert ejecutor_externo.pendientes(_a(18, 7)) == ["generacion"]
+
+
+def test_varios_dias_sin_revisar_no_apilan_notas(config):
+    store, revisado = config
+    store["generacion"]["horas_extra"] = ["18:00"]
+    revisado.update(scraping=_a(10, 7, dia=17).isoformat(), generacion=_a(10, 7, dia=17).isoformat())
+    assert ejecutor_externo.pendientes(_a(12, 0)).count("generacion") == 2   # una por hora, no por día

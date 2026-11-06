@@ -36,10 +36,10 @@ Una barra lateral con secciones; se ve una a la vez.
 | Sección | Qué hay |
 |---|---|
 | **Inicio** | Resumen y última nota (vista Cliente) o estadísticas (vista Desarrollador) |
-| **Crear nota** | Categorías, regiones, clientes, tono, tema y puntapié. Botón Generar nota |
+| **Crear nota** | Categorías (con **Rotar categorías automáticamente**), regiones, clientes, tono, tema y puntapié. Botón Generar nota. El tema y las indicaciones son solo para esa nota: se vacían al generarla y no se guardan |
 | **Historial** | Notas para revisar (aprobar, rechazar, editar, publicar en HubSpot), notas descartadas y artículos guardados o descartados con su motivo |
-| **Programación** | Hora, frecuencia y activación del scraping y de la nota automática |
-| **Fuentes** | Fuentes de noticias (pausar, eliminar, agregar) y recomendaciones |
+| **Programación** | Hora, frecuencia y activación del scraping y de la nota automática. **Más notas por día**: horarios extra de generación, con lo que cuesta cada nota y cuántas entran en el tope de la API paga |
+| **Fuentes** | Fuentes de noticias (pausar, eliminar, agregar) y recomendaciones, ordenadas por puntaje (relevancia y en cuántas búsquedas aparecen) |
 | **Corridas** | Lo que está corriendo con su log, lo que espera y lo último que terminó |
 
 Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa) y, en Desarrollador, el **proveedor de IA**.

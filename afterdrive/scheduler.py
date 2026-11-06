@@ -5,6 +5,10 @@ Interfaz:
     iniciar()   arranca APScheduler y agenda según config_store
     aplicar()   reagenda después de un cambio de config
     proximas()  {"scraping": iso | None, "generacion": iso | None}
+    horarios(job_id) -> (habilitado, [(hora, minuto)], cada_dias)
+
+La generación puede correr varias veces por día: `hora` y las `horas_extra`
+de la config. Cada hora es un job propio ("generacion", "generacion_2", ...).
 
 La config (habilitado, hora, intervalo, max artículos) es de config_store;
 este módulo no guarda copia propia, así que no hay dos fuentes de verdad.
@@ -69,20 +73,45 @@ def externas() -> bool:
     return os.getenv("CORRIDAS_EXTERNAS", "").strip().lower() == "github"
 
 
-def programacion(job_id: str) -> tuple[bool, int, int, int]:
-    """(habilitado, hora, minuto, cada_dias) de un job, según la config guardada."""
+def _hhmm(texto: str) -> tuple[int, int] | None:
+    try:
+        hora, minuto = (int(x) for x in str(texto).split(":"))
+    except ValueError:
+        return None
+    return (hora, minuto) if 0 <= hora < 24 and 0 <= minuto < 60 else None
+
+
+def horarios(job_id: str) -> tuple[bool, list[tuple[int, int]], int]:
+    """(habilitado, [(hora, minuto)] en orden, cada_dias) de un job, según la config guardada.
+
+    La primera es `hora`; después las `horas_extra` (solo la generación las tiene).
+    """
     leer_config, hora_default, _ = _JOBS[job_id]
     cfg = leer_config()
-    hora, minuto = (int(x) for x in (cfg.get("hora") or hora_default).split(":"))
-    return bool(cfg.get("enabled", True)), hora, minuto, max(1, int(cfg.get("interval_days", 1)))
+    principal = _hhmm(cfg.get("hora") or hora_default) or _hhmm(hora_default)
+    extra = [h for h in (_hhmm(x) for x in cfg.get("horas_extra") or []) if h and h != principal]
+    return (bool(cfg.get("enabled", True)), [principal] + sorted(set(extra)),
+            max(1, int(cfg.get("interval_days", 1))))
+
+
+def programacion(job_id: str) -> tuple[bool, int, int, int]:
+    """(habilitado, hora, minuto, cada_dias) de la hora principal de un job."""
+    habilitado, horas, dias = horarios(job_id)
+    return habilitado, horas[0][0], horas[0][1], dias
+
+
+def _ids(job_id: str, cantidad: int) -> list[str]:
+    """"generacion", "generacion_2", "generacion_3"...: un job por hora."""
+    return [job_id] + [f"{job_id}_{i}" for i in range(2, cantidad + 1)]
 
 
 def aplicar() -> None:
     """Deja los jobs exactamente como dice la config guardada."""
     for job_id, (_, _, correr) in _JOBS.items():
-        habilitado, hora, minuto, dias = programacion(job_id)
-        if _scheduler.get_job(job_id):
-            _scheduler.remove_job(job_id)
+        for job in _scheduler.get_jobs():
+            if job.id == job_id or job.id.startswith(job_id + "_"):
+                job.remove()
+        habilitado, horas, dias = horarios(job_id)
         if not habilitado:
             print(f"[Scheduler] {job_id}: deshabilitado por configuración.", flush=True)
             continue
@@ -90,8 +119,10 @@ def aplicar() -> None:
             # La misma programación la lee afterdrive/ejecutor_externo.py en GitHub Actions.
             print(f"[Scheduler] {job_id}: a cargo de GitHub Actions (CORRIDAS_EXTERNAS=github).", flush=True)
             continue
-        _scheduler.add_job(correr, trigger(hora, minuto, dias), id=job_id)
-        print(f"[Scheduler] {job_id}: {hora:02d}:{minuto:02d} ({ZONA}) cada {dias} día(s).", flush=True)
+        for id_, (hora, minuto) in zip(_ids(job_id, len(horas)), horas, strict=True):
+            _scheduler.add_job(correr, trigger(hora, minuto, dias), id=id_)
+        lista = ", ".join(f"{h:02d}:{m:02d}" for h, m in horas)
+        print(f"[Scheduler] {job_id}: {lista} ({ZONA}) cada {dias} día(s).", flush=True)
 
 
 def iniciar() -> None:
@@ -105,15 +136,18 @@ def iniciar() -> None:
 
 
 def proximas() -> dict:
+    """La próxima ejecución de cada tipo (la más cercana de sus horas)."""
     def _iso(job_id):
         if externas():
-            habilitado, hora, minuto, dias = programacion(job_id)
+            habilitado, horas, dias = horarios(job_id)
             if not habilitado:
                 return None
             ahora = datetime.datetime.now(zoneinfo.ZoneInfo(ZONA))
-            return trigger(hora, minuto, dias).get_next_fire_time(None, ahora).isoformat()
-        job = _scheduler.get_job(job_id)
-        nxt = getattr(job, "next_run_time", None)  # los jobs pendientes (scheduler sin arrancar) no lo tienen
-        return nxt.isoformat() if nxt else None
+            return min(trigger(h, m, dias).get_next_fire_time(None, ahora) for h, m in horas).isoformat()
+        # Los jobs pendientes (scheduler sin arrancar) no tienen next_run_time.
+        siguientes = [nxt for job in _scheduler.get_jobs()
+                      if (job.id == job_id or job.id.startswith(job_id + "_"))
+                      and (nxt := getattr(job, "next_run_time", None))]
+        return min(siguientes).isoformat() if siguientes else None
 
     return {job_id: _iso(job_id) for job_id in _JOBS}

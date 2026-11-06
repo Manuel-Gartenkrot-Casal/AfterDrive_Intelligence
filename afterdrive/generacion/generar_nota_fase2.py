@@ -847,13 +847,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--indicaciones", type=str, default=None,
                         help="Indicaciones libres para la IA (la caja de Crear nota)")
     parser.add_argument("--largo", choices=list(redaccion.LARGOS), default=redaccion.LARGO_DEFAULT)
+    parser.add_argument("--rotar", action="store_true",
+                        help="Rotación de categorías: usa 1 o 2 de las pedidas, las menos usadas últimamente")
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
     args = parser.parse_args(argv)
     _validar_entorno()
+    categorias = args.categorias
+    if args.rotar:
+        from afterdrive.generacion import rotacion
+        categorias = rotacion.rotar(categorias)
 
     resultado = generar_nota(
-        categorias=args.categorias,
+        categorias=categorias,
         clientes_ids=args.clientes,
         puntapie_url=args.puntapie,
         persona=args.persona,
