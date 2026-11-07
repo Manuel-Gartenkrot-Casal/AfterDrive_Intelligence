@@ -53,13 +53,26 @@ def base_url():
             proc.wait()
 
 
+def e2e_obligatorio() -> bool:
+    """En el CI (GitHub define CI=true) o con E2E_OBLIGATORIO=1, los e2e tienen que correr."""
+    return any(os.getenv(v, "").strip().lower() in ("1", "true", "yes") for v in ("E2E_OBLIGATORIO", "CI"))
+
+
+def sin_navegador(motivo: str):
+    """Sin Chromium: localmente se saltean; en el CI fallan. Si se salteaban ahí, el job
+    quedaba en verde sin haber probado nada del dashboard."""
+    if e2e_obligatorio():
+        pytest.fail(f"{motivo} En el CI los e2e no se saltean.", pytrace=False)
+    pytest.skip(motivo)
+
+
 @pytest.fixture(scope="session")
 def navegador():
     with playwright.sync_playwright() as p:
         try:
             b = p.chromium.launch(executable_path=os.getenv("E2E_CHROMIUM") or None)
         except Exception as e:
-            pytest.skip(f"Sin Chromium para los tests e2e ({e}).")
+            sin_navegador(f"Sin Chromium para los tests e2e ({e}). Apuntalo con E2E_CHROMIUM=/ruta/a/chromium.")
         yield b
         b.close()
 
