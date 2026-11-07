@@ -219,6 +219,22 @@ def set_blog_pruebas_config(activo: bool):
     _set_section("blog_pruebas", {"activo": bool(activo)})
 
 
+# ── Prompts con IA ────────────────────────────────────────────────────────────
+
+# Prompts con IA (prompts_ia.py): con qué prompts escribe la redacción (los actuales, aprobados,
+# o la copia que mejora la IA) y si la IA mejora la copia sola cada pocas notas.
+DEFAULT_PROMPTS_IA = {"usar": "actuales", "auto": True}
+
+
+def get_prompts_ia_config() -> dict:
+    c = _get_section("prompts_ia", DEFAULT_PROMPTS_IA)
+    return {"usar": c["usar"] if c.get("usar") in ("actuales", "ia") else "actuales", "auto": bool(c.get("auto", True))}
+
+
+def set_prompts_ia_config(valor: dict):
+    _set_section("prompts_ia", {"usar": valor.get("usar", "actuales"), "auto": bool(valor.get("auto", True))})
+
+
 # ── Aprobación automática (vista Desarrollador) ───────────────────────────────
 
 # Prendido = las notas de la generación programada que pasan el filtro y el

@@ -22,6 +22,7 @@ Login y guardia en `afterdrive/auth.py`.
 | `GET /api/health` | Lo consulta el dashboard para el indicador "Online" |
 | `GET /api/db-check` | Diagnóstico de la conexión a Mongo (sin credenciales) |
 | `POST /api/login`, `POST /api/logout` | |
+| `GET /api/sesion` | `{usuario}`: quién está conectado (el perfil del pie de la barra lateral) |
 
 **Corridas (la cola)**
 
@@ -92,6 +93,18 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `PATCH /api/fase2/clientes/<slug>` | `{"modo"}`: si se puede nombrar. Pasar a `no_mencionar` la saca de los clientes de la nota automática |
 | `GET /api/fase2/ultima-nota`, `GET /api/fase2/notas/<id>` | Leer una nota |
 | `POST /api/evaluate-article` | Checklist de calidad a demanda |
+
+**Prompts con IA** (`prompts_ia.py`)
+
+| | |
+|---|---|
+| `GET /api/prompts-ia` | Con qué prompts escribe la redacción (`usar`: `actuales` o `ia`), si la mejora es automática (`auto`, `auto_cada`, `faltan`), la copia pieza por pieza, el último análisis y las últimas mejoras |
+| `POST /api/prompts-ia/usar` | `{"usar": "actuales" \| "ia"}` |
+| `POST /api/prompts-ia/auto` | `{"auto": bool}`: que la IA mejore la copia sola cada 5 notas nuevas |
+| `POST /api/prompts-ia/mejorar` | Encola una mejora (202, se sigue como cualquier Corrida). Sin cuerpo: analiza las notas y con ese diagnóstico la IA cambia la copia. `{"pedido", "claves"?}`: un cambio a mano. Los cambios válidos se aplican directo en la copia |
+| `POST /api/prompts-ia/deshacer` | `{"clave"}`: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA |
+| `GET /api/prompts-ia/pieza/<clave>` | El texto actual y el de la copia de una pieza, con sus cambios |
+| `POST /api/prompts-ia/restablecer` | `{"clave"?}`: la copia (o esa pieza) vuelve a ser igual a los prompts actuales |
 
 Los endpoints viejos que corrían fuera de la cola (`/api/add-url`, `/api/discover-sources`, `/api/stream/*`, `/api/fase2/stream/*`, `/api/fase2/generar`, `/api/fase2/scrape`, Fase 1) se borraron.
 

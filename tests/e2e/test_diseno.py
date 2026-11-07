@@ -141,6 +141,7 @@ def test_historial_filtra_y_navega_con_flechas(pagina):
     expect(pagina.locator("#hist-estados")).to_be_visible()
 
 
+@pytest.mark.parametrize("pagina", ["dev"], indirect=True)   # la terminal es de la vista Desarrollador
 def test_actividad_acompana_sin_abrirse_de_nuevo(pagina):
     # Fixture HTTP: no se inicia scraping ni se escribe en Mongo.
     tarea = {"id": "prueba-diseno", "etiqueta": "Preparando nota", "estado": "en_curso", "origen": "manual"}
@@ -156,23 +157,66 @@ def test_actividad_acompana_sin_abrirse_de_nuevo(pagina):
     pagina.locator('.nav-link[data-seccion="corridas"]').click()
     dock = pagina.locator("#actividad-dock")
     expect(dock).to_be_visible()
-    expect(dock).to_have_attribute("open", "")
+    expect(dock).to_have_attribute("data-abierta", "")
     expect(pagina.locator("#actividad-log")).to_contain_text("Generando nota")
     pagina.locator('.nav-link[data-seccion="fuentes"]').click()
     expect(dock).to_be_visible()
-    dock.locator("summary").click()
-    expect(dock).not_to_have_attribute("open", "")
+    pagina.click("#terminal-plegar")
+    expect(dock).not_to_have_attribute("data-abierta", "")
+    expect(pagina.locator("#actividad-log")).to_be_hidden()
     tarea["estado"] = "ok"
     estado.update(en_curso=None, recientes=[tarea])
     expect(dock).to_have_attribute("data-estado", "ok", timeout=10000)
-    expect(dock).not_to_have_attribute("open", "")
-    dock.locator("summary").click()
+    expect(dock).not_to_have_attribute("data-abierta", "")
+    pagina.click("#terminal-plegar")
     expect(pagina.locator("#actividad-log")).to_have_text("\n".join(lineas))
+
+
+@pytest.mark.parametrize("pagina", ["dev"], indirect=True)
+def test_la_terminal_se_agranda_arrastrando_y_no_encima_el_contenido(pagina):
+    """Como en VS Code: va debajo del contenido (que se achica y scrollea) y el borde se arrastra."""
+    tarea = {"id": "prueba-terminal", "etiqueta": "Crear carruseles", "estado": "en_curso", "origen": "manual"}
+    pagina.route("**/api/corridas", lambda r: r.fulfill(json={"en_curso": tarea, "pendientes": [], "recientes": []}))
+    pagina.route("**/api/corridas/prueba-terminal/log?*", lambda r: r.fulfill(
+        json={"lineas": ["[OK] Carruseles listos: es, pt, en.", "[ERROR] algo falló"], "siguiente": 2, "estado": "en_curso"}))
+    pagina.locator('.nav-link[data-seccion="fuentes"]').click()
+    pagina.evaluate("refrescarCorridas()")
+    dock, log = pagina.locator("#actividad-dock"), pagina.locator("#actividad-log")
+    expect(log).to_be_visible()
+    expect(log.locator(".t-ok")).to_have_text("[OK] Carruseles listos: es, pt, en.")
+    expect(log.locator(".t-err")).to_have_count(1)
+    contenido = pagina.locator("#contenido")
+    # El contenido termina antes de la terminal: nada queda debajo de ella.
+    def sin_encimar():
+        c, d = contenido.bounding_box(), dock.bounding_box()
+        return c["y"] + c["height"] <= d["y"] + 1 and d["y"] - (c["y"] + c["height"]) <= 16
+    assert sin_encimar()
+    alto = log.bounding_box()["height"]
+    borde = pagina.locator("#terminal-borde").bounding_box()
+    x, y = borde["x"] + 200, borde["y"] + borde["height"] / 2
+    pagina.mouse.move(x, y)
+    pagina.mouse.down()
+    pagina.mouse.move(x, y - 100, steps=5)
+    pagina.mouse.up()
+    assert abs(log.bounding_box()["height"] - (alto + 100)) <= 4
+    assert pagina.evaluate("localStorage.getItem('ad-terminal-alto')") == str(round(alto + 100))
+    assert sin_encimar()
+    # La sección de Fuentes no se aplasta: el área de contenido scrollea.
+    assert pagina.locator(".fuentes-seccion").bounding_box()["height"] >= 439
+    # Maximizar, la pestaña Cola y cerrar.
+    pagina.click("#terminal-maximizar")
+    expect(pagina.locator("#terminal-maximizar")).to_have_attribute("aria-pressed", "true")
+    assert log.bounding_box()["height"] > alto + 100
+    pagina.click("#terminal-tab-cola")
+    expect(pagina.locator("#terminal-cola")).to_contain_text("Crear carruseles")
+    expect(log).to_be_hidden()
+    dock.get_by_role("button", name="Cerrar la terminal").click()
+    expect(dock).to_be_hidden()
 
 
 @pytest.mark.parametrize('ancho', [390, 1440])
 def test_consola_no_tapa_guardar_configuracion(navegador, base_url, ancho):
-    pg = abrir(navegador, base_url, ancho=ancho, alto=900)
+    pg = abrir(navegador, base_url, modo="dev", ancho=ancho, alto=900)
     try:
         tarea = {'id':'prueba-espacio', 'etiqueta':'Generar nota', 'estado':'en_curso', 'origen':'manual'}
         pg.route('**/api/corridas', lambda r: r.fulfill(json={'en_curso':tarea,'pendientes':[],'recientes':[]}))
@@ -233,3 +277,34 @@ def test_revision_visible_en_ambos_temas(pagina, ancho, tema):
     assert cuerpo["height"] > 120
     assert acciones["y"] + acciones["height"] <= 900
     assert pagina.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_en_la_vista_cliente_no_hay_terminal(pagina):
+    tarea = {"id": "prueba-cliente", "etiqueta": "Generar nota", "estado": "en_curso", "origen": "manual"}
+    pagina.route("**/api/corridas", lambda r: r.fulfill(json={"en_curso": tarea, "pendientes": [], "recientes": []}))
+    pagina.route("**/api/corridas/prueba-cliente/log?*", lambda r: r.fulfill(json={"lineas": ["x"], "siguiente": 1, "estado": "en_curso"}))
+    pagina.evaluate("refrescarCorridas()")
+    pagina.wait_for_function("!document.getElementById('actividad-dock').hidden")
+    expect(pagina.locator("#actividad-dock")).to_be_hidden()
+
+
+@pytest.mark.parametrize("pagina", ["dev"], indirect=True)
+def test_en_desarrollador_ayuda_lleva_a_cliente_y_la_vista_no_queda_guardada(pagina):
+    """En Desarrollador: Inicio se llama Métricas, la vista se cambia desde Ayuda (a Cliente) y,
+    al volver a entrar, se arranca en Cliente."""
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_have_text("Métricas")
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_be_visible()
+    expect(pagina.locator(".sidebar-pie .modo-switch")).to_be_hidden()
+    pagina.click("#ayuda-btn")
+    menu = pagina.locator("#ayuda-menu")
+    expect(menu.locator(".ayuda-dev")).to_be_hidden()
+    expect(menu.locator(".ayuda-salir")).to_be_visible()
+    menu.locator(".ayuda-cliente").click()
+    pagina.click("#confirmar-si")
+    expect(pagina.locator("html")).to_have_attribute("data-modo", "cliente")
+    expect(pagina.locator('.nav-link[data-seccion="inicio"] span.solo-dev')).to_be_hidden()
+    pasar_a_dev(pagina)
+    pagina.click("#confirmar-si")
+    expect(pagina.locator("html")).to_have_attribute("data-modo", "dev")
+    # La vista dura lo que la pestaña (sessionStorage): no queda guardada para la próxima vez que se entra.
+    assert pagina.evaluate("[sessionStorage.getItem('ad-modo'), localStorage.getItem('ad-modo')]") == ["dev", None]

@@ -100,9 +100,23 @@ The sites checked for news.
 - **Pause** stops checking it without deleting it.
 - **Find recommendations** suggests new industry sites: it searches the web and also asks the AI for ideas (each site is checked before it's suggested).
 
+## Prompts
+
+The instructions the AI gets when writing each post, in pieces (identity, audience, data rules, Alephee focus, format, SEO and one per persona). Every manual change goes through draft, review and approval.
+
+Prompts has two tabs: **Current prompts** (the ones above) and **AI prompts**, which improves them without you writing them. The AI reads how posts are rated (the critique, the judge, your ratings and the Alephee checklist), finds what keeps happening and which piece to change, and edits a **copy** of the prompts. The current prompts never change from here.
+
+- **Automatic improvement**: when on, the AI improves the copy on its own every 5 new posts.
+- **Analyze and improve now** does it right away.
+- The tab shows the full AI prompt with what changed marked in green (what was removed, in red), the post analysis, the history and a box to ask for a change manually (for example, "use voseo throughout the post").
+- If you don't like a change, **Undo the last one**; **Back to current** deletes the changes to a piece.
+- **Use these prompts** makes writing use the AI ones; the tab in use says **In use**.
+
 ## Runs
 
 What the system is running (fetching news, generating a post) and what's waiting its turn, with a log of every step. It runs one thing at a time: anything you request meanwhile is queued. A pending run can be canceled.
+
+In the Developer view, while something runs, the **terminal** shows up at the bottom with the live log and, in the **Queue** tab, what's waiting. Drag its top edge to make it taller, maximize or hide it with the buttons on the right, and close it with the ×.
 
 ## Paid API
 
@@ -110,7 +124,7 @@ The **Paid API** is chosen in the Developer view, under **AI provider**, and sta
 
 ## Client and Developer view
 
-- **Client** shows the essentials.
+- **Client** shows the essentials. To switch to Developer or log out, tap your user at the bottom of the sidebar.
 - **Developer** adds the process console, technical statistics and the choice of AI provider.
 
 ## FAQ

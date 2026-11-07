@@ -703,15 +703,18 @@ def prompts_restaurar(clave):
 def prompts_vista_previa():
     """El system prompt completo, con un texto sin aprobar en lugar de la pieza activa.
 
-    {"persona", "clave", "contenido", "largo", "compacto"}: sin clave, el prompt activo.
+    {"persona", "clave", "contenido", "largo", "compacto", "juego"}: sin clave, el prompt activo.
+    "juego": "actuales" o "ia" arma el prompt con ese juego (Prompts con IA), sea cual sea el que está en uso.
     """
     from afterdrive.ia import redaccion
 
     body = request.get_json(silent=True) or {}
 
     def armar(pe):
+        from afterdrive import prompts_ia
+
         clave = body.get("clave") or ""
-        piezas = {}
+        piezas = prompts_ia.textos(body["juego"]) if body.get("juego") in prompts_ia.JUEGOS else {}
         if clave:
             if clave not in pe.CLAVES:
                 raise pe.ErrorPrompt("Pieza del prompt desconocida.")
@@ -920,6 +923,75 @@ def hubspot_traducciones():
     if r.get("error"):
         return jsonify({"success": False, "error": r["error"]}), 429
     return jsonify({"success": True, **r}), 202
+
+
+# ── Prompts con IA: análisis de las calificaciones y una copia de los prompts que cambia la IA ──
+
+
+def _prompts_ia(accion):
+    """Corre una acción de prompts_ia: ErrorPromptIA y ErrorPrompt son un 400 con su mensaje."""
+    from afterdrive import prompts_editables, prompts_ia
+
+    try:
+        return accion(prompts_ia)
+    except (prompts_ia.ErrorPromptIA, prompts_editables.ErrorPrompt) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/prompts-ia", methods=["GET"])
+def prompts_ia_estado():
+    """Con qué prompts escribe la redacción, si la mejora es automática, la copia, el último análisis y las mejoras."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.estado()}))
+
+
+@app.route("/api/prompts-ia/usar", methods=["POST"])
+def prompts_ia_usar():
+    """{"usar": "actuales" | "ia"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.usar(body.get("usar", ""))}))
+
+
+@app.route("/api/prompts-ia/auto", methods=["POST"])
+def prompts_ia_auto():
+    """{"auto": bool}: si la IA mejora sola la copia de los prompts cada pocas notas."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.set_auto(bool(body.get("auto")))}))
+
+
+@app.route("/api/prompts-ia/mejorar", methods=["POST"])
+def prompts_ia_mejorar():
+    """Encola una mejora de la copia: {"pedido"?, "claves"?}. Sin pedido, la IA analiza las notas y
+    con ese diagnóstico cambia la copia. Corre en la cola (el registro se ve en la terminal)."""
+    body = request.get_json(silent=True) or {}
+    pedido = " ".join(str(body.get("pedido") or "").split())[:1500]
+    if pedido and len(pedido) < 8:
+        return jsonify({"success": False, "error": "Contá qué querés cambiar en los prompts."}), 400
+    claves = [c for c in body.get("claves") or [] if isinstance(c, str)] if isinstance(body.get("claves"), list) else []
+    argv = (["--pedido", pedido] if pedido else []) + (["--claves", *claves] if claves else [])
+    return _encolar("script", {"modulo": "afterdrive.prompts_ia", "argv": argv},
+                    etiqueta="Cambiar prompts con IA" if pedido else "Mejorar prompts con IA")
+
+
+@app.route("/api/prompts-ia/deshacer", methods=["POST"])
+def prompts_ia_deshacer():
+    """{"clave"}: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.deshacer(str(body.get("clave") or ""))}))
+
+
+@app.route("/api/prompts-ia/pieza/<clave>", methods=["GET"])
+def prompts_ia_pieza(clave):
+    """El texto actual y el de la copia de la IA de una pieza, con sus cambios."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.pieza(clave)}))
+
+
+@app.route("/api/prompts-ia/restablecer", methods=["POST"])
+def prompts_ia_restablecer():
+    """{"clave"} opcional: la copia (o esa pieza) vuelve a ser igual a los prompts actuales."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, "restablecidas": pi.restablecer(body.get("clave") or None)}))
 
 
 # ── Cola de Corridas ──────────────────────────────────────────────────────────

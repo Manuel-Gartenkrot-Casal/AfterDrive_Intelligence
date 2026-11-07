@@ -14,7 +14,8 @@ Interfaz:
     restaurar(clave, version, motivo="", base=None) -> dict
                                                    una versión archivada (0 = el texto original) vuelve
                                                    a revisión: hay que aprobarla de nuevo
-    activos() -> {clave: contenido}                lo que usa redaccion.py (caché de CACHE_S segundos)
+    activos() -> {clave: contenido}                lo que usa redaccion.py (caché de CACHE_S segundos); con la
+                                                   copia de la IA elegida, sus piezas pisan a estas (prompts_ia.py)
 
 Recorrido de una pieza: Borrador → Validar → Enviar a revisión → Aprobar y
 activar → Activa. El login es de un solo admin: las aprobaciones son pasos de
@@ -330,16 +331,27 @@ def invalidar_cache() -> None:
     _cache["hasta"] = 0.0
 
 
+def aprobados(base=None) -> dict:
+    """{clave: contenido} de las piezas aprobadas, sin la copia de la IA (sin caché)."""
+    return {d["clave"]: d["contenido"] for d in _col(base).find({"estado": ACTIVO}, {"clave": 1, "contenido": 1})
+            if d.get("clave") in CLAVES and d.get("contenido")}
+
+
 def activos(base=None) -> dict:
     """{clave: contenido} de las piezas aprobadas. Si Mongo falla, {} (y se reintenta en CACHE_S)."""
     if base is None and time.monotonic() < _cache["hasta"]:
         return _cache["datos"]
     try:
-        datos = {d["clave"]: d["contenido"] for d in _col(base).find({"estado": ACTIVO}, {"clave": 1, "contenido": 1})
-                 if d.get("clave") in CLAVES and d.get("contenido")}
+        datos = aprobados(base)
     except Exception as e:
         print(f"[AVISO] Prompts editados no disponibles, se usan los originales: {e}", flush=True)
         datos = {}
+    # Con "Usar la copia de la IA" prendido (Prompts con IA), las piezas que cambió la IA pisan a las actuales.
+    try:
+        from afterdrive import prompts_ia
+        datos = {**datos, **prompts_ia.en_uso(base)}
+    except Exception as e:
+        print(f"[AVISO] Copia de la IA no disponible, se usan los prompts actuales: {e}", flush=True)
     if base is None:
         _cache.update(hasta=time.monotonic() + CACHE_S, datos=datos)
     return datos

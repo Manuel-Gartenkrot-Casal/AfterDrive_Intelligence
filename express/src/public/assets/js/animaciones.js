@@ -35,7 +35,7 @@ function iniciarPasosNota() {
   var ol = $('f2-pasos');
   if (!ol) return;
   _pasoNota = 0;
-  ol.hidden = false;
+  ol.classList.add('en-marcha');   // en Desarrollador y en el celular se ve solo mientras se genera
   ol.classList.remove('terminado');
   ol.children[6].hidden = true; // La imagen es opcional: no simular un paso que no ocurrió.
   _pintarPasos(0, null);

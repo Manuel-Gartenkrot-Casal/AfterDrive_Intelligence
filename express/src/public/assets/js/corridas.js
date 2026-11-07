@@ -93,10 +93,12 @@ async function pintarActividad(d) {
   }).join('') || '<p class="corridas-vacio">Las tareas terminadas aparecerán acá.</p>';
   if (!c && _dockLog.id) c = d.recientes.find(function(it) { return it.id === _dockLog.id; });
   var dock = $('actividad-dock');
-  if (!c) { dock.hidden = true; return; }
+  pintarColaTerminal(d);
+  if (!c || c.id === _term.cerrada) { dock.hidden = true; return; }
   if (_dockLog.id !== c.id) {
+    // Una tarea nueva: la terminal se abre con su registro.
     _dockLog = { id: c.id, desde: 0, lineas: [] };
-    dock.open = true;
+    abrirTerminal(true);
   }
   dock.hidden = false;
   dock.dataset.estado = c.estado;
@@ -107,12 +109,129 @@ async function pintarActividad(d) {
     _dockLog.lineas = _dockLog.lineas.concat(lg.lineas).slice(-500);
     var pre = $('actividad-log');
     var abajo = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
-    pre.textContent = _dockLog.lineas.join('\n');
+    pre.innerHTML = _dockLog.lineas.map(lineaTerminal).join('\n');
     if (abajo) pre.scrollTop = pre.scrollHeight;
     $('actividad-paso').textContent = c.estado === 'pendiente' ? 'Esperando su turno en la cola.'
       : TERMINALES.includes(c.estado) ? (c.error || 'La tarea finalizó. Podés consultar el registro.')
       : pasoGeneracion(_dockLog.lineas.at(-1) || '') || 'Procesando. El registro se actualiza automáticamente.';
   } catch(e) { $('actividad-paso').textContent = 'No se pudo actualizar el registro. Reintentando…'; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TERMINAL: el panel de abajo, como el de VS Code. En escritorio ocupa una
+   fila propia debajo del contenido (el contenido se achica y scrollea, nada
+   queda encimado); en el celular flota abajo. El alto se cambia arrastrando
+   el borde de arriba (o con las flechas, con el borde enfocado) y se recuerda.
+   ═══════════════════════════════════════════════════════════════════════ */
+var TERMINAL_ALTO = 240, TERMINAL_MIN = 120;
+var _term = { alto: TERMINAL_ALTO, max: false, cerrada: null };
+try { _term.alto = Math.max(TERMINAL_MIN, parseInt(localStorage.getItem('ad-terminal-alto'), 10) || TERMINAL_ALTO); } catch (e) {}
+
+// Una línea del registro, con color según su marca: [OK], [ERROR], [AVISO]...
+function lineaTerminal(l) {
+  var clase = /\[(ERROR|FALLA)\]|Traceback|Error:/i.test(l) ? 'err'
+    : /\[(AVISO|WARN|CANCELADA)\]/i.test(l) ? 'aviso'
+    : /\[OK\]|^>>>/.test(l) ? 'ok'
+    : /^\s*\[(TOKENS|COSTO|DB|MODO PAGO)\]/.test(l) ? 'tenue' : '';
+  return clase ? '<span class="t-' + clase + '">' + escHtml(l) + '</span>' : escHtml(l);
+}
+
+function altoMaximoTerminal() {
+  var layout = document.querySelector('.layout');
+  var disponible = layout && window.matchMedia('(min-width: 901px)').matches ? layout.getBoundingClientRect().height : window.innerHeight;
+  return Math.max(TERMINAL_MIN, Math.round(disponible - 160));
+}
+
+function aplicarAltoTerminal() {
+  var alto = _term.max ? altoMaximoTerminal() : Math.min(_term.alto, altoMaximoTerminal());
+  var dock = $('actividad-dock');
+  dock.style.setProperty('--terminal-alto', alto + 'px');
+  var borde = $('terminal-borde');
+  borde.setAttribute('aria-valuenow', alto);
+  borde.setAttribute('aria-valuemin', TERMINAL_MIN);
+  borde.setAttribute('aria-valuemax', altoMaximoTerminal());
+  $('terminal-maximizar').setAttribute('aria-pressed', _term.max ? 'true' : 'false');
+  $('terminal-maximizar').title = _term.max ? 'Restaurar el tamaño' : 'Maximizar';
+  dock.classList.toggle('maximizada', _term.max);
+}
+
+function abrirTerminal(si) {
+  var dock = $('actividad-dock');
+  if (si) dock.setAttribute('data-abierta', ''); else dock.removeAttribute('data-abierta');
+  $('terminal-plegar').setAttribute('aria-expanded', si ? 'true' : 'false');
+  $('terminal-plegar').title = si ? 'Ocultar el panel' : 'Mostrar el panel';
+  aplicarAltoTerminal();
+}
+function plegarTerminal() { abrirTerminal(!$('actividad-dock').hasAttribute('data-abierta')); }
+function maximizarTerminal() { _term.max = !_term.max; abrirTerminal(true); }
+// Cerrar la oculta hasta que empiece otra tarea.
+function cerrarTerminal() { _term.cerrada = _dockLog.id; $('actividad-dock').hidden = true; }
+
+function verPestanaTerminal(vista) {
+  document.querySelectorAll('.terminal-pestana').forEach(function(b) {
+    b.setAttribute('aria-selected', b.dataset.vista === vista ? 'true' : 'false');
+  });
+  $('actividad-log').hidden = vista !== 'registro';
+  $('terminal-cola').hidden = vista !== 'cola';
+  abrirTerminal(true);
+}
+
+function pintarColaTerminal(d) {
+  var filas = (d.en_curso ? [d.en_curso] : []).concat(d.pendientes || []);
+  $('terminal-cuenta').textContent = filas.length ? filas.length : '';
+  $('terminal-cola').innerHTML = filas.length ? filas.map(function(c, i) {
+    return '<div class="terminal-fila"><span class="terminal-fila-n">' + (c.estado === 'en_curso' ? '▶' : i) + '</span>'
+      + '<span class="terminal-fila-nombre">' + escHtml(c.etiqueta) + '</span>'
+      + '<span class="estado-chip ' + c.estado + '">' + NOMBRE_ESTADO[c.estado] + '</span></div>';
+  }).join('') : '<p class="terminal-vacio">No hay nada corriendo ni esperando.</p>';
+}
+
+function initTerminal() {
+  var dock = $('actividad-dock'), borde = $('terminal-borde');
+  document.querySelectorAll('.terminal-pestana').forEach(function(b) {
+    b.addEventListener('click', function() { verPestanaTerminal(b.dataset.vista); });
+  });
+  function guardar() { try { localStorage.setItem('ad-terminal-alto', String(_term.alto)); } catch (e) {} }
+  borde.addEventListener('pointerdown', function(ev) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    // Plegada, arrastrar hacia arriba la abre desde cero.
+    var y0 = ev.clientY;
+    var alto0 = dock.hasAttribute('data-abierta') ? parseInt(dock.style.getPropertyValue('--terminal-alto'), 10) || _term.alto : 0;
+    borde.setPointerCapture(ev.pointerId);
+    document.body.classList.add('arrastrando-terminal');
+    function mover(e) {
+      _term.max = false;
+      _term.alto = Math.max(TERMINAL_MIN, Math.min(altoMaximoTerminal(), Math.round(alto0 + (y0 - e.clientY))));
+      abrirTerminal(true);
+    }
+    function soltar() {
+      borde.removeEventListener('pointermove', mover);
+      document.body.classList.remove('arrastrando-terminal');
+      guardar();
+    }
+    borde.addEventListener('pointermove', mover);
+    borde.addEventListener('pointerup', soltar, { once: true });
+    borde.addEventListener('pointercancel', soltar, { once: true });
+  });
+  // Doble clic en el borde: vuelve al alto de siempre.
+  borde.addEventListener('dblclick', function() { _term.alto = TERMINAL_ALTO; _term.max = false; abrirTerminal(true); guardar(); });
+  borde.addEventListener('keydown', function(ev) {
+    var paso = ev.shiftKey ? 80 : 24;
+    if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+    ev.preventDefault();
+    _term.max = false;
+    _term.alto = Math.max(TERMINAL_MIN, Math.min(altoMaximoTerminal(), _term.alto + (ev.key === 'ArrowUp' ? paso : -paso)));
+    abrirTerminal(true);
+    guardar();
+  });
+  window.addEventListener('resize', aplicarAltoTerminal);
+  // En el celular la terminal flota abajo: se reserva su alto para que no tape Guardar/Descartar.
+  new ResizeObserver(function() {
+    var flota = !window.matchMedia('(min-width: 901px)').matches && !dock.hidden;
+    document.body.style.setProperty('--dock-height', flota ? Math.ceil(dock.getBoundingClientRect().height) + 'px' : '0px');
+  }).observe(dock);
+  aplicarAltoTerminal();
 }
 
 async function refrescarCorridas() {
@@ -194,12 +313,7 @@ async function cancelarCorrida(id, btn) {
 }
 
 function initCorridas() {
-  // La consola puede crecer al recibir líneas: reservar su altura real para
-  // que nunca tape Guardar/Descartar, incluso con traducciones o en móvil.
-  var dock = $('actividad-dock');
-  new ResizeObserver(function() {
-    document.body.style.setProperty('--dock-height', Math.ceil(dock.getBoundingClientRect().height) + 'px');
-  }).observe(dock);
+  initTerminal();
   var tick = 0;
   document.addEventListener('seccion', function(ev) { if (ev.detail === 'corridas') refrescarCorridas(); });
   setInterval(function() {

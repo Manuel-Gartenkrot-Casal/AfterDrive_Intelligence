@@ -19,12 +19,18 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
 | `notas_fase2` | **Las notas del generador principal** | `contenido` (markdown), `categorias`, `regiones`, `clientes_mencionados`, `puntapie_url`, `persona`, `tema`, `indicaciones` (lo escrito en la caja de Crear nota), `empresas_prohibidas` (empresas `no_mencionar` que quedaron nombradas en el texto, sin contar la sección de fuentes; se recalcula al editar), `fuentes` (con `reutilizada: true` si la noticia venía de una nota rechazada), `evaluacion`, `calidad`, `proveedor`, `embedding`, `generado_en`, **`estado`**, `motivo_rechazo`, `rechazado_en`, `correcciones_usadas`, `imagen` (`url`, `alt`, `origen`: la noticia o la página del banco de la que sale la foto, y `hubspot_url`: la copia en los archivos de HubSpot), `imagenes_cuerpo` (las 4 del texto, con los mismos campos y, si salen de un banco de imágenes, `banco`, `credito` y `atribucion: true` cuando la licencia pide mostrar el crédito), `imagen_eleccion` (`metodo`: ia, primera o ninguna, y `motivo`), `notas_blog_sugeridas` y `notas_blog_citadas` (notas de AfterDrive que se le pasaron para citar y las que citó), `traducciones` (por idioma: `contenido`, `huella` del original, `traducido_en`), `hubspot_traducciones` (por idioma: `id`, `url`, `estado`, `slug`, `vinculada`, `aviso` o `error`), `editado_en`, `publicado_en`, `hubspot`, `plan`, `verificacion` (datos respaldados, sin respaldo y dudosos), `estilo` (hallazgos), `seo`, `parecida_a`, `enlaces_quitados`, `calibracion_usada`, `largo`, `costo` (USD total y por tarea de la API paga), `calificacion` (puntaje 1-5, etiquetas, comentario), `contenido_original` (lo que escribió el modelo, antes de la primera edición), `leccion_edicion`, `carruseles` (por idioma, es, pt y en: `textos` con titulo, subtitulo, puntos y cta; `origen_textos`: ia, nota o editado; `url` del blog; `diapositivas`: las 3 URLs `/api/imagenes/<id>`; `pdf_id`; `generado_en`; `redibujadas`: las diapositivas que se dibujaron la última vez). Las notas de antes tenían uno solo en `carrusel`: se migra al tocarlo |
+| `prompts_ia` | **La copia de los prompts que mejora la IA** (Prompts con IA). Solo las piezas cambiadas: las demás son iguales a las actuales | `clave`, `contenido`, `base_version` y `base_contenido` (la versión actual de la que salió), `cambios` [{`fecha`, `origen`, `pedido`, `explicacion`, `antes`}] (`antes` sirve para deshacer), `actualizado` |
+| `prompts_ia_analisis` | Los análisis de las calificaciones (el último se ve en Prompts) | `fecha`, `estadisticas`, `diagnostico` {`resumen`, `problemas`} o `error` |
+| `prompts_ia_mejoras` | Cada mejora de la copia: automática, "Analizar y mejorar" o un pedido | `fecha`, `origen` (`automatica` / `manual` / `pedido`), `pedido`, `resumen`, `cambios` [{`clave`, `antes`, `despues`, `explicacion`, `errores`, `aplicado`}], `error` |
+| `prompts_ia_estado` | Hasta qué nota miró la mejora automática | `_id: "auto"`, `ultima_nota`, `fecha` |
 | `notas_descartadas` | Notas que el saneo rechazó | `origen`, `contenido` (crudo, hasta 20000 caracteres), `motivo`, `descartado_en`, parámetros del pedido |
 | `articulos_generados` | Notas del generador viejo (Fase 1, ya borrado). Solo se leen en el Historial | `contenido`, `tema`, `fuentes`, `embedding`, `generado_en`, `estado` |
 
 **Estado de una nota**: `borrador` (o sin el campo, las viejas) → `aprobada` / `rechazada` → `publicado`. El valor es `publicado` y no `publicada` por compatibilidad con lo que guardó `Front-Testing`.
 
 **`calidad`**: `{puntaje (0–9), fallas_criticas, intentos, reescrita_por}`.
+
+**`prompts_juego`**: con qué prompts se escribió la nota, `actuales` o `ia` (la copia de la IA). El análisis de Prompts con IA compara los promedios de cada uno.
 
 **`hubspot`**: `{id, url, estado (DRAFT / PUBLISHED), enviado_en}`, solo si se envió.
 
@@ -53,6 +59,7 @@ Definidos en `config_store.py`:
 | `provider` | `openrouter` |
 | `modo_pago` | Apagado (`hasta` vacío). Prendido guarda cuándo vence, en UTC |
 | `ejecutor_externo` | Cuándo revisó GitHub Actions qué tocaba correr |
+| `prompts_ia` | `usar: actuales`, `auto: true`: la redacción escribe con los prompts actuales (`ia`: con la copia de la IA) y la IA mejora la copia sola cada 5 notas nuevas |
 
 ## Búsqueda
 

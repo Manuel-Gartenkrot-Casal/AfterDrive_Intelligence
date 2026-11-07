@@ -18,8 +18,9 @@
       try { t = localStorage.getItem("ad-theme"); } catch (e) {}
       if (!t) t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", t);
+      // La vista dura lo que la sesión de la pestaña: al entrar de nuevo, arranca en Cliente.
       var modo = null;
-      try { modo = localStorage.getItem("ad-modo"); } catch (e) {}
+      try { modo = sessionStorage.getItem("ad-modo"); localStorage.removeItem("ad-modo"); } catch (e) {}
       document.documentElement.setAttribute("data-modo", modo === "dev" ? "dev" : "cliente");
     })();
   </script>
@@ -37,11 +38,6 @@
       </a>
       <span class="header-miga" id="header-miga"></span>
       <div class="header-right">
-        <button type="button" class="buscador-btn" id="buscador-btn" onclick="abrirBuscador()" aria-haspopup="dialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <span>Buscar o saltar a…</span><kbd id="buscador-atajo">⌘K</kbd>
-        </button>
-        <button type="button" class="btn btn-primary btn-xs header-nueva" onclick="irASeccion('crear')">+ Nueva nota</button>
         <div class="selector-idioma" role="group" aria-label="Idioma">
           <button type="button" data-idioma="es" title="Español" onclick="setIdioma('es')">ES</button>
           <button type="button" data-idioma="pt" title="Português" onclick="setIdioma('pt')">PT</button>
@@ -59,15 +55,24 @@
     <div class="layout">
     <button type="button" class="btn menu-movil" id="menu-movil" aria-expanded="false" aria-controls="navegacion-principal" onclick="toggleNavegacion()">Menú</button>
     <nav class="sidebar" id="navegacion-principal" aria-label="Secciones">
-      <!-- Vista Cliente en escritorio: arriba de la barra, el botón que la despliega (navegacion.js). -->
+      <!-- Vista Cliente en escritorio, arriba de la barra (como ChatGPT): la acción principal,
+           Nueva nota. El botón que pliega la barra queda chico, al costado. -->
       <div class="rail-cabeza">
-        <span class="rail-titulo">Secciones</span>
+        <button type="button" class="rail-nueva" id="rail-nueva" onclick="irASeccion('crear')" title="Nueva nota" aria-label="Nueva nota">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Nueva nota</span>
+        </button>
         <button type="button" class="rail-toggle" id="rail-toggle" onclick="toggleRiel()" aria-expanded="false" aria-controls="navegacion-principal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
         </button>
       </div>
+      <!-- Vista Desarrollador: la barra es una consola (otro aspecto que la de Cliente, mismas funciones). -->
+      <div class="dev-cabeza solo-dev" aria-hidden="true">
+        <span class="dev-cabeza-icono">&gt;_</span>
+        <span class="dev-cabeza-texto"><b>Desarrollador</b><small>consola</small></span>
+        <span class="dev-cabeza-punto"></span>
+      </div>
       <ul class="nav-lista">
-        <li><a class="nav-link" href="#inicio" data-seccion="inicio"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg>Inicio</a></li>
+        <li><a class="nav-link" href="#inicio" data-seccion="inicio"><svg class="solo-cliente" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><svg class="solo-dev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg><span class="solo-cliente">Inicio</span><span class="solo-dev">Métricas</span></a></li>
         <li><a class="nav-link" href="#crear" data-seccion="crear"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Crear nota</a></li>
         <li><a class="nav-link" href="#historial" data-seccion="historial"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>Historial<span class="nav-badge" id="nav-badge-historial" title="Notas para revisar"></span></a></li>
         <li><a class="nav-link" href="#programacion" data-seccion="programacion"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><svg class="icono-riel" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Programación</a></li>
@@ -109,16 +114,31 @@
       <div class="sidebar-ayuda">
         <button type="button" class="ayuda-btn" id="ayuda-btn" aria-haspopup="menu" aria-expanded="false"
                 aria-controls="ayuda-menu" onclick="toggleMenuAyuda()" title="Ayuda">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-          <span>Ayuda</span>
+          <svg class="ayuda-icono" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+          <span class="ayuda-texto">Ayuda</span>
+          <!-- En el pie de la vista Cliente: quién está conectado, como el perfil de ChatGPT. -->
+          <span class="perfil-avatar" aria-hidden="true"><svg viewBox="0 0 32 32" width="32" height="32"><circle class="perfil-fondo" cx="16" cy="16" r="16"/><circle class="perfil-silueta" cx="16" cy="12.6" r="5.6"/><path class="perfil-silueta" d="M5.6 27.4a10.6 9.4 0 0 1 20.8 0A15.9 15.9 0 0 1 16 32a15.9 15.9 0 0 1-10.4-4.6z"/></svg></span>
+          <span class="perfil-texto"><span class="perfil-nombre" id="perfil-nombre" translate="no">admin</span><span class="perfil-sub">Ayuda y cuenta</span></span>
+          <svg class="perfil-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5-5 5 5"/></svg>
         </button>
         <div class="ayuda-menu" id="ayuda-menu" role="menu" aria-label="Ayuda" hidden>
+          <p class="ayuda-menu-titulo" aria-hidden="true">Ayuda</p>
           <button type="button" role="menuitem" onclick="iniciarTour('completo')">Repetir el tutorial</button>
           <button type="button" role="menuitem" onclick="iniciarTour('crear')">Crear mi primera nota</button>
           <button type="button" role="menuitem" onclick="iniciarTour('revisar')">Revisar y publicar</button>
           <button type="button" role="menuitem" onclick="iniciarTour('programar')">Programar tareas</button>
           <a role="menuitem" href="/ayuda" target="_blank" rel="noopener" onclick="cerrarMenuAyuda()">Ver la documentación</a>
-          <button type="button" role="menuitem" class="ayuda-dev" data-modo="dev" onclick="cerrarMenuAyuda(); pedirModo('dev')">Pasar a la vista Desarrollador</button>
+          <!-- La vista Desarrollador y Cerrar sesión no son ayudas: van separadas y con su propio color. -->
+          <div class="ayuda-menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" class="ayuda-dev" data-modo="dev" onclick="cerrarMenuAyuda(); pedirModo('dev')">
+            <span class="ayuda-dev-icono" aria-hidden="true">&lt;/&gt;</span><span>Pasar a la vista Desarrollador</span>
+          </button>
+          <button type="button" role="menuitem" class="ayuda-cliente" data-modo="cliente" onclick="cerrarMenuAyuda(); pedirModo('cliente')">
+            <span class="ayuda-dev-icono" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></span><span>Pasar a la vista Cliente</span>
+          </button>
+          <button type="button" role="menuitem" class="ayuda-salir" onclick="cerrarMenuAyuda(); salir()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg><span>Cerrar sesión</span>
+          </button>
         </div>
       </div>
       <!-- Vista Cliente en escritorio: abajo de la barra, Ayuda (navegacion.js). -->
@@ -457,7 +477,8 @@
         <button type="button" class="btn btn-large btn-cancelar-nota" id="btn-f2-cancelar" onclick="cancelarGeneracion()" hidden>Cancelar</button>
         <button class="btn btn-primary btn-large" id="btn-f2-generar" onclick="fase2GenerarStream()" data-cliente="Generar nota">Generar Nota</button>
         <p class="f2-acciones-ayuda solo-cliente">Se escribe en el idioma principal y se traduce a los otros dos del blog apenas se crea.</p>
-        <ol class="f2-pasos" id="f2-pasos" hidden aria-label="Avance de la nota">
+        <p class="f2-pasos-titulo solo-cliente">Cómo se arma tu nota</p>
+        <ol class="f2-pasos" id="f2-pasos" aria-label="Avance de la nota">
           <li data-paso="0">Noticias</li><li data-paso="1">Referencias</li><li data-paso="2">Plan</li>
           <li data-paso="3">Redacción</li><li data-paso="4">Verificación</li><li data-paso="5">Revisión</li><li data-paso="6">Imagen</li><li data-paso="7">Guardado</li>
         </ol>
@@ -647,7 +668,21 @@
         <h2 class="section-title" id="prompts-title">Prompts de redacción</h2>
         <p class="section-sub">Las instrucciones que recibe la IA al escribir cada nota. Cada cambio pasa por borrador, revisión y aprobación antes de usarse; la versión anterior queda guardada.</p>
       </div>
-      <div class="prompts-layout">
+      <!-- Dos juegos de prompts, en pestañas (promptsia.js): los actuales, que se editan con aprobación,
+           y la copia que mejora la IA. "En uso" marca con cuál escribe la redacción. -->
+      <div class="prompts-vistas" id="prompts-vistas" role="tablist" aria-label="Juegos de prompts">
+        <button type="button" role="tab" class="pv-tab" id="pv-actuales" data-vista="actuales" aria-selected="true" aria-controls="prompts-actuales">
+          <span class="pv-titulo">Prompts actuales</span><span class="pv-uso" hidden>En uso</span>
+          <span class="pv-sub">Los edita y aprueba el equipo</span>
+        </button>
+        <button type="button" role="tab" class="pv-tab" id="pv-ia" data-vista="ia" aria-selected="false" aria-controls="pia-vista">
+          <span class="pv-titulo"><span class="pia-chispa" aria-hidden="true">✦</span> Prompt IA</span><span class="pv-uso" hidden>En uso</span>
+          <span class="pv-sub" id="pv-ia-sub">Una copia que la IA mejora sola</span>
+        </button>
+      </div>
+      <p class="pv-aviso" id="pv-aviso" hidden>La redacción está escribiendo con los prompts de la IA. Estos siguen guardados tal cual.
+        <button type="button" class="btn btn-xs" id="pv-volver">Volver a los actuales</button></p>
+      <div class="prompts-layout" id="prompts-actuales" role="tabpanel" aria-labelledby="pv-actuales">
         <nav class="prompts-lista" id="prompts-lista" aria-label="Piezas del prompt"></nav>
         <div class="prompts-editor" id="prompts-editor" aria-live="polite">
           <header class="prompts-cabeza">
@@ -707,6 +742,94 @@
             <button type="button" class="btn" id="pe-rechazar">Devolver a borrador</button>
             <button type="button" class="btn btn-primary" id="pe-enviar">Enviar a revisión</button>
             <button type="button" class="btn btn-primary" id="pe-aprobar">Aprobar y activar</button>
+          </footer>
+        </div>
+      </div>
+      <div class="prompts-layout pia-vista" id="pia-vista" role="tabpanel" aria-labelledby="pv-ia" hidden>
+        <nav class="prompts-lista" id="pia-lista" aria-label="Piezas de la copia de la IA"></nav>
+        <div class="prompts-editor pia-editor">
+          <header class="prompts-cabeza">
+            <div class="prompts-cabeza-texto">
+              <span class="prompts-cabeza-grupo"><span aria-hidden="true">✦</span> Copia de la IA</span>
+              <h3>Prompt IA</h3>
+              <p>La IA lee cómo salen calificadas las notas y mejora sola esta copia. Los prompts actuales no se tocan nunca.</p>
+            </div>
+            <span class="prompts-estado" id="pia-uso-estado"></span>
+          </header>
+          <div class="pia-controles">
+            <button type="button" class="btn btn-primary" id="pia-mejorar"><span aria-hidden="true">✦</span> Analizar y mejorar ahora</button>
+            <button type="button" class="btn" id="pia-usar">Usar estos prompts</button>
+            <div class="ajuste pia-auto" id="pia-auto" role="switch" tabindex="0" aria-checked="true" aria-label="Mejora automática">
+              <span class="ajuste-texto"><span class="ajuste-nombre">Mejora automática</span><span class="ajuste-estado" id="pia-auto-estado">Prendida</span></span>
+              <span class="ajuste-switch" aria-hidden="true"></span>
+            </div>
+          </div>
+          <p class="pia-estado" id="pia-estado"></p>
+          <div class="pia-progreso" id="pia-progreso" role="status" hidden></div>
+          <section class="pia-resultado" id="pia-resultado" aria-live="polite" hidden></section>
+          <div class="prompts-trabajo">
+            <div class="prompts-barra">
+              <div class="pa-nombre">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+                <b>Prompt completo de la IA</b>
+                <span class="pa-meta"><span id="pia-archivo-lineas"></span></span>
+              </div>
+              <div class="pa-herramientas">
+                <label class="sr-only" for="pia-persona">Persona</label>
+                <select id="pia-persona" class="select-field" title="Persona con la que se arma el prompt">
+                  <option value="comercial">Comercial</option>
+                  <option value="analitico">Analítico-técnico</option>
+                  <option value="periodistico">Periodístico</option>
+                  <option value="divulgativo">Divulgativo</option>
+                  <option value="ejecutivo">Ejecutivo</option>
+                </select>
+                <button type="button" class="btn btn-sm" id="pia-ver-historial" aria-pressed="false">Historial<span class="pia-historial-cuenta" id="pia-historial-cuenta"></span></button>
+              </div>
+            </div>
+            <div class="prompt-archivo" id="pia-archivo" translate="no" aria-label="Prompt completo de la IA"></div>
+            <!-- Los cambios de la IA, con sus diferencias: solo acá, como el Historial de los actuales. -->
+            <div class="prompts-panel pia-historial" id="pia-historial" hidden>
+              <ol class="pia-mejoras" id="pia-mejoras"></ol>
+            </div>
+          </div>
+          <!-- Pedirle un cambio a la IA: una caja para escribirle, con la pieza y el envío adentro. -->
+          <section class="pia-composer" aria-labelledby="pia-t-pedido">
+            <h4 id="pia-t-pedido"><span class="pia-chispa" aria-hidden="true">✦</span> Pedile un cambio a la IA</h4>
+            <div class="pia-composer-caja">
+              <label class="sr-only" for="pia-pedido">Qué querés cambiar</label>
+              <textarea id="pia-pedido" class="pia-pedido" rows="1" maxlength="1500"
+                        placeholder="Contale a la IA qué querés cambiar en los prompts…"></textarea>
+              <div class="pia-composer-pie">
+                <!-- Pieza que puede cambiar: una lista propia (el desplegable del sistema no seguía el diseño). -->
+                <div class="pia-pieza">
+                  <input type="hidden" id="pia-pieza" value="">
+                  <button type="button" class="pia-pieza-btn" id="pia-pieza-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pia-pieza-menu" title="Pieza que puede cambiar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>
+                    <span id="pia-pieza-texto">La IA elige qué piezas cambiar</span>
+                    <svg class="pia-pieza-flecha" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <div class="pia-pieza-menu" id="pia-pieza-menu" role="listbox" aria-label="Pieza que puede cambiar" tabindex="-1" hidden></div>
+                </div>
+                <span class="pia-composer-ayuda">Ctrl + Enter para enviar</span>
+                <button type="button" class="pia-enviar" id="pia-pedir" aria-label="Cambiar con IA" title="Cambiar con IA" disabled>
+                  <svg class="ico-enviar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                  <span class="pia-girando" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+            <div class="pia-sugerencias" aria-label="Ideas">
+              <button type="button" class="pia-sugerencia">Que use voseo en toda la nota</button>
+              <button type="button" class="pia-sugerencia">Una sola llamada a la acción, al final</button>
+              <button type="button" class="pia-sugerencia">Títulos más cortos y concretos</button>
+              <button type="button" class="pia-sugerencia">Menos tono publicitario al nombrar a Alephee</button>
+            </div>
+          </section>
+          <details class="pia-caja" id="pia-analisis-caja" open>
+            <summary><span>Análisis de las notas</span><span class="pia-caja-meta" id="pia-analisis-fecha"></span></summary>
+            <div id="pia-diagnostico"></div>
+          </details>
+          <footer class="prompts-acciones">
+            <button type="button" class="btn btn-sm prompts-descartar" id="pia-restablecer-todo">Volver toda la copia a los actuales</button>
           </footer>
         </div>
       </div>
@@ -776,6 +899,32 @@
       </div>
     </div>
     </main>
+    <!-- Terminal (corridas.js): panel de abajo como el de VS Code. Muestra el registro de la
+         tarea en curso o de la última; se agranda arrastrando el borde de arriba. -->
+    <section class="terminal" id="actividad-dock" hidden aria-label="Terminal de actividad" data-abierta="">
+      <div class="terminal-borde" id="terminal-borde" role="separator" aria-orientation="horizontal" tabindex="0"
+           aria-label="Alto de la terminal" aria-controls="actividad-dock" title="Arrastrá para cambiar el alto"></div>
+      <div class="terminal-barra">
+        <div class="terminal-pestanas" role="tablist" aria-label="Terminal">
+          <button type="button" role="tab" class="terminal-pestana" id="terminal-tab-registro" data-vista="registro" aria-selected="true" aria-controls="actividad-log">Terminal</button>
+          <button type="button" role="tab" class="terminal-pestana" id="terminal-tab-cola" data-vista="cola" aria-selected="false" aria-controls="terminal-cola">Cola<span class="terminal-cuenta" id="terminal-cuenta"></span></button>
+        </div>
+        <span class="terminal-tarea"><span class="actividad-punto" aria-hidden="true"></span><span id="actividad-titulo">Actividad</span></span>
+        <span class="terminal-paso" id="actividad-paso" role="status"></span>
+        <div class="terminal-acciones">
+          <button type="button" class="terminal-icono" onclick="irASeccion('corridas')" title="Ver toda la actividad" aria-label="Ver toda la actividad">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
+          <button type="button" class="terminal-icono" id="terminal-maximizar" onclick="maximizarTerminal()" title="Maximizar" aria-label="Maximizar la terminal" aria-pressed="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="ico-max"><path d="m18 15-6-6-6 6"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="ico-restaurar"><path d="m6 9 6 6 6-6"/></svg></button>
+          <button type="button" class="terminal-icono" id="terminal-plegar" onclick="plegarTerminal()" title="Ocultar el panel" aria-label="Ocultar el panel" aria-expanded="true" aria-controls="actividad-log">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button type="button" class="terminal-icono" onclick="cerrarTerminal()" title="Cerrar" aria-label="Cerrar la terminal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+      </div>
+      <pre class="terminal-log" id="actividad-log" role="tabpanel" aria-labelledby="terminal-tab-registro" translate="no" tabindex="0"></pre>
+      <div class="terminal-cola" id="terminal-cola" role="tabpanel" aria-labelledby="terminal-tab-cola" hidden></div>
+    </section>
     </div>
   </div>
 
@@ -815,14 +964,6 @@
     </form>
   </dialog>
 
-  <details class="actividad-dock" id="actividad-dock" hidden>
-    <summary><span class="actividad-punto" aria-hidden="true"></span><span id="actividad-titulo">Actividad</span><span class="actividad-chevron" aria-hidden="true">⌃</span></summary>
-    <div class="actividad-detalle">
-      <p id="actividad-paso" role="status"></p>
-      <pre id="actividad-log" aria-label="Registro de la tarea"></pre>
-      <button class="btn btn-sm" onclick="irASeccion('corridas')">Ver toda la actividad</button>
-    </div>
-  </details>
 
   <!-- Modal -->
   <div class="modal-overlay" id="modal-art" onclick="if(event.target===this)cerrar()">
@@ -869,6 +1010,7 @@
   <script src="/assets/js/generador.js"></script>
   <script src="/assets/js/historial.js"></script>
   <script src="/assets/js/prompts.js"></script>
+  <script src="/assets/js/promptsia.js"></script>
   <script src="/assets/js/revision.js"></script>
   <script src="/assets/js/carrusel.js"></script>
   <script src="/assets/js/lectura.js"></script>

@@ -1444,37 +1444,6 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .modal-footer .btn { min-height: 40px; font-size: 0.85rem; }
 .modal-body > :is(h1,h2,h3,p,ul,ol) { max-width: 75ch; margin-left: auto; margin-right: auto; }
 .modal-body > h1 { max-width: 45ch; }
-.actividad-dock {
-  position: fixed;
-  right: 24px;
-  bottom: 16px;
-  z-index: 100;
-  width: min(460px,calc(100vw - 32px));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-  box-shadow: var(--shadow-float);
-}
-.actividad-dock summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; font-weight: 500; }
-.actividad-chevron { margin-left: auto; transition: transform 180ms; }
-.actividad-dock[open] .actividad-chevron { transform: rotate(180deg); }
-.actividad-punto { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-.actividad-dock[data-estado="en_curso"] .actividad-punto { background: var(--info); animation: nodeBeat 1.2s infinite; }
-.actividad-dock[data-estado="error"] .actividad-punto { background: var(--err); }
-.actividad-dock[data-estado="pendiente"] .actividad-punto { background: var(--warn); }
-.actividad-detalle { padding: 0 16px 16px; }
-.actividad-detalle p { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 10px; }
-#actividad-log {
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 0.75rem/1.7 var(--mono);
-  padding: 12px;
-  margin-bottom: 12px;
-  background: var(--well);
-  border-radius: var(--r-sm);
-}
 .contenido > .activa { animation: seccionEntrada 180ms ease-out; }
 @keyframes seccionEntrada { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @supports (interpolate-size: allow-keywords) {
@@ -1482,7 +1451,7 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
   details::details-content { height: 0; overflow: clip; transition: height 200ms ease, content-visibility 200ms allow-discrete; }
   details[open]::details-content { height: auto; }
 }
-html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.actividad-dock) {
+html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.terminal) {
   transition: background-color 240ms ease, color 160ms ease, border-color 240ms ease;
 }
 @media (max-width: 1100px) {
@@ -1533,8 +1502,6 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
   .modal-sidebar { max-height: 110px; }
   .hist-item { flex-wrap: wrap; }
   .hist-lado { flex-direction: row; align-items: center; }
-  .actividad-dock { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
-  .actividad-dock summary { font-size: 0.85rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after,*::details-content {
@@ -1553,11 +1520,12 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    no entra se desplaza dentro del panel. La vista Desarrollador conserva la
    distribución anterior: suma consola y estadísticas debajo y estirar los
    paneles las encimaba.
-   --shell-pie es el lugar que se deja al final del contenido para el dock de
-   actividad, que flota encima.
+   --shell-pie es el aire que se deja al final del contenido. En escritorio la
+   terminal ocupa su propia fila debajo del contenido (no flota encima).
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
-body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
+/* En el celular la terminal flota abajo: se deja su alto al final de la página. */
+@media (max-width: 900px) { html[data-modo="dev"] body:has(.terminal:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 24px); } }
 /* En el celular scrollea la página: el lugar para el dock va al final de todo. */
 @media (max-width: 900px) {
   [data-modo="cliente"] .app-container { padding-bottom: var(--shell-pie); }
@@ -2114,18 +2082,11 @@ body.trabajando .nav-actividad { display: inline-flex; }
 body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .nav-badge:not(:empty) { font-variant-numeric: tabular-nums; }
 
-/* Dock de actividad corriendo: franja que avanza arriba. */
-.actividad-dock[data-estado="en_curso"] { overflow: hidden; }
-.actividad-dock[data-estado="en_curso"]::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
-  background: linear-gradient(90deg, transparent, var(--info), transparent);
-  background-size: 50% 100%; background-repeat: no-repeat;
-  animation: franja 1.4s linear infinite;
-}
 @keyframes franja { from { background-position: -50% 0; } to { background-position: 150% 0; } }
 
 /* Pasos de la nota: el actual late, los hechos quedan tildados. */
 .f2-pasos { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin-top: 10px; counter-reset: paso; }
+.f2-pasos:not(.en-marcha), .f2-pasos-titulo { display: none; }
 .f2-pasos li {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
   padding: 9px 12px; border-radius: var(--r-sm);
@@ -2745,7 +2706,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
   .fuentes-seccion .fuentes-grupo { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
   .fuentes-seccion .fuentes-cols { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
   .fuentes-seccion :is(.fuentes-lista, #sug-list) { flex: 1 1 0; min-height: 80px; max-height: none; overflow-y: auto; }
-  [data-modo] .fuentes-seccion { min-height: 0; }
+  /* Con poco alto (ventana baja o la terminal abierta) la sección no se aplasta por
+     debajo de esto: el área de contenido scrollea y las tarjetas no se desbordan. */
+  [data-modo] .fuentes-seccion { min-height: 440px; }
   .fuentes-seccion .section-head { margin-bottom: var(--s4); }
 
   /* Barra lateral en vista Desarrollador: menos aire entre ítems y ajustes. */
@@ -3176,7 +3139,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
    despliega (--ancho-riel): plegada, solo íconos; desplegada, también los nombres,
    como antes. Abajo, el botón que la despliega y Ayuda.
    ═══════════════════════════════════════════════════════════════════════ */
-.header-miga, .header-nueva, .rail-pie, .rail-cabeza, .buscador-btn, .icono-riel, .ayuda-dev { display: none; }
+.header-miga, .rail-pie, .rail-cabeza, .buscador-btn, .icono-riel, .ayuda-dev, .perfil-avatar, .perfil-texto, .perfil-chevron, .ayuda-menu-titulo { display: none; }
 @media (min-width: 901px) {
   html[data-modo="cliente"] { scrollbar-gutter: auto; }   /* sin la franja reservada a la derecha */
   [data-modo="cliente"] { --linea-suave: color-mix(in srgb, var(--border) 55%, var(--bg)); --icono-riel: color-mix(in srgb, var(--text-lo) 72%, var(--bg));
@@ -3200,13 +3163,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .header-right .status-pill { height: 38px; padding: 0 14px; }
   [data-modo="cliente"] .header-right .theme-toggle { width: 38px; height: 38px; }
   [data-modo="cliente"] .header-right .theme-toggle svg { width: 17px; height: 17px; }
-  [data-modo="cliente"] .header-nueva { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 15px; border-radius: 10px; font-size: 13.5px; font-weight: 600; box-shadow: none; }
-  [data-modo="cliente"] .buscador-btn { display: flex; align-items: center; gap: 8px; width: 300px; height: 38px; padding: 0 12px; border: 1px solid var(--linea-suave);
-    border-radius: 9px; background: color-mix(in srgb, var(--well) 60%, var(--bg)); color: var(--text-lo); font: 13px var(--font); cursor: text; text-align: left; }
-  [data-modo="cliente"] .buscador-btn span { flex: 1; }
-  [data-modo="cliente"] .buscador-btn kbd { font: 11px var(--font); padding: 1px 6px; border: 1px solid var(--linea-suave); border-radius: 5px; background: var(--bg); color: var(--text-lo); }
   [data-modo="cliente"] .ayuda-dev { display: block; }
-  [data-seccion="crear"][data-modo="cliente"] .header-nueva { display: none; }
 
   [data-modo="cliente"] .layout { grid-template-columns: var(--ancho-riel) minmax(0, 1fr); gap: 0; transition: grid-template-columns 200ms var(--ease-out); }
   [data-modo="cliente"] .sidebar { width: var(--ancho-riel); padding: 14px 0 0; gap: 6px; align-items: center; border-radius: 0; box-shadow: none;
@@ -3224,26 +3181,9 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .nav-actividad { display: none; }
   [data-modo="cliente"] .sidebar-pie { display: none; }
   [data-modo="cliente"] .rail-pie { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: auto; }
-  /* Arriba de la barra: el botón para desplegarla (plegada, solo el ícono; desplegada,
-     "Secciones" a la izquierda y el botón a la derecha), separado de las secciones. */
-  [data-modo="cliente"] .rail-cabeza { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0 10px 10px;
-    margin-bottom: 4px; border-bottom: 1px solid var(--linea-suave); }
-  [data-modo="cliente"] .rail-titulo { display: none; }
-  [data-modo="cliente"] .rail-toggle { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: transparent;
-    color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; }
-  [data-modo="cliente"] .rail-toggle:hover { background: var(--well); color: var(--text-hi); }
-  [data-modo="cliente"][data-riel="abierto"] .rail-cabeza { justify-content: space-between; padding-left: 12px; padding-right: 0; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-titulo { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--text-lo); white-space: nowrap; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn { width: 36px; height: 36px; padding: 0; box-shadow: none; border: 0;
-    border-radius: 9px; background: transparent; color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; font: inherit; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn:hover { background: var(--well); color: var(--text-hi); }
-  [data-modo="cliente"] .rail-pie .ayuda-btn svg { width: 18px; height: 18px; }
   [data-modo="cliente"] .rail-pie .sidebar-ayuda { padding: 0; margin: 0; border: 0; }
   [data-modo="cliente"] .rail-pie > * { margin-top: 0; margin-bottom: 0; }
   [data-modo="cliente"] .rail-pie { padding-bottom: 12px; }
-  [data-modo="cliente"] .rail-pie .ayuda-btn span { display: none; }
-  [data-modo="cliente"] .rail-pie .ayuda-menu { left: calc(100% + 12px); }
   [data-modo="cliente"] .contenido { margin: 0; padding: 24px 32px var(--shell-pie); }
   /* Barra desplegada: cada sección con su ícono y su nombre, como la barra de antes. */
   [data-modo="cliente"][data-riel="abierto"] .sidebar { align-items: stretch; padding-inline: 10px; }
@@ -3253,9 +3193,6 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"][data-riel="abierto"] .nav-link[aria-current="page"] { color: var(--brand); font-weight: 600; }
   [data-modo="cliente"][data-riel="abierto"] .nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; font-size: 0.7rem; line-height: 20px; }
   [data-modo="cliente"][data-riel="abierto"] .rail-pie { align-items: stretch; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 12px;
-    font-size: 0.9rem; color: var(--text-mid); white-space: nowrap; }
-  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn span { display: inline; }
   /* Con una nota abierta, la ruta de la sección no asoma junto al logo. */
   [data-modo="cliente"] body.modal-abierto .header-miga, body.modal-abierto [data-modo="cliente"] .header-miga { visibility: hidden; }
   /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
@@ -3313,15 +3250,16 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
 [data-modo="cliente"] .f2-regiones { order: 10; }
 [data-modo="cliente"] .f2-clientes { order: 11; }
 
-/* Títulos de los pasos, con su número. */
+/* Títulos de los pasos, con su ícono. */
 [data-modo="cliente"] :is(.f2-categorias > .fase2-grupo-title, .f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child) {
   display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 0.98rem; font-weight: 600; color: var(--text-hi); }
 [data-modo="cliente"] :is(.f2-categorias > .fase2-grupo-title, .f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child)::before {
   flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 0.75rem; font-weight: 700; background: var(--brand-soft); color: var(--brand); }
-[data-modo="cliente"] .f2-categorias > .fase2-grupo-title::before { content: '1'; }
-[data-modo="cliente"] .f2-titulo-enfoque::before { content: '2'; }
-[data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child::before { content: '3'; }
+  font-size: 0.75rem; font-weight: 700; color: var(--brand); }
+/* Cada paso con su ícono (no números): temas, enfoque y estilo. */
+[data-modo="cliente"] .f2-categorias > .fase2-grupo-title::before { content: ''; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23D44A63' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z'/%3E%3Ccircle cx='7' cy='7' r='1.5'/%3E%3C/svg%3E") center / 14px no-repeat, var(--brand-soft); }
+[data-modo="cliente"] .f2-titulo-enfoque::before { content: ''; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23D44A63' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Ccircle cx='12' cy='12' r='5'/%3E%3Ccircle cx='12' cy='12' r='1'/%3E%3C/svg%3E") center / 14px no-repeat, var(--brand-soft); }
+[data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child::before { content: ''; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23D44A63' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/%3E%3C/svg%3E") center / 14px no-repeat, var(--brand-soft); }
 [data-modo="cliente"] :is(.f2-titulo-enfoque, .f2-opciones > .fase2-grupo-title:first-child) { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--linea-crear); }
 [data-modo="cliente"] .f2-campo { margin-bottom: 18px !important; }
 [data-modo="cliente"] :is(.f2-campo-largo, .f2-campo-indicaciones) { margin-bottom: 0 !important; }
@@ -3393,6 +3331,402 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   [data-modo="cliente"] .cr-item.falta .cr-v { color: var(--brand); font-weight: 500; }
   [data-modo="cliente"] .f2-acciones .btn-large { width: 100%; margin: 0; }
   [data-modo="cliente"] .f2-acciones-ayuda { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--text-lo); }
-  [data-modo="cliente"] .f2-acciones .f2-pasos { flex-direction: column; flex-wrap: nowrap; gap: 6px; margin: 0; }
-  [data-modo="cliente"] .f2-acciones .f2-pasos li { width: 100%; }
+  /* "Tu nota" ocupa el alto visible (antes quedaba un hueco abajo al scrollear): arriba el resumen, en el
+     medio cómo se arma la nota (una línea de tiempo con puntos, sin números) y abajo el botón. */
+  [data-modo="cliente"] .f2-acciones { height: calc(100dvh - 68px - 64px); min-height: 460px; max-height: 820px; }
+  [data-modo="cliente"] .f2-acciones-titulo { order: 0; }
+  [data-modo="cliente"] .crear-resumen { order: 1; }
+  [data-modo="cliente"] .f2-pasos-titulo { order: 2; display: block; margin: 6px 0 -4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-lo); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos { order: 3; display: flex; flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+    position: relative; flex-direction: column; flex-wrap: nowrap; gap: 0; margin: 0; padding: 2px 0; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos::before { content: ''; position: absolute; left: 7px; top: 18px; bottom: 18px; width: 2px;
+    border-radius: 2px; background: var(--linea-crear); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li { width: 100%; padding: 7px 0 7px 26px; border: 0; border-radius: 0; background: none;
+    font-size: 0.82rem; color: var(--text-lo); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li::before { content: ''; position: absolute; left: 2px; top: calc(50% - 6px); width: 12px; height: 12px;
+    border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 2px var(--linea-crear); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.actual { color: var(--text-hi); font-weight: 600; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.actual::before { background: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 22%, transparent);
+    animation: pasoLatido 1.2s ease-in-out infinite; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.actual::after { content: none; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.hecho { color: var(--text-mid); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.hecho::before { content: ''; background: var(--ok); box-shadow: none; }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.fallo { color: var(--err); }
+  [data-modo="cliente"] .f2-acciones .f2-pasos li.fallo::before { background: var(--err); box-shadow: none; }
+  [data-modo="cliente"] .f2-acciones-ayuda { order: 4; margin-top: auto; }
+  [data-modo="cliente"] #btn-f2-cancelar { order: 5; }
+  [data-modo="cliente"] #btn-f2-generar { order: 6; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TERMINAL (corridas.js): panel de abajo como el de VS Code. En escritorio va
+   en una fila propia de la grilla, debajo del contenido y a la derecha de la
+   barra lateral: el contenido se achica y scrollea, nada queda encimado (antes
+   flotaba y su alto se le restaba a las pantallas, que se aplastaban). En el
+   celular flota abajo. El alto (--terminal-alto) se cambia arrastrando el borde.
+   ═══════════════════════════════════════════════════════════════════════ */
+.terminal { --terminal-alto: 240px; position: relative; display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg); color: var(--text-hi); border-top: 1px solid var(--border); }
+.terminal[hidden] { display: none; }
+.terminal-borde { position: absolute; left: 0; right: 0; top: -4px; height: 8px; z-index: 3; cursor: ns-resize; touch-action: none; }
+.terminal-borde::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; transition: background 120ms 80ms; }
+.terminal-borde:hover::after, .terminal-borde:focus-visible::after, body.arrastrando-terminal .terminal-borde::after { background: var(--brand); }
+.terminal-borde:focus-visible { outline: none; }
+body.arrastrando-terminal, body.arrastrando-terminal * { cursor: ns-resize !important; user-select: none; }
+
+.terminal-barra { display: flex; align-items: center; gap: 14px; height: 36px; flex: none; padding: 0 8px 0 16px; }
+.terminal-pestanas { display: flex; align-self: stretch; gap: 18px; }
+.terminal-pestana { display: inline-flex; align-items: center; gap: 6px; padding: 0 1px; border: 0; border-bottom: 1px solid transparent; background: none;
+  font: 600 11px/1 var(--font); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-lo); cursor: pointer; }
+.terminal-pestana:hover { color: var(--text-mid); }
+.terminal-pestana[aria-selected="true"] { color: var(--text-hi); border-bottom-color: var(--brand); }
+.terminal-cuenta:not(:empty) { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--well); border: 1px solid var(--border);
+  font: 600 10px/14px var(--mono); letter-spacing: 0; text-align: center; color: var(--text-mid); }
+.terminal-tarea { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding-left: 14px; border-left: 1px solid var(--border);
+  font: 500 12.5px var(--font); color: var(--text-mid); white-space: nowrap; }
+.terminal-tarea #actividad-titulo { overflow: hidden; text-overflow: ellipsis; }
+.terminal-paso { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--text-lo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.terminal-acciones { display: flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+.terminal-icono { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-lo);
+  display: grid; place-items: center; cursor: pointer; }
+.terminal-icono:hover { background: var(--well); color: var(--text-hi); }
+.terminal-icono:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.terminal-icono .ico-restaurar, .terminal.maximizada .terminal-icono .ico-max { display: none; }
+.terminal.maximizada .terminal-icono .ico-restaurar { display: block; }
+
+.terminal-log, .terminal-cola { height: var(--terminal-alto); margin: 0; padding: 2px 16px 12px; overflow: auto; scrollbar-width: thin;
+  font: 12.5px/1.6 var(--mono); color: var(--text-mid); background: transparent; }
+.terminal-log { white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal-log:focus-visible { outline: 1px solid var(--border-strong); outline-offset: -1px; }
+.terminal:not([data-abierta]) :is(.terminal-log, .terminal-cola) { display: none; }
+.terminal-cola[hidden], .terminal-log[hidden] { display: none; }
+.t-ok { color: var(--ok); }
+.t-err { color: var(--err); }
+.t-aviso { color: var(--warn); }
+.t-tenue { color: var(--text-lo); }
+.terminal-fila { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.terminal-fila-n { width: 18px; color: var(--text-lo); text-align: right; }
+.terminal-fila-nombre { flex: 1; min-width: 0; color: var(--text-hi); font-family: var(--font); font-size: 13px; }
+.terminal-vacio { padding: 8px 0; color: var(--text-lo); }
+
+.actividad-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.terminal[data-estado="en_curso"] .actividad-punto { background: var(--info); animation: nodeBeat 1.2s infinite; }
+.terminal[data-estado="error"] .actividad-punto, .terminal[data-estado="interrumpida"] .actividad-punto { background: var(--err); }
+.terminal[data-estado="pendiente"] .actividad-punto, .terminal[data-estado="cancelada"] .actividad-punto { background: var(--warn); }
+/* Corriendo: una franja que avanza sobre el borde de arriba. */
+.terminal[data-estado="en_curso"]::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--info), transparent) no-repeat; background-size: 50% 100%; animation: franja 1.4s linear infinite; }
+
+@media (min-width: 901px) {
+  .layout:has(> .terminal:not([hidden])) { grid-template-rows: minmax(0, 1fr) auto; }
+  .layout > .sidebar { grid-column: 1; grid-row: 1 / -1; }
+  .layout > .contenido { grid-column: 2; grid-row: 1; }
+  .layout > .terminal { grid-column: 2; grid-row: 2; }
+  /* Vista Desarrollador: tarjetas separadas, la terminal también. */
+  [data-modo="dev"] .layout:has(> .terminal:not([hidden])) { row-gap: 12px; }
+  [data-modo="dev"] .terminal { border: 1px solid var(--border); border-radius: var(--r-lg); }
+  [data-modo="dev"] .terminal-borde { top: -11px; height: 12px; }
+  [data-modo="dev"] .terminal-borde::after { top: 5px; }
+}
+@media (max-width: 900px) {
+  .terminal { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 100; border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: var(--shadow-float); }
+  .terminal-paso { display: none; }
+  .terminal[data-estado="en_curso"]::before { left: 12px; right: 12px; }
+  .terminal-tarea { flex: 1 1 0; }
+  .terminal-barra { padding-left: 12px; gap: 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BARRA LATERAL DE LA VISTA CLIENTE (escritorio), ordenada como la de ChatGPT:
+   - Arriba, lo que se usa: "Nueva nota" (la acción principal) y el buscador.
+     El botón que pliega la barra es secundario: chico y gris, al costado.
+     Plegada, quedan los tres como íconos (el de plegar primero).
+   - En el medio, las secciones (como estaban).
+   - Abajo, el perfil: quién está conectado. Al tocarlo abre Ayuda y, aparte y
+     con su propio estilo, el paso a la vista Desarrollador.
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 901px) {
+  [data-modo="cliente"] .sidebar { padding-top: 12px; }
+  [data-modo="cliente"] .rail-cabeza { display: flex; align-items: center; gap: 4px; width: 100%; padding: 0 10px; flex-direction: column-reverse; }
+  [data-modo="cliente"] .rail-toggle { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; flex: none;
+    color: var(--icono-riel); display: grid; place-items: center; cursor: pointer; opacity: 0.85; }
+  [data-modo="cliente"] .rail-toggle:hover { background: var(--well); color: var(--text-hi); opacity: 1; }
+  [data-modo="cliente"] .rail-nueva { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px;
+    background: var(--brand); color: #fff; cursor: pointer; font: 600 13.5px var(--font); white-space: nowrap; overflow: hidden;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--brand) 60%, black); transition: filter 120ms; }
+  [data-modo="cliente"] .rail-nueva:hover { filter: brightness(1.08); }
+  [data-modo="cliente"] .rail-nueva span { display: none; }
+  [data-modo="cliente"] .nav-lista { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--linea-suave); width: 100%; }
+  [data-modo="cliente"] :is(.rail-nueva, .rail-toggle):focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  [data-modo="cliente"][data-riel="abierto"] .rail-cabeza { flex-direction: row; padding: 0; gap: 6px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-nueva { display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    flex: 1 1 auto; width: auto; padding: 0 12px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-nueva span { display: inline; }
+  [data-modo="cliente"][data-riel="abierto"] .nav-lista { padding-top: 10px; }
+
+  /* Pie: el perfil. */
+  [data-modo="cliente"] .rail-pie { width: 100%; padding: 8px 10px 10px; border-top: 1px solid var(--linea-suave); }
+  [data-modo="cliente"] .rail-pie .sidebar-ayuda { position: static; padding: 0; margin: 0; border: 0; width: 100%; }
+  [data-modo="cliente"] .rail-pie :is(.ayuda-icono, .ayuda-texto) { display: none; }
+  [data-modo="cliente"] .rail-pie .ayuda-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 48px;
+    padding: 0; border-radius: 10px; color: var(--text-hi); }
+  [data-modo="cliente"] .rail-pie .perfil-avatar { display: block; width: 32px; height: 32px; flex: none; border-radius: 50%; overflow: hidden; }
+  [data-modo="cliente"] .rail-pie .perfil-avatar svg { display: block; }
+  .perfil-fondo { fill: color-mix(in srgb, var(--brand) 16%, var(--well)); }
+  .perfil-silueta { fill: color-mix(in srgb, var(--brand) 62%, var(--well)); }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-btn { justify-content: flex-start; padding: 0 8px; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .perfil-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; text-align: left; line-height: 1.25; }
+  [data-modo="cliente"] .rail-pie .perfil-nombre { font-size: 0.875rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [data-modo="cliente"] .rail-pie .perfil-sub { font-size: 0.75rem; font-weight: 400; color: var(--text-lo); white-space: nowrap; }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .perfil-chevron { display: block; flex: none; color: var(--text-lo); }
+  /* El menú sube desde el perfil (fijo: la barra recorta lo que se sale de ella). */
+  [data-modo="cliente"] .rail-pie .ayuda-menu { position: fixed; left: calc(var(--ancho-riel) + 8px); bottom: 10px; width: 280px; max-height: min(460px, 75dvh); }
+  [data-modo="cliente"][data-riel="abierto"] .rail-pie .ayuda-menu { left: 10px; bottom: 66px; }
+  [data-modo="cliente"] .ayuda-menu-titulo { display: block; padding: 6px 10px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-lo); }
+  /* (las reglas de abajo, para la vista Cliente; las de todas las vistas, al final del archivo) */
+  /* La vista Desarrollador y Cerrar sesión, separadas de la ayuda: del mismo alto que el resto,
+     pero con su color (turquesa y rojo) para que no se confundan con una ayuda más. */
+  .ayuda-menu-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+  [data-modo="cliente"] .ayuda-menu :is(.ayuda-dev, .ayuda-salir) { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev { color: var(--info); }
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev:hover, [data-modo="cliente"] .ayuda-menu .ayuda-dev:focus-visible {
+    background: color-mix(in srgb, var(--info) 12%, var(--bg)); color: var(--info); }
+  .ayuda-dev-icono { display: grid; place-items: center; width: 22px; height: 18px; flex: none; border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--info) 55%, transparent); font: 700 9.5px var(--mono); }
+  [data-modo="cliente"] .ayuda-menu .ayuda-salir { color: var(--err); }
+  [data-modo="cliente"] .ayuda-menu .ayuda-salir:hover, [data-modo="cliente"] .ayuda-menu .ayuda-salir:focus-visible {
+    background: color-mix(in srgb, var(--err) 12%, var(--bg)); color: var(--err); }
+  [data-modo="cliente"] .ayuda-menu .ayuda-salir svg { width: 16px; height: 16px; flex: none; margin: 0 3px; }
+  /* El botón de salir del encabezado pasa al menú del perfil. */
+  [data-modo="cliente"] .header-right #btn-salir { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROMPTS CON IA (promptsia.js): dos pestañas, "Prompts actuales" y "Prompts de
+   la IA". La de la IA tiene la misma forma que el editor: la lista de piezas y
+   el prompt completo (con lo que cambió la IA en verde y lo que sacó en rojo),
+   más los controles, el análisis, el pedido y el historial.
+   ═══════════════════════════════════════════════════════════════════════ */
+.prompts-vistas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-bottom: 16px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--well); }
+.pv-tab { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 10px; padding: 10px 16px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text-mid); text-align: left; cursor: pointer; font: inherit; }
+.pv-tab:hover { color: var(--text-hi); }
+.pv-tab[aria-selected="true"] { background: var(--bg); color: var(--text-hi); box-shadow: 0 1px 3px color-mix(in srgb, var(--text-hi) 10%, transparent); }
+.pv-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.pv-titulo { font-weight: 600; font-size: 0.92rem; }
+.pv-uso { justify-self: start; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600;
+  color: var(--st-editada); background: color-mix(in srgb, var(--st-editada) 14%, transparent); }
+.pv-uso[hidden] { display: none; }
+.pv-sub { grid-column: 1 / -1; font-size: 0.76rem; color: var(--text-lo); }
+.pv-tab[data-vista="ia"][aria-selected="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 40%, transparent), 0 1px 3px color-mix(in srgb, var(--text-hi) 10%, transparent); }
+.pv-aviso { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 16px; padding: 10px 14px; border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border)); background: var(--brand-soft); font-size: 0.84rem; color: var(--text-hi); }
+.pv-aviso[hidden] { display: none; }
+.pia-chispa { color: var(--brand); }
+
+.prompts-seccion .estado-ia { --st: var(--brand); }
+.prompts-chip.ia { color: var(--brand); background: var(--brand-soft); font-family: var(--mono); }
+.pia-editor { display: flex; flex-direction: column; gap: 14px; }
+.pia-editor > .prompts-cabeza { margin-bottom: 0; }
+.pia-controles { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pia-controles .pia-auto { margin-left: auto; width: 220px; }
+.pia-usar.pia-usando, #pia-usar.pia-usando { color: var(--text-mid); }
+.pia-estado { margin: -4px 0 0; font-size: 0.8rem; color: var(--text-lo); }
+.pia-progreso { padding: 8px 12px; border-radius: var(--r-md); background: color-mix(in srgb, var(--info) 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--info) 30%, var(--border)); font: 0.8rem var(--mono); color: var(--text-mid); }
+.pia-progreso[hidden], .pia-resultado[hidden] { display: none; }
+.pia-progreso::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--info);
+  animation: nodeBeat 1.2s infinite; vertical-align: 1px; }
+.pia-resultado { padding: 14px 16px; border-radius: var(--r-md); font-size: 0.86rem; animation: seccionEntrada 220ms ease-out;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, var(--border)); background: color-mix(in srgb, var(--ok) 8%, var(--bg)); }
+.pia-resultado.sin-cambios { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); background: color-mix(in srgb, var(--warn) 8%, var(--bg)); }
+.pia-resultado p { margin: 6px 0 0; color: var(--text-mid); }
+.pia-resultado ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--text-mid); }
+.pia-ir { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.pia-nota { font-size: 0.78rem; color: var(--text-lo) !important; }
+.pia-caja { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); }
+details.pia-caja > summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+details.pia-caja[open] > summary { border-bottom: 1px solid var(--border); }
+details.pia-caja > :not(summary) { padding: 14px; }
+.pia-caja-meta { margin-left: auto; font-size: 0.75rem; font-weight: 500; color: var(--text-lo); }
+/* Pedirle un cambio a la IA: una caja para escribirle, con la pieza y el envío adentro. */
+.pia-composer h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 0.9rem; }
+.pia-composer-caja { position: relative; border-radius: 18px; padding: 1px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 55%, var(--border)), color-mix(in srgb, var(--info) 45%, var(--border)));
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--brand) 10%, transparent); transition: box-shadow 160ms; }
+.pia-composer-caja:focus-within { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent), 0 10px 30px color-mix(in srgb, var(--brand) 16%, transparent); }
+.pia-pedido { display: block; width: 100%; min-height: 52px; max-height: 220px; resize: none; padding: 14px 16px 6px; border: 0; outline: none;
+  border-radius: 17px 17px 0 0; background: var(--bg); color: var(--text-hi); font: 0.95rem/1.5 var(--font); }
+.pia-pedido::placeholder { color: var(--text-lo); }
+.pia-composer-pie { display: flex; align-items: center; gap: 10px; padding: 6px 8px 8px 12px; border-radius: 0 0 17px 17px; background: var(--bg); }
+/* La pieza del pedido: un botón redondeado que abre una lista propia (no el desplegable del sistema). */
+.pia-pieza { position: relative; min-width: 0; max-width: 60%; }
+.pia-pieza-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--well); color: var(--text-mid); font: 0.78rem var(--font); }
+.pia-pieza-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pia-pieza-btn:hover, .pia-pieza-btn[aria-expanded="true"] { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); color: var(--text-hi); }
+.pia-pieza-btn.con-pieza { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); background: var(--brand-soft); color: var(--brand); }
+.pia-pieza-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pia-pieza-flecha { flex: none; transition: transform 150ms; }
+.pia-pieza-btn[aria-expanded="true"] .pia-pieza-flecha { transform: rotate(180deg); }
+.pia-pieza-menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 40; width: 260px; max-height: 320px; overflow-y: auto; padding: 6px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-float); scrollbar-width: thin;
+  animation: seccionEntrada 140ms ease-out; }
+.pia-pieza-menu[hidden] { display: none; }
+.pia-pieza-grupo { margin: 8px 10px 4px; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-lo); }
+.pia-pieza-op { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 9px; background: transparent;
+  color: var(--text-mid); font: 0.84rem var(--font); text-align: left; cursor: pointer; }
+.pia-pieza-op:hover, .pia-pieza-op:focus-visible { background: var(--well); color: var(--text-hi); outline: none; }
+.pia-pieza-op.elegida { color: var(--brand); font-weight: 600; background: var(--brand-soft); }
+.pia-pieza-check { width: 14px; flex: none; color: var(--brand); }
+.pia-pieza-marca { margin-left: auto; color: var(--brand); font-size: 0.75rem; }
+.pia-historial-cuenta:not(:empty) { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font: 600 0.7rem/18px var(--mono); }
+.pia-historial { padding: 14px; max-height: 560px; overflow-y: auto; background: var(--bg); }
+.pia-historial[hidden], #pia-archivo[hidden] { display: none; }
+.pia-ver-cambios { margin-top: 10px; }
+.pia-cambio { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.pia-cambio summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.pia-explicacion { flex-basis: 100%; color: var(--text-lo); font-size: 0.78rem; }
+.pia-cambio .prompts-diff { margin-top: 8px; max-height: 300px; }
+.pia-composer-ayuda { margin-left: auto; font-size: 0.72rem; color: var(--text-lo); }
+.pia-enviar { position: relative; display: grid; place-items: center; width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; cursor: pointer;
+  color: #fff; background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, var(--info))); transition: transform 120ms, opacity 120ms; }
+.pia-enviar:hover:not(:disabled) { transform: translateY(-1px); }
+.pia-enviar:disabled { cursor: default; opacity: 0.35; }
+.pia-enviar:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pia-girando { display: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: piaGira 700ms linear infinite; }
+.pia-enviar.cargando { opacity: 1; }
+.pia-enviar.cargando .ico-enviar { display: none; }
+.pia-enviar.cargando .pia-girando { display: block; }
+@keyframes piaGira { to { transform: rotate(360deg); } }
+.pia-sugerencias { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pia-sugerencia { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text-mid);
+  font: 0.78rem var(--font); cursor: pointer; }
+.pia-sugerencia:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); color: var(--text-hi); background: var(--brand-soft); }
+/* La pieza elegida en la lista, bien distinta de las demás (en las dos pestañas). */
+.prompts-seccion .prompts-item.activo { box-shadow: inset 3px 0 0 var(--brand); color: var(--brand); }
+.prompts-seccion .prompts-item.activo .prompts-item-nombre { color: var(--text-hi); }
+.pa-bloque.pia-elegida { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 70%, transparent); background: color-mix(in srgb, var(--brand) 8%, transparent); }
+.pa-pieza { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo); }
+.pa-bloque.pia-cambiada { border-left-color: var(--brand); background: color-mix(in srgb, var(--brand) 5%, transparent); }
+.pa-bloque.pia-cambiada .pa-pieza { color: var(--brand); }
+.pia-marca-ia { padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; color: var(--brand); background: var(--brand-soft); }
+.pia-bloque-acciones { margin-left: auto; display: flex; gap: 6px; }
+.pia-bloque-acciones .btn-xs { min-height: 26px; padding: 2px 8px; font-size: 0.72rem; }
+.pa-bloque.recien { animation: piaRecien 1.8s ease-out; }
+@keyframes piaRecien { 0%, 30% { box-shadow: inset 0 0 0 2px var(--brand); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+
+.pia-vacio { color: var(--text-lo); font-size: 0.85rem; padding: 4px 0; list-style: none; margin: 0; }
+.pia-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pia-kpi { padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); }
+.pia-kpi strong { display: block; font: 600 1.15rem var(--mono); color: var(--text-hi); }
+.pia-kpi strong small { font-size: 0.7rem; color: var(--text-lo); font-weight: 500; }
+.pia-kpi span { font-size: 0.72rem; color: var(--text-lo); }
+.pia-compara { margin-top: 10px; font-size: 0.8rem; color: var(--text-mid); }
+.pia-resumen { display: flex; gap: 8px; margin: 14px 0 8px; padding: 12px; border-radius: var(--r-md); background: var(--brand-soft); color: var(--text-hi); font-size: 0.86rem; }
+.pia-problemas { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 0.84rem; }
+.pia-problemas p { margin: 3px 0 0; color: var(--text-mid); }
+.pia-problema-cabeza { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pia-pieza-chip { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--well); font-size: 0.72rem; color: var(--text-mid); }
+.pia-evidencia { font-size: 0.78rem; color: var(--text-lo) !important; }
+.pia-error { color: var(--err); font-size: 0.8rem; margin: 6px 0 0; }
+.pia-aviso { display: block; color: var(--warn); font-size: 0.78rem; margin: 4px 0 0; }
+.pia-mejoras { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.pia-mejora { padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--r-md); font-size: 0.84rem; }
+.pia-mejora.sin-cambios { border-left-color: var(--border-strong); }
+.pia-mejora > p { margin: 6px 0 0; color: var(--text-mid); }
+.pia-mejora-cabeza { display: flex; align-items: center; gap: 10px; }
+.pia-origen { padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background: var(--well); color: var(--text-mid); border: 1px solid var(--border); }
+.pia-origen.automatica { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
+.pia-pedido-eco { font-style: italic; }
+@media (max-width: 1100px) {
+  .pia-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pia-controles .pia-auto { margin-left: 0; width: 100%; }
+}
+
+/* La terminal es de la vista Desarrollador: en la vista Cliente no se muestra. */
+html[data-modo="cliente"] .terminal { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BARRA LATERAL DE LA VISTA DESARROLLADOR (escritorio): una consola, bien
+   distinta de la de Cliente. Encabezado ">_ Modo desarrollador", secciones
+   numeradas en monoespaciada, títulos de cada ajuste como comentarios de
+   código (// proveedor de ia) y el rosa de la marca como acento, sobre una
+   grilla de puntos. Las funciones son las mismas de siempre; la vista se
+   cambia desde Ayuda, como en Cliente.
+   ═══════════════════════════════════════════════════════════════════════ */
+.dev-cabeza { display: none; }
+@media (min-width: 901px) {
+  [data-modo="dev"] .sidebar { --dev: var(--brand); counter-reset: dev-seccion; gap: 12px; padding: 12px 10px;
+    border: 1px solid color-mix(in srgb, var(--dev) 30%, var(--border));
+    background: radial-gradient(color-mix(in srgb, var(--dev) 14%, transparent) 1px, transparent 1.2px) 0 0 / 14px 14px, var(--bg);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dev) 8%, transparent), var(--raised); }
+  [data-modo="dev"] .dev-cabeza { display: flex; align-items: center; gap: 10px; padding: 8px 8px 12px; margin-bottom: 2px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--dev) 35%, var(--border)); }
+  .dev-cabeza-icono { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 8px;
+    background: color-mix(in srgb, var(--dev, var(--info)) 16%, var(--bg)); color: var(--dev, var(--info));
+    border: 1px solid color-mix(in srgb, var(--dev, var(--info)) 40%, transparent); font: 700 0.8rem var(--mono); }
+  .dev-cabeza-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; white-space: nowrap; }
+  .dev-cabeza-texto b { font-size: 0.82rem; color: var(--text-hi); }
+  .dev-cabeza-texto small { font: 0.68rem var(--mono); color: var(--dev, var(--info)); }
+  .dev-cabeza-punto { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--dev, var(--info));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--dev, var(--info)) 20%, transparent); animation: nodeBeat 2.4s infinite; }
+  /* Secciones: 01, 02… en monoespaciada; la actual, en turquesa con "▸". */
+  [data-modo="dev"] .nav-link { counter-increment: dev-seccion; gap: 10px; padding-block: 7px; border-radius: 7px;
+    font: 500 0.8rem var(--mono); letter-spacing: -0.01em; }
+  [data-modo="dev"] .nav-link::after { content: counter(dev-seccion, decimal-leading-zero) / ""; order: -1; width: 18px; flex: none;
+    font: 0.68rem var(--mono); color: var(--text-lo); }
+  [data-modo="dev"] .nav-link > svg { width: 15px; height: 15px; }
+  [data-modo="dev"] .nav-link:hover { background: color-mix(in srgb, var(--dev) 8%, var(--bg)); }
+  [data-modo="dev"] .nav-link[aria-current="page"] { background: color-mix(in srgb, var(--dev) 14%, var(--bg)); color: var(--dev); }
+  [data-modo="dev"] .nav-link[aria-current="page"]::before { background: var(--dev); left: 0; height: 100%; border-radius: 0 2px 2px 0; }
+  [data-modo="dev"] .nav-link[aria-current="page"]::after { content: '▸' / ''; color: var(--dev); }
+  [data-modo="dev"] .nav-badge { flex: none; margin-left: auto; background: var(--dev); color: var(--on-brand); font-family: var(--mono); }
+  /* Con algo corriendo, las barritas y el número entran en la fila (antes el número se salía). */
+  [data-modo="dev"] .nav-link { padding-inline: 8px; min-width: 0; }
+  [data-modo="dev"] .nav-actividad { margin-left: auto; flex: none; }
+  [data-modo="dev"] .nav-actividad + .nav-badge { margin-left: 6px; }
+  [data-modo="dev"] .nav-link::after { width: 16px; }
+  /* La vista se cambia desde Ayuda (como en Cliente): sin el selector en la barra. */
+  [data-modo="dev"] .sidebar-pie > .sidebar-etiqueta:first-child, [data-modo="dev"] .sidebar-pie > .modo-switch { display: none; }
+  [data-modo="dev"] .ayuda-menu .ayuda-cliente { display: flex; }
+  [data-modo="dev"] .nav-actividad i { background: var(--dev); }
+  /* Ajustes: un panel de sistema, con los títulos en letra de código. */
+  [data-modo="dev"] .sidebar-pie { border-top: 1px dashed color-mix(in srgb, var(--dev) 35%, var(--border)); }
+  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta { font: 0.68rem var(--mono); text-transform: lowercase; letter-spacing: 0; color: var(--text-lo); }
+  [data-modo="dev"] .modo-switch { border-radius: 8px; padding: 3px; }
+  [data-modo="dev"] .modo-switch button { border-radius: 6px; font: 0.74rem var(--mono); padding: 6px 8px; }
+  [data-modo="dev"] .modo-switch button[aria-checked="true"] { color: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .provider-toggle { border-radius: 8px; }
+  [data-modo="dev"] .sidebar-pie .provider-toggle .prov-btn { border-radius: 6px; font-family: var(--mono); font-size: 0.7rem; white-space: nowrap; }
+  [data-modo="dev"] .sidebar-pie .provider-toggle .prov-btn.active { color: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .ajuste { border-radius: 8px; }
+  [data-modo="dev"] .sidebar-pie .ajuste-nombre { font: 600 0.74rem var(--mono); }
+  [data-modo="dev"] .sidebar-pie .ajuste.active .ajuste-switch { background: var(--dev); }
+  [data-modo="dev"] .sidebar-pie .ajuste.active .ajuste-estado { color: var(--dev); }
+  [data-modo="dev"] .sidebar-ayuda { border-top-style: dashed; }
+  [data-modo="dev"] .sidebar-ayuda .ayuda-btn { font: 0.8rem var(--mono); }
+}
+
+/* Menú de Ayuda, en todas las vistas: cambiar de vista y Cerrar sesión van como filas con su ícono
+   en una columna fija (antes, en Desarrollador el ícono quedaba arriba del texto y salir, descentrado).
+   Pasar a Desarrollador solo en Cliente; pasar a Cliente solo en Desarrollador (escritorio). */
+.ayuda-menu .ayuda-dev, .ayuda-menu .ayuda-cliente { display: none; }
+.ayuda-menu :is(.ayuda-dev, .ayuda-cliente, .ayuda-salir) { align-items: center; gap: 10px; font-weight: 500; }
+.ayuda-menu .ayuda-salir { display: flex; color: var(--err); }
+.ayuda-menu .ayuda-salir:hover, .ayuda-menu .ayuda-salir:focus-visible { background: color-mix(in srgb, var(--err) 12%, var(--bg)); color: var(--err); }
+.ayuda-menu .ayuda-salir svg { width: 16px; height: 16px; flex: none; margin: 0 3px; }
+.ayuda-menu .ayuda-cliente { color: var(--brand); }
+.ayuda-menu .ayuda-cliente:hover, .ayuda-menu .ayuda-cliente:focus-visible { background: var(--brand-soft); color: var(--brand); }
+.ayuda-menu .ayuda-cliente .ayuda-dev-icono { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.ayuda-dev-icono { display: grid; place-items: center; width: 22px; height: 18px; flex: none; border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--info) 55%, transparent); font: 700 9.5px var(--mono); }
+@media (min-width: 901px) {
+  [data-modo="cliente"] .ayuda-menu .ayuda-dev { display: flex; }
+  [data-modo="dev"] .ayuda-menu .ayuda-cliente { display: flex; }
 }
