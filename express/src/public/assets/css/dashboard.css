@@ -3696,10 +3696,9 @@ html[data-modo="cliente"] .terminal { display: none !important; }
   [data-modo="dev"] .sidebar-pie > .sidebar-etiqueta:first-child, [data-modo="dev"] .sidebar-pie > .modo-switch { display: none; }
   [data-modo="dev"] .ayuda-menu .ayuda-cliente { display: flex; }
   [data-modo="dev"] .nav-actividad i { background: var(--dev); }
-  /* Ajustes: un panel de sistema, con los títulos como comentarios. */
+  /* Ajustes: un panel de sistema, con los títulos en letra de código. */
   [data-modo="dev"] .sidebar-pie { border-top: 1px dashed color-mix(in srgb, var(--dev) 35%, var(--border)); }
   [data-modo="dev"] .sidebar-pie .sidebar-etiqueta { font: 0.68rem var(--mono); text-transform: lowercase; letter-spacing: 0; color: var(--text-lo); }
-  [data-modo="dev"] .sidebar-pie .sidebar-etiqueta::before { content: '// '; color: var(--dev); }
   [data-modo="dev"] .modo-switch { border-radius: 8px; padding: 3px; }
   [data-modo="dev"] .modo-switch button { border-radius: 6px; font: 0.74rem var(--mono); padding: 6px 8px; }
   [data-modo="dev"] .modo-switch button[aria-checked="true"] { color: var(--dev); }
