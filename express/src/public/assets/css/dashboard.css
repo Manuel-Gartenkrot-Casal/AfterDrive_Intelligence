@@ -3198,8 +3198,9 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
   /* La revisión de una nota se abre a la derecha de la barra de íconos, que queda a la vista. */
   [data-modo="cliente"] .modal-overlay:has(> .modal.lectura) { left: var(--ancho-riel); }
   [data-modo="cliente"] .modal.lectura { width: calc(100vw - var(--ancho-riel)); }
-  /* La barra de la nota, a la altura del encabezado: la línea de abajo sigue a la del logo. */
-  [data-modo="cliente"] .modal.lectura .modal-header { height: 52px; min-height: 52px; padding: 0 16px 0 20px; border-bottom-color: var(--linea-suave); }
+  /* La barra de la nota, a la altura del encabezado (68px): la línea de abajo sigue a la del logo
+     y el encabezado no parece achicarse al abrir una nota. */
+  [data-modo="cliente"] .modal.lectura .modal-header { height: 68px; min-height: 68px; padding: 0 16px 0 20px; border-bottom-color: var(--linea-suave); }
   [data-modo="cliente"] .modal.lectura .lectura-acciones .btn { min-height: 34px; }
   [data-modo="cliente"] .modal.lectura .modal-close { width: 34px; height: 34px; }
 }
