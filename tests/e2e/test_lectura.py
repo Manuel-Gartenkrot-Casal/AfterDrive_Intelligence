@@ -198,3 +198,11 @@ def test_marco_de_la_vista_cliente_y_buscador(pagina):
     pagina.keyboard.press("Control+k")
     pagina.locator(".buscador-item", has_text="Fuentes").click()
     pagina.wait_for_function("location.hash === '#fuentes'")
+
+
+def test_la_barra_de_la_nota_tiene_la_altura_del_encabezado(pagina):
+    # La nota se abre encima del encabezado: si su barra fuera más baja, el encabezado parece achicarse.
+    alto_header = pagina.evaluate("document.getElementById('appHeader').offsetHeight")
+    _abrir(pagina, NOTA)
+    alto_barra = pagina.evaluate("document.querySelector('.modal.lectura .modal-header').offsetHeight")
+    assert alto_barra == alto_header == 68
