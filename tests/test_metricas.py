@@ -162,3 +162,20 @@ def test_costo_por_nota_promedia_las_que_usaron_la_api_paga():
     b.notas_fase2.insert_many([{"costo": {"total_usd": 0.1}}, {"costo": {"total_usd": 0.3}},
                                {"costo": {"total_usd": 0}}, {"titulo": "sin costo"}])
     assert metricas.costo_por_nota(b) == 0.2
+
+
+@pytest.mark.parametrize("ruta, modulo, funcion, mensaje", [
+    ("/api/metricas", "metricas", "resumen", "No se pudieron calcular las métricas."),
+    ("/api/calibracion", "calibracion", "resumen", "No se pudo leer la calibración."),
+])
+def test_un_error_interno_no_muestra_detalles_de_mongo(api, monkeypatch, capsys, ruta, modulo, funcion, mensaje):
+    import importlib
+
+    def falla(*a, **k):
+        raise RuntimeError("ServerSelectionTimeoutError: cluster0-shard.interno.mongodb.net:27017")
+    monkeypatch.setattr(importlib.import_module(f"afterdrive.{modulo}"), funcion, falla)
+    c = api[0].app.test_client()
+    assert c.post("/api/login", json={"usuario": "admin", "password": "secreta123"}).status_code == 200
+    r = c.get(ruta)
+    assert r.status_code == 500 and r.json == {"success": False, "error": mensaje}
+    assert "interno.mongodb.net" in capsys.readouterr().out   # el detalle queda en el log del servidor
