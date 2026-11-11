@@ -308,3 +308,43 @@ def test_en_desarrollador_ayuda_lleva_a_cliente_y_la_vista_no_queda_guardada(pag
     expect(pagina.locator("html")).to_have_attribute("data-modo", "dev")
     # La vista dura lo que la pestaña (sessionStorage): no queda guardada para la próxima vez que se entra.
     assert pagina.evaluate("[sessionStorage.getItem('ad-modo'), localStorage.getItem('ad-modo')]") == ["dev", None]
+
+
+def test_al_volver_a_entrar_arranca_en_cliente(navegador, base_url):
+    """La vista Cliente es la de entrada: ni un "dev" guardado por la versión anterior (localStorage)
+    ni haber pasado a Desarrollador antes de cerrar sesión hacen que se entre en Desarrollador."""
+    from tests.e2e.conftest import _SIN_CDN
+    from tests.e2e.credenciales import CLAVE, USUARIO
+
+    ctx = navegador.new_context(viewport={"width": 1366, "height": 900})
+    # Lo que dejaba guardado la versión anterior, solo antes de la primera carga.
+    ctx.add_init_script("if(!sessionStorage.getItem('e2e-sembrado')){localStorage.setItem('ad-modo','dev');"
+                        "sessionStorage.setItem('e2e-sembrado','1')}"
+                        f"localStorage.setItem('ad-tour-visto','1');localStorage.setItem('ad-idioma','es');{_SIN_CDN}")
+    pg = ctx.new_page()
+
+    def entrar():
+        pg.fill("#usuario", USUARIO)
+        pg.fill("#password", CLAVE)
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("#contenido")
+
+    try:
+        pg.goto(base_url + "/")
+        entrar()
+        expect(pg.locator("html")).to_have_attribute("data-modo", "cliente")
+        assert pg.evaluate("localStorage.getItem('ad-modo')") is None
+
+        pasar_a_dev(pg)
+        pg.click("#confirmar-si")
+        expect(pg.locator("html")).to_have_attribute("data-modo", "dev")
+        pg.reload()
+        pg.wait_for_selector("#contenido")
+        expect(pg.locator("html")).to_have_attribute("data-modo", "dev")   # recargar no la cambia
+
+        pg.evaluate("salir()")
+        pg.wait_for_selector("#usuario")
+        entrar()
+        expect(pg.locator("html")).to_have_attribute("data-modo", "cliente")
+    finally:
+        ctx.close()
