@@ -120,6 +120,10 @@ def entorno(monkeypatch):
     monkeypatch.setattr(llm, "ajustes_redaccion", lambda: llm.Redaccion(temperatura=0.55, max_ejemplos=3, chars_ejemplo=400, directiva="DIRECTIVA-X"))
     from afterdrive.ia import lm_studio
     monkeypatch.setattr(lm_studio, "evaluar_lineamientos", lambda texto: {"lineamientos": {"tono_b2b": True}, "comentarios": "ok"})
+    # El juez y la calificación de la IA corren después de la redacción y tienen sus propios tests
+    # (test_juez, test_critica): acá no llaman a la IA, así `llamadas` guarda el pedido de la nota.
+    monkeypatch.setattr(g.juez, "juzgar", lambda *a, **k: {"error": "sin juez en este test"})
+    monkeypatch.setattr(g.critica, "criticar", lambda *a, **k: {"error": "sin crítica en este test"})
     return llamadas, col, usadas
 
 
