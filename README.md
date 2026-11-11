@@ -6,12 +6,13 @@ Genera **notas de blog B2B para [AfterDrive by Alephee](https://afterdrive.aleph
 2. **Filtra con IA**: un LLM descarta lo que no es del rubro; lo que sirve se guarda con su embedding.
 3. **Redacta con IA**: un LLM escribe notas nuevas usando las noticias como datos y las notas del blog como referencia de estilo.
 
-Todo se maneja desde un dashboard web con login, y corre solo todos los días. Cada nota queda como borrador: una persona la **revisa y aprueba**, y recién ahí se puede publicar en el blog de HubSpot desde el mismo dashboard.
+Todo se maneja desde un dashboard web con login, y corre solo todos los días. Cada nota se escribe en portugués, se traduce al español y al inglés, lleva 3 fotos de sus noticias y la califica una IA. Queda como borrador: una persona la **revisa y aprueba** (o, si se prende la aprobación automática, un juez de IA aprueba la nota programada) y recién ahí se sube a HubSpot **como borrador** en los tres idiomas. La publicación final se hace en HubSpot.
 
 ```
  Fuentes de noticias ──► Scraping ──► Filtro IA ──► articulos ─┐
  Blog AfterDrive ──────► Ejemplos de estilo ───────────────────┼──► Redacción IA ──► notas_fase2 ──► revisión ──► HubSpot
-                                                               │      (+ saneo y evaluación)     (aprobar/editar)
+                                                               │  (+ saneo, evaluación, juez,    (aprobar/editar)  (borradores
+                                                               │   imágenes y traducciones)                         ES/PT/EN)
  Dashboard (Flask) ─── configura, encola y revisa todo ────────┘
 ```
 
@@ -55,7 +56,7 @@ Empezá por **[docs/README.md](docs/README.md)**: dice qué leer según lo que v
 | Rama | Qué es |
 |---|---|
 | **`Render_Testing`** | **Producción y desarrollo activo.** Render despliega desde acá. Es la referencia de toda la documentación |
-| `main` | Recibió `Render_Testing` el 16/10 ([PR #13](https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence/pull/13)). No tiene lo posterior: cola de Corridas, historial y revisión, HubSpot, GitHub Actions |
+| `main` | Recibió `Render_Testing` el 28/10 ([PR #17](https://github.com/Manuel-Gartenkrot-Casal/AfterDrive_Intelligence/pull/17)) junto con dos ajustes visuales (interruptores de la barra lateral y "Cómo se generó") que `Render_Testing` todavía no tiene |
 | `Front-Testing` | Rama paralela vieja. Su historial, estados de las notas y descartes con motivo ya están en `Render_Testing`. Lo que queda (rediseño visual) está **pospuesto** |
 | `Render_FrontTesting` | Copia de `Render_Testing` del 16/10, sin cambios propios |
 

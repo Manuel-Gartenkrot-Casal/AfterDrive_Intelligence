@@ -12,27 +12,6 @@
 - **Estado:** Habilitado y funcionando
 - **Permisos:** Lectura/escritura completa (enviar, leer, buscar, eliminar, gestionar etiquetas y filtros)
 
-### Acciones disponibles con Google Drive
-- Listar archivos y carpetas
-- Leer documentos de Google Docs
-- Leer hojas de cálculo de Google Sheets
-- Leer presentaciones de Google Slides
-- Descargar archivos (PDFs, imágenes, etc.)
-- Crear, editar y eliminar archivos
-- Gestionar permisos de archivos
-- Crear y gestionar eventos de Google Calendar
-
-### Acciones disponibles con Gmail
-- Leer correos electrónicos
-- Enviar correos electrónicos
-- Buscar correos
-- Eliminar correos
-- Gestionar etiquetas (crear, modificar, eliminar)
-- Gestionar filtros (crear, modificar, eliminar)
-- Descargar adjuntos
-- Crear borradores
-- Modificar etiquetas de mensajes (mover a carpetas)
-
 ## Agentes y Comandos
 
 ### Agentes disponibles
@@ -82,14 +61,3 @@
 - **Por ejecución:** $0.03 - $0.15 (normal), $0.20 - $0.50 (pesado)
 - **Mensual (10 ejecuciones/día):** $20 - $45 (normal), $60 - $150 (pesado)
 - **Optimización:** Resumir antes de pasar entre etapas, usar JSON estructurado, batching
-
-### Stack tecnológico actual
-- **Scraping:** Scrapling (Python)
-- **Base de datos:** MongoDB Atlas
-- **IA local:** LM Studio / Ollama
-- **Frontend:** dashboard HTML servido por Flask/Python (con login)
-- **Origen specs:** Google Drive (ID: `1Mlk84ZWPhkUfwKps0pLI_H6Utf_e73iY4NrRScNUEHE`)
-
-### Última corrida
-*2026-07-11: Sincronización inicial desde Drive. Specs cargadas correctamente.*
-*2026-07-11: Scraping ejecutado (aftermarketinternational + lacasadelrenault). 20 artículos nuevos. LM Studio no disponible (modo degradado). Mail de resumen enviado.*
