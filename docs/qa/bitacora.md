@@ -3,6 +3,36 @@
 Una entrada por corrida, la más nueva arriba (como máximo las últimas 60). Cada una dice hasta qué
 commit se revisó, qué se probó usando la app (no solo los tests), qué se encontró y qué quedó pendiente.
 
+## 2026-11-12 · integración
+
+- **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `c135ba4`. Sin cambios nuevos desde ayer: recorrido de punta a punta.
+- **Probado como cliente** (vista Cliente; escritorio 1366x900 y celular 390x844; Prompts en es/pt/en):
+  - Inicio: contadores (notas para revisar, noticias, fuentes activas, próxima nota) coinciden con Historial, Fuentes
+    y Programación, y se actualizan al aprobar, pausar o reprogramar.
+  - Revisar una nota: calificar (estrellas, etiqueta, comentario), editar el texto y aprobar y subir a HubSpot. Todo
+    sobrevive a recargar y se ve igual en la lista, el Inicio, el contador de la barra lateral y los filtros por estado.
+    Sin IA, la calificación de la IA avisa claro y la humana sigue andando.
+  - Fuentes: agregar, repetir, pausar y reactivar; Programación: cambiar la hora, sumar una hora extra (presupuesto
+    recalculado), guardar y recargar.
+  - Crear nota: sin categorías avisa; con categoría encola la generación. Prompts: pestañas y editor.
+  - Sin scroll horizontal en celular en ninguna sección y sin errores de JavaScript.
+- **Encontrado y arreglado:** en Prompts, la cabecera "Prompt completo" decía "64 líneas · 115 caracteres": las líneas
+  eran de todo el prompt y los caracteres solo de la pieza elegida, y parecía que el prompt entero tenía 115 caracteres.
+  Ahora dice "64 líneas · Identidad: 115 caracteres" (también al entrar, no solo al cambiar de pieza). Para reproducirlo
+  antes: entrar a Prompts y mirar la cabecera del prompt completo. Test e2e
+  `test_prompts_los_caracteres_son_de_la_pieza_elegida`.
+- **Preguntas para el equipo:**
+  - Después de tocar "Generar nota", salir de Crear nota avisa "Tenés cambios sin guardar… se pierden los cambios" (son
+    las categorías elegidas, que no se guardaron para la nota automática). Recién generada la nota, el aviso confunde:
+    ¿debería decir que lo que no se guarda es la configuración de la nota automática?
+  - Volver a agregar una fuente que ya estaba muestra "URL guardada como activa", igual que una nueva. ¿Avisar que ya
+    estaba?
+  - Sigue la de ayer: abrir una nota vieja sin `evaluacion` llama a la IA cada vez.
+- **Observaciones menores:** la misma nota muestra en el Inicio la fecha de generación en "Última nota" y la del
+  documento en "Para revisar" (en producción casi coinciden).
+- **No se pudo probar acá:** la generación de punta a punta desde la interfaz (corre en un subproceso que no ve la base
+  en memoria de la app de prueba); está cubierta por los tests unitarios.
+
 ## 2026-11-11 · diario
 
 - **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `930719c` (primera corrida: cambios de los últimos días).

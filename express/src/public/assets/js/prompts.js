@@ -250,6 +250,7 @@ function pintarArchivoPrompt() {
   });
   caja.innerHTML = html;
   $('pe-archivo-lineas').textContent = lineas + ' ' + tr('líneas');
+  pintarValidacionPrompt();   // el conteo de caracteres nombra la pieza, que recién acá está cargada
   var lugar = $('pe-editor-lugar');
   if (lugar) { lugar.appendChild($('pe-texto')); _ajustarAlto(); }
   caja.querySelectorAll('.pa-abrir').forEach(function(b) {
@@ -287,8 +288,11 @@ async function validarPrompt() {
 
 function pintarValidacionPrompt() {
   var v = PROMPTS.validacion, ul = $('pe-validacion');
+  // Las líneas de al lado son del prompt completo; los caracteres, de la pieza elegida (la que se edita
+  // y se valida). Sin el nombre de la pieza parecía que todo el prompt tenía 115 caracteres.
   var largo = _promptTexto().trim().length;
-  $('pe-largo').textContent = largo + ' ' + tr('caracteres');
+  var pieza = PROMPTS.activas.filter(function(p) { return p.clave === PROMPTS.clave; })[0];
+  $('pe-largo').textContent = (pieza ? tr(pieza.titulo) + ': ' : '') + largo + ' ' + tr('caracteres');
   if (!v) { ul.innerHTML = ''; return; }
   var items = v.errores.map(function(e) { return '<li class="err">' + escHtml(e) + '</li>'; })
     .concat(v.avisos.map(function(a) { return '<li class="aviso">' + escHtml(a) + '</li>'; }));

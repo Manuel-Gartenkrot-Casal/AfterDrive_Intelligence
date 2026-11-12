@@ -1016,3 +1016,16 @@ def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):
     expect(pagina.locator("#pia-auto-estado")).to_have_text("Apagada")
     pagina.click("#pia-auto")
     expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
+
+
+def test_prompts_los_caracteres_son_de_la_pieza_elegida(pagina):
+    """En "Prompt completo" las líneas son de todo el prompt y los caracteres de la pieza elegida:
+    el conteo dice de qué pieza es (antes parecía que todo el prompt tenía ~100 caracteres)."""
+    pagina.click('.sidebar a[data-seccion="prompts"]')
+    for clave, titulo in (("identidad", "Identidad"), ("seo", "SEO")):
+        pagina.click(f'#prompts-lista .prompts-item[data-clave="{clave}"]')
+        expect(pagina.locator("#pe-largo")).to_contain_text(f"{titulo}: ")
+        largo = pagina.evaluate("document.getElementById('pe-texto').value.replace(/\\r\\n/g, '\\n').trim().length")
+        expect(pagina.locator("#pe-largo")).to_have_text(f"{titulo}: {largo} caracteres")
+    lineas = int(pagina.locator("#pe-archivo-lineas").inner_text().split()[0])
+    assert lineas > 1   # las líneas siguen siendo las del prompt completo
