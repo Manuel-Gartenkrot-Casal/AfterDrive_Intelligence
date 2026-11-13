@@ -54,8 +54,11 @@ var _estadoProveedor = null;  // la última respuesta de /api/providers
 // La API paga cuesta plata en cada llamada: se confirma antes de pasar a ella.
 async function confirmarApiPaga() {
   var d = _estadoProveedor || {};
+  // Montos con el formato del idioma (0,23 en español) y la misma frase que el resto del panel, que ya
+  // está traducida: antes decía "USD 0.00 de un tope de USD 40" y no se traducía.
+  var usd = function(x) { return Number(x).toLocaleString(localeUI(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
   var gasto = d.paga_gastado_mes_usd !== undefined
-    ? '\n\nGastado este mes: USD ' + d.paga_gastado_mes_usd.toFixed(2) + ' de un tope de USD ' + d.paga_tope_usd + '.'
+    ? '\n\nGastado este mes en la API paga: USD ' + usd(d.paga_gastado_mes_usd) + ' de un tope de USD ' + usd(d.paga_tope_usd) + '.'
     : '';
   return confirmar({
     titulo: '¿Usar la API paga?',

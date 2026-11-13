@@ -175,6 +175,11 @@ function chequeosDeNota(nota) {
                                        + escHtml(nombres(reesc)) + '.</p>' : '' });
   }
   var im = nota.imagen || {}, eleccion = nota.imagen_eleccion || {};
+  // Sin elección de la IA, "ninguna noticia tenía foto" solo si de verdad ninguna tiene: si no (una nota
+  // vieja, o una imagen que se quitó a mano) se invita a elegir entre sus fotos.
+  var conFotos = (nota.fuentes || []).some(function(f) { return f && f.imagen; });
+  var sinImagen = conFotos ? 'La nota no tiene imagen destacada: elegí la foto de una de sus noticias o subí una.'
+                           : 'Ninguna noticia de la nota tenía foto.';
   out.push(im.url
     ? { c: 'ok', id: 'imagen', titulo: 'Imagen destacada', linea: 'Tiene imagen destacada.' }
     : /muestran personas/.test(eleccion.motivo || '')
@@ -182,7 +187,7 @@ function chequeosDeNota(nota) {
         linea: 'Las fotos aptas muestran personas y la portada no puede tenerlas.',
         accion: { texto: 'Elegir imagen', onclick: 'vistaPreviaNota()' } }
     : { c: 'err', id: 'imagen', titulo: 'Falta la imagen destacada',
-        linea: eleccion.metodo === 'ia' ? resumenMotivoImagen(eleccion.motivo) : 'Ninguna noticia de la nota tenía foto.',
+        linea: eleccion.metodo === 'ia' ? resumenMotivoImagen(eleccion.motivo) : sinImagen,
         detalle: eleccion.metodo === 'ia' && eleccion.motivo ? detalleMotivoImagen(eleccion.motivo) : '',
         accion: { texto: 'Elegir imagen', onclick: 'elegirImagenNota()' } });
   var hs = nota.hubspot_traducciones || {};

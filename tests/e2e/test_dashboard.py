@@ -1029,3 +1029,56 @@ def test_prompts_los_caracteres_son_de_la_pieza_elegida(pagina):
         expect(pagina.locator("#pe-largo")).to_have_text(f"{titulo}: {largo} caracteres")
     lineas = int(pagina.locator("#pe-archivo-lineas").inner_text().split()[0])
     assert lineas > 1   # las líneas siguen siendo las del prompt completo
+
+
+@VISTA_DEV
+def test_la_tarjeta_de_fuentes_cuenta_las_activas(pagina):
+    """El número grande es de las fuentes activas: el título lo dice y abajo van las registradas
+    (antes decía "Fuentes registradas: 1" arriba de "2 registradas")."""
+    tarjeta = pagina.locator(".stat-card").first
+    expect(tarjeta.locator(".stat-label")).to_have_text("Fuentes activas")
+    expect(tarjeta.locator("#statUrlsSub")).to_have_text(re.compile(r"^\d+ registradas$"))
+    activas = int(tarjeta.locator("#statUrls").inner_text())
+    assert activas <= int(tarjeta.locator("#statUrlsSub").inner_text().split()[0])
+    elegir_idioma(pagina, "en")
+    expect(tarjeta.locator(".stat-label")).to_have_text("Active sources")
+
+
+@VISTA_DEV
+def test_confirmar_la_api_paga_se_traduce_y_usa_el_formato_del_idioma(pagina):
+    """Antes el cuerpo quedaba en español en pt/en y decía "USD 0.00 de un tope de USD 40"."""
+    pagina.click("#prov-paga")
+    texto = pagina.locator("#confirmar-texto")
+    expect(texto).to_contain_text(re.compile(r"Gastado este mes en la API paga: USD \d+,\d{2} de un tope de USD \d+,\d{2}\."))
+    pagina.click("#confirmar-no")
+    elegir_idioma(pagina, "en")
+    pagina.click("#prov-paga")
+    expect(texto).to_contain_text("From now on the whole pipeline uses the paid API")
+    expect(texto).to_contain_text("It stays this way until you choose another provider.")
+    expect(texto).to_contain_text(re.compile(r"Spent on the paid API this month: USD \d+\.\d{2} out of a USD \d+\.\d{2} cap\."))
+    pagina.click("#confirmar-no")
+    assert "active" not in (pagina.locator("#prov-paga").get_attribute("class") or "")
+
+
+def test_el_aviso_sin_imagen_dice_si_sus_noticias_tienen_fotos(pagina):
+    """"Ninguna noticia de la nota tenía foto" solo si es cierto: una nota vieja con fotos en sus noticias,
+    o una a la que se le quitó la imagen, invita a elegir una."""
+    fuentes = {"valor": None}
+
+    def nota(ruta):
+        respuesta = ruta.fetch()
+        datos = respuesta.json()
+        datos["nota"].pop("imagen", None)
+        datos["nota"].pop("imagen_eleccion", None)
+        if fuentes["valor"] is not None:
+            datos["nota"]["fuentes"] = fuentes["valor"]
+        ruta.fulfill(response=respuesta, json=datos)
+
+    pagina.route("**/api/fase2/notas/*", nota)
+    _abrir_nota(pagina, "Marketplaces")   # dos de sus noticias tienen foto
+    expect(pagina.locator("#modal-art")).to_contain_text(
+        "La nota no tiene imagen destacada: elegí la foto de una de sus noticias o subí una.")
+    pagina.keyboard.press("Escape")
+    fuentes["valor"] = [{"titulo": "Sin foto", "url": "https://s.com/sin"}]
+    _abrir_nota(pagina, "Marketplaces")
+    expect(pagina.locator("#modal-art")).to_contain_text("Ninguna noticia de la nota tenía foto.")

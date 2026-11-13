@@ -3,6 +3,29 @@
 Una entrada por corrida, la más nueva arriba (como máximo las últimas 60). Cada una dice hasta qué
 commit se revisó, qué se probó usando la app (no solo los tests), qué se encontró y qué quedó pendiente.
 
+## 2026-11-13 · integración
+
+- **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `38f063d`. Sin cambios nuevos: segunda pasada de integración,
+  en las zonas que ayer quedaron sin ver.
+- **Probado como cliente:** vista Desarrollador (tablero de métricas, proveedor de IA con la API paga, en escritorio y
+  celular, es/pt/en); imagen destacada (elegir la foto de una noticia desde Vista previa, guardar, recargar y quitarla).
+  La API paga pide confirmación con el gasto y el tope, queda elegida al recargar y volver a NVIDIA no pide confirmar.
+- **Encontrado y arreglado:**
+  1. La primera tarjeta de Métricas decía "Fuentes registradas: 1" arriba de "2 registradas" (el 1 son las activas).
+     Ahora dice "Fuentes activas". Reproducir antes: entrar en Desarrollador con una fuente pausada.
+  2. El diálogo para elegir la API paga quedaba en español en pt/en (solo el título y los botones se traducían) y
+     mostraba "USD 0.00 de un tope de USD 40". Ahora se traduce completo y los montos usan el formato del idioma.
+     Reproducir antes: Desarrollador → interfaz en EN → tocar "API paga".
+  3. Una nota sin imagen decía "Ninguna noticia de la nota tenía foto" aunque sus noticias tuvieran fotos (notas
+     viejas, o después de quitar la imagen a mano). Ahora, si hay fotos, invita a elegir una. Reproducir antes:
+     Vista previa → elegir la foto de una noticia → Quitar imagen → el aviso decía que ninguna tenía foto.
+  Tests e2e: `test_la_tarjeta_de_fuentes_cuenta_las_activas`, `test_confirmar_la_api_paga_se_traduce_y_usa_el_formato_del_idioma`,
+  `test_el_aviso_sin_imagen_dice_si_sus_noticias_tienen_fotos`.
+- **Pendiente para otra corrida (tope de 3 arreglos):** Más opciones de Crear nota (regiones, clientes, empresas que no se
+  nombran), vista previa de Instagram/LinkedIn, terminal y cola de Desarrollador.
+- **Preguntas abiertas:** las de las corridas anteriores (aviso de cambios sin guardar después de generar, fuente
+  repetida, evaluación con IA al abrir notas viejas).
+
 ## 2026-11-12 · integración
 
 - **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `c135ba4`. Sin cambios nuevos desde ayer: recorrido de punta a punta.
