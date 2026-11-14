@@ -419,8 +419,14 @@ async function fase2AgregarCliente() {
   var nombre = $('f2-cli-nombre').value.trim();
   var desc = $('f2-cli-desc').value.trim();
   var modo = $('f2-cli-modo').value;
-  if (!nombre) return;
   var st = $('f2-cli-status');
+  if (!nombre) {
+    // Antes no hacía nada y quedaba a la vista el "guardado" de la vez anterior.
+    st.className = 'feedback err';
+    st.textContent = 'Escribí el nombre de la empresa.';
+    $('f2-cli-nombre').focus();
+    return;
+  }
   st.className = 'feedback info';
   st.textContent = 'Guardando...';
   try {

@@ -47,6 +47,24 @@ def test_categorias_recientes_de_la_mas_nueva_a_la_mas_vieja():
     assert rotacion.categorias_recientes(base) == [["nuevo"], ["viejo"]]
 
 
+def test_las_notas_rechazadas_no_cuentan_como_categorias_usadas():
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_many([
+        {"categorias": ["neumaticos"], "estado": "aprobada"},
+        {"categorias": ["frenos"], "estado": "rechazada"},
+        {"categorias": ["autopartes"]},                       # sin estado: borrador viejo, cuenta
+        {"categorias": ["lubricantes"], "estado": "borrador"},
+    ])
+    assert rotacion.categorias_recientes(base) == [["lubricantes"], ["autopartes"], ["neumaticos"]]
+
+
+def test_las_rechazadas_no_ocupan_lugar_entre_las_recientes():
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_one({"categorias": ["vieja"], "estado": "publicado"})
+    base.notas_fase2.insert_many([{"categorias": ["x"], "estado": "rechazada"} for _ in range(5)])
+    assert rotacion.categorias_recientes(base, notas=1) == [["vieja"]]
+
+
 def test_si_mongo_falla_rota_igual_sin_historial():
     class Rota:
         def __getitem__(self, k):

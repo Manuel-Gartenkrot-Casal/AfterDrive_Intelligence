@@ -75,11 +75,18 @@ def elegir(seleccionadas: list[str], recientes: list[list[str]], cantidad: int |
 
 
 def categorias_recientes(base=None, notas: int = NOTAS_RECIENTES) -> list[list[str]]:
-    """Las categorías de las últimas notas, de la más nueva a la más vieja. [] si Mongo falla."""
+    """Las categorías de las últimas notas, de la más nueva a la más vieja. [] si Mongo falla.
+
+    Las notas rechazadas no cuentan: si contaran, la categoría de una nota rechazada
+    quedaría como "ya usada" y saldría menos, aunque no haya ninguna nota buena sobre ella
+    (lo mismo que con las noticias de una nota rechazada, que vuelven a estar disponibles).
+    """
     try:
         if base is None:
             from afterdrive.db import db as base
-        docs = base["notas_fase2"].find({"categorias": {"$exists": True}}, {"categorias": 1}).sort("_id", -1).limit(notas)
+        from afterdrive.db import ESTADO_RECHAZADA
+        filtro = {"categorias": {"$exists": True}, "estado": {"$ne": ESTADO_RECHAZADA}}
+        docs = base["notas_fase2"].find(filtro, {"categorias": 1}).sort("_id", -1).limit(notas)
         return [list(d.get("categorias") or []) for d in docs]
     except Exception as e:
         print(f"  [AVISO] No se pudieron leer las notas recientes para rotar categorías: {e}", flush=True)

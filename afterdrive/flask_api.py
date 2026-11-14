@@ -165,14 +165,14 @@ def not_found(_error):
 def internal_error(_error):
     return jsonify({"success": False, "error": "Error interno del servidor"}), 500
 
-def _error_interno(e: Exception, status: int = 500, **extra):
-    """Loguea el detalle en el servidor y responde un mensaje genérico.
+def _error_interno(e: Exception, status: int = 500, mensaje: str = "Error interno del servidor", **extra):
+    """Loguea el detalle en el servidor y responde un mensaje genérico (o `mensaje`).
 
     El texto de la excepción no viaja al cliente: suele traer hosts internos
     y detalles de Mongo.
     """
     print(f"[API ERROR] {request.path}: {e!r}", flush=True)
-    return jsonify({"success": False, "error": "Error interno del servidor", **extra}), status
+    return jsonify({"success": False, "error": mensaje, **extra}), status
 
 
 def _lista_texto(valor) -> list[str] | None:
@@ -743,7 +743,7 @@ def calibracion_resumen():
     try:
         return jsonify({"success": True, **calibracion.resumen()})
     except Exception as e:
-        return jsonify({"success": False, "error": f"No se pudo leer la calibración: {e}"}), 500
+        return _error_interno(e, mensaje="No se pudo leer la calibración.")
 
 
 @app.route("/api/metricas", methods=["GET"])
@@ -754,7 +754,7 @@ def metricas_resumen():
     try:
         return jsonify({"success": True, **metricas.resumen(request.args.get("dias", 14, type=int))})
     except Exception as e:
-        return jsonify({"success": False, "error": f"No se pudieron calcular las métricas: {e}"}), 500
+        return _error_interno(e, mensaje="No se pudieron calcular las métricas.")
 
 
 @app.route("/api/historial/imagen", methods=["PATCH"])

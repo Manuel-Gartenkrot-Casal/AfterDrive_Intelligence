@@ -122,7 +122,7 @@ python -m playwright install chromium     # una vez
 python -m pytest -m e2e tests/e2e
 ```
 
-Si ya tenés un Chromium instalado, apuntalo con `E2E_CHROMIUM=/ruta/a/chromium`. El CI los corre en un job propio.
+Si ya tenés un Chromium instalado, apuntalo con `E2E_CHROMIUM=/ruta/a/chromium`. Si no encuentra Chromium, en tu PC los e2e salen como *skipped* (fijate que no digan `69 skipped`: no probaron nada); suele pasar cuando la versión de Playwright instalada busca otro Chromium. El CI los corre en un job propio y ahí, sin Chromium, fallan en vez de saltearse (también localmente con `E2E_OBLIGATORIO=1`).
 
 ## Problemas frecuentes
 
