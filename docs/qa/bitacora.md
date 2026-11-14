@@ -3,6 +3,23 @@
 Una entrada por corrida, la más nueva arriba (como máximo las últimas 60). Cada una dice hasta qué
 commit se revisó, qué se probó usando la app (no solo los tests), qué se encontró y qué quedó pendiente.
 
+## 2026-11-14 · integración
+
+- **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `9f7f1db`. Sin cambios nuevos: tercera pasada, con lo que
+  quedó pendiente el 13/11.
+- **Probado como cliente:** Más opciones de Crear nota (regiones, clientes para mencionar y "No nombrar nunca", nombre
+  vacío, repetido, recargar); vista previa de Instagram y LinkedIn de una nota con carrusel (escritorio y celular);
+  terminal y cola de Desarrollador con una búsqueda de noticias (registro en vivo, maximizar, plegar, cerrar, recargar,
+  Actividad). Todo sin errores de JavaScript ni scroll horizontal en celular.
+- **Encontrado y arreglado:** "Agregar" un cliente con el nombre vacío no hacía nada y quedaba a la vista el mensaje
+  "guardado" de la vez anterior. Ahora avisa "Escribí el nombre de la empresa." y pone el foco en el campo. Reproducir
+  antes: Crear nota → Más opciones → agregar un cliente → borrar el nombre → Agregar. Test e2e
+  `test_agregar_un_cliente_sin_nombre_avisa`.
+- **Pregunta para el equipo:** volver a agregar un cliente que ya existe (aunque cambie la mayúscula) lo reemplaza sin
+  avisar: el nombre queda como se escribió la última vez y la descripción se borra si no se completa. ¿Se quiere que
+  avise que ya existía, o que conserve la descripción?
+- **Preguntas abiertas:** las de corridas anteriores.
+
 ## 2026-11-13 · integración
 
 - **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `38f063d`. Sin cambios nuevos: segunda pasada de integración,

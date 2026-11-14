@@ -1082,3 +1082,16 @@ def test_el_aviso_sin_imagen_dice_si_sus_noticias_tienen_fotos(pagina):
     fuentes["valor"] = [{"titulo": "Sin foto", "url": "https://s.com/sin"}]
     _abrir_nota(pagina, "Marketplaces")
     expect(pagina.locator("#modal-art")).to_contain_text("Ninguna noticia de la nota tenía foto.")
+
+
+def test_agregar_un_cliente_sin_nombre_avisa(pagina):
+    """El botón "Agregar" sin nombre no hacía nada: ni aviso, y quedaba a la vista el "guardado" anterior."""
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    pagina.click("#btn-mas-opciones")
+    clientes = pagina.locator("#f2-clientes-list").inner_text()
+    pagina.fill("#f2-cli-nombre", "   ")
+    pagina.click("#f2-cli-modo ~ button")
+    expect(pagina.locator("#f2-cli-status")).to_have_text("Escribí el nombre de la empresa.")
+    expect(pagina.locator("#f2-cli-status")).to_have_class(re.compile(r"\berr\b"))
+    expect(pagina.locator("#f2-cli-nombre")).to_be_focused()
+    assert pagina.locator("#f2-clientes-list").inner_text() == clientes   # no se agregó nada

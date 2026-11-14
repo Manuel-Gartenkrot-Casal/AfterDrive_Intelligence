@@ -326,6 +326,7 @@ var _FILAS_TEXTOS = [
   ['Descripción breve', 'Descrição breve', 'Short description'],
   ['Eliminar cliente', 'Excluir cliente', 'Delete client'],
   ['Cliente guardado.', 'Cliente salvo.', 'Client saved.'],
+  ['Escribí el nombre de la empresa.', 'Escreva o nome da empresa.', 'Type the company name.'],
   ['Cliente agregado:', 'Cliente adicionado:', 'Client added:'],
   ['¿Eliminar este cliente?', 'Excluir este cliente?', 'Delete this client?'],
   ['No se pudo eliminar el cliente:', 'Não foi possível excluir o cliente:', 'Couldn’t delete the client:'],
