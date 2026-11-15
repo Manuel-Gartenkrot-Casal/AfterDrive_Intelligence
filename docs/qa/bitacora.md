@@ -3,6 +3,19 @@
 Una entrada por corrida, la más nueva arriba (como máximo las últimas 60). Cada una dice hasta qué
 commit se revisó, qué se probó usando la app (no solo los tests), qué se encontró y qué quedó pendiente.
 
+## 2026-11-15 · integración
+
+- **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `59a6293`. Sin cambios nuevos: zonas todavía sin ver.
+- **Probado como cliente** (vista Cliente, escritorio): Historial (las cuatro pestañas, abrir un artículo guardado,
+  vacíos, buscador), "Cómo aprende la generación", Fuentes ("Probar y agregar" y "Buscar recomendaciones" entran a la
+  cola y se ven en Actividad), tema oscuro (se aplica y sobrevive a recargar). Sin errores de JavaScript.
+- **Encontrado y arreglado:** el buscador de Historial no encontraba nada si se escribía sin tildes ("rotacion",
+  "neumaticos", "pecas"). Ahora no distingue tildes ni ç/ñ (los caracteres especiales se siguen tomando literales).
+  Reproducir antes: Historial → buscar "rotacion" → "No hay resultados". Tests unitarios en `tests/test_historial.py`.
+- **No se pudo probar acá:** el resultado de "Probar y agregar" y de "Buscar recomendaciones" (corren en un subproceso
+  que no ve la base en memoria de la app de prueba).
+- **Preguntas abiertas:** las de corridas anteriores.
+
 ## 2026-11-14 · integración
 
 - **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `9f7f1db`. Sin cambios nuevos: tercera pasada, con lo que

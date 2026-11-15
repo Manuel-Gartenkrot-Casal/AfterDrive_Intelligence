@@ -336,3 +336,22 @@ def test_la_lista_trae_la_imagen_destacada_para_la_miniatura():
     ])
     imagenes = sorted(str(it["imagen"]) for it in historial.listar("generados_aprobados", base=base)["items"])
     assert imagenes == ["None", "https://hs/b.jpg", "https://img/a.jpg"]
+
+
+@pytest.mark.parametrize("q", ["neumaticos", "NEUMATICOS", "Neumáticos", "neumÁticos (+"])
+def test_buscar_no_distingue_tildes(base, q):
+    titulos = [i["titulo"] for i in historial.listar("generados_aprobados", q=q, base=base)["items"]]
+    assert titulos == ["Neumáticos (+ datos)"]
+
+
+def test_buscar_sin_tildes_encuentra_texto_con_cedilla_y_enie(base):
+    base.notas_fase2.insert_one({"contenido": "# Peças e acessórios no ano\n\nTexto.", "estado": "borrador"})
+    base.notas_fase2.insert_one({"contenido": "# El año del repuesto\n\nTexto.", "estado": "borrador"})
+    buscar = lambda q: [i["titulo"] for i in historial.listar("generados_aprobados", q=q, base=base)["items"]]  # noqa: E731
+    assert buscar("pecas e acessorios") == ["Peças e acessórios no ano"]
+    assert buscar("el ano del") == ["El año del repuesto"]
+
+
+def test_buscar_sin_tildes_no_rompe_los_caracteres_especiales(base):
+    assert historial.listar("generados_aprobados", q=".*", base=base)["items"] == []
+    assert historial.listar("generados_aprobados", q="[a", base=base)["total"] == 0

@@ -34,6 +34,7 @@ rechazada) y la edición del texto de una Nota.
 
 import datetime
 import re
+import unicodedata
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -116,11 +117,25 @@ def _filtro_estado(estado: str) -> dict:
     return {}
 
 
+# Letras que se buscan con o sin tilde: "rotacion" encuentra "Rotación" y "pecas", "peças".
+_VARIANTES = {"a": "aáàâã", "e": "eéèê", "i": "iíìî", "o": "oóòôõ", "u": "uúùûü", "c": "cç", "n": "nñ"}
+
+
+def _patron_sin_tildes(q: str) -> str:
+    """Regex literal de `q` que no distingue tildes (las mayúsculas las ignora $options "i")."""
+    plano = "".join(ch for ch in unicodedata.normalize("NFKD", q) if not unicodedata.combining(ch))
+    partes = []
+    for ch in plano:
+        variantes = _VARIANTES.get(ch.lower())
+        partes.append(f"[{variantes}{variantes.upper()}]" if variantes else re.escape(ch))
+    return "".join(partes)
+
+
 def _filtro_busqueda(q: str, campo_texto: str) -> dict:
     q = (q or "").strip()
     if not q:
         return {}
-    patron = {"$regex": re.escape(q), "$options": "i"}
+    patron = {"$regex": _patron_sin_tildes(q), "$options": "i"}
     campos = ["titulo", campo_texto, "tema", "url", "motivo", "razon"]
     return {"$or": [{c: patron} for c in dict.fromkeys(campos)]}
 
