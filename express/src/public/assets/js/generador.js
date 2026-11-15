@@ -110,7 +110,8 @@ async function fase2Init() {
         puntapie_activo: _f2PuntapieActivo,
         puntapie_url: $('f2-puntapie-url').value.trim(),
         rotar_categorias: _f2RotarCategorias,
-        largo: $('f2-largo').value
+        largo: $('f2-largo').value,
+        temas: lineasTemas()
       };
     },
     aplicar: function(st) {
@@ -124,6 +125,7 @@ async function fase2Init() {
       pintarRotarCategorias(!!st.rotar_categorias);
       $('f2-puntapie-url').value = st.puntapie_url;
       $('f2-largo').value = st.largo || 'medio';
+      pintarTemas(st.temas || []);
       resumenCrear();
     },
     guardar: async function(st, base) {
@@ -141,11 +143,20 @@ async function fase2Init() {
           body: JSON.stringify({ largo: st.largo })
         });
       }
+      if (JSON.stringify(st.temas) !== JSON.stringify(base.temas)) {
+        var d = await pedir('/api/fase2/temas', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ texto: st.temas.join('\n') })
+        });
+        st.temas = d.temas;   // ya limpia (sin viñetas ni repetidos): pasa a ser la base
+        pintarTemas(d.temas);
+      }
     }
   });
   await Promise.all([fase2CargarCategorias(), fase2CargarRegiones(), fase2CargarClientes()]);
-  await fase2CargarConfig();
+  await Promise.all([fase2CargarConfig(), fase2CargarTemas()]);
   form.tomarBase();
+  $('f2-temas').addEventListener('input', function() { pintarEstadoTemas(); marcarCrear(); });
   resumenCrear();
   $('f2-persona').addEventListener('change', resumenCrear);
   document.addEventListener('idioma', resumenCrear);
@@ -545,6 +556,52 @@ function toggleRotarCategorias() {
   marcarCrear();
 }
 
+/* Lista de temas para las próximas notas: cada nota sin tema puntual usa el primero
+   y el servidor lo saca de la lista cuando la nota se guarda (generar_nota_fase2.generar_nota). */
+// Misma limpieza que el servidor (flask_api._VINETA): sin viñetas, vacíos ni repetidos.
+function lineasTemas() {
+  var temas = [];
+  $('f2-temas').value.split('\n').forEach(function(l) {
+    var t = l.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
+    if (t && temas.indexOf(t) < 0) temas.push(t);
+  });
+  return temas;
+}
+
+function pintarTemas(temas) {
+  $('f2-temas').value = temas.join('\n');
+  pintarEstadoTemas();
+}
+
+function pintarEstadoTemas() {
+  var temas = lineasTemas();
+  $('f2-temas-estado').textContent = temas.length
+    ? temas.length + (temas.length === 1 ? ' tema' : ' temas') + ' en la lista. La próxima nota usa: ' + temas[0]
+    : 'La lista está vacía.';
+}
+
+// La trae del servidor (al entrar y cuando una nota consume un tema). Si la estás editando, no la pisa.
+async function fase2CargarTemas() {
+  var d;
+  try { d = await pedir('/api/fase2/temas'); } catch (e) { return; }
+  var form = FORMULARIOS.crear, base = form ? form.base() : null;   // null antes de la primera carga
+  if (base && JSON.stringify(lineasTemas()) !== JSON.stringify(base.temas)) return;
+  pintarTemas(d.temas);
+  if (base) { form.ponerEnBase('temas', d.temas); form.marcar(); }
+}
+
+async function importarTemas(input) {
+  var archivo = input.files[0];
+  input.value = '';   // permite volver a elegir el mismo archivo
+  if (!archivo) return;
+  if (archivo.size > 1024 * 1024) { showToast('El archivo es muy grande (máximo 1 MB).', 'error'); return; }
+  var texto = (await archivo.text()).replace(/\r/g, '');
+  var actual = $('f2-temas').value.replace(/\s+$/, '');
+  $('f2-temas').value = (actual ? actual + '\n' : '') + texto;
+  pintarEstadoTemas();
+  marcarCrear();
+}
+
 async function fase2Scrape() {
   var btn = $('btn-f2-scrape');
   setBtnLoading(btn, true);
@@ -578,6 +635,22 @@ async function fase2GenerarStream() {
   if (!categorias.length) {
     showToast('Seleccioná al menos una categoría', 'warn');
     return;
+  }
+  // La generación lee la lista guardada: si la cambiaste y no la guardaste, se guarda antes.
+  var form = FORMULARIOS.crear, base = form && form.base();
+  if (base && JSON.stringify(lineasTemas()) !== JSON.stringify(base.temas)) {
+    try {
+      var dt = await pedir('/api/fase2/temas', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ texto: lineasTemas().join('\n') })
+      });
+      pintarTemas(dt.temas);
+      form.ponerEnBase('temas', dt.temas);
+      form.marcar();
+    } catch (e) {
+      showToast('No se pudo guardar la lista de temas: ' + e.message, 'error');
+      return;
+    }
   }
   var btn = $('btn-f2-generar');
   var st = $('f2-status');
@@ -628,6 +701,7 @@ async function fase2GenerarStream() {
       // Se usan una sola vez: la próxima nota arranca sin tema ni indicaciones.
       $('f2-tema').value = '';
       $('f2-indicaciones').value = '';
+      fase2CargarTemas();   // si usó un tema de la lista, ya no está
       cargarUltimaNota();
       cargarResumenHistorial();
       st.className = 'feedback ok';

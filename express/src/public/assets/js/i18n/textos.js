@@ -20,7 +20,11 @@ var _FILAS_TEXTOS = [
   ['+ Nueva nota', '+ Novo post', '+ New post'],
   // ── Crear nota en la vista Cliente (generador.js) ──
   ['Tu nota', 'Seu post', 'Your post'],
-  ['Solo para esta nota: no se guarda y las notas automáticas no lo usan.', 'Só para este post: não é salvo e os posts automáticos não o usam.', 'Just for this post: it isn’t saved and automatic posts don’t use it.'],
+  ['Solo para esta nota: no se guarda. Si lo dejás vacío, se usa el próximo de la lista de temas.', 'Só para este post: não é salvo. Se deixar vazio, usa o próximo da lista de temas.', 'Just for this post: it isn’t saved. If you leave it empty, the next one from the topic list is used.'],
+  ['Lista de temas para las próximas notas', 'Lista de temas para os próximos posts', 'Topic list for the next posts'],
+  ['Importar .txt', 'Importar .txt', 'Import .txt'],
+  ['Pegá o importá texto plano, un tema por línea (las viñetas y números se ignoran). Cada nota sin tema puntual, también las automáticas, usa el primero y, si sale bien, lo saca de la lista.', 'Cole ou importe texto simples, um tema por linha (marcadores e números são ignorados). Cada post sem tema específico, também os automáticos, usa o primeiro e, se der certo, o tira da lista.', 'Paste or import plain text, one topic per line (bullets and numbers are ignored). Every post without a specific topic, automatic ones too, uses the first one and, if it works, removes it from the list.'],
+  ['La lista está vacía.', 'A lista está vazia.', 'The list is empty.'],
   ['Rotar categorías automáticamente', 'Alternar categorias automaticamente', 'Rotate categories automatically'],
   ['Cada nota usa 1 o 2 de las categorías marcadas, priorizando las que menos salieron en las últimas notas. Así no se repiten notas parecidas.', 'Cada post usa 1 ou 2 das categorias marcadas, priorizando as que menos saíram nos últimos posts. Assim não se repetem posts parecidos.', 'Each post uses 1 or 2 of the selected categories, favoring the ones that came up least in recent posts. That way similar posts don’t repeat.'],
   ['rotando', 'alternando', 'rotating'],
@@ -1327,6 +1331,7 @@ function _fotosDescartadas(x, cod) {
 
 var PATRONES = {
   pt: [
+    [/^(\d+) temas? en la lista\. La próxima nota usa: (.+)$/, '$1 tema(s) na lista. O próximo post usa: $2'],
     [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Também é escrito outro post às $1.'],
     [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Também são escritos posts às $1 e $2.'],
     [/^Se escriben (\d+) notas automáticas por día\.$/, 'São escritos $1 posts automáticos por dia.'],
@@ -1446,6 +1451,7 @@ var PATRONES = {
     [/^para encontrar sitios nuevos del sector\.$/, 'para encontrar novos sites do setor.']
   ],
   en: [
+    [/^(\d+) temas? en la lista\. La próxima nota usa: (.+)$/, '$1 topic(s) in the list. The next post uses: $2'],
     [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Another post is also written at $1.'],
     [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Posts are also written at $1 and $2.'],
     [/^Se escriben (\d+) notas automáticas por día\.$/, '$1 automatic posts are written per day.'],

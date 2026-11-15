@@ -90,6 +90,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET/POST /api/scraping-config` | Hora, frecuencia, activación, artículos por fuente |
 | `GET/POST /api/generacion-config` | Hora, `horas_extra` (lista HH:MM, hasta 7: más notas por día), frecuencia, activación, persona. El GET suma `costo_nota_usd` (promedio de la API paga por nota, o `null`) y `tope_usd`. El tema ya no se guarda |
 | `GET/POST /api/fase2/config` | Categorías, regiones, clientes, puntapié y `rotar_categorias` de la nota automática. Solo cambia las claves que vienen |
+| `GET/POST /api/fase2/temas` | La lista de temas para las próximas notas. `POST {texto}` la reemplaza: un tema por línea, sin viñetas (`- `, `• `, `1. `), vacíos ni repetidos; hasta 200 temas de 300 caracteres |
 | `GET/POST /api/providers` | Proveedor de IA. El GET informa también el modo pago (`modo_pago_activo`, `modo_pago_hasta`, `modo_pago_restante_s`) y el proveedor elegido en Desarrollador (`provider_base`) |
 | `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes. Hoy el dashboard no lo usa |
 

@@ -43,7 +43,7 @@ Una barra lateral con secciones; se ve una a la vez.
 | Sección | Qué hay |
 |---|---|
 | **Inicio** | Resumen y última nota (vista Cliente) o tablero de métricas (vista Desarrollador) |
-| **Crear nota** | Categorías (con **Rotar categorías automáticamente**), regiones, clientes, tono, largo, tema y puntapié; el idioma de la nota (portugués). Botón Generar nota, con los pasos en vivo y Cancelar. El tema y las indicaciones son solo para esa nota: se vacían al generarla y no se guardan |
+| **Crear nota** | Categorías (con **Rotar categorías automáticamente**), regiones, clientes, tono, largo, tema y puntapié; el idioma de la nota (portugués). Botón Generar nota, con los pasos en vivo y Cancelar. El tema y las indicaciones son solo para esa nota: se vacían al generarla y no se guardan. **Lista de temas para las próximas notas**: se pega o se importa un .txt (un tema por línea) y se guarda con Guardar cambios; cada nota sin tema puntual, también las automáticas, usa el primero y lo saca de la lista si sale bien (`generar_nota_fase2.generar_nota`). La lista se refresca sola (`vivo.js`) salvo que la estés editando |
 | **Historial** | Notas (con estrellas humanas y de la IA), notas descartadas y artículos guardados o descartados con su motivo. La nota abierta se revisa en tres pasos (ver abajo) |
 | **Programación** | Hora, frecuencia y activación del scraping y de la nota automática. **Más notas por día**: horarios extra de generación, con lo que cuesta cada nota y cuántas entran en el tope de la API paga |
 | **Fuentes** | Fuentes de noticias (pausar, eliminar, agregar) y recomendaciones, ordenadas por puntaje (relevancia y en cuántas búsquedas aparecen) |

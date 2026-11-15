@@ -96,7 +96,7 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 | | Usa los parámetros de… |
 |---|---|
 | Botón **Generar nota** | Lo que está en pantalla, aunque no esté guardado |
-| Generación automática (11:00 y los horarios extra) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación. El **tema puntual** y las indicaciones son de un solo uso: no se guardan y la automática no los usa |
+| Generación automática (11:00 y los horarios extra) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación. El **tema puntual** y las indicaciones son de un solo uso: no se guardan y la automática no los usa. Sí usa la **lista de temas**: el primero, que se descarta si la nota se guarda |
 
 La automática no hace nada si no hay categorías guardadas.
 

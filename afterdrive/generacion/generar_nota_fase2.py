@@ -43,7 +43,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from afterdrive import calibracion, clientes
+from afterdrive import calibracion, clientes, config_store
 from afterdrive.db import ESTADO_APROBADA, ESTADO_BORRADOR, ESTADO_PUBLICADO, db, registrar_nota_descartada
 from afterdrive.generacion import (
     calidad,
@@ -529,10 +529,22 @@ def generar_nota(
     """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo).
 
     `indicaciones`: texto libre de la caja de Crear nota (enfoque, tono, qué destacar).
+    Sin `tema`, usa el primero de la lista de temas (config_store.get_temas) y lo descarta si la nota se guarda.
     """
+    de_lista = None
+    if not (tema or "").strip():
+        temas = config_store.get_temas()
+        if temas:
+            tema = de_lista = temas[0]
+            print(f"  Tema de la lista: {tema} (quedan {len(temas) - 1} después de esta)", flush=True)
     with consumo.medir() as costo:
         resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
                                   indicaciones)
+    if de_lista and resultado.get("success"):
+        try:
+            config_store.descartar_tema(de_lista)
+        except Exception as e:   # la nota ya está guardada: no la marca como fallida
+            print(f"  [AVISO] No se pudo sacar el tema de la lista: {e}", flush=True)
     if costo.llamadas:
         detalle = ", ".join(f"{k} {v:.3f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
         print(f"  [COSTO] Esta nota: USD {costo.total:.3f} ({detalle})", flush=True)

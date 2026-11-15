@@ -130,6 +130,11 @@ function formulario(id, def) {
       barra.hidden = !sucio;
     },
     descartar: function() { if (base !== null) def.aplicar(JSON.parse(base)); f.marcar(); },
+    ponerEnBase: function(clave, valor) {
+      var b = JSON.parse(base);
+      b[clave] = valor;
+      base = JSON.stringify(b);
+    },
     quitarDeBase: function(clave, valor) {
       var b = JSON.parse(base);
       b[clave] = b[clave].filter(function(v) { return v !== valor; });

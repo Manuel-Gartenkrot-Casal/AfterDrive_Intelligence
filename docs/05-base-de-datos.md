@@ -40,7 +40,7 @@ Una base, **`afterdrive`**, en MongoDB Atlas (`MONGO_URI`). No hay esquema forma
 
 | Colección | Qué guarda | Campos principales |
 |---|---|---|
-| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`, `blog_pruebas`, `aprobacion_auto`, `prompts_ia`), `value`. `generacion` tiene `hora` y `horas_extra` (más notas por día); `fase2`, `rotar_categorias`. El tema puntual ya no se guarda |
+| `config` | Lo que se guarda desde el dashboard, un documento por sección | `key` (`scraping`, `generacion`, `fase2`, `provider`, `modo_pago`, `ejecutor_externo`, `blog_pruebas`, `aprobacion_auto`, `prompts_ia`, `temas`), `value`. `generacion` tiene `hora` y `horas_extra` (más notas por día); `fase2`, `rotar_categorias`; `temas`, `lista` (los temas para las próximas notas: cada nota sin tema puntual usa el primero y lo saca si se guarda). El tema puntual ya no se guarda |
 | `imagenes_subidas` | Imágenes destacadas elegidas desde la computadora (hasta 5 MB) | `contenido` (bytes), `mime`, `nombre`, `coleccion`, `nota_id`, `fecha` |
 | `consumo_ia` | Una fila por llamada a la IA (lo comparten Render y GitHub Actions) | Tarea, proveedor, modelo, tokens de entrada y salida, `max_tokens`, `truncado`, `costo_usd` (0 salvo la API paga). Alimenta el tope mensual y el tablero de métricas |
 | `imagenes` | **En desuso**: imágenes que se generaban con NVIDIA. Ya nada la lee; se puede borrar | |
