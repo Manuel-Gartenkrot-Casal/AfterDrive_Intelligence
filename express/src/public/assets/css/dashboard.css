@@ -3240,7 +3240,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
 /* Orden: 1 temas, 2 enfoque (tema puntual e indicaciones), 3 estilo (tono y largo), más opciones. */
 [data-modo="cliente"] .f2-categorias { order: 1; }
 [data-modo="cliente"] .f2-titulo-enfoque { order: 2; }
-[data-modo="cliente"] .f2-campo-tema { order: 3; }
+[data-modo="cliente"] :is(.f2-campo-tema, .f2-campo-temas) { order: 3; }
 [data-modo="cliente"] .f2-campo-indicaciones { order: 4; }
 [data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child { order: 5; }
 [data-modo="cliente"] .f2-campo-tono { order: 6; }

@@ -100,8 +100,8 @@ Todo desde el dashboard, en la barra lateral:
 1. **Crear nota → Sincronizar Ejemplos** (vista Desarrollador): baja notas reales del blog como referencia de estilo.
 2. **Fuentes**: pegá la URL del listado de noticias de un sitio del rubro y tocá **Probar y agregar**. O usá **Buscar recomendaciones**.
 3. **Programación → Buscar ahora** ("Scrapear ahora" en la vista Desarrollador): corre el scraping una vez para tener noticias de contexto.
-4. **Crear nota**: elegí categorías y tocá **Generar nota**. Mirá el avance en **Corridas**.
-5. **Historial → Notas → Para revisar**: abrí la nota, editala si hace falta y **Aprobala**. Con HubSpot configurado, desde ahí mismo se publica (ver [hubspot-integration.md](hubspot-integration.md)).
+4. **Crear nota**: elegí categorías y tocá **Generar nota**. Mirá el avance en **Actividad** o en el dock de abajo a la derecha.
+5. **Historial → Notas → Para revisar**: abrí la nota, recorré los pasos Revisar, Calificar y Publicar, editala si hace falta y **Aprobala**. Con HubSpot configurado, se sube como borrador (en portugués, español e inglés) y se publica desde HubSpot (ver [hubspot-integration.md](hubspot-integration.md)).
 6. Para que se genere sola: dejá las categorías elegidas y tocá **Guardar cambios**. Revisá los horarios en **Programación**.
 
 ## Tests y lint
@@ -136,8 +136,10 @@ Si ya tenés un Chromium instalado, apuntalo con `E2E_CHROMIUM=/ruta/a/chromium`
 | HTTP 429 | Límite del plan gratis del proveedor: esperá o cambiá de modelo |
 | Artículos sin `embedding` | Falta `NVIDIA_API_KEY`. Configurala y corré `python -m afterdrive.ingesta.embeddings` |
 | La nota automática no se genera | No hay categorías guardadas: elegilas en Crear nota y tocá Guardar cambios |
-| Algo quedó "En espera" mucho tiempo | Hay otra Corrida corriendo; miralo en la sección Corridas |
-| No aparecen los botones de HubSpot | Falta `HUBSPOT_TOKEN`, o la nota no está aprobada |
+| Algo quedó "En espera" mucho tiempo | Hay otra Corrida corriendo; miralo en la sección Actividad (y cancelala si hace falta) |
+| Aprobar no sube nada a HubSpot | Falta `HUBSPOT_TOKEN` (el paso Publicar lo avisa). Cargalo y usá **Subir borrador a HubSpot** |
+| No hay botón para publicar | Es a propósito: publicar desde el dashboard está desactivado; se publica en HubSpot |
+| Los borradores van a "Blog test" | Está prendido el interruptor **Borradores en HubSpot** (vista Desarrollador). Apagalo para ir al blog de cada idioma |
 
 ## Scripts por línea de comandos
 

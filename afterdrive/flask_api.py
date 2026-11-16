@@ -431,6 +431,38 @@ def set_fase2_config():
     return jsonify({"success": True, **cfg})
 
 
+@app.route("/api/fase2/temas", methods=["GET"])
+def get_temas():
+    return jsonify({"success": True, "temas": config_store.get_temas()})
+
+
+_VINETA = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+")   # "- ", "• ", "1. ", "2) " (no "1.6 turbo" ni "-5 °C")
+
+
+@app.route("/api/fase2/temas", methods=["POST"])
+def set_temas():
+    """Reemplaza la lista con el texto pegado o importado: un tema por línea (viñetas y números se ignoran)."""
+    texto = (request.get_json(silent=True) or {}).get("texto")
+    if not isinstance(texto, str):
+        return jsonify({"success": False, "error": "Parámetro 'texto' inválido."}), 400
+    if len(texto) > 200_000:   # tope antes de recorrer: un texto gigante no traba el servidor
+        return jsonify({"success": False, "error": "El texto es muy largo."}), 400
+    temas = []
+    for linea in texto.split("\n"):   # como el navegador (generador.js lineasTemas)
+        tema = _VINETA.sub("", linea).strip()
+        if tema and tema not in temas:
+            temas.append(tema)
+            if len(temas) > config_store.TEMAS_MAX:
+                break
+    if len(temas) > config_store.TEMAS_MAX:
+        return jsonify({"success": False, "error": f"Son muchos temas (máximo {config_store.TEMAS_MAX})."}), 400
+    largo = next((t for t in temas if len(t) > config_store.TEMA_MAX_CHARS), None)
+    if largo:
+        return jsonify({"success": False, "error": f"Un tema es muy largo (máximo {config_store.TEMA_MAX_CHARS} "
+                                                   f"caracteres): {largo[:60]}…"}), 400
+    return jsonify({"success": True, "temas": config_store.set_temas(temas)})
+
+
 def _encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None):
     """202 con el id y la posición en la Cola, o 429 si la cola está llena."""
     try:

@@ -38,7 +38,7 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `POST /api/run-automation`, `POST /api/run-generacion` | Scraping / nota automática con la config guardada (para el cron) |
 | `GET /api/corridas` | `en_curso`, `pendientes` y `recientes` |
 | `GET /api/corridas/<id>/log?desde=N` | Líneas nuevas del log desde la N, estado y posición en la cola |
-| `POST /api/corridas/<id>/cancelar` | Cancela (409 si es una generación ya empezada en el servidor) |
+| `POST /api/corridas/<id>/cancelar` | Cancela una pendiente (`cancelada`) o una en curso (`cancelando`: el proceso que la corre la corta, sea este servidor o GitHub Actions) |
 
 **Historial y revisión de notas**
 
@@ -49,6 +49,10 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/historial/<seccion>/<coleccion>/<id>` | Un ítem con su contenido completo |
 | `POST /api/historial/estado` | `{coleccion, id, estado, motivo}`: `borrador`, `aprobada`, `rechazada` (pide `motivo`, mínimo 3 caracteres) o `publicado` |
 | `PATCH /api/historial/contenido` | `{coleccion, id, contenido}`: editar el texto de una nota no publicada. La primera edición guarda la versión generada |
+| `PATCH /api/historial/traduccion` | `{coleccion, id, idioma, contenido}`: guardar la versión editada de una traducción |
+| `POST /api/historial/retraducir` | `{coleccion, id, idioma}`: encola volver a traducir una nota a ese idioma. 202 con el id de la corrida |
+| `POST /api/historial/critica` | `{coleccion, id}`: pide (o repite) la calificación de la IA y la guarda en la nota. 503 si la IA no pudo |
+| `POST /api/historial/critica/traduccion` | `{coleccion, id, idioma}` (`es`, `pt`, `en`): resumen y problemas de la calificación de la IA en el idioma del dashboard; se guarda la primera vez |
 | `POST /api/generacion-config` también acepta `largo` | `corto`, `medio` o `largo`: largo aproximado de la nota automática. `POST /api/corridas/generacion` lo acepta igual para la manual |
 | `POST /api/historial/calificacion` | `{coleccion, id, puntaje (1-5), etiquetas, comentario}`: calificar una nota. Alimenta la calibración |
 | `GET /api/calibracion` | Lo que la generación aprendió: calificaciones, promedios por persona y proveedor, reglas activas, aciertos, notas propias de referencia y umbral del evaluador |
@@ -58,10 +62,16 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `POST /api/carrusel/<nota_id>/textos` | `{idioma, titulo, subtitulo, puntos, cta}`: guarda los textos editados de ese idioma y encola volver a dibujar, sin IA, solo las diapositivas que cambiaron (1: título y subtítulo, 2: puntos, 3: llamada a la acción); devuelve cuáles en `diapositivas`. Si no cambió nada, 200 sin encolar |
 | `GET /api/carrusel/<nota_id>/pdf?idioma=pt` | El PDF de las 3 diapositivas de ese idioma (descarga), para LinkedIn. Las imágenes se sirven en `/api/imagenes/<id>` |
 | `POST /api/hubspot/traducciones` | `{coleccion, id}`: encola la traducción a los otros idiomas y su subida a HubSpot como borradores (la nota tiene que estar subida en su idioma). 202 con el id de la corrida. `POST /api/hubspot/enviar` también la encola y lo devuelve en `traducciones` |
-| `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |
+| `GET /api/metricas?dias=14` | Números del tablero de la vista Desarrollador (scraping, notas, corridas, consumo de IA), con el período anterior para comparar |
+| `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública o una foto de sus noticias, que sale del cuerpo si estaba). `url` vacía la quita |
+| `POST /api/historial/imagen/archivo` | Multipart con `archivo`, `coleccion`, `id` y `alt`: imagen destacada desde la computadora (JPG, PNG, WebP o GIF, hasta 5 MB, validada por sus bytes) |
+| `GET /api/imagenes/<id>` | Una imagen subida (con sesión, como todo `/api`) |
 | `GET /api/historial/vista-previa/<coleccion>/<id>` | Cómo saldría en el blog: `titulo`, `meta`, `slug`, `etiquetas`, `imagen`, `html`, `imagenes_noticias` (fotos de las noticias de la nota, para elegir otra) |
 | `GET /api/hubspot/estado` | `{configurado}` |
-| `POST /api/hubspot/enviar` | `{coleccion, id, publicar}`: manda una nota aprobada a HubSpot (502 si HubSpot falla) |
+| `GET/POST /api/hubspot/blog-pruebas` | Interruptor del blog de pruebas: `{disponible, blog_id, activo}`; el POST recibe `{"activo": bool}` |
+| `GET/POST /api/aprobacion-auto` | Interruptor de la aprobación automática: `{activo, confianza_min}`; el POST recibe `{"activo": bool}` |
+| `GET /api/hubspot/destino/<coleccion>/<id>` | Blog, etiquetas y autor que le tocan a la nota, y los autores de ese idioma para elegir (422 si no hay blog en su idioma) |
+| `POST /api/hubspot/enviar` | `{coleccion, id, publicar, autor_id?}`: sube una nota aprobada a HubSpot como borrador (o actualiza el mismo). `publicar: true` responde 400 mientras publicar desde el dashboard esté desactivado. 502 si HubSpot falla |
 
 **Fuentes**
 
@@ -80,8 +90,9 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET/POST /api/scraping-config` | Hora, frecuencia, activación, artículos por fuente |
 | `GET/POST /api/generacion-config` | Hora, `horas_extra` (lista HH:MM, hasta 7: más notas por día), frecuencia, activación, persona. El GET suma `costo_nota_usd` (promedio de la API paga por nota, o `null`) y `tope_usd`. El tema ya no se guarda |
 | `GET/POST /api/fase2/config` | Categorías, regiones, clientes, puntapié y `rotar_categorias` de la nota automática. Solo cambia las claves que vienen |
+| `GET/POST /api/fase2/temas` | La lista de temas para las próximas notas. `POST {texto}` la reemplaza: un tema por línea, sin viñetas (`- `, `• `, `1. `), vacíos ni repetidos; hasta 200 temas de 300 caracteres |
 | `GET/POST /api/providers` | Proveedor de IA. El GET informa también el modo pago (`modo_pago_activo`, `modo_pago_hasta`, `modo_pago_restante_s`) y el proveedor elegido en Desarrollador (`provider_base`) |
-| `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes |
+| `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes. Hoy el dashboard no lo usa |
 
 **Notas**
 

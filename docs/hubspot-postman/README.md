@@ -30,8 +30,9 @@ Con los IDs elegidos, cargá en `.env` (local) o en Environment de Render:
 
 ```
 HUBSPOT_TOKEN=pat-...
-# Solo para pruebas: manda todo al Blog test. Vacío en producción.
+# Blog de pruebas. Con ella cargada, el interruptor "Borradores en HubSpot"
+# de la vista Desarrollador decide si los borradores van acá o al blog de cada idioma.
 HUBSPOT_BLOG_PRUEBAS=114283349257
 ```
 
-El blog, el autor y las etiquetas salen solos del idioma y las categorías de cada nota. Después, en el dashboard: abrí una nota → **Aprobar y subir a HubSpot** → revisala en HubSpot. Detalle completo en [../hubspot-integration.md](../hubspot-integration.md).
+El blog, el autor y las etiquetas salen solos del idioma y las categorías de cada nota. Después, en el dashboard: abrí una nota → paso **Publicar** → **Aprobar y subir a HubSpot** → revisala en HubSpot. Desde el dashboard solo se suben borradores: se publican en HubSpot. Detalle completo en [../hubspot-integration.md](../hubspot-integration.md).

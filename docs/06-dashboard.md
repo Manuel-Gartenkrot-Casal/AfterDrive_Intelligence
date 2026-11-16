@@ -11,19 +11,25 @@ express/src/public/
     ├── css/dashboard.css   todos los estilos
     └── js/                 se cargan en este orden, como scripts comunes (no módulos)
         ├── base.js           $(), pedir(), escHtml(), confirmar(), formulario()
-        ├── estado.js         indicador Online, estadísticas
+        ├── i18n/textos.js    traducciones de la interfaz (PT y EN)
+        ├── idioma.js         aplica el idioma elegido
+        ├── estado.js         indicador de actividad del header y estadísticas
         ├── fuentes.js        lista de fuentes, pausar, eliminar, agregar
         ├── programacion.js   relojes y formulario de Programación
-        ├── navegacion.js     secciones y modos de vista
-        ├── corridas.js       correrEnCola() y el panel de Corridas
-        ├── proveedores.js    proveedor de IA
+        ├── navegacion.js     barra lateral, secciones y modos de vista
+        ├── corridas.js       correrEnCola(), la sección Actividad y el dock
+        ├── proveedores.js    proveedor de IA e interruptores de blog de pruebas y aprobación automática
         ├── sugerencias.js    fuentes recomendadas
         ├── generador.js      Crear nota y el modal de la nota
-        ├── historial.js      Historial y revisión de notas
-        ├── revision.js       calificación, lo revisado al generar y panel de calibración
+        ├── historial.js      Historial, acciones de la nota abierta y HubSpot
+        ├── revision.js       calificación de la IA y humana, lo revisado al generar y panel de calibración
+        ├── recorrido.js      revisión de una nota en tres pasos: Revisar → Calificar → Publicar
         ├── lectura.js        revisión de la nota en la vista Cliente (la nota como documento)
         ├── promptsia.js      Prompts con IA: análisis, pedidos a la IA y la copia de los prompts
+        ├── metricas.js       tablero de la vista Desarrollador (Inicio)
+        ├── animaciones.js    movimiento atado a lo que pasa: pasos de la nota según el log, header con una corrida en curso, números del tablero
         ├── tour.js           recorrido guiado y menú de Ayuda
+        ├── vivo.js           actualiza solas las listas cada 10 s
         ├── arranque.js       inicializa todo al cargar
         └── paginas/ayuda.js  página /ayuda (documentación); no la carga index.html, sino ayuda.html
 ```
@@ -36,16 +42,18 @@ Una barra lateral con secciones; se ve una a la vez.
 
 | Sección | Qué hay |
 |---|---|
-| **Inicio** | Resumen y última nota (vista Cliente) o estadísticas (vista Desarrollador) |
-| **Crear nota** | Categorías (con **Rotar categorías automáticamente**), regiones, clientes, tono, tema y puntapié. Botón Generar nota. El tema y las indicaciones son solo para esa nota: se vacían al generarla y no se guardan |
-| **Historial** | Notas para revisar (aprobar, rechazar, editar, publicar en HubSpot), notas descartadas y artículos guardados o descartados con su motivo |
+| **Inicio** | Resumen y última nota (vista Cliente) o tablero de métricas (vista Desarrollador) |
+| **Crear nota** | Categorías (con **Rotar categorías automáticamente**), regiones, clientes, tono, largo, tema y puntapié; el idioma de la nota (portugués). Botón Generar nota, con los pasos en vivo y Cancelar. El tema y las indicaciones son solo para esa nota: se vacían al generarla y no se guardan. **Lista de temas para las próximas notas**: se pega o se importa un .txt (un tema por línea) y se guarda con Guardar cambios; cada nota sin tema puntual, también las automáticas, usa el primero y lo saca de la lista si sale bien (`generar_nota_fase2.generar_nota`). La lista se refresca sola (`vivo.js`) salvo que la estés editando |
+| **Historial** | Notas (con estrellas humanas y de la IA), notas descartadas y artículos guardados o descartados con su motivo. La nota abierta se revisa en tres pasos (ver abajo) |
 | **Programación** | Hora, frecuencia y activación del scraping y de la nota automática. **Más notas por día**: horarios extra de generación, con lo que cuesta cada nota y cuántas entran en el tope de la API paga |
 | **Fuentes** | Fuentes de noticias (pausar, eliminar, agregar) y recomendaciones, ordenadas por puntaje (relevancia y en cuántas búsquedas aparecen) |
-| **Corridas** | Lo que está corriendo con su log, lo que espera y lo último que terminó |
+| **Actividad** | Lo que está corriendo con su log, lo que espera y lo último que terminó. Mantiene el hash `#corridas` y la API `/api/corridas` |
 
-Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa) y, en Desarrollador, el **proveedor de IA**.
+Al pie de la barra se elige la **vista** (Cliente, simple; Desarrollador, completa) y, en Desarrollador, el **proveedor de IA** y dos interruptores: **Borradores en HubSpot** (blog de pruebas, `POST /api/hubspot/blog-pruebas`; atenuado si falta `HUBSPOT_BLOG_PRUEBAS`) y **Aprobación automática** (`POST /api/aprobacion-auto`). El viejo interruptor de "modo API paga 24 h" ya no está en la barra.
 
-Arriba de eso, separado y en las dos vistas, está el interruptor **API paga**: pone todo el pipeline en la API paga por 24 horas como máximo, con un aviso de costo antes de prenderse y la cuenta regresiva hasta que se apaga solo (ver [04-ia.md](04-ia.md)).
+Mientras corre algo, un **dock de actividad** flota abajo a la derecha en cualquier sección (se puede plegar). En escritorio el header y la barra lateral quedan fijos y solo scrollea el contenido; en el celular scrollea la página y la navegación se abre desde **Menú**.
+
+**Revisión de una nota** (`recorrido.js`): el lateral del modal tiene tres pestañas, **Revisar** (filas de chequeo con titular, "Ver detalle" y su acción, primero lo que necesita atención, y al final "Cómo se generó"), **Calificar** (calificación de la IA, pedida sola si falta o la nota se editó, y la humana, precargada con la sugerencia del juez) y **Publicar** (imagen con zona para arrastrar o elegir archivo, destino en HubSpot y una fila por idioma). Abre en el primer paso con algo pendiente. El pie tiene Editar, Vista previa, un menú **Más** y una sola acción principal según el paso y el estado (`pintarAccionesNota()` en `historial.js`). En el celular se elige ver la nota o la revisión. Publicar está desactivado (`PUBLICAR_DESDE_DASHBOARD`, ver [03](03-pipelines.md#revisión-y-publicación)).
 
 ## Cómo está organizado el código
 
@@ -58,15 +66,17 @@ Lo que más vas a tocar:
 | `buscador.js` | **Buscar o saltar a…** (⌘K / Ctrl+K): sin escribir lista las secciones; al escribir filtra y busca notas por título, tema o texto (`/api/historial/generados_aprobados?q=`). Flechas, Enter y Esc |
 | `navegacion.js` | **Marco de la vista Cliente en escritorio** (`ajustarMarcoCliente`): arriba una barra fina con el logo, idioma, estado, tema y salir. A la izquierda la barra de secciones, ordenada como la de ChatGPT: arriba **Nueva nota** (la acción principal), con el botón que la pliega chico al costado; en el medio las secciones (`.nav-link`, con los íconos de las maquetas `.icono-riel`); abajo el perfil (la silueta de una persona y el usuario: `cargarPerfil`, `GET /api/sesion`), que abre el menú de Ayuda. En ese menú, **Pasar a la vista Desarrollador** (turquesa, `.ayuda-dev`) y **Cerrar sesión** (rojo, `.ayuda-salir`; sale del encabezado) van aparte, del mismo alto que el resto. Plegada muestra solo íconos; desplegada, los nombres (`ad-riel`). En Desarrollador y en el celular todo vuelve a su lugar. La revisión de una nota se abre a la derecha de la barra, que sigue andando: tocar una sección cierra la nota (`cerrarNotaParaNavegar`, en `generador.js`; si se está editando el texto, pregunta). `fondoInerte` deja inerte solo lo que queda tapado |
 | `base.js` | `formulario(id, {leer, aplicar, guardar})`: estado sucio, barra Guardar/Descartar, aviso al salir |
-| `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` y el panel de Corridas. También la **terminal** de abajo (solo en la vista Desarrollador), como la de VS Code: en escritorio ocupa una fila de la grilla debajo del contenido (el contenido se achica y scrollea, nada queda encimado); en el celular flota abajo. Pestañas Terminal (el registro, con color por `[OK]`, `[ERROR]`, `[AVISO]`) y Cola; el borde de arriba se arrastra para cambiar el alto (`ad-terminal-alto`; con el borde enfocado, flechas), y tiene maximizar, ocultar y cerrar |
+| `corridas.js` | `correrEnCola(ruta, body, onLinea, onEstado)` la sección Actividad y el dock. También la **terminal** de abajo (solo en la vista Desarrollador), como la de VS Code: en escritorio ocupa una fila de la grilla debajo del contenido (el contenido se achica y scrollea, nada queda encimado); en el celular flota abajo. Pestañas Terminal (el registro, con color por `[OK]`, `[ERROR]`, `[AVISO]`) y Cola; el borde de arriba se arrastra para cambiar el alto (`ad-terminal-alto`; con el borde enfocado, flechas), y tiene maximizar, ocultar y cerrar |
 | `promptsia.js` | **Prompts con IA** (`prompts_ia.py`): dos pestañas en Prompts, **Prompts actuales** (el editor de `prompts.js`) y **Prompts de la IA**, con la misma forma: la lista de piezas (cambiada o igual) y el prompt completo de la copia (`/api/prompts/vista-previa` con `juego`), con lo que cambió la IA marcado (`_diffPrompt`), deshacer y volver a la actual por pieza. Arriba: **Analizar y mejorar ahora** (corre en la cola con `correrEnCola`; al terminar muestra qué cambió y lleva al prompt), **Usar estos prompts** y la mejora automática; debajo, el análisis, el pedido a mano y el historial. "En uso" marca con cuál escribe la redacción |
+| `recorrido.js` | Los tres pasos de la revisión (`armarRecorrido`, `irAPaso`, `pasoInicial`) |
+| `vivo.js` | Cada 10 s (`VIVO_MS`), con la pestaña visible, vuelve a pedir historial, fuentes, sugerencias y pendientes y repinta lo que cambió. La nota abierta nunca se repinta sola: si la cambió otro, aparece "Actualizar". Lo que cambia la propia pestaña (`_cambiosPropios` en `base.js`) no avisa. Si agregás una lista que puede cambiar desde otro lado, sumala acá |
 | `historial.js` | Listas del historial y acciones sobre la nota abierta (`_notaActual`, `pintarAccionesNota()`): aprobar, rechazar con motivo, editar, vista previa con imagen y HubSpot |
 | `tour.js` | Recorrido guiado (`PASOS_TOUR`): se abre solo la primera vez en cada navegador (`localStorage` `ad-tour-visto`) y desde **Ayuda → Repetir el tutorial**. Cada paso va a su sección y resalta un elemento real; si no se ve en la vista actual, se saltea (`soloDev` marca los de Desarrollador). Al agregar una función nueva, sumale su paso |
 | `paginas/ayuda.js` + `ayuda.html` | **Ayuda → Ver la documentación**: la guía de uso (`docs/guia-de-uso.md`), el glosario y la documentación técnica, renderizados con marked + DOMPurify. Los documentos son una lista blanca (`DOCUMENTOS` en `flask_api.py`) |
 | `idioma.js` + `i18n/textos.js` | Interfaz en español, portugués o inglés (ver abajo) |
 | `generador.js` | **Crear nota en la vista Cliente**: tres pasos (temas, enfoque, estilo) y, en escritorio, el panel fijo **Tu nota** a la derecha (`resumenCrear`) con el botón Generar. Tono y largo se eligen con botones (`pintarChipsSelect`) que cambian el valor del select de siempre (el que se guarda y lee la generación). Más opciones va al final del formulario. La vista Desarrollador no cambia |
 | `lectura.js` | **Revisión de una nota en la vista Cliente**: la nota en serif con los datos verificados marcados (subrayado punteado con respaldo, fondo amarillo dudoso, rojo sin respaldo) y su aviso debajo del párrafo, también en las traducciones (las cifras se buscan por sus dígitos: `patronDeDato`). Las frases en negrita que guardaron notas viejas como dato no se marcan (`esDatoVerificable`, misma regla que `extraer_datos`); arriba "Notas / título", estado y Rechazar / Aprobar y subir; a la derecha un panel con la vista previa (switch Blog / Instagram / LinkedIn) o la calificación; abajo una barra flotante (Editar, Calificar, Vista previa, Más). Reusa las acciones de `historial.js`, `revision.js` y `carrusel.js`. La vista Desarrollador sigue con el recorrido de `recorrido.js` (`armarRecorrido` decide según la vista) |
-| `revision.js` | Calificación de la nota abierta (estrellas, etiquetas, comentario), lo que se revisó al generarla (datos contra las noticias, estilo y SEO, plan) y el panel "Cómo aprende la generación" del Historial |
+| `revision.js` | Calificación de la IA (puntaje, aspectos y errores, traducida al idioma del dashboard) y la humana (estrellas, etiquetas, comentario; con la sugerencia del juez si no hay), lo que se revisó al generarla y el panel "Cómo aprende la generación" del Historial |
 | `base.js` | `confirmar()` (diálogo; con `campo` pide un texto, como el motivo de un rechazo) y `pedir()` (`fetch` que lanza error si el server responde error) |
 
 ## Patrones que hay que respetar

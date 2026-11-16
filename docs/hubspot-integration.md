@@ -1,19 +1,27 @@
 # Publicación en HubSpot
 
-Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive de su idioma. El equipo la revisa y la publica desde HubSpot. El código está en `afterdrive/hubspot.py` y el flujo en `afterdrive/historial.py` (`enviar_a_hubspot`, `destino_hubspot`).
+Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive de su idioma (o en el blog de pruebas, si el interruptor está prendido). El equipo la revisa y la publica desde HubSpot: **publicar desde el dashboard está desactivado** (`PUBLICAR_DESDE_DASHBOARD = False` en `historial.py` y `historial.js`). El código está en `afterdrive/hubspot.py` y el flujo en `afterdrive/historial.py` (`enviar_a_hubspot`, `destino_hubspot`).
 
 ## Cómo se usa
 
-1. **Historial → Notas → Para revisar**: abrí la nota, revisala y, si hace falta, editala.
-2. En el bloque **Publicación en HubSpot** se ve a qué blog va y con qué etiqueta. Ahí se elige el **autor** (por defecto, Gastón Zelerteins).
-3. **Vista previa** (opcional): cómo va a salir en el blog. Ahí se elige la imagen destacada.
-4. **Aprobar y subir a HubSpot**: queda aprobada acá y como borrador allá. Además se encola la traducción a los otros dos idiomas: cada versión queda como borrador en su blog (ver [Otros idiomas](#otros-idiomas)).
+1. **Historial → Notas → Para revisar**: abrí la nota, revisala (pasos **Revisar** y **Calificar**) y, si hace falta, editala.
+2. En el paso **Publicar** se ve a qué blog va y con qué etiqueta. Ahí se elige el **autor** (por defecto, Gastón Zelerteins) y la imagen destacada.
+3. **Vista previa** (opcional): cómo va a salir en el blog.
+4. **Aprobar y subir a HubSpot**: queda aprobada acá y como borrador allá. Además se encola la subida de las traducciones: cada versión queda como borrador en su blog (ver [Otros idiomas](#otros-idiomas)).
 
 - Si la subida falla, la nota igual queda aprobada. **Subir borrador a HubSpot** la reintenta.
 - Reenviar una nota ya enviada (**Actualizar borrador en HubSpot**) **actualiza el mismo post**, no crea otro. No cambian ni el slug ni el blog, así no se rompen links.
-- **Publicar en HubSpot** sigue disponible para publicar desde acá. **Despublicar** vuelve el post a borrador.
-- Una nota sin aprobar **no se puede enviar**: nada llega al blog sin que una persona la haya revisado.
-- Sin `HUBSPOT_TOKEN`, el botón es "Aprobar" a secas y no se sube nada.
+- Una nota sin aprobar **no se puede enviar**: nada llega al blog sin que una persona (o la aprobación automática, abajo) la haya aprobado.
+- Las notas que ya estaban publicadas siguen mostrando **Despublicar** (menú **Más**), que las vuelve a aprobada.
+- Si falta `HUBSPOT_TOKEN`, la revisión lo avisa y la nota queda aprobada sin subirse.
+
+## Blog de pruebas
+
+Con `HUBSPOT_BLOG_PRUEBAS` cargada, el interruptor **Borradores en HubSpot** de la vista Desarrollador (prendido por defecto, `config.blog_pruebas`) manda **todos** los borradores, y sus traducciones, a ese blog sin vincular. Apagado, cada nota va al blog de su idioma. Sin la variable, el interruptor aparece atenuado y todo va a los blogs de cada idioma.
+
+## Aprobación automática
+
+Interruptor **Aprobación automática** de la vista Desarrollador (apagado por defecto). Prendido, la nota de la **generación programada** que pasa el filtro sin IA y el juez de IA (confianza ≥ 0,8) se aprueba sola (`aprobada_por: "ia"`), sube como borrador al blog que diga el interruptor de arriba y encola sus traducciones. Nunca publica. Si no pasa, queda para revisar con los motivos (se ven en el paso **Calificar**). Detalle en [03 Pipelines](03-pipelines.md#revisión-y-publicación).
 
 ## Configuración (una sola vez)
 
@@ -24,7 +32,7 @@ Aprobar una nota la **sube a HubSpot como borrador**, en el blog de After Drive 
 | Variable | Obligatoria | Qué es |
 |---|---|---|
 | `HUBSPOT_TOKEN` | Sí | Token de la app privada |
-| `HUBSPOT_BLOG_PRUEBAS` | No | Manda **todas** las notas a este blog. Para probar: `114283349257` (Blog test). Vacío en producción |
+| `HUBSPOT_BLOG_PRUEBAS` | No | Blog de pruebas (`114283349257`, Blog test). Con ella cargada, el interruptor **Borradores en HubSpot** decide si las notas van ahí o al blog de su idioma (ver [Blog de pruebas](#blog-de-pruebas)) |
 
 > **Migración:** `HUBSPOT_BLOG_ID` ya no se usa (antes era el blog de producción). Borrala del Environment de Render: el blog ahora sale del idioma de cada nota.
 | `HUBSPOT_IMAGEN_DEFAULT` | No | URL https de la imagen destacada para las notas que no tienen una propia |
@@ -61,9 +69,9 @@ API de CMS v3: `POST /cms/v3/blogs/posts` para crear y `PATCH /cms/v3/blogs/post
 | `blogAuthorId` | El autor elegido o, si no, el autor por defecto del idioma |
 | `tagIds` | Las etiquetas de las categorías, en el idioma del blog |
 | `slug` | El título sin acentos ni símbolos + 6 caracteres del id de la nota (para que sea único). Solo al crear |
-| `state` | `DRAFT` al aprobar; `PUBLISHED` solo con "Publicar en HubSpot" |
+| `state` | Siempre `DRAFT` (`PUBLISHED` solo si se reactiva `PUBLICAR_DESDE_DASHBOARD`) |
 | `postBody` (imágenes) | Las 4 imágenes del cuerpo de la nota (`imagenes_cuerpo`), copiadas a los archivos de HubSpot y repartidas entre las secciones. Una foto de Wikimedia Commons con licencia CC BY/BY-SA lleva su crédito debajo, en letra chica, como pide la licencia. Van también en las traducciones |
-| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias o de un banco de imágenes, nunca una que pida crédito; copiada primero a los archivos de HubSpot; si la copia falla, el link original) o, si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
+| `featuredImage`, `featuredImageAltText` | La imagen de la nota (la foto de una de sus noticias o de un banco de imágenes, sin personas y nunca una que pida crédito, o una subida desde la computadora), copiada primero a los archivos de HubSpot; si la copia de una foto externa falla, va el link original (una imagen subida nunca va como link a este servidor). Si no tiene, `HUBSPOT_IMAGEN_DEFAULT`. Sin ninguna, el post sale sin imagen |
 
 En la nota se guarda `hubspot: {id, url, estado, slug, enviado_en}`, `hubspot_autor_id` y, si se publicó, `estado: "publicado"` y `publicado_en`.
 
@@ -77,8 +85,8 @@ Cada nota se escribe en portugués y **se traduce al crearla** al español riopl
 
 - La traducción queda guardada con la huella del texto original: subir o reenviar sin editar el original **no vuelve a pagar** la traducción, solo actualiza el borrador (con los cambios hechos a mano en esa versión). Si editaste el original, la traducción queda desactualizada y al subir se traduce de nuevo (se pierden los cambios a mano de esa versión).
 - La traducción mantiene el Markdown, las cifras, los nombres y los enlaces del original (un enlace nuevo se quita). Si sale cortada o sin título, esa versión no se sube y el error se ve al abrir la nota.
-- Con `HUBSPOT_BLOG_PRUEBAS`, las versiones van a ese blog sin vincular.
-- Al abrir la nota, el bloque **Otros idiomas** muestra cada versión, su link y el texto traducido. **Volver a subir las traducciones** reintenta.
+- Con el blog de pruebas prendido, las versiones van a ese blog sin vincular.
+- Al abrir la nota, el paso **Publicar** tiene una fila por idioma con **Ver traducción** y **Abrir en HubSpot**. **Volver a subir las traducciones** reintenta.
 - Los enlaces a notas de AfterDrive dentro de la traducción siguen apuntando a la nota original (en su idioma).
 - **Pendiente de confirmar en la cuenta**: que los blogs ES, PT y EN estén configurados como versiones de un mismo blog multilenguaje y sus códigos de idioma. Probalo primero con una nota.
 

@@ -35,6 +35,7 @@ ingesta.py   el LLM decide si es del rubro
 - Cómo baja cada página depende de la RAM (`ingesta/resource_detector.py`). Con menos de 600 MB (Render free) nunca usa Chromium: `requests` y, si falla, Wayback. En GitHub Actions (~7 GB) usa Chromium. Se fuerza con `FORCE_PROFILE=alto|medio|bajo`.
 - Los dominios que no respondieron van directo a Wayback **solo durante esa corrida**.
 - Las fuentes **pausadas** (`estado: "inactivo"`) no se scrapean.
+- Al terminar, el log dice cuánto gastó la corrida en la API paga (`[COSTO] Esta corrida: USD …`).
 
 ## Alta de una fuente
 
@@ -83,16 +84,19 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
    - **Repetición**: si el vector de la nota se parece a una de las últimas 50 más que `NOTA_PARECIDO_MAX` (0.85), es una repetida.
 8. **Corrección**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, o menos lineamientos que el umbral calibrado), el **modelo de corrección** (`generacion/correccion.py`; con la API paga, el de evaluación, unas 12 veces más barato que el de redacción) recibe la nota y la lista de problemas y devuelve la misma nota con solo eso arreglado. Solo una nota **repetida** se redacta de cero, porque el problema es el ángulo. La corrección se revisa igual que la primera versión y queda la mejor de las dos (`calidad.segundo_intento` dice cuál de los dos caminos se usó).
 9. **Imágenes** (`generacion/imagen_destacada.py`): **5 por nota**, la destacada y 4 dentro del texto. El scraper guarda hasta 8 fotos por noticia (`imagenes`, la principal primero: og:image, twitter:image, JSON-LD o la primera del cuerpo, y después las otras `<img>` de la nota; sin logos ni íconos, solo https). Las fotos usadas en notas de los últimos 30 días no se repiten, así que si no se juntan 5 aptas busca **solo las que faltan**, en este orden: (1) las otras fotos de las páginas de sus noticias (a las scrapeadas antes de la lista se les relee la página); (2) otras noticias del mismo tema; (3) **bancos de imágenes** (`generacion/imagenes_respaldo.py`), una búsqueda por ronda y hasta 8, armadas por la IA en inglés a partir del título (si falla, búsquedas genéricas del sector): **Pexels** si está `PEXELS_API_KEY` y **Pixabay** si está `PIXABAY_API_KEY` (los dos sin atribución, así que sirven de portada; Pixabay no deja enlazar sus fotos para siempre, así que las elegidas se descargan a la base al generar la nota, como una imagen subida, y de ahí se copian a HubSpot) y **Wikimedia Commons** siempre, solo con licencias de uso comercial (dominio público, CC0, CC BY, CC BY-SA). El modelo de clasificación juzga las fotos contra el **tema concreto** de la nota (una foto genérica del sector no alcanza): **con la API paga las mira**; sin ella juzga sin verlas, por la noticia de la que salen, su texto alternativo y el nombre del archivo. La portada nunca tiene personas ni una foto que pida crédito (CC BY): esas van dentro del texto, con el crédito debajo. Si la IA falla, van las primeras. La destacada va en `imagen` y las otras en `imagenes_cuerpo`; al subir a HubSpot se copian a sus archivos y las del cuerpo se reparten entre las secciones en las 3 versiones.
-10. **Traducciones** (`traducciones.py`): apenas se crea, la nota se traduce al español y al inglés (tarea `traduccion`) y se guardan en `traducciones.<idioma>`. Una que falla no frena la nota: queda el error y se reintenta desde el historial.
-10. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
-11. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
+10. **Juez** (`generacion/juez.py`, modelo de evaluación, una llamada): un editor exigente decide si la nota pasaría sola, con qué confianza (0 a 1), y sugiere calificación, etiquetas y comentario. Queda en `juicio`. Lo usa la aprobación automática (abajo) y su sugerencia aparece precargada al calificar, sin contar para la calibración hasta que una persona la guarda.
+11. **Calificación de la IA** (`generacion/critica.py`, modelo de evaluación, hasta 3000 tokens y un reintento): un corrector de estilo mira solo la escritura (gramática, ortografía, redacción, tono y estructura) según la persona y la región pedidas, y devuelve un puntaje de 1 a 10, un resumen y hasta 8 errores con el fragmento, qué está mal y cómo arreglarlo. Si la respuesta llega cortada, aprovecha los errores que llegaron completos. Queda en `critica`. Es informativa: no toca la calificación humana ni la calibración.
+12. **Traducciones** (`traducciones.py`): apenas se crea, la nota se traduce al español y al inglés (tarea `traduccion`) y se guardan en `traducciones.<idioma>`. Una que falla no frena la nota: queda el error y se reintenta desde el historial.
+13. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
+14. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a`, `calibracion_usada`, `juicio` y `critica`, y las noticias usadas quedan marcadas con la fecha. Si se canceló en medio de un paso, no se guarda.
+15. **Aprobación automática** (`aprobacion_auto.py`, solo la generación programada y solo con el interruptor prendido): ver abajo.
 
 **Manual o automática**
 
 | | Usa los parámetros de… |
 |---|---|
 | Botón **Generar nota** | Lo que está en pantalla, aunque no esté guardado |
-| Generación automática (11:00 y los horarios extra) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación. El **tema puntual** y las indicaciones son de un solo uso: no se guardan y la automática no los usa |
+| Generación automática (11:00 y los horarios extra) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación. El **tema puntual** y las indicaciones son de un solo uso: no se guardan y la automática no los usa. Sí usa la **lista de temas**: el primero, que se descarta si la nota se guarda |
 
 La automática no hace nada si no hay categorías guardadas.
 
@@ -103,12 +107,16 @@ La automática no hace nada si no hay categorías guardadas.
 ## Revisión y publicación
 
 ```
-borrador ──Aprobar y subir──► aprobada + borrador en HubSpot ──Publicar en HubSpot──► publicado
-   │                                                                                     │
-   └──Rechazar──► rechazada                                                  Despublicar → aprobada
+borrador ──Aprobar y subir (persona o aprobación automática)──► aprobada + borrador en HubSpot (ES/PT/EN)
+   │                                                                   │
+   └──Rechazar──► rechazada                          se publica desde HubSpot (el dashboard no publica)
 ```
 
 Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.
+
+- **Publicar desde el dashboard está desactivado** (`PUBLICAR_DESDE_DASHBOARD = False` en `historial.py` y en `historial.js`): solo se sube o actualiza el borrador, y el servidor rechaza `publicar: true`. Para volver a habilitarlo, `True` en los dos lugares. El estado `publicado` y **Despublicar** siguen existiendo para las notas que ya estaban publicadas.
+- **Aprobación automática** (interruptor de la vista Desarrollador, `config.aprobacion_auto`, apagado por defecto): al terminar una Corrida de `generacion` programada, `aprobacion_auto.procesar` aplica `juez.decidir`. La nota pasa si no la frena el **filtro duro sin IA** (datos sin respaldo, fallas críticas del evaluador, problemas graves de estilo o SEO, parecida a una reciente, sin imagen destacada o puntaje bajo el umbral calibrado, 7/9 si todavía no hay) y el juez dijo que pasa con confianza ≥ 0,8 (`juez.CONFIANZA_MIN`). Si pasa: estado `aprobada`, `aprobada_por: "ia"`, se sube como borrador (al blog que diga el interruptor de blog de pruebas) y se encolan las traducciones. Si no: queda en borrador con los motivos. La decisión queda en `aprobacion_auto`. Las notas manuales nunca se aprueban solas.
+- **La revisión en el dashboard** tiene tres pasos (`recorrido.js`): **Revisar** (lo chequeado al generarla), **Calificar** (calificación de la IA y humana) y **Publicar** (imagen, destino en HubSpot e idiomas). Si la nota no tiene la calificación de la IA, o se editó después, se pide sola al abrirla (`POST /api/historial/critica`); su resumen y sus problemas se traducen al idioma del dashboard la primera vez (`POST /api/historial/critica/traduccion`) y quedan guardados.
 
 - **Rechazar pide un motivo** (mínimo 3 caracteres): queda en `motivo_rechazo` y alimenta las correcciones de las notas siguientes (paso 3).
 - **Calificar**: al abrir una nota, 1 a 5 estrellas, etiquetas (datos dudosos, genérica, suena a IA, muy larga, tono, poco útil, errores técnicos; y las positivas) y un comentario.
@@ -131,7 +139,7 @@ Archivo: `calibracion.py`. Se lee de Mongo en cada nota; el estado se ve en **Hi
 | 8 o más notas calificadas con evaluación automática | Se calcula el puntaje automático mínimo (0 a 9) que mejor separa lo que el equipo califica con 3 o más; una nota por debajo se reescribe |
 
 Como mucho 8 correcciones por nota. El panel muestra además el promedio por persona y por proveedor, para decidir con datos (eso no cambia nada solo).
-- **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imagen destacada, que se puede cambiar ahí mismo.
+- **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imágenes. La destacada se cambia ahí mismo: otra foto de sus noticias (las que tienen personas aparecen marcadas y la elegida sale del cuerpo para no repetirse), una URL https o un archivo de la computadora (JPG, PNG, WebP o GIF, hasta 5 MB, validado por sus bytes). El archivo se guarda en `imagenes_subidas` y se sirve en `/api/imagenes/<id>` con sesión; al subir la nota a HubSpot se copia desde ahí (una ruta de este servidor nunca va a HubSpot como link).
 
 Detalle en [hubspot-integration.md](hubspot-integration.md).
 

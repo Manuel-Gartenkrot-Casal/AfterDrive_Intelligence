@@ -38,14 +38,15 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 |---|---|
 | [`adr/`](adr/) | Decisiones de arquitectura, una por archivo. Si tomás una decisión que alguien podría querer deshacer sin saber por qué, escribí un ADR |
 | [`superpowers/`](superpowers/) | Specs, planes y prompts de trabajos ya hechos (login y seguridad, mejoras del dashboard). Sirven como historial |
-| [`hubspot-integration.md`](hubspot-integration.md) | Publicación en HubSpot: configuración, imagen, etiquetas y errores |
+| [`hubspot-integration.md`](hubspot-integration.md) | Subida a HubSpot: configuración, blog de pruebas, aprobación automática, imágenes, idiomas y errores |
+| [`interfaz-editorial.md`](interfaz-editorial.md) | Criterios visuales del dashboard (colores, tipografía, Actividad, revisión) |
 
 ## Otros archivos del repo
 
 | Archivo / carpeta | Qué es |
 |---|---|
 | `CONTEXT.md` | Glosario del dominio |
-| `tests/` | Tests con `pytest`: auth, configuración, Corridas, cola, historial, HubSpot, generación, LLM, redacción, saneo, scheduler, scraper. `tests/e2e/`: el dashboard en un navegador |
+| `tests/` | Tests con `pytest`, un archivo por módulo (`test_<módulo>.py`: cola, historial, HubSpot, generación, juez, crítica, imágenes, traducciones, métricas, LLM, saneo…). `tests/e2e/`: el dashboard en un navegador |
 | `scripts/demo_mode.py`, `scripts/demo_datos.json` | Demo de punta a punta (noticia → nota → revisión → HubSpot de pruebas) y sus noticias de ejemplo. Guion en [`demo-noviembre.md`](demo-noviembre.md) |
 | `scripts/manual/` | Pruebas manuales: conexión con NVIDIA y smoke test del dashboard con Playwright |
 | `data/*.json` | Volcados de artículos de ejemplo |

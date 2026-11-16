@@ -181,6 +181,32 @@ def set_fase2_config(
     return cfg
 
 
+# ── Lista de temas para las próximas notas ────────────────────────────────────
+
+# Cada nota que se genera sin tema puntual usa el primero (generar_nota_fase2.generar_nota)
+# y, si la nota se guarda, se descarta. Se carga pegando o importando texto en Crear nota.
+TEMAS_MAX = 200
+TEMA_MAX_CHARS = 300
+
+
+def get_temas() -> list[str]:
+    return list(_get_section("temas", {"lista": []}).get("lista") or [])
+
+
+def set_temas(lista: list[str]) -> list[str]:
+    _set_section("temas", {"lista": lista})
+    return lista
+
+
+def descartar_tema(tema: str) -> None:
+    """Saca el tema ya usado (la primera vez que aparece)."""
+    # ponytail: leer y escribir sin lock; si justo se guarda la lista en ese instante, gana el último.
+    lista = get_temas()
+    if tema in lista:
+        lista.remove(tema)
+        set_temas(lista)
+
+
 # ── Proveedor de IA ───────────────────────────────────────────────────────────
 
 

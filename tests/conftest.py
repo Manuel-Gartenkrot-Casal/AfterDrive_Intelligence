@@ -2,12 +2,18 @@
 
 import os
 
+import dotenv
 import mongomock
 import pytest
 from werkzeug.security import generate_password_hash
 
-from afterdrive import config_store
-from afterdrive.ia import consumo
+# afterdrive llama a load_dotenv() al importarse: sin esto, el .env local (MONGO_URI real,
+# PAGA_API, modelos por tarea…) se colaría en los tests. Va antes de importar afterdrive,
+# así los tests corren igual que en la CI, que no tiene .env.
+dotenv.load_dotenv = lambda *a, **k: False
+
+from afterdrive import config_store  # noqa: E402
+from afterdrive.ia import consumo  # noqa: E402
 
 # scrypt es lento a propósito: se calcula una vez para toda la sesión de tests.
 HASH = generate_password_hash("secreta123")

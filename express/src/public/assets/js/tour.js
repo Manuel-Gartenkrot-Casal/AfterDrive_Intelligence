@@ -22,13 +22,13 @@ var PASOS_TOUR = [
   { seccion: 'crear', el: ['.f2-opciones', '.f2-campo-tono'], titulo: 'Tono, largo y tema puntual',   // en Cliente, .f2-opciones no tiene caja propia
     texto: 'El tono (comercial, analítico, periodístico…), el largo aproximado y, si querés, un tema puntual. Con "Puntapié" la nota lleva al lector a un link tuyo.' },
   { seccion: 'crear', el: ['#btn-mas-opciones', '.f2-regiones'], titulo: 'Regiones y clientes',
-    texto: 'La región define el idioma y el mercado: con Brasil la nota sale en portugués. También podés sumar clientes para mencionarlos como casos reales.' },
+    texto: 'La región define el mercado, no el idioma: todas las notas se escriben en portugués y se traducen al español y al inglés. También podés sumar clientes para mencionarlos como casos reales.' },
   { seccion: 'crear', el: '#btn-f2-generar', titulo: 'Generar la nota',
     texto: 'La nota se planifica, se escribe, se verifican sus datos contra las noticias y se revisan estilo y SEO; si algo falla, se corrige sola. Tarda unos minutos y queda en Historial para revisar. "Guardar cambios" deja esta configuración para la nota automática.' },
   { seccion: 'historial', el: '#hist-pestanas', titulo: 'Historial',
     texto: 'Las notas generadas y las descartadas, y las noticias que el sistema guardó o descartó, cada una con su motivo.' },
   { seccion: 'historial', el: '#hist-lista', titulo: 'Revisar una nota',
-    texto: 'Abrí una nota para leerla y ver qué datos están respaldados por las noticias, cuánto costó y su imagen. Desde ahí la calificás, la editás, la aprobás o la rechazás, elegís su imagen entre las fotos de sus noticias y la publicás en HubSpot.' },
+    texto: 'Abrí una nota y revisala en tres pasos: Revisar (qué datos respaldan las noticias, estilo, imagen e idiomas), Calificar (la calificación de la IA y la tuya) y Publicar (imagen, autor y subida a HubSpot como borrador). Desde ahí también la editás o la rechazás.' },
   { seccion: 'historial', el: '#calibracion-panel', titulo: 'Cómo aprende la generación',
     texto: 'Cuando calificás, rechazás o editás una nota, las próximas lo tienen en cuenta. Acá ves qué aprendió el sistema y cómo te va por tono y por proveedor.' },
   { seccion: 'programacion', el: '.agenda-grid', titulo: 'Programación',
@@ -38,9 +38,11 @@ var PASOS_TOUR = [
   { seccion: 'corridas', el: '.corridas-seccion', titulo: 'Actividad',
     texto: 'Lo que el sistema está ejecutando y lo que espera su turno, con el registro de cada paso. Corre una cosa a la vez: lo que pidas mientras tanto queda en cola.' },
   { el: '.sidebar-pie .modo-switch', titulo: 'Vista Cliente o Desarrollador',
-    texto: 'Cliente muestra lo esencial. Desarrollador suma la consola, las estadísticas y la elección del proveedor de IA.' },
+    texto: 'Cliente muestra lo esencial. Desarrollador suma la consola, el tablero de métricas, el proveedor de IA y los interruptores de HubSpot y aprobación automática.' },
   { el: '#providerToggle', soloDev: true, titulo: 'Proveedor de IA',
-    texto: 'Qué IA escribe y revisa las notas. Lo usa todo el pipeline, salvo mientras la API paga esté prendida.' },
+    texto: 'Qué IA escribe y revisa las notas. La API paga ($) da más calidad, pero cada paso cuesta dinero: pide confirmación al elegirla.' },
+  { el: '#sw-aprobacion-auto', soloDev: true, titulo: 'Borradores y aprobación automática',
+    texto: 'blog_test manda los borradores al blog de pruebas de HubSpot. Con la aprobación automática, la nota programada que pasa el juez de IA se aprueba y sube sola como borrador; si no pasa, espera tu revisión.' },
   { el: '.header-right', titulo: 'Estado, tema y sesión',
     texto: 'Si el sistema está en línea, el tema claro u oscuro y el botón para cerrar sesión.' },
   { el: '#ayuda-btn', titulo: 'Ayuda',
@@ -78,7 +80,7 @@ function iniciarTour(recorrido) {
   _tour.previo = document.activeElement;
   // Los pasos de la vista Desarrollador no cuentan en la vista Cliente (ni en el "Paso N de M").
   var dev = document.documentElement.getAttribute('data-modo') === 'dev';
-  var rutas = {crear:[0,4,5,6,7,9,18], revisar:[0,8,9,10,18], programar:[0,11,12,13,18]};
+  var rutas = {crear:[0,4,5,6,7,9,19], revisar:[0,8,9,10,19], programar:[0,11,12,13,19]};
   var indices = rutas[recorrido || 'crear'];
   _tour.pasos = PASOS_TOUR.filter(function(p, i) { return (!indices || indices.includes(i)) && (dev || !p.soloDev); });
   var capa = document.createElement('div');
