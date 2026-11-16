@@ -1095,3 +1095,23 @@ def test_agregar_un_cliente_sin_nombre_avisa(pagina):
     expect(pagina.locator("#f2-cli-status")).to_have_class(re.compile(r"\berr\b"))
     expect(pagina.locator("#f2-cli-nombre")).to_be_focused()
     assert pagina.locator("#f2-clientes-list").inner_text() == clientes   # no se agregó nada
+
+
+@pytest.mark.parametrize("idioma, ejemplo, error", [
+    ("en", "One topic per line. E.g.:\nTire sales in the summer", "A topic is too long (max 300 characters)"),
+    ("pt", "Um tema por linha. Ex.:\nVendas de pneus no verão", "Um tema é longo demais (máximo 300 caracteres)"),
+])
+def test_la_lista_de_temas_se_traduce(navegador, base_url, idioma, ejemplo, error):
+    """El placeholder (con saltos de línea) y los errores de la lista de temas quedaban en español en pt/en."""
+    pg = abrir(navegador, base_url)
+    try:
+        elegir_idioma(pg, idioma)
+        pg.click('.sidebar a[data-seccion="crear"]')
+        assert pg.get_attribute("#f2-temas", "placeholder").startswith(ejemplo)
+        pg.fill("#f2-temas", "Corto\n" + "x" * 305)
+        pg.locator("#f2-temas").dispatch_event("input")
+        pg.locator("#barra-crear [data-accion='guardar']").click()
+        expect(pg.locator("#barra-crear .barra-estado")).to_contain_text(error)
+        assert pg.errores == []
+    finally:
+        pg.context.close()

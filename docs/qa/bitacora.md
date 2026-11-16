@@ -3,6 +3,25 @@
 Una entrada por corrida, la más nueva arriba (como máximo las últimas 60). Cada una dice hasta qué
 commit se revisó, qué se probó usando la app (no solo los tests), qué se encontró y qué quedó pendiente.
 
+## 2026-11-16 · diario
+
+- **Revisado hasta:** Render_Testing `2d5d935` · Render_Testing_2 `96fa88e` (merge de Render_Testing).
+- **Cambios revisados:** `2d5d935` (lista de temas para las próximas notas), `4349e22` (documentación y guías al día) y
+  `bd0c964` (tests con .env local y Windows).
+- **Probado como cliente** (Crear nota, vista Cliente; escritorio y celular; es/pt/en): pegar con viñetas, números,
+  vacíos y repetidos (se limpian; "Motor 1.6 turbo" y "-5 °C" quedan); importar un .txt con saltos de Windows (se suma
+  al final); guardar y recargar (coincide con la API); un tema de más de 300 caracteres (no se guarda y la barra lo
+  explica); dos sesiones: cuando otra consume un tema la lista se actualiza sola en ~10 s, y si estás editando no te pisa.
+  La nota automática usa la lista (`corridas` pasa tema vacío) y el consumo está cubierto por `tests/test_temas.py`.
+- **Encontrado y arreglado:** la lista de temas quedaba en parte en español en pt/en: el ejemplo del cuadro vacío, el
+  aviso de archivo muy grande y los errores "Un tema es muy largo…", "Son muchos temas…" y "No se pudo guardar la lista
+  de temas…". Reproducir antes: interfaz en EN → Crear nota con la lista vacía. Test e2e
+  `test_la_lista_de_temas_se_traduce`.
+- **Pregunta para el equipo:** si estás editando la lista mientras una nota consume un tema y después guardás, el tema ya
+  usado vuelve a la lista y se va a repetir. Reproducir: lista "Uno, Dos, Tres" → empezar a editarla → que una nota use
+  "Uno" → guardar tu edición → "Uno" vuelve. ¿Avisar antes de guardar, o quitar al guardar los temas que se consumieron
+  mientras tanto?
+
 ## 2026-11-15 · integración
 
 - **Revisado hasta:** Render_Testing `18af701` · Render_Testing_2 `59a6293`. Sin cambios nuevos: zonas todavía sin ver.

@@ -25,6 +25,11 @@ var _FILAS_TEXTOS = [
   ['Importar .txt', 'Importar .txt', 'Import .txt'],
   ['Pegá o importá texto plano, un tema por línea (las viñetas y números se ignoran). Cada nota sin tema puntual, también las automáticas, usa el primero y, si sale bien, lo saca de la lista.', 'Cole ou importe texto simples, um tema por linha (marcadores e números são ignorados). Cada post sem tema específico, também os automáticos, usa o primeiro e, se der certo, o tira da lista.', 'Paste or import plain text, one topic per line (bullets and numbers are ignored). Every post without a specific topic, automatic ones too, uses the first one and, if it works, removes it from the list.'],
   ['La lista está vacía.', 'A lista está vazia.', 'The list is empty.'],
+  ['El archivo es muy grande (máximo 1 MB).', 'O arquivo é grande demais (máximo 1 MB).', 'The file is too large (max 1 MB).'],
+  // El placeholder de la lista de temas tiene saltos de línea: la clave va normalizada (con espacios).
+  ['Un tema por línea. Ej: Ventas de neumáticos en el verano Cómo vender autopartes en Mercado Libre',
+   'Um tema por linha. Ex.:\nVendas de pneus no verão\nComo vender autopeças no Mercado Livre',
+   'One topic per line. E.g.:\nTire sales in the summer\nHow to sell auto parts on Mercado Libre'],
   ['Rotar categorías automáticamente', 'Alternar categorias automaticamente', 'Rotate categories automatically'],
   ['Cada nota usa 1 o 2 de las categorías marcadas, priorizando las que menos salieron en las últimas notas. Así no se repiten notas parecidas.', 'Cada post usa 1 ou 2 das categorias marcadas, priorizando as que menos saíram nos últimos posts. Assim não se repetem posts parecidos.', 'Each post uses 1 or 2 of the selected categories, favoring the ones that came up least in recent posts. That way similar posts don’t repeat.'],
   ['rotando', 'alternando', 'rotating'],
@@ -1341,6 +1346,9 @@ function _fotosDescartadas(x, cod) {
 var PATRONES = {
   pt: [
     [/^(\d+) temas? en la lista\. La próxima nota usa: (.+)$/, '$1 tema(s) na lista. O próximo post usa: $2'],
+    [/^Un tema es muy largo \(máximo (\d+) caracteres\): (.+)$/, 'Um tema é longo demais (máximo $1 caracteres): $2'],
+    [/^Son muchos temas \(máximo (\d+)\)\.$/, 'São temas demais (máximo $1).'],
+    [/^No se pudo guardar la lista de temas: (.+)$/, function(m, e) { return 'Não foi possível salvar a lista de temas: ' + tr(e, 'pt'); }],
     [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Também é escrito outro post às $1.'],
     [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Também são escritos posts às $1 e $2.'],
     [/^Se escriben (\d+) notas automáticas por día\.$/, 'São escritos $1 posts automáticos por dia.'],
@@ -1461,6 +1469,9 @@ var PATRONES = {
   ],
   en: [
     [/^(\d+) temas? en la lista\. La próxima nota usa: (.+)$/, '$1 topic(s) in the list. The next post uses: $2'],
+    [/^Un tema es muy largo \(máximo (\d+) caracteres\): (.+)$/, 'A topic is too long (max $1 characters): $2'],
+    [/^Son muchos temas \(máximo (\d+)\)\.$/, 'Too many topics (max $1).'],
+    [/^No se pudo guardar la lista de temas: (.+)$/, function(m, e) { return 'Couldn’t save the topic list: ' + tr(e, 'en'); }],
     [/^También se escribe otra nota a las (\d\d:\d\d)\.$/, 'Another post is also written at $1.'],
     [/^También se escriben notas a las (.+) y (\d\d:\d\d)\.$/, 'Posts are also written at $1 and $2.'],
     [/^Se escriben (\d+) notas automáticas por día\.$/, '$1 automatic posts are written per day.'],
