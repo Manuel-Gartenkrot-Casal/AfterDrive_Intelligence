@@ -6,8 +6,8 @@ Interfaz:
 
 Las candidatas son las fotos de las noticias de la nota (las que la respaldan
 primero; cada noticia guarda varias), hasta MAX_FOTOS, sin repetir las que ya
-están en otras notas. La IA las juzga contra el TEMA de la nota (no alcanza con
-que sean del sector) y devuelve las aptas en orden: la primera va como
+están en otras notas. La IA las juzga según la pieza editable "imagenes"
+(selección y reglas de portada) y devuelve las aptas en orden: la primera va como
 destacada y las siguientes dentro del texto (hubspot.py las reparte entre las
 secciones).
 
@@ -26,8 +26,8 @@ Solo si después de todo eso faltan, la nota sale con menos y el motivo queda
 para mostrarlo al revisarla.
 
 Una foto guardada que el sitio ya no sirve (404) se vuelve a buscar en la
-página de la noticia. Si la IA falla, van las primeras en orden: la IA mejora
-la elección pero nunca la frena.
+página de la noticia. Si la IA falla, no se agregan fotos sin evaluar: la nota
+conserva solo las que ya pasaron los criterios editoriales.
 """
 
 from __future__ import annotations
@@ -45,26 +45,18 @@ REFRESCOS = 3       # fotos que dejaron de responder: se relee su página para t
 MAX_BYTES_IA = 3_750_000
 
 _CRITERIOS = """\
-Una foto es apta si cumple todo:
-- Es una fotografía real: no un logo, un ícono, un banner publicitario, una captura de pantalla ni un gráfico \
-o infografía con mucho texto.
-- Tiene que ver con la nota: muestra el TEMA concreto (el producto, la actividad, el lugar o el tipo de \
-empresa del que habla el título) o, si no, el sector de la nota (repuestos, autos, talleres, depósitos, \
-logística, fábricas, ferias, comercio de autopartes). NO es apta una foto ajena al sector aunque venga de \
-una noticia usada: billetes o cotizaciones, políticos, deportes, catástrofes, personas sin contexto.
-- Se ve nítida y no tiene marcas de agua grandes ni texto sobreimpreso que la tape.
+Aplicá estas reglas editoriales vigentes para decidir qué fotos son aptas y cuáles pueden ser portada:
+{criterios}
 
-En cada foto indicá "personas": true si se ve una persona o parte de una (cara, cuerpo, manos), aunque sea \
-chica o de fondo. Una foto con personas puede ser apta (va dentro del texto), pero la portada no puede tenerlas.
-Las fotos de bancos de imágenes valen igual que las de las noticias si muestran el tema o el sector.
-
-Ordená las aptas: primero las que muestran el tema y después las del sector ("elegidas", como mucho \
-{cantidad}). Si ninguna es apta, "elegidas" es [].
+En cada foto indicá "personas": true si se ve una persona o parte de una (cara, cuerpo, manos), aunque sea
+chica o de fondo. Es una descripción, no un veto: "portada" indica si la foto puede ser portada según las
+reglas editoriales de arriba. "apta" indica si se puede usar en la nota. No inventes restricciones adicionales.
+Ordená las aptas según esas reglas ("elegidas", como mucho {cantidad}). Si ninguna es apta, "elegidas" es [].
 
 Respondé solo con este JSON, una entrada por foto en el orden recibido:
-{{"fotos": [{{"n": 1, "apta": true, "personas": false, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
+{{"fotos": [{{"n": 1, "apta": true, "portada": true, "personas": false, "motivo": "una oración en español"}}], "elegidas": [1]}}"""
 
-SIN_PORTADA = "Las fotos aptas muestran personas (o piden crédito) y la portada no puede tenerlas."
+SIN_PORTADA = "Ninguna foto apta cumple las reglas de portada vigentes o se puede usar sin crédito."
 
 _SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
                   "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa.\n\n" + _CRITERIOS)
@@ -72,25 +64,29 @@ _SYSTEM_VISION = ("Sos el editor de fotografía del blog B2B AfterDrive by Aleph
 _SYSTEM_TEXTO = ("Sos el editor de fotografía del blog B2B AfterDrive by Alephee (aftermarket automotor en "
                  "Latinoamérica). Elegís las fotos de una nota entre las de las noticias que usa, SIN verlas: "
                  "solo tenés el título de la noticia de la que sale cada foto, su texto alternativo y el nombre "
-                 "del archivo. Juzgá qué muestra probablemente cada una: si la noticia es del sector, su foto "
-                 "probablemente también. Si la noticia es de otro tema, no es apta. Un nombre de archivo o texto que sugiere logo, banner, autor o publicidad, "
-                 "no es apta.\n\n" + _CRITERIOS)
+                 "del archivo. Juzgá qué muestra probablemente cada una y aplicá las mismas reglas editoriales.\n\n"
+                 + _CRITERIOS)
+
+
+def _permite_portada(veredicto: dict) -> bool:
+    """La IA aplica el prompt vigente; respuestas viejas conservan la regla original."""
+    return veredicto.get("portada", not veredicto.get("personas")) is True
 
 
 @dataclass
 class Eleccion:
     imagenes: list[dict]                # campo `imagen` de cada una, en orden (la primera es la destacada)
-    metodo: str                         # "ia", "ia-texto", "primera" o "ninguna"
-    veredictos: dict = field(default_factory=dict)   # url -> {"apta": bool, "personas": bool, "motivo": str}
+    metodo: str                         # "ia", "ia-texto", "sin-evaluar" o "ninguna"
+    veredictos: dict = field(default_factory=dict)   # url -> {apta, portada, personas, motivo}
     motivo: str = ""                    # por qué no hay imagen o por qué no decidió la IA
 
     def _no_portada(self, im: dict) -> bool:
-        """Muestra personas, o es de un banco que pide crédito (HubSpot no lo muestra en la destacada)."""
-        return bool(self.veredictos.get(im["url"], {}).get("personas") or im.get("atribucion"))
+        """El prompt no la admite de portada, o pide crédito (HubSpot no lo muestra ahí)."""
+        return not _permite_portada(self.veredictos.get(im["url"], {})) or bool(im.get("atribucion"))
 
     @property
     def imagen(self) -> dict | None:
-        """La portada: la primera foto, salvo que muestre personas o pida crédito."""
+        """La portada: la primera foto, si cumple las reglas vigentes y no pide crédito."""
         return self.imagenes[0] if self.imagenes and not self._no_portada(self.imagenes[0]) else None
 
     @property
@@ -191,7 +187,7 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
     else:
         eleccion = Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
     eleccion.ordenar(cantidad)
-    if eleccion.metodo == "primera":   # la IA no responde: no tiene sentido seguir buscando
+    if eleccion.metodo == "sin-evaluar":   # sin evaluador no se agregan fotos sin revisar
         return eleccion
     vistas = {n.imagen["url"] for n in candidatas} | set(excluir)
     urls_nota = {n.url for n in noticias}
@@ -226,7 +222,14 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         vistas |= {n.imagen["url"] for n in nuevas} | {n.url for n in nuevas if n.id is None}
         que = "la portada" if solo_portada else f"{faltan} imagen(es) apta(s)"
         print(f"  Falta {que}: se busca entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
-        eleccion = _sumar(eleccion, _ronda(nuevas, titulo, angulo, faltan, portada=solo_portada), cantidad)
+        otra = _ronda(nuevas, titulo, angulo, faltan, portada=solo_portada)
+        if otra.metodo == "sin-evaluar":
+            if not eleccion.imagenes:
+                return otra
+            eleccion.veredictos.update(otra.veredictos)
+            eleccion.motivo = f"{eleccion.motivo} {otra.motivo}".strip()
+            return eleccion
+        eleccion = _sumar(eleccion, otra, cantidad)
     faltan = _faltan(eleccion, cantidad)
     if faltan > 0 and eleccion.imagenes:
         aviso = f"Se consiguieron {len(eleccion.imagenes)} de {cantidad} fotos: no hubo más aptas sin repetir."
@@ -276,7 +279,7 @@ def _bajables(candidatas: list, refrescos: list[int], veredictos: dict) -> list:
 def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool | None = None,
            portada: bool = False) -> Eleccion:
     """Una pasada de la IA sobre las candidatas. ver=False la obliga a juzgar sin mirar las fotos.
-    portada=True: solo falta la portada (se le pide una sin personas).
+    portada=True: solo falta una foto que cumpla las reglas vigentes de portada.
 
     Una foto que no se puede descargar no se elige nunca (antes completaba los lugares que faltaban,
     juzgada por su texto, y en HubSpot salía rota): faltan fotos, y elegir() las busca en otro lado.
@@ -297,11 +300,9 @@ def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool 
                 veredictos[n.imagen["url"]] = _no_bajada(n, e)
         if not enviadas:
             return Eleccion([], "ia", veredictos, motivo="No se pudo descargar ninguna de estas fotos.")
-        primeras = Eleccion([contexto_noticias.imagen_de(n) for n in enviadas[:cantidad]], "primera")
-        return _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, primeras, portada)
+        return _ronda_con(enviadas, imagenes, titulo, angulo, cantidad, veredictos, portada)
     # Sin verlas: la IA juzga por el texto y después se comprueba que las elegidas se puedan bajar.
-    primeras = Eleccion([contexto_noticias.imagen_de(n) for n in candidatas[:cantidad]], "primera")
-    eleccion = _ronda_con(candidatas, None, titulo, angulo, cantidad, veredictos, primeras, portada)
+    eleccion = _ronda_con(candidatas, None, titulo, angulo, cantidad, veredictos, portada)
     por_url = {n.imagen["url"]: n for n in candidatas}
     elegidas = [por_url[im["url"]] for im in eleccion.imagenes if im["url"] in por_url]
     buenas = _bajables(elegidas, refrescos, eleccion.veredictos)
@@ -313,9 +314,9 @@ def _ronda(candidatas: list, titulo: str, angulo: str, cantidad: int, ver: bool 
 
 
 def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int, veredictos: dict,
-               primeras: Eleccion, portada: bool = False) -> Eleccion:
+               portada: bool = False) -> Eleccion:
     from afterdrive.generacion import contexto_noticias
-    from afterdrive.ia import llm
+    from afterdrive.ia import llm, redaccion
 
     con_vista = imagenes is not None
     print(f"  Eligiendo las imágenes con IA entre {len(enviadas)} foto(s)"
@@ -328,19 +329,22 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
     pedido = f"Título de la nota: {titulo}\n" + (f"Ángulo: {angulo}\n" if angulo else "") + f"\nFotos:\n{lista}"
     if portada:
         pedido += ("\n\nLa nota ya tiene sus fotos del texto: solo falta la PORTADA. Elegí primero una foto "
-                   "apta SIN personas.")
+                   "apta que cumpla las reglas editoriales vigentes de portada.")
     try:
-        crudo = llm.completar((_SYSTEM_VISION if con_vista else _SYSTEM_TEXTO).format(cantidad=cantidad), pedido,
+        system = (_SYSTEM_VISION if con_vista else _SYSTEM_TEXTO).format(
+            cantidad=cantidad, criterios=redaccion.texto("imagenes"))
+        crudo = llm.completar(system, pedido,
                               temperature=0, max_tokens=1500, tarea="clasificacion",
                               **({"imagenes": imagenes} if con_vista else {}))
         respuesta = _leer(crudo, len(enviadas))
     except llm.Cancelada:
         raise
     except Exception as e:
-        print(f"  [AVISO] La IA no pudo juzgar las fotos ({e}): van las primeras.", flush=True)
-        primeras.motivo = f"La IA no pudo juzgar las fotos: {e}"
-        primeras.veredictos = veredictos
-        return primeras
+        motivo = f"No se agregaron fotos sin evaluar: la IA no pudo comprobar su relación con la nota ({e})."
+        print(f"  [AVISO] {motivo}", flush=True)
+        for n in enviadas:
+            veredictos[n.imagen["url"]] = {"apta": False, "portada": False, "motivo": motivo}
+        return Eleccion([], "sin-evaluar", veredictos, motivo=motivo)
 
     for i, n in enumerate(enviadas, 1):
         veredictos[n.imagen["url"]] = respuesta["fotos"].get(i, {"apta": False, "motivo": "La IA no la evaluó."})
@@ -348,10 +352,10 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
     elegidas = respuesta["elegidas"][:cantidad]
     fotos = respuesta["fotos"]
     def puede_ser_portada(i: int) -> bool:
-        return not fotos.get(i, {}).get("personas") and not enviadas[i - 1].imagen.get("atribucion")
+        return _permite_portada(fotos.get(i, {})) and not enviadas[i - 1].imagen.get("atribucion")
 
     if elegidas and not any(puede_ser_portada(i) for i in elegidas):
-        # Ninguna elegida sirve de portada (personas o crédito): entra una apta que sí sirva, si hay.
+        # Ninguna elegida cumple las reglas de portada: entra una apta que sí sirva, si hay.
         libre = next((i for i in sorted(fotos) if fotos[i]["apta"] and puede_ser_portada(i)
                       and i not in elegidas), None)
         if libre:
@@ -375,12 +379,14 @@ def _leer(crudo: str, total: int) -> dict:
         if isinstance(f, dict) and isinstance(f.get("n"), int | float) and 1 <= int(f["n"]) <= total:
             fotos[int(f["n"])] = {"apta": f.get("apta") is True, "personas": f.get("personas") is True,
                                   "motivo": " ".join(str(f.get("motivo") or "").split())[:200]}
+            if isinstance(f.get("portada"), bool):
+                fotos[int(f["n"])]["portada"] = f["portada"]
     crudas = data.get("elegidas")
     if crudas is None:   # formato anterior: una sola
         crudas = [data.get("elegida")] if data.get("elegida") is not None else []
     elegidas = []
     for e in crudas if isinstance(crudas, list) else []:
         if isinstance(e, int | float) and 1 <= int(e) <= total and int(e) not in elegidas \
-                and fotos.get(int(e), {}).get("apta") is not False:   # una marcada como no apta no se usa
+                and fotos.get(int(e), {}).get("apta") is True:   # solo fotos evaluadas y aprobadas explícitamente
             elegidas.append(int(e))
     return {"fotos": fotos, "elegidas": elegidas}

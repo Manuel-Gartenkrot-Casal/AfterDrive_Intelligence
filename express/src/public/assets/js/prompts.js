@@ -199,8 +199,8 @@ async function refrescarArchivoPrompt(irAPieza) {
     var cambia = PROMPTS.detalle && texto.trim() !== PROMPTS.detalle.activo.contenido.trim();
     var borrador = cambia ? await pedir('/api/prompts/vista-previa', cuerpo({ clave: clave, contenido: texto })) : null;
     if (clave !== PROMPTS.clave) return;   // mientras tanto se eligió otra pieza
-    PROMPTS.activas = activas.partes;
-    PROMPTS.conBorrador = borrador ? borrador.partes : null;
+    PROMPTS.activas = activas.partes.concat(activas.adicionales || []);
+    PROMPTS.conBorrador = borrador ? borrador.partes.concat(borrador.adicionales || []) : null;
   } catch (e) {
     $('pe-archivo-cuerpo').innerHTML = '<p class="prompts-vacio">' + escHtml(tr('No se pudo armar la vista previa: ') + e.message) + '</p>';
     return;

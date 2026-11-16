@@ -38,6 +38,12 @@ _mongomock_acepta_sort()
 
 
 @pytest.fixture(autouse=True)
+def config_en_memoria(monkeypatch):
+    """La lista de temas nueva tampoco debe consultar Mongo real durante generación."""
+    monkeypatch.setattr(config_store, "_col", mongomock.MongoClient().db.config)
+
+
+@pytest.fixture(autouse=True)
 def consumo_en_memoria(monkeypatch):
     """El registro de consumo de la API paga va a un Mongo en memoria, nunca al real."""
     col = mongomock.MongoClient().db.consumo_ia

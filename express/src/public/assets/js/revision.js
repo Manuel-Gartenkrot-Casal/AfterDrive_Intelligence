@@ -335,9 +335,13 @@ function pintarImagen(nota, contenedor) {
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
       + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
       + (im.subida ? '<p class="revision-sub">Subida desde la computadora' + (im.subida.nombre ? ': ' + escHtml(im.subida.nombre) : '') + '.</p>' : '');
-  } else if (/muestran personas/.test(eleccion.motivo || '')) {
-    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>';
-  } else if (eleccion.metodo === 'ia') {
+  } else if (/muestran personas|reglas de portada/.test(eleccion.motivo || '')) {
+    html = '<p class="revision-mal">Sin imagen destacada: ninguna foto cumple las reglas de portada.</p>'
+      + '<p class="revision-sub">' + escHtml(eleccion.motivo) + '</p>';
+  } else if (eleccion.metodo === 'sin-evaluar') {
+    html = '<p class="revision-mal">No se agregaron fotos sin evaluar.</p>'
+      + '<p class="revision-sub">' + escHtml(eleccion.motivo || '') + '</p>';
+  } else if (eleccion.metodo === 'ia' || eleccion.metodo === 'ia-texto') {
     html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
       + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>';
   } else {

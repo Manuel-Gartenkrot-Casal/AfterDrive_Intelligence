@@ -334,7 +334,7 @@ def ia_fotos(monkeypatch):
 
     def responder(texto):
         def completar(system, user, **kw):
-            pedidos.append({"user": user, **kw})
+            pedidos.append({"system": system, "user": user, **kw})
             r = texto.pop(0) if isinstance(texto, list) else texto   # una lista: una respuesta por pedido
             if isinstance(r, Exception):
                 raise r
@@ -375,12 +375,65 @@ def test_una_elegida_marcada_como_no_apta_no_se_usa(ia_fotos):
 
 
 @pytest.mark.parametrize("falla", ["no es json", RuntimeError("Bedrock caído")])
-def test_si_la_ia_falla_va_la_primera(ia_fotos, falla):
+@pytest.mark.parametrize("vision", [True, False])
+def test_si_la_ia_falla_no_agrega_fotos_sin_evaluar(monkeypatch, ia_fotos, falla, vision):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm
+    responder, _, _ = ia_fotos
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    responder(falla)
+    e = imagen_destacada.elegir(_con_fotos(2), "T", respaldo=lambda r: pytest.fail("Sin IA no se sigue buscando"))
+    assert e.metodo == "sin-evaluar" and e.imagen is None and e.imagenes == []
+    assert "No se agregaron fotos sin evaluar" in e.motivo
+    assert all(v["apta"] is False for v in e.veredictos.values())
+
+
+def test_una_foto_sin_veredicto_explicito_no_se_usa(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
-    responder(falla)
-    e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.metodo == "primera" and e.imagen["url"] == "https://n.com/1.jpg" and e.motivo
+    # La IA puso la segunda entre las elegidas, pero no la evaluó.
+    responder('{"fotos": [{"n": 1, "apta": true, "portada": true}], "elegidas": [2, 1]}')
+    e = imagen_destacada.elegir(_con_fotos(2), "T", cantidad=1)
+    assert e.imagen["url"] == "https://n.com/1.jpg"
+    assert e.veredictos["https://n.com/2.jpg"]["apta"] is False
+
+
+def test_si_falla_una_busqueda_posterior_conserva_solo_las_fotos_aprobadas(monkeypatch, ia_fotos):
+    from afterdrive.generacion import contexto_noticias, imagen_destacada
+    responder, _, pedidos = ia_fotos
+    monkeypatch.setattr(contexto_noticias, "mas_fotos", lambda *a, **kw: [])
+    responder(['{"fotos": [{"n": 1, "apta": true, "portada": true}], "elegidas": [1]}',
+               RuntimeError("Servicio caído")])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=2,
+                              extra=lambda: [_noticia(9, "https://n.com/9.jpg")],
+                              respaldo=lambda r: pytest.fail("Sin IA no se sigue buscando"))
+    assert len(pedidos) == 2 and [im["url"] for im in e.imagenes] == ["https://n.com/1.jpg"]
+    assert "No se agregaron fotos sin evaluar" in e.motivo
+    assert e.veredictos["https://n.com/9.jpg"]["apta"] is False
+
+
+@pytest.mark.parametrize("vision", [True, False])
+def test_descarta_grupos_sin_relacion_con_la_nota_aunque_vengan_de_sus_noticias(monkeypatch, ia_fotos, vision):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm, redaccion
+    responder, _, pedidos = ia_fotos
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    noticias = _con_fotos(2)
+    noticias[0].imagen["alt"] = "Multitud de asistentes posando en una feria"
+    noticias[1].imagen["alt"] = "Pastillas de freno y discos sobre una mesa de trabajo"
+    responder(json.dumps({"fotos": [
+        {"n": 1, "apta": False, "portada": False, "personas": True,
+         "motivo": "Un grupo posando no muestra las pastillas de freno de la nota."},
+        {"n": 2, "apta": True, "portada": True, "personas": False,
+         "motivo": "Muestra las pastillas y discos cuyo desgaste explica la nota."}], "elegidas": [1, 2]}))
+    e = imagen_destacada.elegir(noticias, "Cómo detectar desgaste en pastillas de freno",
+                              "Inspección de pastillas y discos", cantidad=1)
+    assert e.imagen["url"] == noticias[1].imagen["url"] and e.cuerpo == []
+    assert e.veredictos[noticias[0].imagen["url"]]["apta"] is False
+    assert redaccion.PIEZAS["imagenes"] in pedidos[0]["system"]
+    assert "Pertenecer al sector automotor NO alcanza" in pedidos[0]["system"]
+    assert "Es preferible usar menos imágenes" in pedidos[0]["system"]
+    assert "pastillas de freno" in pedidos[0]["user"]
 
 
 def test_una_foto_que_no_se_puede_descargar_no_se_elige(ia_fotos):
@@ -624,6 +677,49 @@ def test_la_portada_nunca_tiene_personas(ia_fotos):
     responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, False)}], "elegidas": [1, 2]}}')
     e = imagen_destacada.elegir(_con_fotos(3), "T", cantidad=2)
     assert e.imagen["url"] == "https://n.com/3.jpg" and [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg"]
+
+
+@pytest.mark.parametrize("vision", [True, False])
+def test_el_pedido_de_imagenes_guardado_se_usa_al_activar_la_copia(monkeypatch, ia_fotos, vision):
+    from afterdrive import prompts_ia
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm, redaccion
+
+    responder, _, pedidos = ia_fotos
+    nuevo = "## Imágenes\n- Se permiten personas en portada y en el cuerpo. Priorizá talleres {reales}."
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    responder(json.dumps({"cambios": [{"clave": "imagenes", "contenido": nuevo}]}))
+    m = prompts_ia.mejorar("Permití personas en las imágenes de portada")
+    assert m["cambios"][0]["aplicado"] and redaccion.texto("imagenes") == redaccion.PIEZAS["imagenes"]
+    prompts_ia.usar("ia")
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    responder('{"fotos": [{"n": 1, "apta": true, "personas": true, "portada": true}], "elegidas": [1]}')
+    e = imagen_destacada.elegir(_con_fotos(1), "Mecánicos en el taller", cantidad=1)
+    assert e.imagen["url"] == "https://n.com/1.jpg" and e.veredictos[e.imagen["url"]]["personas"]
+    assert nuevo in pedidos[-1]["system"] and "portada no puede" not in pedidos[-1]["system"]
+    assert e.metodo == ("ia" if vision else "ia-texto")
+    prompts_ia.usar("actuales")
+    imagen_destacada.elegir(_con_fotos(1), "Taller", cantidad=1)
+    assert redaccion.PIEZAS["imagenes"] in pedidos[-1]["system"] and nuevo not in pedidos[-1]["system"]
+
+
+def test_la_restriccion_de_portada_se_respeta_aunque_la_foto_no_tenga_personas(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder(['{"fotos": [{"n": 1, "apta": true, "personas": false, "portada": false}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "personas": true, "portada": true}], "elegidas": [1]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=1,
+                              extra=lambda: [_noticia(9, "https://n.com/9.jpg")])
+    assert e.imagen["url"] == "https://n.com/9.jpg" and len(pedidos) == 2
+    assert "reglas editoriales vigentes" in pedidos[-1]["user"]
+
+
+def test_las_reglas_editoriales_no_eliminan_el_credito_requerido(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    responder('{"fotos": [{"n": 1, "apta": true, "personas": false, "portada": true}], "elegidas": [1]}')
+    e = imagen_destacada.elegir([_de_banco(1, credito=True)], "T", cantidad=1)
+    assert e.imagen is None and e.cuerpo[0]["atribucion"]
 
 
 def test_si_todas_tienen_personas_no_hay_portada_pero_si_fotos_en_el_texto(ia_fotos):

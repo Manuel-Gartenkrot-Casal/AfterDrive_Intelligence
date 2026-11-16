@@ -657,7 +657,9 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
     # Fotos de las noticias de la nota, para elegir otra destacada (con lo que opinó la IA, si las miró).
     de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", ""),
                     **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", ""),
-                        "personas": f.get("imagen_personas", False)} if "imagen_apta" in f else {})}
+                        "personas": f.get("imagen_personas", False),
+                        "portada": f.get("imagen_portada", not f.get("imagen_personas", False))}
+                       if "imagen_apta" in f else {})}
                    for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
         previa = hubspot.vista_previa(doc)

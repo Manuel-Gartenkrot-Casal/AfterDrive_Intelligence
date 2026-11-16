@@ -136,6 +136,9 @@ def test_la_nota_se_escribe_con_las_noticias_scrapeadas(entorno):
     assert "Argentina" in llamadas["consulta"]
     assert usadas == [1, 2]
     guardada = col.docs[0]
+    assert len(guardada["prompts_huella"]) == 64 and guardada["prompts_juego"] == "actuales"
+    assert guardada["prompts_prueba"]["user"] == llamadas["user"]
+    assert "Frasle" in guardada["prompts_prueba"]["contexto"]
     assert guardada["fuentes"] == [
         {"titulo": "Frasle amplía su planta de pastillas de freno", "url": "https://n/1"},
         {"titulo": "Automechanika Buenos Aires 2026 abre acreditaciones", "url": "https://n/2"},
@@ -627,7 +630,8 @@ def test_el_script_sale_bien_si_la_nota_se_genero(monkeypatch):
     assert g.main(["--categorias", "autopartes"]) == 0
 
 
-def test_la_imagen_destacada_es_la_foto_de_una_noticia_usada(entorno, monkeypatch):
+@pytest.mark.parametrize("evaluada", [True, False])
+def test_la_imagen_destacada_solo_se_guarda_si_una_foto_usada_fue_evaluada(entorno, monkeypatch, evaluada):
     _, col, _ = entorno
     noticias = [
         Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió en su planta de Caxias.", url="https://n/1",
@@ -636,9 +640,26 @@ def test_la_imagen_destacada_es_la_foto_de_una_noticia_usada(entorno, monkeypatc
                 imagen={"url": "https://n/2.jpg", "alt": ""}, imagen_buscada=True),
     ]
     monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
+    original = llm.completar
+
+    def completar(system, user, **kw):
+        if kw.get("tarea") == "clasificacion":
+            if not evaluada:
+                raise llm.ErrorLLM("No se pudieron evaluar las imágenes")
+            return ('{"fotos": [{"n": 1, "apta": true, "portada": true, "motivo": "Muestra la planta."}, '
+                    '{"n": 2, "apta": false, "portada": false, "motivo": "La feria no ilustra la inversión."}], '
+                    '"elegidas": [1]}')
+        return original(system, user, **kw)
+
+    monkeypatch.setattr(llm, "completar", completar)
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
-    # La 1 la asigna el plan a una sección: va primero.
+    if not evaluada:
+        assert "imagen" not in guardada and not guardada.get("imagenes_cuerpo")
+        assert guardada["imagen_eleccion"]["metodo"] == "sin-evaluar"
+        assert "No se agregaron fotos sin evaluar" in guardada["imagen_eleccion"]["motivo"]
+        return
+    # La 1 la asigna el plan a una sección y pasa la evaluación de imágenes.
     assert guardada["imagen"] == {"url": "https://n/1.jpg", "alt": "El catálogo digital llega al mostrador",
                                   "origen": {"titulo": "Frasle amplía su planta", "url": "https://n/1"}}
     assert [f.get("imagen") for f in guardada["fuentes"]] == ["https://n/1.jpg", "https://n/2.jpg"]

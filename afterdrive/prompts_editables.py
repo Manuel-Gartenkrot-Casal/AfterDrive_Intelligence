@@ -63,6 +63,8 @@ _CATALOGO = [
     ("formato", "Formato", "base", "Markdown, títulos y extensión. {extension} se reemplaza por el largo elegido."),
     ("seo", "SEO", "base", "Título, palabra clave y enlaces."),
     ("salida", "Respuesta", "base", "Qué devuelve el modelo: solo la nota, sin comentarios."),
+    ("imagenes", "Imágenes", "base",
+     "Qué fotos se aceptan y cuáles pueden ser portada. Se usa al elegir imágenes, no al redactar el texto."),
     *[(f"persona_{slug}", nombre, "persona",
        "El rol, y después ## Tu tarea, ## Estructura (lista numerada) y ## Estilo.")
       for slug, nombre in _NOMBRES_PERSONAS.items()],

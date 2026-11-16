@@ -7,7 +7,7 @@
    que cambió la IA marcado, el análisis de las notas, un lugar para pedirle un
    cambio y el historial. La IA mejora la copia sola cada pocas notas (mejora
    automática) o al tocar "Analizar y mejorar ahora"; todos los cambios van
-   directo a la copia y se pueden deshacer. Los prompts actuales no se tocan
+   a la copia solo si pasan la comparación; se pueden deshacer. Los prompts actuales no se tocan
    nunca. "Usar estos prompts" elige con cuáles escribe la redacción.
    Ver afterdrive/prompts_ia.py. Usa _filasPrompt y _diffPrompt de prompts.js. */
 
@@ -103,6 +103,7 @@ function pintarPromptsIA() {
   var usar = $('pia-usar');
   usar.textContent = tr(enIA ? 'Volver a los actuales' : 'Usar estos prompts');
   usar.classList.toggle('pia-usando', enIA);
+  usar.disabled = !enIA && e.validada === false;
   var sw = $('pia-auto');
   sw.setAttribute('aria-checked', e.auto ? 'true' : 'false');
   sw.classList.toggle('active', !!e.auto);
@@ -113,6 +114,7 @@ function pintarPromptsIA() {
   if (ultima) partes.push(tr('última mejora') + ' ' + hace(ultima.fecha));
   if (e.auto) partes.push(e.faltan ? tr('la próxima, en') + ' ' + e.faltan + ' ' + tr(e.faltan === 1 ? 'nota' : 'notas')
                                    : tr('la próxima, después de la próxima nota'));
+  if (e.aviso) partes.push(e.aviso);
   $('pia-estado').textContent = partes.join(' · ');
   pintarMenuPiezaIA(e.copia);
   $('pia-restablecer-todo').hidden = !e.cambiadas;
@@ -228,8 +230,8 @@ async function pintarArchivoIA() {
     caja.innerHTML = '<p class="prompts-vacio">' + escHtml(tr('No se pudo armar la vista previa: ') + e.message) + '</p>';
     return;
   }
-  var ia = r[0].partes, actuales = {}, num = { valor: 1 }, html = '', lineas = 0;
-  r[1].partes.forEach(function(p) { actuales[p.clave] = p.texto; });
+  var ia = r[0].partes.concat(r[0].adicionales || []), actuales = {}, num = { valor: 1 }, html = '', lineas = 0;
+  r[1].partes.concat(r[1].adicionales || []).forEach(function(p) { actuales[p.clave] = p.texto; });
   var copia = {};
   ((PIA.estado && PIA.estado.copia) || []).forEach(function(c) { copia[c.clave] = c; });
   ia.forEach(function(parte) {
@@ -289,6 +291,8 @@ async function cambiarAutoIA() {
 async function mejorarPromptsIA(pedido, clave) {
   if (PIA.corriendo) return;
   PIA.corriendo = true;
+  var resultadoId = null;
+  var anteriores = ((PIA.estado && PIA.estado.mejoras) || []).map(function(m) { return m.id; });
   var btn = pedido ? $('pia-pedir') : $('pia-mejorar'), texto = btn.innerHTML;
   btn.disabled = true;
   if (pedido) btn.classList.add('cargando');
@@ -300,15 +304,22 @@ async function mejorarPromptsIA(pedido, clave) {
   try {
     var d = await correrEnCola('/api/prompts-ia/mejorar', pedido ? { pedido: pedido, claves: clave ? [clave] : [] } : {},
       function(linea) {
+        var resultado = linea.match(/^\[PROMPTS IA RESULTADO\]\s*(\S+)/);
+        if (resultado) { resultadoId = resultado[1]; return; }
         var m = linea.match(/\[PROMPTS IA\]\s*(.*)/) || linea.match(/^\[(?:OK|ERROR)\]\s*(.*)/);
         if (m) prog.textContent = m[1];
       },
       function(e) { var t = textoEnCola(e); if (t) prog.textContent = t; });
     PIA.estado = await pedir('/api/prompts-ia');
-    var mejora = (PIA.estado.mejoras || [])[0];
+    var mejora = (PIA.estado.mejoras || []).find(function(m) {
+      return resultadoId ? m.id === resultadoId : anteriores.indexOf(m.id) === -1
+        && (pedido ? m.pedido === pedido : m.origen === 'manual');
+    });
     PIA.recien = mejora ? (mejora.cambios || []).filter(function(c) { return c.aplicado; }).map(function(c) { return c.clave; }) : [];
     if (PIA.recien.length) PIA.elegida = PIA.recien[0];
-    if (pedido && d.estado === 'ok') { $('pia-pedido').value = ''; ajustarPedidoIA(); }
+    if (pedido && d.estado === 'ok' && mejora && !mejora.error && PIA.recien.length) {
+      $('pia-pedido').value = ''; ajustarPedidoIA();
+    }
     verVistaPrompts('ia');
     pintarPromptsIA();
     pintarResultadoIA(mejora, d);
@@ -325,18 +336,40 @@ async function mejorarPromptsIA(pedido, clave) {
   }
 }
 
+function evaluacionPromptIA(e) {
+  if (!e) return '';
+  var html = '<p class="pia-evaluacion"><b>' + escHtml(tr('Prueba de calidad')) + ':</b> ';
+  if (typeof e.antes === 'number' && typeof e.despues === 'number') {
+    html += escHtml(e.antes + '/10 → ' + e.despues + '/10') + ' · '
+      + escHtml((e.casos || []).length + ' ' + tr('casos comparados')) + '. ';
+  }
+  html += escHtml(e.motivo || '') + '</p>';
+  if (e.casos && e.casos.length) {
+    html += '<details><summary>' + escHtml(tr('Ver comparación por nota')) + '</summary><ul>'
+      + e.casos.map(function(c) {
+        return '<li>' + escHtml((c.titulo || c.persona) + ': ' + c.antes.puntaje + '/10 → ' + c.despues.puntaje + '/10') + '</li>';
+      }).join('') + '</ul></details>';
+  }
+  return html;
+}
+
 function pintarResultadoIA(mejora, d) {
   var caja = $('pia-resultado');
   var aplicadas = mejora ? (mejora.cambios || []).filter(function(c) { return c.aplicado; }) : [];
   caja.hidden = false;
-  caja.className = 'pia-resultado ' + (aplicadas.length ? 'ok' : 'sin-cambios');
+  caja.className = 'pia-resultado ' + (aplicadas.length && !mejora.error ? 'ok' : 'sin-cambios');
   if (!aplicadas.length) {
     caja.innerHTML = '<b>' + escHtml(tr('La IA no cambió nada esta vez.')) + '</b>'
-      + '<p>' + escHtml((mejora && mejora.error) || d.error || tr('La IA no pudo mejorar los prompts.')) + '</p>';
+      + '<p>' + escHtml((mejora && mejora.error) || d.error || tr('La IA no pudo mejorar los prompts.')) + '</p>'
+      + evaluacionPromptIA(mejora && mejora.evaluacion);
     return;
   }
   caja.innerHTML = '<b>✦ ' + escHtml(tr('La IA cambió')) + ' ' + aplicadas.length + ' '
     + escHtml(tr(aplicadas.length === 1 ? 'pieza de la copia' : 'piezas de la copia')) + '</b>'
+    + (mejora.error ? '<p>' + escHtml(mejora.error) + '</p>' : '')
+    + (PIA.estado && PIA.estado.usar !== 'ia'
+      ? '<p>' + escHtml(tr('Guardado en la copia. Para aplicarlo a las próximas notas, tocá «Usar estos prompts».')) + '</p>' : '')
+    + evaluacionPromptIA(mejora.evaluacion)
     + (mejora.resumen ? '<p>' + escHtml(mejora.resumen) + '</p>' : '')
     + '<ul>' + aplicadas.map(function(c) {
       return '<li><button type="button" class="pia-ir" data-clave="' + escHtml(c.clave) + '">' + escHtml(tr(c.titulo)) + '</button>'
@@ -410,7 +443,7 @@ function pintarDiagnosticoIA(a) {
   caja.innerHTML = html;
 }
 
-var _ORIGEN_MEJORA = { automatica: 'Automática', manual: 'Analizar y mejorar', pedido: 'Pedido' };
+var _ORIGEN_MEJORA = { automatica: 'Automática', proteccion: 'Protección de calidad', manual: 'Analizar y mejorar', pedido: 'Pedido' };
 
 function pintarMejorasIA(mejoras) {
   $('pia-historial-cuenta').textContent = mejoras.length ? mejoras.length : '';
@@ -420,6 +453,7 @@ function pintarMejorasIA(mejoras) {
       + '<div class="pia-mejora-cabeza"><span class="pia-origen ' + escHtml(m.origen) + '">' + escHtml(tr(_ORIGEN_MEJORA[m.origen] || m.origen)) + '</span>'
       + '<span class="pia-caja-meta">' + escHtml(hace(m.fecha)) + '</span></div>'
       + (m.origen === 'pedido' && m.pedido ? '<p class="pia-pedido-eco">“' + escHtml(m.pedido) + '”</p>' : '')
+      + evaluacionPromptIA(m.evaluacion)
       + (m.resumen ? '<p>' + escHtml(m.resumen) + '</p>' : '')
       + aplicadas.map(function(c, j) {
         return '<details class="pia-cambio"><summary><b>' + escHtml(tr(c.titulo)) + '</b>'
