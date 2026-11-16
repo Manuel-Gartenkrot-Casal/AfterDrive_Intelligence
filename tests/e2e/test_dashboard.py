@@ -538,6 +538,28 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
         "href", "https://afterdrive.alephee.com/es/blog/catalogo")
     lateral.locator("#tab-publicar").click()
     expect(lateral).to_contain_text("Sin imagen: la IA descartó las fotos de las noticias.")
+
+
+@VISTA_DEV
+def test_la_revision_explica_cuando_no_se_pudieron_evaluar_las_fotos(pagina):
+    def sin_evaluacion(r):
+        respuesta = r.fetch()
+        d = respuesta.json()
+        d["nota"].pop("imagen", None)
+        d["nota"]["imagenes_cuerpo"] = []
+        d["nota"]["imagen_eleccion"] = {
+            "metodo": "sin-evaluar", "cantidad": 0,
+            "motivo": "No se agregaron fotos sin evaluar: no se pudo comprobar su relación con la nota."}
+        r.fulfill(response=respuesta, json=d)
+
+    pagina.route("**/api/fase2/notas/*", sin_evaluacion)
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral = pagina.locator(".modal-sidebar")
+    lateral.locator("#tab-publicar").click()
+    expect(lateral).to_contain_text("No se agregaron fotos sin evaluar.")
+    expect(lateral).to_contain_text("no se pudo comprobar su relación con la nota")
+    expect(lateral).not_to_contain_text("ninguna noticia de la nota tenía foto")
+    expect(lateral.locator("img.revision-imagen")).to_have_count(0)
     otros = lateral.locator(".revision-bloque", has_text="Otros idiomas")
     expect(otros).to_contain_text("Borrador en HubSpot, vinculado al original")
     expect(otros).to_contain_text("la traducción al inglés vino cortada")
@@ -936,6 +958,7 @@ def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
 
     def mejorar(r):
         encoladas.append(r.request.post_data_json)
+        mejora.update(id="m" + str(len(encoladas)), pedido=r.request.post_data_json.get("pedido", ""))
         estado.update(cambiadas=1, mejoras=[mejora], faltan=5,
                       copia=[{**estado["copia"][0], "cambiada": True, "cambios": 1, "actualizado": mejora["fecha"]}])
         r.fulfill(status=202, json={"success": True, "id": "pia-e2e", "posicion": 0})
@@ -1000,6 +1023,19 @@ def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
 
 
 def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):
+    # La activación necesita una copia ya probada. La comparación del backend
+    # se ejercita con proveedor simulado en test_prompts_evaluacion.
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(validada=True, aviso="")
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    def usar(r):
+        estado["usar"] = r.request.post_data_json["usar"]
+        r.fulfill(json=estado)
+    def auto(r):
+        estado["auto"] = r.request.post_data_json["auto"]
+        r.fulfill(json=estado)
+    pagina.route("**/api/prompts-ia/usar", usar)
+    pagina.route("**/api/prompts-ia/auto", auto)
     pagina.click('.nav-link[data-seccion="prompts"]')
     pagina.click("#pv-ia")
     pagina.get_by_role("button", name="Usar estos prompts").click()
@@ -1016,3 +1052,81 @@ def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):
     expect(pagina.locator("#pia-auto-estado")).to_have_text("Apagada")
     pagina.click("#pia-auto")
     expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
+
+
+def test_imagenes_se_pueden_ver_y_elegir_para_un_pedido(pagina):
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click('#prompts-lista [data-clave="imagenes"]')
+    expect(pagina.locator('#pe-archivo-cuerpo')).to_contain_text(
+        "Imágenes: selección y portada")
+    pagina.click("#pv-ia")
+    pagina.click('#pia-lista [data-clave="imagenes"]')
+    expect(pagina.locator('#pia-archivo .pa-bloque[data-clave="imagenes"]')).to_contain_text(
+        "Para la portada elegí una foto sin personas.")
+    pagina.click("#pia-pieza-btn")
+    pagina.locator('#pia-pieza-menu [role="option"][data-clave="imagenes"]').click()
+    expect(pagina.locator("#pia-pieza-btn")).to_contain_text("Imágenes")
+    expect(pagina.locator("#pia-pieza")).to_have_value("imagenes")
+
+
+@pytest.mark.parametrize("parcial", [False, True])
+def test_un_pedido_fallido_no_muestra_exito_anterior_ni_borra_el_pedido(pagina, parcial):
+    cambio = {"clave": "seo", "titulo": "SEO", "antes": "## SEO\nAntes.", "despues": "## SEO\nDespués.",
+              "explicacion": "Título corto.", "aplicado": True, "errores": [], "avisos": []}
+    vieja = {"id": "anterior", "origen": "pedido", "pedido": "Un pedido anterior", "cambios": [cambio]}
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(usar="actuales", mejoras=[vieja])
+    pedido = "Acortá el título y cambiá las imágenes"
+
+    def mejorar(r):
+        if parcial:
+            nueva = {"id": "nueva", "origen": "pedido", "pedido": pedido, "cambios": [cambio],
+                     "error": "El pedido se aplicó parcialmente: Imágenes no pasó la validación."}
+            # Otra mejora aparece antes: se muestra la identificada por el trabajo, no la primera.
+            estado["mejoras"] = [vieja, nueva]
+        r.fulfill(status=202, json={"success": True, "id": "pedido-fallido", "posicion": 0})
+
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/corridas/pedido-fallido/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA RESULTADO] nueva"] if parcial else ["[ERROR] La IA no está disponible."],
+        "siguiente": 1, "estado": "error", "error": "La IA no está disponible."}))
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click("#pv-ia")
+    pagina.fill("#pia-pedido", pedido)
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("parcialmente" if parcial else "no cambió nada")
+    expect(pagina.locator("#pia-resultado")).to_have_class(re.compile("sin-cambios"))
+    expect(pagina.locator("#pia-pedido")).to_have_value(pedido)
+    if parcial:
+        expect(pagina.locator("#pia-resultado")).to_contain_text("Usar estos prompts")
+    else:
+        expect(pagina.locator("#pia-resultado")).not_to_contain_text("La IA cambió")
+
+
+def test_propuesta_que_baja_de_ocho_a_seis_muestra_comparacion_y_no_se_activa(pagina):
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(usar="actuales", validada=False, mejoras=[])
+    pedido = "Mejorá la redacción de los títulos"
+    evaluacion = {"estado": "rechazada", "antes": 8, "despues": 6,
+                  "motivo": "La propuesta baja una calificación.", "casos": [
+                      {"persona": "comercial", "antes": {"puntaje": 8}, "despues": {"puntaje": 6}}
+                      for _ in range(3)]}
+    def mejorar(r):
+        estado["mejoras"] = [{"id": "comparacion", "origen": "pedido", "pedido": pedido, "cambios": [],
+                             "error": "Se conservan los prompts anteriores.", "evaluacion": evaluacion}]
+        r.fulfill(status=202, json={"success": True, "id": "prueba-calidad", "posicion": 0})
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/corridas/prueba-calidad/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA RESULTADO] comparacion"], "siguiente": 1, "estado": "error"}))
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click("#pv-ia")
+    expect(pagina.locator("#pia-usar")).to_be_disabled()
+    pagina.fill("#pia-pedido", pedido)
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("8/10 → 6/10")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("3 casos comparados")
+    expect(pagina.locator("#pia-pedido")).to_have_value(pedido)
+    expect(pagina.locator("#pia-usar")).to_be_disabled()
+    expect(pagina.locator("#pia-uso-estado")).to_contain_text("Sin usar")

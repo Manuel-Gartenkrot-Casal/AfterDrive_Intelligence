@@ -763,6 +763,9 @@ def prompts_vista_previa():
             # Por pieza, para mostrarlo como un archivo: lo editable se puede abrir; lo automático, no.
             "partes": [{"clave": c, "titulo": titulos.get(c) or redaccion.AUTOMATICAS.get(c, c),
                         "editable": c in titulos, "texto": t} for c, t in partes],
+            # Otro paso del pipeline: se muestra en el editor, pero no se envía al redactor.
+            "adicionales": [{"clave": "imagenes", "titulo": titulos["imagenes"], "editable": True,
+                             "texto": redaccion.texto("imagenes", piezas)}],
         })
     return _prompts(armar)
 
@@ -996,11 +999,13 @@ def prompts_ia_auto():
 def prompts_ia_mejorar():
     """Encola una mejora de la copia: {"pedido"?, "claves"?}. Sin pedido, la IA analiza las notas y
     con ese diagnóstico cambia la copia. Corre en la cola (el registro se ve en la terminal)."""
+    from afterdrive import prompts_ia
+
     body = request.get_json(silent=True) or {}
-    pedido = " ".join(str(body.get("pedido") or "").split())[:1500]
-    if pedido and len(pedido) < 8:
-        return jsonify({"success": False, "error": "Contá qué querés cambiar en los prompts."}), 400
-    claves = [c for c in body.get("claves") or [] if isinstance(c, str)] if isinstance(body.get("claves"), list) else []
+    try:
+        pedido, claves = prompts_ia.validar_pedido(body.get("pedido"), body.get("claves"))
+    except prompts_ia.ErrorPromptIA as e:
+        return jsonify({"success": False, "error": str(e)}), 400
     argv = (["--pedido", pedido] if pedido else []) + (["--claves", *claves] if claves else [])
     return _encolar("script", {"modulo": "afterdrive.prompts_ia", "argv": argv},
                     etiqueta="Cambiar prompts con IA" if pedido else "Mejorar prompts con IA")

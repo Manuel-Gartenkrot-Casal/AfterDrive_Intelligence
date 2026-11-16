@@ -14,8 +14,8 @@ Interfaz:
     analizar(limite=NOTAS_ANALISIS, base=None) -> dict
     mejorar(pedido=None, claves=None, origen="manual", base=None) -> dict
         Sin pedido: analiza las notas y con ese diagnóstico la IA reescribe las piezas que hagan falta.
-        Con pedido: la IA reescribe según lo pedido (usa el último diagnóstico de contexto).
-        Los cambios válidos se aplican directo a la copia; cada uno guarda el texto anterior.
+        Con pedido: la IA reescribe según lo pedido, sin mezclar mejoras del diagnóstico automático.
+        Los cambios se aplican solo después de una comparación sin regresiones; cada uno guarda el texto anterior.
     mejora_automatica(base=None) -> dict | None corre mejorar() si está prendida y hay AUTO_CADA notas nuevas
     deshacer(clave, base=None) -> dict          la copia de esa pieza vuelve a como estaba antes del último cambio
     restablecer(clave=None, base=None) -> int   la copia (o una pieza) vuelve a ser igual a los actuales
@@ -35,6 +35,7 @@ Colecciones:
     prompts_ia_mejoras  fecha, origen (automatica | manual | pedido), pedido, resumen, comentario, error,
                         cambios [{clave, titulo, antes, despues, explicacion, errores, avisos, aplicado}]
     prompts_ia_estado   _id "auto": ultima_nota (id), fecha — hasta dónde miró la mejora automática
+                        _id "validada": textos, huella, base, modelo, evaluación y retiro por regresión
 """
 
 from __future__ import annotations
@@ -42,19 +43,23 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
+import unicodedata
 from collections import Counter
 
 from bson import ObjectId
 from bson.errors import InvalidId
 
 from afterdrive import prompts_editables as pe
+from afterdrive import prompts_evaluacion as prueba
+from afterdrive.ia import llm
 
 JUEGOS = ("actuales", "ia")
 NOTAS_ANALISIS = 40
 AUTO_CADA = 5           # notas nuevas entre una mejora automática y la siguiente
 PEDIDO_MAX = 1500
 EJEMPLOS_POR_TIPO = 4
-CAMBIOS_MAX = 13        # piezas que puede reescribir una mejora (todas)
+CAMBIOS_MAX = len(pe.CLAVES)  # piezas que puede reescribir una mejora (todas)
 MEJORAS_A_LA_VISTA = 8
 
 ASPECTOS = {"gramatica": "Gramática", "ortografia": "Ortografía", "redaccion": "Redacción", "tono": "Tono",
@@ -99,9 +104,8 @@ def _guardar_config(**cambios) -> None:
     config_store.set_prompts_ia_config({**_config(), **cambios})
 
 
-def juego() -> str:
-    usar = _config().get("usar")
-    return usar if usar in JUEGOS else "actuales"
+def juego(base=None) -> str:
+    return "ia" if _config().get("usar") == "ia" and _validada(base) else "actuales"
 
 
 def auto() -> bool:
@@ -111,6 +115,8 @@ def auto() -> bool:
 def usar(cual: str, base=None) -> dict:
     if cual not in JUEGOS:
         raise ErrorPromptIA("Elegí 'actuales' o 'ia'.")
+    if cual == "ia" and not _validada(base):
+        raise ErrorPromptIA("La copia todavía no tiene una validación vigente. Analizá y mejorá antes de usarla.")
     _guardar_config(usar=cual)
     pe.invalidar_cache()
     return estado(base)
@@ -127,12 +133,34 @@ def _copia_docs(base=None) -> dict:
     return {d["clave"]: d for d in _base(base)["prompts_ia"].find({}) if d.get("clave") in pe.CLAVES}
 
 
+def _validada(base=None) -> dict | None:
+    """Nunca activar cambios antiguos, parciales, retirados o evaluados con otra base/modelo."""
+    d = _base(base)["prompts_ia_estado"].find_one({"_id": "validada"})
+    if not d or d.get("retirada") or d.get("base") != prueba.huella(textos("actuales", base)):
+        return None
+    if d.get("huella") != prueba.huella(textos("ia", base)):
+        return None
+    if d.get("modelo") != prueba.modelo():
+        return None
+    return d
+
+
 def en_uso(base=None) -> dict:
-    """Las piezas de la copia que pisan a las actuales. Vacío si la redacción usa los actuales."""
-    if juego() != "ia":
+    if _config().get("usar") != "ia":
         return {}
-    return {c: d["contenido"] for c, d in _copia_docs(base).items()
-            if d.get("contenido") and not pe.validar(c, d["contenido"])["errores"]}
+    d = _validada(base)
+    if not d:
+        return {}
+    actuales = textos("actuales", base)
+    return {c: t for c, t in d["textos"].items() if t != actuales[c]}
+
+
+def instantanea(base=None) -> dict:
+    actuales = textos("actuales", base)
+    d = _validada(base) if _config().get("usar") == "ia" else None
+    piezas = d["textos"] if d else actuales
+    return {"juego": "ia" if d else "actuales", "huella": prueba.huella(piezas),
+            "piezas": piezas, "referencia": actuales}
 
 
 def textos(cual: str, base=None) -> dict:
@@ -167,7 +195,7 @@ def pieza(clave: str, base=None) -> dict:
         "clave": clave, "titulo": pe._titulo(clave),
         "actual": activo["contenido"], "version_actual": activo["version"],
         "ia": d["contenido"] if d else activo["contenido"],
-        "cambiada": bool(d), "cambios": _cambios_publicos((d or {}).get("cambios")),
+        "cambiada": bool(d) and d.get("contenido") != activo["contenido"], "cambios": _cambios_publicos((d or {}).get("cambios")),
         "desactualizada": bool(d) and d.get("base_version") != activo["version"],
     }
 
@@ -188,19 +216,24 @@ def estado(base=None) -> dict:
     b = _base(base)
     docs = _copia_docs(base)
     activos = {d["clave"]: d["version"] for d in pe._col(base).find({"estado": pe.ACTIVO}, {"clave": 1, "version": 1})}
+    actuales = textos("actuales", base)
     copia = []
     for item in pe.catalogo():
         d = docs.get(item["clave"])
         copia.append({
             "clave": item["clave"], "titulo": item["titulo"], "grupo": item["grupo"],
-            "cambiada": bool(d), "cambios": len((d or {}).get("cambios", [])),
+            "cambiada": bool(d) and d.get("contenido") != actuales[item["clave"]],
+            "cambios": len((d or {}).get("cambios", [])),
             "actualizado": (d or {}).get("actualizado"),
             "desactualizada": bool(d) and d.get("base_version") != activos.get(item["clave"], 0),
         })
     analisis = b["prompts_ia_analisis"].find_one(sort=[("fecha", -1)])
     mejoras = list(b["prompts_ia_mejoras"].find().sort("fecha", -1).limit(MEJORAS_A_LA_VISTA))
     return {
-        "usar": juego(), "auto": auto(), "auto_cada": AUTO_CADA,
+        "usar": juego(base), "auto": auto(),
+        "validada": bool(_validada(base)),
+        "aviso": ("La copia no tiene una prueba vigente. La redacción usa los prompts actuales hasta validarla."
+                  if docs and not _validada(base) else ""), "auto_cada": AUTO_CADA,
         "faltan": max(0, AUTO_CADA - _nuevas_desde_auto(base)),
         "copia": copia, "cambiadas": sum(c["cambiada"] for c in copia),
         "analisis": _publico(analisis), "mejoras": [_publico(m) for m in mejoras],
@@ -301,7 +334,8 @@ def estadisticas(notas: list[dict]) -> dict:
             tipo = e.get("tipo") or "redaccion"
             errores[tipo] += 1
             if e.get("problema") and len(ejemplos.setdefault(tipo, [])) < EJEMPLOS_POR_TIPO:
-                ejemplos[tipo].append(e["problema"])
+                ejemplos[tipo].append({"problema": e["problema"], "fragmento": e.get("fragmento", ""),
+                                       "sugerencia": e.get("sugerencia", "")})
     alephee = Counter(k for j in juicios for k, v in (j.get("alephee") or {}).items() if v is False)
     etiquetas = Counter(e for x in juicios + humanas for e in x.get("etiquetas") or [])
     estilo = Counter(h.get("codigo") or h.get("detalle", "")[:40] for n in notas for h in n.get("estilo") or []
@@ -340,12 +374,19 @@ def estadisticas(notas: list[dict]) -> dict:
 
 def _notas(limite: int, base=None) -> list[dict]:
     campos = {"critica": 1, "juicio": 1, "calificacion": 1, "estilo": 1, "verificacion.sin_respaldo": 1,
-              "motivo_rechazo": 1, "prompts_juego": 1, "generado_en": 1}
-    return list(_base(base)["notas_fase2"].find({}, campos).sort("_id", -1).limit(limite))
+              "motivo_rechazo": 1, "prompts_juego": 1, "prompts_huella": 1, "generado_en": 1}
+    col = _base(base)["notas_fase2"]
+    firma = instantanea(base)["huella"]
+    filtro = {"prompts_huella": firma}
+    if not col.count_documents(filtro):
+        # Las notas históricas no identifican su versión: no atribuirles una mejora causal.
+        filtro = {"prompts_huella": {"$exists": False}}
+    return list(col.find(filtro, campos).sort("_id", -1).limit(limite))
 
 
 def _piezas_texto(docs: dict, base=None) -> str:
-    return "\n\n".join(f"<pieza clave=\"{c['clave']}\" titulo=\"{c['titulo']}\">\n{_texto_copia(c['clave'], docs, base)}\n</pieza>"
+    return "\n\n".join(f"<pieza clave=\"{c['clave']}\" titulo=\"{c['titulo']}\">\n"
+                       f"Uso: {c['descripcion']}\n{_texto_copia(c['clave'], docs, base)}\n</pieza>"
                        for c in pe.catalogo())
 
 
@@ -354,7 +395,10 @@ Un sistema escribe notas con un prompt armado por piezas en Markdown. Te paso la
 últimas notas (crítica de redacción /10, juez /5, calificaciones del equipo /5, errores que se repiten,
 checklist de Alephee, motivos de rechazo) y las piezas del prompt.
 
-Explicá por qué las notas se quedan en 7 u 8 en vez de 9 o 10: qué se repite, qué regla del prompt no se
+No inventes una causa a partir de un promedio. Conservá las reglas que ya producen buenas notas.
+Buscá errores repetidos con fragmentos y sugerencias concretas; como máximo dos cambios focalizados.
+Las fotos no afectan la calificación de redacción: no cambies imágenes a partir de estas métricas.
+Explicá, solo donde haya evidencia, qué impide mejorar: qué se repite, qué regla del prompt no se
 está cumpliendo o falta, y en qué pieza habría que tocar. Basate solo en los datos que te paso; si algo no
 tiene datos, no lo afirmes.
 
@@ -362,7 +406,7 @@ Respondé SOLO un JSON válido. Dentro de los textos no uses comillas dobles: us
 {"resumen": "2 o 3 oraciones",
  "problemas": [{"titulo": "corto", "detalle": "qué pasa y por qué", "evidencia": "qué dato lo muestra",
                 "pieza": "clave de la pieza a cambiar", "pedido": "el cambio concreto que le harías al prompt"}]}
-Como mucho 6 problemas, del más importante al menos importante."""
+Como mucho 2 problemas, del más importante al menos importante."""
 
 
 def analizar(limite: int = NOTAS_ANALISIS, base=None) -> dict:
@@ -373,15 +417,19 @@ def analizar(limite: int = NOTAS_ANALISIS, base=None) -> dict:
     if not notas:
         raise ErrorPromptIA("Todavía no hay notas para analizar.")
     est = estadisticas(notas)
-    doc = {"fecha": _ahora(), "estadisticas": est}
+    doc = {"fecha": _ahora(), "estadisticas": est,
+           "prompts_huella": instantanea(base)["huella"],
+           "historicas_sin_version": any(not n.get("prompts_huella") for n in notas)}
     if not llm.disponible():
         doc["error"] = "La IA no está disponible: se muestran solo los números."
     else:
         user = (f"## Calificaciones de las últimas {est['notas']} notas\n{json.dumps(est, ensure_ascii=False)}\n\n"
-                f"## Piezas del prompt (la copia de la IA)\n{_piezas_texto(_copia_docs(base), base)}")
+                f"## Piezas vigentes\n{_piezas_texto({k: {'contenido': v} for k, v in instantanea(base)['piezas'].items()}, base)}")
         try:
             data = _pedir_json(_SYSTEM_ANALISIS, user, 2500, "evaluacion")
             doc["diagnostico"] = _diagnostico(data)
+        except llm.Cancelada:
+            raise
         except Exception as e:
             doc["error"] = f"La IA no pudo analizar las notas: {e}"
     r = _base(base)["prompts_ia_analisis"].insert_one(dict(doc))
@@ -407,10 +455,22 @@ _SYSTEM_MEJORA = """Sos especialista en prompts. Te paso las piezas en Markdown 
 escribe notas para un blog del aftermarket automotor, el diagnóstico de por qué las notas no sacan mejor
 calificación y lo que hay que resolver.
 
+El pedido explícito del usuario tiene prioridad sobre las reglas editoriales actuales y sobre el diagnóstico.
+Implementá cada parte del pedido modificando el contenido de las piezas: no alcanza con explicar el cambio
+en el comentario. Si pide quitar, permitir o cambiar una restricción, reemplazá o eliminá las reglas que
+la contradicen en todas las piezas afectadas. No conserves la prohibición vieja junto con la regla nueva.
+La pieza "imagenes" controla la selección de fotos y las restricciones editoriales de portada (por ejemplo,
+permitir personas); esos pedidos se resuelven allí, no en "formato" ni "seo". El selector de fotos lee esa pieza.
+Las piezas describen reglas editoriales: no cambian código, credenciales ni servicios. La descarga de fotos,
+su cantidad, la búsqueda sin repetir y los créditos requeridos por su licencia se controlan por código;
+si un pedido requiere cambiar eso, explicá el límite concreto sin afirmar que lo implementaste.
+Si se indican claves, cambiá solo esas piezas. Si ninguna puede resolver el pedido, explicá qué pieza hace falta.
+
 Reescribí todas las piezas que hagan falta para resolverlo, y solo esas. Cambios mínimos y concretos: conservá lo que
 funciona, el formato de cada pieza (títulos ##, listas) y las llaves como {extension}. En las piezas de
 persona mantené el rol arriba y las secciones ## Tu tarea, ## Estructura (lista numerada) y ## Estilo. No
 inventes datos de Alephee: lo que se puede afirmar está en el enfoque Alephee.
+Cada pieza admite hasta 4000 caracteres (identidad: 600). No copies "Uso:" ni las etiquetas <pieza> al contenido.
 
 Respondé SOLO un JSON válido: en "contenido", escapá las comillas dobles (\\") y los saltos de línea (\\n).
 {"comentario": "una oración sobre qué cambiaste",
@@ -431,15 +491,31 @@ def _proponer(pedido: str, claves: list[str], docs: dict, diagnostico: dict | No
     if diagnostico:
         user += "## Diagnóstico de las notas\n" + json.dumps(diagnostico, ensure_ascii=False)[:4000] + "\n\n"
     user += f"## Piezas del prompt (la copia de la IA)\n{_piezas_texto(docs, base)}"
-    try:
-        data = _pedir_json(_SYSTEM_MEJORA, user, 6000, "correccion")
-    except Exception as e:
-        raise ErrorPromptIA(f"La IA no pudo reescribir los prompts: {e}") from e
+    for intento in range(2):
+        try:
+            data = _pedir_json(_SYSTEM_MEJORA, user, 12000, "correccion")
+        except llm.Cancelada:
+            raise
+        except Exception as e:
+            raise ErrorPromptIA(f"La IA no pudo reescribir los prompts: {e}") from e
+        cambios, comentario = _leer_propuesta(data, claves, docs, base)
+        if cambios or intento:
+            return cambios, comentario
+        print("[PROMPTS IA] La IA no devolvió cambios en las piezas: reintentando el pedido...", flush=True)
+        user += ("\n\n## Corregí tu respuesta anterior\nNo recibimos contenido diferente para ninguna pieza permitida. "
+                 "Devolvé las piezas completas modificadas para implementar el pedido. Si ya se cumple o excede "
+                 "estas piezas, explicá el motivo concreto.\nRespuesta anterior:\n"
+                 + json.dumps(data, ensure_ascii=False)[:8000])
+
+
+def _leer_propuesta(data, claves: list[str], docs: dict, base=None) -> tuple[list, str]:
     data = data if isinstance(data, dict) else {}
     cambios = []
-    for c in data.get("cambios") or []:
+    propuestas = data.get("cambios")
+    for c in propuestas if isinstance(propuestas, list) else []:
         clave = c.get("clave") if isinstance(c, dict) else None
-        if clave not in pe.CLAVES or (claves and clave not in claves) or any(x["clave"] == clave for x in cambios):
+        if (not isinstance(clave, str) or clave not in pe.CLAVES or (claves and clave not in claves)
+                or any(x["clave"] == clave for x in cambios) or not isinstance(c.get("contenido"), str)):
             continue
         despues = str(c.get("contenido") or "").replace("\r\n", "\n").strip()
         antes = _texto_copia(clave, docs, base)
@@ -461,21 +537,26 @@ piezas de persona: el rol arriba y las secciones ## Tu tarea, ## Estructura (lis
 Respondé SOLO un JSON: {"cambios": [{"clave": "...", "contenido": "la pieza completa corregida"}]}"""
 
 
-def _reparar(cambios: list[dict]) -> None:
+def _reparar(cambios: list[dict], pedido: str) -> None:
     """A los cambios que no pasaron la validación, se los devuelve a la IA con los errores (una vez)."""
     rotos = [c for c in cambios if c["errores"]]
     if not rotos:
         return
     print(f"[PROMPTS IA] Corrigiendo {len(rotos)} pieza(s) que no pasaron la validación...", flush=True)
-    user = "\n\n".join(f"<pieza clave=\"{c['clave']}\">\n## Errores\n" + "\n".join(f"- {e}" for e in c["errores"])
+    user = f"## Pedido que hay que conservar\n{pedido}\n\n" + "\n\n".join(
+                       f"<pieza clave=\"{c['clave']}\">\n## Errores\n" + "\n".join(f"- {e}" for e in c["errores"])
                        + f"\n## Texto\n{c['despues']}\n</pieza>" for c in rotos)
     try:
         data = _pedir_json(_SYSTEM_REPARAR, user, 6000, "correccion")
+    except llm.Cancelada:
+        raise
     except Exception as e:
         print(f"[PROMPTS IA] [AVISO] No se pudieron corregir: {e}", flush=True)
         return
-    nuevos = {c.get("clave"): str(c.get("contenido") or "").replace("\r\n", "\n").strip()
-              for c in (data.get("cambios") or [] if isinstance(data, dict) else []) if isinstance(c, dict)}
+    propuestas = data.get("cambios") if isinstance(data, dict) else None
+    nuevos = {c["clave"]: c["contenido"].replace("\r\n", "\n").strip()
+              for c in (propuestas if isinstance(propuestas, list) else [])
+              if isinstance(c, dict) and isinstance(c.get("clave"), str) and isinstance(c.get("contenido"), str)}
     for c in rotos:
         texto = nuevos.get(c["clave"])
         if texto:
@@ -488,6 +569,8 @@ def _aplicar(cambios: list[dict], origen: str, pedido: str, base=None) -> list[s
     """Pasa a la copia los cambios sin errores. Cada uno guarda el texto anterior (para deshacer)."""
     b, ahora, aplicadas = _base(base), _ahora(), []
     for c in cambios:
+        if c["despues"].strip() == c["antes"].strip() and not c["errores"]:
+            c["errores"].append("La reparación devolvió el texto anterior: no implementó el cambio.")
         c["aplicado"] = not c["errores"]
         if not c["aplicado"]:
             continue
@@ -504,60 +587,144 @@ def _aplicar(cambios: list[dict], origen: str, pedido: str, base=None) -> list[s
     return aplicadas
 
 
-def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base=None) -> dict:
-    """Analiza (sin pedido) o toma el pedido, y la IA mejora la copia. Los cambios válidos se aplican solos."""
-    from afterdrive.ia import llm
-
-    b = _base(base)
-    pedido = " ".join(str(pedido or "").split())[:PEDIDO_MAX]
-    claves = [c for c in (claves or []) if c in pe.CLAVES]
+def validar_pedido(pedido=None, claves=None) -> tuple[str, list[str]]:
+    """No recorta pedidos ni convierte una selección inválida en permiso para editar todo."""
+    if pedido is not None and not isinstance(pedido, str):
+        raise ErrorPromptIA("El pedido debe ser un texto.")
+    pedido = (pedido or "").strip()
     if pedido and len(pedido) < 8:
         raise ErrorPromptIA("Contá qué querés cambiar en los prompts.")
+    if len(pedido) > PEDIDO_MAX:
+        raise ErrorPromptIA(f"El pedido supera los {PEDIDO_MAX} caracteres: dividilo en pedidos más cortos.")
+    claves = [] if claves is None else claves
+    if not isinstance(claves, list) or any(not isinstance(c, str) or c not in pe.CLAVES for c in claves):
+        raise ErrorPromptIA("Elegí piezas válidas del prompt.")
+    return pedido, list(dict.fromkeys(claves))
+
+
+def _solo_imagenes(pedido: str) -> bool:
+    t = "".join(c for c in unicodedata.normalize("NFD", pedido.lower()) if not unicodedata.combining(c))
+    imagen = re.search(r"\b(imagen\w*|imgen\w*|foto\w*|cara\w*|rostro\w*)\b", t)
+    redaccion = re.search(r"\b(seo|voseo|titulos?|subtitulos?|parrafos?|ortografia|redaccion|cta|tono|escritura|redactar|escribir)\b", t)
+    return bool(imagen and not redaccion)
+
+
+def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base=None) -> dict:
+    """Proponer, comparar y recién entonces guardar una copia completa validada."""
+    b = _base(base)
+    pedido, claves = validar_pedido(pedido, claves)
     if not llm.disponible():
         raise ErrorPromptIA("La IA no está disponible para mejorar los prompts.")
+    if pedido and _solo_imagenes(pedido):
+        if claves and claves != ["imagenes"]:
+            raise ErrorPromptIA("Ese pedido corresponde a Imágenes. Elegí esa pieza o dejá que la IA la elija.")
+        claves = ["imagenes"]
+    referencia = textos("actuales", base)
+    validada = _validada(base)
+    # Una copia antigua sin pruebas no debe contaminar nuevas propuestas.
+    inicial = validada["textos"] if validada and (pedido or juego(base) == "ia") else referencia
+    copia_inicial = prueba.huella(textos("ia", base))
+    perfil = prueba.modelo()
+    docs = {k: {"contenido": v} for k, v in inicial.items()}
     mejora = {"fecha": _ahora(), "origen": "pedido" if pedido else origen, "pedido": pedido, "cambios": []}
-    if pedido:
-        ultimo = b["prompts_ia_analisis"].find_one({"diagnostico": {"$exists": True}}, sort=[("fecha", -1)])
-        diagnostico = (ultimo or {}).get("diagnostico")
-    else:
-        print("[PROMPTS IA] Analizando las calificaciones de las últimas notas...", flush=True)
+    diagnostico = None
+    if not pedido:
+        print("[PROMPTS IA] Analizando errores de las notas de la versión vigente...", flush=True)
         analisis = analizar(base=base)
         diagnostico = analisis.get("diagnostico")
         mejora["analisis_id"] = analisis["id"]
-        if not diagnostico:
-            mejora["error"] = analisis.get("error") or "Sin diagnóstico."
-        elif not diagnostico["problemas"]:
-            mejora["error"] = "La IA no encontró nada para mejorar en los prompts."
+        problemas = (diagnostico or {}).get("problemas", [])
+        permitidas = [p["pieza"] for p in problemas if p.get("evidencia") and p.get("pieza")
+                      and p["pieza"] != "imagenes"][:2]
+        claves = [c for c in permitidas if not claves or c in claves]
+        if not claves:
+            mejora["error"] = analisis.get("error") or "No hay errores con evidencia suficiente para cambiar los prompts."
         else:
             mejora["resumen"] = diagnostico["resumen"]
     if not mejora.get("error"):
-        print("[PROMPTS IA] La IA está reescribiendo la copia de los prompts...", flush=True)
+        pedido_efectivo = pedido or _pedido_del_diagnostico(diagnostico)
+        print("[PROMPTS IA] Preparando una propuesta; todavía no se activa...", flush=True)
         try:
-            cambios, comentario = _proponer(pedido or _pedido_del_diagnostico(diagnostico), claves,
-                                            _copia_docs(base), diagnostico, base)
+            cambios, comentario = _proponer(pedido_efectivo, claves, docs, diagnostico, base)
+            _reparar(cambios, pedido_efectivo)
         except ErrorPromptIA as e:
             cambios, comentario, mejora["error"] = [], "", str(e)
-        _reparar(cambios)
-        mejora["comentario"] = comentario
-        aplicadas = _aplicar(cambios, mejora["origen"], pedido or mejora.get("resumen", ""), base)
-        mejora["cambios"] = cambios
-        if not cambios and not mejora.get("error"):
-            mejora["error"] = "La IA no propuso cambios."
-        elif cambios and not aplicadas:
-            mejora["error"] = "Los cambios propuestos no pasaron la validación: no se aplicó ninguno."
+        mejora.update(cambios=cambios, comentario=comentario)
         for c in cambios:
-            print(f"[PROMPTS IA] {'[OK] Cambiada' if c['aplicado'] else '[AVISO] Sin aplicar'}: {c['titulo']}"
-                  + (f" ({'; '.join(c['errores'])})" if c["errores"] else ""), flush=True)
+            c["aplicado"] = False
+            if c["despues"].strip() == c["antes"].strip():
+                c["errores"].append("La reparación devolvió el texto anterior.")
+        if not cambios:
+            mejora["error"] = mejora.get("error") or "La IA no propuso cambios. " + comentario
+        elif any(c["errores"] for c in cambios):
+            mejora["error"] = "La propuesta está incompleta o es inválida. No se aplicó ninguna pieza."
+        else:
+            candidata = inicial | {c["clave"]: c["despues"] for c in cambios}
+            evaluacion = prueba.comparar(inicial, candidata, referencia, b, automatico=not bool(pedido))
+            mejora["evaluacion"] = evaluacion
+            llm.verificar_cancelacion()
+            if evaluacion["estado"] != "aprobada":
+                mejora["error"] = evaluacion["motivo"] + " Se conservan los prompts anteriores."
+            elif (prueba.huella(textos("ia", base)) != copia_inicial or textos("actuales", base) != referencia
+                  or prueba.modelo() != perfil):
+                mejora["error"] = "Los prompts o el modelo cambiaron durante la prueba. Repetí el pedido."
+            else:
+                # Restaurar piezas heredadas sin validar, sin perder su historial.
+                for clave, anterior in textos("ia", base).items():
+                    if clave not in {c["clave"] for c in cambios} and anterior != candidata[clave]:
+                        cambios.append({"clave": clave, "titulo": pe._titulo(clave), "antes": anterior,
+                                        "despues": candidata[clave], "errores": [], "avisos": [],
+                                        "explicacion": "Se recupera la base aprobada: esta pieza no tenía una prueba vigente."})
+                _aplicar(cambios, mejora["origen"], pedido_efectivo, base)
+                # Publicar el conjunto completo en un documento. El lector verifica su huella.
+                b.prompts_ia_estado.replace_one({"_id": "validada"}, {
+                    "_id": "validada", "textos": candidata, "huella": prueba.huella(candidata),
+                    "base": prueba.huella(referencia), "modelo": perfil, "fecha": _ahora(),
+                    "evaluacion": evaluacion,
+                    "evaluacion_redaccion": (evaluacion if evaluacion.get("tipo") == "redaccion"
+                                             else (validada or {}).get("evaluacion_redaccion")),
+                }, upsert=True)
+                pe.invalidar_cache()
     if mejora.get("error"):
         print(f"[PROMPTS IA] [AVISO] {mejora['error']}", flush=True)
     r = b["prompts_ia_mejoras"].insert_one(dict(mejora))
     return _publico(mejora | {"_id": r.inserted_id})
 
 
+def vigilar_calidad(base=None) -> dict | None:
+    """Retirar una versión si sus primeras notas reales muestran una caída sostenida."""
+    if _config().get("usar") != "ia":
+        return None
+    b = _base(base)
+    d = _validada(base)
+    if not d or not d.get("evaluacion_redaccion"):
+        return None
+    notas = list(b.notas_fase2.find({"prompts_huella": d["huella"]}).sort("_id", -1).limit(5))
+    valores = [(n.get("critica") or {}).get("puntaje") for n in notas]
+    valores = [v for v in valores if prueba._puntaje(v, 10)]
+    if len(valores) < 3:
+        return None
+    media = sum(valores) / len(valores)
+    if media >= max(8, d["evaluacion_redaccion"].get("antes", 8) - 0.5):
+        return None
+    motivo = f"Se volvió a los prompts actuales: las últimas {len(valores)} notas promedian {media:.1f}/10."
+    b.prompts_ia_estado.update_one({"_id": "validada", "huella": d["huella"]},
+                                  {"$set": {"retirada": True, "motivo": motivo}})
+    _guardar_config(usar="actuales")
+    pe.invalidar_cache()
+    doc = {"fecha": _ahora(), "origen": "proteccion", "error": motivo, "cambios": [],
+           "evaluacion": {"estado": "retirada", "motivo": motivo, "despues": round(media, 2)}}
+    r = b.prompts_ia_mejoras.insert_one(dict(doc))
+    return _publico(doc | {"_id": r.inserted_id})
+
+
 def mejora_automatica(base=None) -> dict | None:
     """Si la mejora automática está prendida y hay AUTO_CADA notas nuevas desde la última, mejora la copia."""
     from afterdrive.ia import llm
 
+    retirada = vigilar_calidad(base)
+    if retirada:
+        return retirada
     if not auto():
         return None
     nuevas = _nuevas_desde_auto(base)
@@ -620,10 +787,11 @@ def main(argv: list[str] | None = None) -> int:
     except ErrorPromptIA as e:
         print(f"[ERROR] {e}", flush=True)
         return 1
+    print(f"[PROMPTS IA RESULTADO] {r['id']}", flush=True)
     aplicadas = [c["titulo"] for c in r.get("cambios", []) if c.get("aplicado")]
     if aplicadas:
         print(f"[OK] Copia de la IA mejorada: {', '.join(aplicadas)}.", flush=True)
-        return 0
+        return 1 if r.get("error") else 0
     print(f"[ERROR] {r.get('error') or 'No se aplicó ningún cambio.'}", flush=True)
     return 1
 

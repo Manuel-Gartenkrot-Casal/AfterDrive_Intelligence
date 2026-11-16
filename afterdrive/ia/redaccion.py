@@ -27,6 +27,7 @@ Las piezas (identidad, audiencia, reglas de datos, oficio, enfoque Alephee,
 formato, SEO, respuesta y las 5 personas) se editan como Markdown desde el
 dashboard y pasan por aprobación (prompts_editables.py). Acá se lee la versión
 activa; si no hay o Mongo falla, se usan los textos originales de este archivo.
+La pieza "imagenes" comparte ese editor, pero la usa el selector de fotos, no el redactor.
 Las personas se escriben como: el rol, y después `## Tu tarea`, `## Estructura`
 (lista numerada) y `## Estilo`.
 
@@ -383,6 +384,33 @@ def parsear_persona(md: str) -> dict:
     return {"rol": " ".join(rol.split()), "tarea": junto("tarea"), "estructura": pasos, "estilo": junto("estilo")}
 
 
+_IMAGENES = """\
+## Imágenes: selección y portada
+- Elegí fotografías reales y nítidas que muestren el producto, la actividad o el proceso concreto del \
+título y el ángulo de la nota. Pertenecer al sector automotor NO alcanza: una foto genérica de autos, \
+un taller o una feria no sirve si no ilustra el tema específico.
+- Juzgá lo que muestra la foto, no la reputación del medio ni el título de su noticia. Que venga de \
+una fuente usada en la nota no demuestra que sea pertinente. No inventes un vínculo para justificarla.
+- Descartá logos, íconos, banners publicitarios, capturas de pantalla, gráficos o infografías con \
+mucho texto, marcas de agua grandes y texto sobreimpreso que tape la foto.
+- Descartá fotos de multitudes, grupos posando, retratos corporativos, reuniones o personas de archivo \
+si no muestran la actividad o el producto concreto de la nota. Una multitud en un evento automotor no \
+ilustra por sí sola una nota sobre frenos, inventario o venta de repuestos.
+- Descartá cualquier foto con caras o rostros visibles, incluso pequeños, de fondo o parcialmente \
+visibles. Esta restricción vale para la portada y para todas las imágenes del cuerpo.
+- Manos o cuerpos sin caras solo pueden ir dentro del texto si la actividad visible explica directamente \
+el tema. Para la portada elegí una foto sin personas.
+- Sin inspección visual no des por comprobada la ausencia de caras: si no podés verificarla, descartá la foto.
+- Las fotos de bancos de imágenes deben cumplir exactamente las mismas reglas que las de noticias.
+- Si no ves la imagen, exigí una descripción inequívoca de su contenido en el texto alternativo o \
+el nombre del archivo. El título de la noticia por sí solo no prueba qué muestra la foto; si falta \
+evidencia o hay dudas, descartala.
+- En el motivo indicá qué muestra la foto y cómo se relaciona con el tema; no alcanza decir «es del \
+sector» o «es relevante». Si no podés explicar esa relación concreta, marcala como no apta.
+- Es preferible usar menos imágenes, o ninguna, antes que completar la cantidad con fotos ajenas \
+al tema. No relajes estos criterios para llenar lugares."""
+
+
 PIEZAS = {
     "identidad": _IDENTIDAD,
     "audiencia": _AUDIENCIA,
@@ -392,6 +420,7 @@ PIEZAS = {
     "formato": _FORMATO,
     "seo": _SEO,
     "salida": _SALIDA,
+    "imagenes": _IMAGENES,
     **{f"persona_{slug}": persona_a_markdown(p) for slug, p in PERSONAS.items()},
 }
 
@@ -475,7 +504,9 @@ def system_prompt_partes(
     extension = extension or _EXTENSION_DEFAULT
     identidad = texto("identidad", piezas)
 
-    if compacto:
+    usa_compactas = compacto and all(texto(c, piezas) == PIEZAS[c] for c in (
+        "audiencia", "reglas_datos", "oficio", "enfoque_alephee", "formato", "seo"))
+    if usa_compactas:
         partes = [
             ("identidad", f"{p['rol']} {identidad}"),
             ("lectores", "Lectores: repuesteros, distribuidores y gerentes de e-commerce automotor (no consumidores)."),
@@ -503,7 +534,7 @@ def system_prompt_partes(
             # replace y no format: el texto lo escribe una persona y puede traer otras llaves.
             ("formato", texto("formato", piezas).replace("{extension}", extension)),
             ("seo", texto("seo", piezas)),
-            ("secciones_fijas", _secciones_fijas(v, compacto=False)),
+            ("secciones_fijas", _secciones_fijas(v, compacto=compacto)),
             ("cierre", _cierre(v, puntapie_url)),
             ("salida", texto("salida", piezas)),
         ]

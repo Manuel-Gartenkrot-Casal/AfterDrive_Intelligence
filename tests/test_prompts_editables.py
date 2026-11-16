@@ -120,7 +120,7 @@ def test_clave_desconocida_y_borrador_vacio(base):
 def test_listar(base):
     _hasta_revision("seo", SEO, base)
     piezas = {p["clave"]: p for p in pe.listar(base=base)}
-    assert list(piezas) == pe.CLAVES and len(pe.CLAVES) == 13
+    assert list(piezas) == pe.CLAVES and "imagenes" in piezas
     assert piezas["seo"]["pendiente"] == {"estado": "en_revision", "version": 1}
     assert piezas["persona_comercial"]["titulo"] == "Comercial" and piezas["oficio"]["pendiente"] is None
 
@@ -139,7 +139,7 @@ def client(api, prompts_en_memoria):
 
 def test_endpoints_del_recorrido(client):
     r = client.get("/api/prompts")
-    assert r.status_code == 200 and len(r.json["piezas"]) == 13
+    assert r.status_code == 200 and len(r.json["piezas"]) == len(pe.CLAVES)
     r = client.post("/api/prompts/seo/borrador", json={"contenido": "Sin título", "motivo": "m"})
     assert r.status_code == 200 and r.json["errores"]                 # se guarda, pero avisa
     assert client.post("/api/prompts/seo/enviar").status_code == 400

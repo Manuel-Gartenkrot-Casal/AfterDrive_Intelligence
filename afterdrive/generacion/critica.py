@@ -69,8 +69,11 @@ Solo un JSON, sin texto alrededor:
 """
 
 
-def _pedido(persona: str, regiones, idioma: str | None = None) -> str:
-    p = redaccion.persona(persona if persona in redaccion.PERSONAS else "comercial")
+def _pedido(persona: str, regiones, idioma: str | None = None, piezas=None) -> str:
+    if piezas is None:
+        from afterdrive.prompts_ia import textos
+        piezas = textos("actuales")
+    p = redaccion.persona(persona if persona in redaccion.PERSONAS else "comercial", piezas=piezas)
     # La voz en que se escribió: el idioma guardado (portugués en las nuevas) o, en las viejas, sus regiones.
     voz = redaccion.voz_de_idioma(idioma) if idioma else redaccion.voz(regiones)
     return (f"## Lo que se le pidió a la IA\n- Rol: {p['rol']}\n- Tarea: {p['tarea']}\n"
@@ -79,9 +82,12 @@ def _pedido(persona: str, regiones, idioma: str | None = None) -> str:
 
 
 def _numero(valor, default: int | None) -> int | None:
+    if isinstance(valor, bool):
+        return default
     try:
-        return max(1, min(10, int(valor)))
-    except (TypeError, ValueError):
+        numero = float(valor)
+        return int(numero) if 1 <= numero <= 10 and numero.is_integer() else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -115,6 +121,8 @@ def _pedir(user: str) -> tuple[dict | None, str]:
     for _ in range(INTENTOS):
         try:
             data = _leer(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=MAX_TOKENS, tarea="evaluacion"))
+        except llm.Cancelada:
+            raise
         except Exception as e:
             motivo = f"No se pudo criticar la nota: {e}"
             continue
@@ -124,11 +132,11 @@ def _pedir(user: str) -> tuple[dict | None, str]:
     return None, motivo
 
 
-def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str | None = None) -> dict:
+def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str | None = None, *, piezas=None) -> dict:
     """Crítica de la redacción. Siempre devuelve un dict; con "error" si no se pudo hacer."""
     if not llm.disponible():
         return {"error": "Proveedor de IA no disponible para criticar la nota."}
-    user = _pedido(persona, regiones, idioma) + f"\n## Nota a revisar\n{(nota or '')[:NOTA_MAX]}"
+    user = _pedido(persona, regiones, idioma, piezas) + f"\n## Nota a revisar\n{(nota or '')[:NOTA_MAX]}"
     data, motivo = _pedir(user)
     if data is None:
         print(f"[CRITICA] {motivo}", flush=True)
