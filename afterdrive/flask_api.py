@@ -30,7 +30,7 @@ _CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src https://fonts.gstatic.com",
+    "font-src 'self' https://fonts.gstatic.com",   # 'self': los símbolos (assets/fonts)
     "img-src 'self' data: https:",
     "connect-src 'self'",
     "frame-ancestors 'none'",
@@ -141,12 +141,12 @@ def leer_doc(slug: str):
 
 @app.route("/assets/<path:archivo>")
 def assets(archivo: str):
-    """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
+    """CSS, JS y fuentes del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
 
     no-cache: el navegador revalida con el ETag, así un deploy nuevo se ve sin
     tener que forzar la recarga.
     """
-    if not archivo.endswith((".css", ".js")):
+    if not archivo.endswith((".css", ".js", ".woff2")):
         return jsonify({"success": False, "error": "Recurso no encontrado"}), 404
     resp = send_from_directory(os.path.join(_STATIC_DIR, "assets"), archivo)
     resp.headers["Cache-Control"] = "no-cache"

@@ -352,18 +352,24 @@ function pintarImagen(nota, contenedor) {
   pintarImagenesCuerpo(nota, contenedor);
 }
 
-/* Las fotos que van dentro del texto (hasta 4), con la noticia o el banco de imágenes de la que salió cada una. */
+/* Las fotos que van dentro del texto (hasta 4), con su epígrafe (en el idioma de la nota, como va a
+   HubSpot) y la noticia o el banco de imágenes de la que salió cada una. */
 function pintarImagenesCuerpo(nota, contenedor) {
   var imgs = (nota.imagenes_cuerpo || []).filter(function(im) {
     return im && urlSegura(im.hubspot_url || im.url || '') !== '#';
   }).slice(0, 4);
   var html = imgs.length
     ? '<div class="revision-imagenes">' + imgs.map(function(im) {
+        // Las notas viejas no guardan su idioma: HubSpot lo deduce de las regiones (casi siempre español).
+        var ep = im.epigrafe || {}, epigrafe = ep[nota.idioma] || ep.es || ep.pt || ep.en;
         return '<figure><img class="revision-imagen" src="' + urlSegura(im.hubspot_url || im.url) + '" alt="' + escHtml(im.alt || '') + '"'
           + ' referrerpolicy="no-referrer" loading="lazy">'
-          + (im.origen ? '<figcaption class="revision-sub"><a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
-                         + escHtml(im.credito || im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
-          + '</figure>';
+          + '<figcaption>'
+          + (epigrafe ? '<span class="revision-epigrafe" translate="no">' + escHtml(epigrafe) + '</span>'
+                      : '<span class="revision-sub">Sin epígrafe: se escribe al subirla a HubSpot.</span>')
+          + (im.origen ? '<a class="revision-sub" href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
+                         + escHtml(im.credito || im.origen.titulo || im.origen.url) + '</a>' : '')
+          + '</figcaption></figure>';
       }).join('') + '</div>'
     : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';
   contenedor.appendChild(bloqueRevision('Imágenes en el texto', html));

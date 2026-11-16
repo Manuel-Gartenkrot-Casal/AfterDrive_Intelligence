@@ -1,6 +1,39 @@
 /* Estilos del dashboard (index.html). */
 
 /* ═══════════════════════════════════════════════════════════════════════
+   SÍMBOLOS
+   IBM Plex Sans y JetBrains Mono no traen ✓ ✕ ★ ✦ ✎ ⚠ ▲ ▼ ▸ ▾ ● ↗ → ↺:
+   sin esto, cada sistema los toma de otra fuente (en Windows, Segoe UI
+   Symbol/Emoji) y quedaban más abajo que el texto. Van en un subset de
+   Noto Sans Symbols 2, Noto Sans Symbols y Noto Sans Math (licencia OFL,
+   assets/fonts/OFL.txt), con las métricas de Plex para que no estiren la
+   línea: el centro de cada símbolo cae a media altura de las mayúsculas.
+   Para sumar un símbolo nuevo: regenerar el subset y su unicode-range.
+   ═══════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/simbolos.woff2') format('woff2');
+  unicode-range: U+2318, U+25B2, U+25B6, U+25B8, U+25BC, U+25BE, U+25CF, U+2605-2606, U+2661, U+26A0,
+                 U+270E, U+2713, U+2715, U+2717, U+2726;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/flechas.woff2') format('woff2');
+  unicode-range: U+2190-2193, U+2197;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/giro.woff2') format('woff2');
+  unicode-range: U+21BA;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    SUPERFICIES PLANAS
    La jerarquía sale del color de superficie y del borde, no de la sombra:
      --canvas   fondo de la página
@@ -113,8 +146,8 @@
 
   --z-content:1; --z-toast:900; --z-modal:1000;
 
-  --font: 'IBM Plex Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font: 'IBM Plex Sans', 'AD Simbolos', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'AD Simbolos', ui-monospace, monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2163,7 +2196,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .revision-imagen { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
 .revision-imagenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s2); }
 .revision-imagenes figure { margin: 0; min-width: 0; }
-.revision-imagenes figcaption { margin-top: var(--s1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.revision-imagenes figcaption { margin-top: var(--s1); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.revision-imagenes figcaption .revision-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.revision-epigrafe { font-size: 0.8rem; line-height: 1.4; font-style: italic; color: var(--text-mid); }
 .nota-cambio { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s3);
   padding: var(--s2) var(--s3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.85rem; }
 
@@ -2946,7 +2981,7 @@ mark.cambio { padding: 0 1px; border-radius: 3px; color: inherit; }
 .modal-overlay:has(> .modal.lectura) { padding: 0; }
 .modal.lectura {
   --lectura-panel: 560px;
-  --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --serif: 'Source Serif 4', 'AD Simbolos', Georgia, 'Times New Roman', serif;
   width: 100vw; height: 100dvh; max-width: none; border-radius: 0; box-shadow: none;
   grid-template-columns: minmax(0, 1fr) var(--lectura-panel);
   grid-template-rows: auto minmax(0, 1fr);

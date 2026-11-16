@@ -219,6 +219,11 @@ def test_los_assets_del_dashboard_piden_sesion(api):
     assert r.status_code == 200 and "function confirmar" in r.get_data(as_text=True)
     assert r.headers["Cache-Control"] == "no-cache"
     assert c.get("/assets/css/dashboard.css").status_code == 200
+    # La fuente de los símbolos (✓ ✕ ★…): se sirve y la CSP deja cargarla desde el mismo sitio.
+    fuente = c.get("/assets/fonts/simbolos.woff2")
+    assert fuente.status_code == 200 and fuente.mimetype == "font/woff2"
+    assert "font-src 'self'" in fuente.headers["Content-Security-Policy"]
+    assert c.get("/assets/fonts/OFL.txt").status_code == 404
 
 
 @pytest.mark.parametrize("ruta", ["/assets/../index.html", "/assets/%2e%2e/login.html", "/assets/js/no-existe.js",

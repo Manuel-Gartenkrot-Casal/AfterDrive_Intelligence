@@ -70,6 +70,14 @@ def prompts_ia_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def sin_epigrafes(monkeypatch):
+    """Los epígrafes de las fotos son una llamada más a la IA: afuera, para no correr el orden de las
+    respuestas falsas de cada test. tests/test_epigrafes.py prueba el original."""
+    from afterdrive.generacion import epigrafes
+    monkeypatch.setattr(epigrafes, "completar", lambda nota, veredictos=None: 0)
+
+
+@pytest.fixture(autouse=True)
 def sin_fotos_de_otras_notas(monkeypatch):
     """La generación no lee la base real para saber qué fotos usaron otras notas: sin Mongo,
     cada nota de los tests esperaba 15 s a que la conexión fallara."""

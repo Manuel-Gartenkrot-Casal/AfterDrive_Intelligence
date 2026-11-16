@@ -141,7 +141,9 @@ def sembrar() -> None:
                     "origen": {"titulo": "Baterías al alza", "url": "https://s.com/bat"}},
          "imagenes_cuerpo": [
              {"url": "https://s.com/fotos/deposito.jpg", "alt": "Depósito",
-              "origen": {"titulo": "Depósitos llenos", "url": "https://s.com/dep"}},
+              "origen": {"titulo": "Depósitos llenos", "url": "https://s.com/dep"},
+              "epigrafe": {"pt": "Estoque de baterias pronto para o balcão", "es": "Stock de baterías listo para el mostrador",
+                           "en": "Battery stock ready for the counter"}},
              {"url": "https://s.com/fotos/mostrador.jpg", "alt": "Mostrador",
               "origen": {"titulo": "El mostrador vende más", "url": "https://s.com/mos"}}]},
     ])
@@ -214,8 +216,15 @@ def hubspot_falso() -> None:
                            "subir": lambda url, **kw: _RespArchivo()}
 
 
+def epigrafes_falsos() -> None:
+    """Sin IA: las fotos sin epígrafe siguen sin él (la llamada real esperaría a un proveedor que no está)."""
+    from afterdrive.generacion import epigrafes
+    epigrafes.completar = lambda nota, veredictos=None: 0
+
+
 if __name__ == "__main__":
     sembrar()
+    epigrafes_falsos()
     corridas._scrapear_fuentes = scraping_falso
     hubspot_falso()
     descarga_de_imagenes_falsa()

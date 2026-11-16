@@ -556,6 +556,9 @@ def test_publicar_muestra_la_destacada_y_las_dos_del_texto(pagina):
     cuerpo = lateral.locator(".revision-bloque", has_text="Imágenes en el texto")
     expect(cuerpo.locator("img")).to_have_count(2)
     expect(cuerpo.get_by_role("link", name="El mostrador vende más")).to_have_attribute("href", "https://s.com/mos")
+    # El epígrafe, en el idioma de la nota (sin `idioma` guardado, el de sus regiones: español); la que no lo tiene lo avisa.
+    expect(cuerpo.locator(".revision-epigrafe")).to_have_text("Stock de baterías listo para el mostrador")
+    expect(cuerpo.locator("figure").nth(1)).to_contain_text("Sin epígrafe")
 
 
 def _cambiar_desde_afuera(pg, contenido):

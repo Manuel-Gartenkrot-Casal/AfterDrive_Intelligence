@@ -104,6 +104,18 @@ class ErrorHubSpot(RuntimeError):
     """Fallo al publicar, con un mensaje apto para el usuario."""
 
 
+class SinPermisoArchivos(ErrorHubSpot):
+    """El token no puede subir archivos (falta el scope "files"): falla igual con todas las imágenes."""
+
+
+AYUDA_SCOPE_ARCHIVOS = (
+    "HubSpot no dejó copiar las imágenes a sus archivos: la app privada del token (HUBSPOT_TOKEN) no tiene "
+    "el scope 'files'. En HubSpot: Configuración → Integraciones → Apps privadas (en cuentas nuevas, "
+    "\"Apps heredadas\") → tu app → Ámbitos → buscá \"files\", tildalo y confirmá con \"Confirmar cambios\". "
+    "El token sigue siendo el mismo: no hay que cambiar nada en el servidor."
+)
+
+
 def configurado() -> bool:
     return bool(os.getenv("HUBSPOT_TOKEN"))
 
@@ -343,14 +355,38 @@ def _sin_link_usable(im: dict) -> bool:
     return str(im.get("url") or "").startswith("/") or bool(im.get("copia_fallida"))
 
 
-def imagenes_cuerpo(nota: dict) -> list[dict]:
-    """[{url, alt, credito}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo).
-    `credito` solo en las de bancos de imágenes que piden atribución. Sin copia en HubSpot, una
-    imagen sin link usable queda afuera: mejor una foto menos que una rota."""
-    return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or "",
-             **({"credito": im["credito"]} if im.get("atribucion") and im.get("credito") else {})}
-            for im in nota.get("imagenes_cuerpo") or []
-            if im.get("hubspot_url") or (im.get("url") and not _sin_link_usable(im))]
+def imagenes_cuerpo(nota: dict, cod: str | None = None) -> list[dict]:
+    """[{url, alt, credito, epigrafe}] de las imágenes que van dentro del texto (la copia en HubSpot si
+    ya se hizo). `credito` solo en las de bancos de imágenes que piden atribución; `epigrafe`, la bajada
+    en el idioma `cod` (por defecto, el de la nota), si la tiene. Sin copia en HubSpot, una imagen sin
+    link usable queda afuera: mejor una foto menos que una rota."""
+    from afterdrive.generacion.epigrafes import texto
+
+    cod = cod or idioma(nota)
+    resultado = []
+    for im in nota.get("imagenes_cuerpo") or []:
+        if not (im.get("hubspot_url") or (im.get("url") and not _sin_link_usable(im))):
+            continue
+        item = {"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or ""}
+        if im.get("atribucion") and im.get("credito"):
+            item["credito"] = im["credito"]
+        if texto(im, cod):
+            item["epigrafe"] = texto(im, cod)
+        resultado.append(item)
+    return resultado
+
+
+# Debajo de la foto, en chico y gris: se ve como bajada en cualquier plantilla del blog.
+_ESTILO_EPIGRAFE = "display:block; margin-top:6px; font-size:0.85em; line-height:1.4; color:#5f6368; font-style:italic;"
+
+
+def _figura(im: dict) -> str:
+    from html import escape
+
+    pie = " · ".join(escape(t) for t in (im.get("epigrafe"), im.get("credito")) if t)
+    return (f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
+            f'style="max-width:100%; height:auto;" loading="lazy">'
+            + (f'<br><small style="{_ESTILO_EPIGRAFE}">{pie}</small>' if pie else "") + '</p>')
 
 
 def con_imagenes(html: str, imagenes: list[dict]) -> str:
@@ -358,16 +394,11 @@ def con_imagenes(html: str, imagenes: list[dict]) -> str:
 
     Nunca antes de la primera sección (la nota abre con texto) ni después de
     la última. Sin subtítulos suficientes, van después del primer párrafo.
-    Una imagen con `credito` (licencia que pide atribución) lo lleva debajo.
+    Debajo de cada imagen va su epígrafe y, si la licencia pide atribución, el crédito.
     """
-    from html import escape
-
     if not imagenes:
         return html
-    figuras = [f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
-               f'style="max-width:100%; height:auto;" loading="lazy">'
-               + (f'<br><small>{escape(im["credito"])}</small>' if im.get("credito") else "") + '</p>'
-               for im in imagenes]
+    figuras = [_figura(im) for im in imagenes]
     titulos = [m.start() for m in re.finditer(r"<h3\b", html)]
     n = len(titulos)
     if n >= 3:
@@ -403,13 +434,24 @@ def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
     except requests.RequestException as e:
         raise ErrorHubSpot(f"No se pudo subir la imagen a HubSpot: {e}") from e
     if resp.status_code in (401, 403):
-        raise ErrorHubSpot("HubSpot no dejó subir la imagen: la app privada necesita el scope 'files'.")
+        raise SinPermisoArchivos(AYUDA_SCOPE_ARCHIVOS + _detalle_scopes(resp))
     if resp.status_code >= 400:
         raise _error(resp)
     url = (resp.json() or {}).get("url") or ""
     if not url:
         raise ErrorHubSpot("HubSpot subió la imagen pero no devolvió su URL.")
     return url
+
+
+def _detalle_scopes(resp) -> str:
+    """Los scopes que HubSpot dice que faltan (viene en `errors[].context.requiredScopes`), si los dice."""
+    try:
+        data = resp.json() or {}
+    except Exception:
+        return ""
+    faltan = sorted({sc for e in data.get("errors") or [] if isinstance(e, dict)
+                     for sc in ((e.get("context") or {}).get("requiredScopes") or []) if isinstance(sc, str)})
+    return f" (HubSpot pide: {', '.join(faltan)})" if faltan else ""
 
 
 def vista_previa(nota: dict) -> dict:
@@ -530,7 +572,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
     cuerpo = {
         "name": partes["titulo"], "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota, cod)),
         "metaDescription": partes["meta"], "state": "DRAFT",
     }
     imagen = _imagen(nota, partes["titulo"])

@@ -95,7 +95,7 @@ Cada nota se escribe en portugués y **se traduce al crearla** al español riopl
 | Mensaje | Qué hacer |
 |---|---|
 | "HubSpot rechazó el token" (401/403) | Revisá `HUBSPOT_TOKEN` y que la app tenga el scope `content` |
-| "No se pudo copiar la imagen a HubSpot… scope 'files'" | Agregá el scope `files` a la app privada. Mientras tanto, la nota se sube con el link original de la foto |
+| "HubSpot no dejó copiar las imágenes a sus archivos… scope 'files'" | Agregá el scope `files` a la app privada (Configuración → Integraciones → Apps privadas → tu app → Ámbitos → `files` → Confirmar cambios; el token no cambia). Mientras tanto, la nota se sube con el link original de las fotos. El aviso sale una sola vez: al primer rechazo no se prueba con las demás |
 | "No encontró el blog, el post o el autor" (404) | Revisá `HUBSPOT_BLOG_PRUEBAS` (si está cargado) y el autor elegido |
 | "No hay un blog de After Drive en el idioma de esta nota" | La nota es en chino: no hay blog para ese idioma |
 | "Está limitando las llamadas" (429) | Esperá un minuto |

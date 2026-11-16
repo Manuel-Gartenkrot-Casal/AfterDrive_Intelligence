@@ -50,6 +50,7 @@ from afterdrive.generacion import (
     contexto_noticias,
     correccion,
     critica,
+    epigrafes,
     imagen_destacada,
     imagenes_respaldo,
     juez,
@@ -803,6 +804,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
                 f["imagen_personas"] = veredicto.get("personas", False)
         return f
     doc["fuentes"] = [_fuente(n) for n in noticias]
+    # La bajada de cada foto del texto, en los tres idiomas (hubspot.py la pone debajo de la foto).
+    if doc["imagenes_cuerpo"] and epigrafes.completar(doc, eleccion.veredictos):
+        print(f"  Epígrafes de las fotos: {sum(1 for im in doc['imagenes_cuerpo'] if im.get('epigrafe'))}", flush=True)
     # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.
     print("  Juzgando la nota (editor crítico)...", flush=True)
     doc["juicio"] = juez.juzgar(articulo, _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),

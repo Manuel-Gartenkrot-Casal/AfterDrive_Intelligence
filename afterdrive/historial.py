@@ -439,6 +439,7 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
         doc["hubspot_autor_id"] = str(autor_id)
 
     hubspot.destino(doc)   # sin blog para su idioma: falla antes de subir la imagen
+    _completar_epigrafes(col, doc)
     aviso = _copiar_imagen_a_hubspot(col, doc)
     r = hubspot.enviar(doc, publicar=publicar)   # ErrorHubSpot sube tal cual
     ahora = datetime.datetime.now(datetime.UTC).isoformat()
@@ -450,6 +451,20 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
     if aviso:
         item["aviso"] = aviso
     return item
+
+
+def _completar_epigrafes(col, doc: dict) -> None:
+    """Las notas de antes de los epígrafes (o a las que les falló) los reciben al subirse. Nunca frena la subida."""
+    from afterdrive.generacion import epigrafes
+    from afterdrive.ia import llm
+
+    try:
+        if epigrafes.completar(doc):
+            col.update_one({"_id": doc["_id"]}, {"$set": {"imagenes_cuerpo": doc["imagenes_cuerpo"]}})
+    except llm.Cancelada:
+        raise
+    except Exception as e:
+        print(f"[AVISO] No se pudieron completar los epígrafes: {e}", flush=True)
 
 
 def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
@@ -466,8 +481,12 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
     """
     from afterdrive import hubspot, imagen_web
 
+    sin_permiso = []   # el token no puede subir archivos: no tiene sentido probar con las demás
+
     def copiar(url: str, nombre: str) -> tuple[str, str, bool]:
         """(copia, error, la foto está rota)."""
+        if sin_permiso:
+            return "", "", False
         try:
             if url.startswith(PREFIJO_IMAGEN_SUBIDA):   # subida desde la computadora: está en la base
                 local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database)
@@ -481,6 +500,9 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
         try:
             extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
             return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), "", False
+        except hubspot.SinPermisoArchivos as e:
+            sin_permiso.append(str(e))
+            return "", "", False
         except hubspot.ErrorHubSpot as e:
             return "", str(e), False
 
@@ -496,7 +518,7 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
             im["copia_fallida"] = error
             col.update_one({"_id": doc["_id"]}, {"$set": {f"{campo}.copia_fallida": error}})
             afuera.append(f"{nombre} ({error})")
-        else:
+        elif error:
             con_link.append(f"{nombre} ({error})")
 
     imagen = doc.get("imagen") or {}
@@ -512,6 +534,8 @@ def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
                       "salga rota. Podés elegir otra foto y volver a enviarla.")
     if con_link:
         avisos.append(f"No se pudo copiar a HubSpot {', '.join(con_link)}. Se usa el link original.")
+    if sin_permiso:
+        avisos.append(f"{sin_permiso[0]} Mientras tanto, las fotos van con el link original.")
     return " ".join(avisos)
 
 

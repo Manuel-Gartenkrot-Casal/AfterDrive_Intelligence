@@ -230,6 +230,36 @@ def test_si_falla_hubspot_y_no_la_foto_va_con_el_link_original(base, nota, monke
     assert hubspot._imagen(hubspot_falso[0], "T")["url"] == "https://n.com/1.jpg"
 
 
+def test_sin_el_scope_files_se_avisa_una_vez_y_no_se_reintenta_con_cada_foto(base, nota, monkeypatch, hubspot_falso):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagenes_cuerpo": [
+        {"url": f"https://n.com/{i}.jpg", "alt": "x"} for i in (2, 3, 4)]}})
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+    intentos = []
+
+    def sin_scope(c, m, n):
+        intentos.append(n)
+        raise hubspot.SinPermisoArchivos(hubspot.AYUDA_SCOPE_ARCHIVOS)
+    monkeypatch.setattr(hubspot, "subir_imagen", sin_scope)
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert len(intentos) == 1
+    assert item["aviso"].count("scope 'files'") == 1 and "link original" in item["aviso"]
+    assert "Ámbitos" in item["aviso"] and "afuera" not in item["aviso"]
+    assert len(hubspot.imagenes_cuerpo(hubspot_falso[0])) == 3
+
+
+def test_el_aviso_de_scope_nombra_lo_que_pide_hubspot(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_TOKEN", "pat")
+
+    class Resp:
+        status_code = 403
+
+        def json(self):
+            return {"category": "MISSING_SCOPES", "errors": [{"context": {"requiredScopes": ["files"]}}]}
+    monkeypatch.setitem(hubspot._transporte, "subir", lambda *a, **kw: Resp())
+    with pytest.raises(hubspot.SinPermisoArchivos, match=r"HubSpot pide: files"):
+        hubspot.subir_imagen(b"x", "image/png", "a.png")
+
+
 def test_al_reenviar_una_que_ahora_se_copia_vuelve_al_post(base, nota, monkeypatch, hubspot_falso):
     base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagen.copia_fallida": "404"}})
     monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
@@ -474,7 +504,7 @@ def test_una_foto_que_pide_credito_nunca_es_portada_y_lleva_su_credito_en_hubspo
     e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=1, respaldo=lambda r: banco)
     assert e.imagen is None and e.cuerpo[0]["url"] == "https://banco/1.jpg"
     html = hubspot.con_imagenes("<p>a</p>", hubspot.imagenes_cuerpo({"imagenes_cuerpo": e.cuerpo}))
-    assert "<small>Foto: Ana / CC BY</small>" in html
+    assert ">Foto: Ana / CC BY</small>" in html
 
 
 def test_banco_commons_filtra_licencias_y_marca_las_que_piden_credito(monkeypatch):
