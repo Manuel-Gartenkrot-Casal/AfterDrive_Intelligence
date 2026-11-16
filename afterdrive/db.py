@@ -91,7 +91,7 @@ INDICES = {
     "articulos_descartados": [[("url", 1)]],
     "trusted_urls": [[("url", 1)], [("estado", 1)]],
     "suggested_urls": [[("dominio", 1)]],
-    "notas_fase2": [[("generado_en", -1)], [("estado", 1)]],
+    "notas_fase2": [[("generado_en", -1)], [("estado", 1)], [("prompts_huella", 1), ("_id", -1)]],
     "notas_descartadas": [[("descartado_en", -1)]],
     "afterdrive_ejemplos": [[("tag_slug", 1)]],
     "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],

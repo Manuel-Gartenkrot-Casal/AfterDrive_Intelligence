@@ -14,7 +14,7 @@ FORMATO_IA = redaccion.PIEZAS["formato"] + "\n- Una sola llamada a la acción, e
 DIAGNOSTICO = {"resumen": "Pierden puntos por el SEO y la llamada a la acción.", "problemas": [
     {"titulo": "Palabra clave", "detalle": "No aparece en subtítulos", "evidencia": "5 notas", "pieza": "seo",
      "pedido": "Pedir la palabra clave en un subtítulo"},
-    {"titulo": "Dos CTA", "pieza": "formato", "pedido": "Una sola llamada a la acción"},
+    {"titulo": "Dos CTA", "evidencia": "3 notas con CTA duplicada", "pieza": "formato", "pedido": "Una sola llamada a la acción"},
     {"titulo": "Sin pieza", "pieza": "inventada"}, {"detalle": "sin título"}]}
 
 
@@ -36,6 +36,10 @@ def _nota(puntaje, calificacion, errores=(), alephee=None, juego="actuales", hum
 
 def _ia(monkeypatch, *respuestas):
     """La IA responde en orden (la última se repite). Devuelve los pedidos que recibió."""
+    # Estos tests ejercitan edición/historial. La comparación real y sus rechazos
+    # se prueban de extremo a extremo (LLM simulado) en test_prompts_evaluacion.
+    monkeypatch.setattr(prompts_ia.prueba, "comparar", lambda *a, **kw: {
+        "estado": "aprobada", "tipo": "redaccion", "antes": 8, "despues": 9, "casos": [], "motivo": "Prueba"})
     pedidos, cola = [], list(respuestas)
     monkeypatch.setattr(llm, "disponible", lambda: True)
 
@@ -54,7 +58,8 @@ def test_las_estadisticas_dicen_que_falla_y_comparan_los_juegos():
     e = prompts_ia.estadisticas(notas)
     assert e["notas"] == 3 and e["redaccion"] == 8.0 and e["juez"] == 4.3 and e["humana"] == 4.0
     assert e["errores"][0] == {"tipo": "tono", "nombre": "Tono", "veces": 2,
-                               "ejemplos": ["Tutea en una nota con voseo.", "Mezcla usted y vos."]}
+                               "ejemplos": [{"problema": p, "fragmento": "", "sugerencia": ""}
+                                             for p in ["Tutea en una nota con voseo.", "Mezcla usted y vos."]]}
     assert e["alephee"] == [{"punto": "cta_unico", "texto": e["alephee"][0]["texto"], "veces": 2}]
     assert e["por_juego"] == {"actuales": {"notas": 2, "redaccion": 7.5, "juez": 4.0},
                               "ia": {"notas": 1, "redaccion": 9.0, "juez": 5.0}}
@@ -84,7 +89,7 @@ def test_sin_ia_el_analisis_muestra_solo_los_numeros(monkeypatch, base):
         prompts_ia.mejorar(base=base)                          # sin IA no se mejora
 
 
-def test_mejorar_analiza_y_aplica_directo_a_la_copia_sin_tocar_los_actuales(monkeypatch, base, prompts_ia_en_memoria):
+def test_mejorar_solo_cambia_piezas_con_evidencia_y_prueba_sin_tocar_actuales(monkeypatch, base, prompts_ia_en_memoria):
     base.notas_fase2.insert_many([_nota(7, 4), _nota(8, 3)])
     pedidos = _ia(monkeypatch, DIAGNOSTICO, {"comentario": "Dos reglas nuevas.", "cambios": [
         {"clave": "seo", "explicacion": "Palabra clave en un subtítulo.", "contenido": SEO_IA},
@@ -92,8 +97,8 @@ def test_mejorar_analiza_y_aplica_directo_a_la_copia_sin_tocar_los_actuales(monk
         {"clave": "identidad", "contenido": "Sos un redactor B2B. También fuera del diagnóstico: se aplica."}]})
     m = prompts_ia.mejorar(base=base)
     assert m["origen"] == "manual" and m["resumen"].startswith("Pierden puntos") and not m.get("error")
-    # Se aplican todos los cambios válidos, también los de piezas que no nombró el diagnóstico.
-    assert [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [("seo", True), ("formato", True), ("identidad", True)]
+    # Se excluyen cambios ajenos al diagnóstico aunque el modelo los proponga.
+    assert [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [("seo", True), ("formato", True)]
     assert "Pedir la palabra clave en un subtítulo" in pedidos[1][1]
     assert pedidos[1][2]["tarea"] == "correccion"
     assert prompts_ia.pieza("seo", base=base)["ia"] == SEO_IA
@@ -103,7 +108,7 @@ def test_mejorar_analiza_y_aplica_directo_a_la_copia_sin_tocar_los_actuales(monk
     assert prompts_ia_en_memoria["usar"] == "ia"
     assert pe.activos(base=base)["seo"] == SEO_IA and pe.activos(base=base)["formato"] == FORMATO_IA
     e = prompts_ia.estado(base)
-    assert e["cambiadas"] == 3 and e["mejoras"][0]["id"] == m["id"]
+    assert e["cambiadas"] == 2 and e["mejoras"][0]["id"] == m["id"]
     # Cada juego se puede ver entero, sea cual sea el que está en uso.
     assert prompts_ia.textos("actuales", base)["seo"] == redaccion.PIEZAS["seo"]
     assert prompts_ia.textos("ia", base)["seo"] == SEO_IA and prompts_ia.textos("ia", base)["oficio"] == redaccion.PIEZAS["oficio"]
@@ -124,8 +129,11 @@ def test_un_pedido_se_aplica_y_se_puede_deshacer(monkeypatch, base):
         {"clave": "persona_comercial", "contenido": "Solo un rol, sin secciones."}]})   # inválida aunque se corrija: no se aplica
     m = prompts_ia.mejorar("Que las notas usen la palabra clave en un subtítulo", base=base)
     assert m["origen"] == "pedido" and [(c["clave"], c["aplicado"]) for c in m["cambios"]] == [
-        ("seo", True), ("persona_comercial", False)]
+        ("seo", False), ("persona_comercial", False)]
     assert m["cambios"][1]["errores"] and not prompts_ia.pieza("persona_comercial", base=base)["cambiada"]
+    assert base.prompts_ia.count_documents({}) == 0
+    _ia(monkeypatch, {"cambios": [{"clave": "seo", "contenido": SEO_IA}]})
+    prompts_ia.mejorar("Agregá SEO en los subtítulos", base=base)
     _ia(monkeypatch, {"cambios": [{"clave": "seo", "contenido": SEO_IA + "\n- Otra regla."}]})
     prompts_ia.mejorar("Sumá otra regla al SEO de la copia", base=base)
     p = prompts_ia.pieza("seo", base=base)
@@ -175,7 +183,7 @@ def test_api_de_prompts_con_ia(api, monkeypatch):
     c.post("/api/login", json={"usuario": "admin", "password": "secreta123"})
     e = c.get("/api/prompts-ia").get_json()
     assert e["usar"] == "actuales" and e["auto"] is True and e["faltan"] == prompts_ia.AUTO_CADA
-    assert c.post("/api/prompts-ia/usar", json={"usar": "ia"}).get_json()["usar"] == "ia"
+    assert c.post("/api/prompts-ia/usar", json={"usar": "ia"}).status_code == 400
     assert c.post("/api/prompts-ia/usar", json={"usar": "x"}).status_code == 400
     assert c.post("/api/prompts-ia/auto", json={"auto": False}).get_json()["auto"] is False
     assert c.post("/api/prompts-ia/mejorar", json={}).status_code == 202
@@ -204,7 +212,7 @@ def test_la_vista_previa_arma_el_prompt_de_cada_juego(api, monkeypatch, base):
     flask_api, _ = api
     c = flask_api.app.test_client()
     c.post("/api/login", json={"usuario": "admin", "password": "secreta123"})
-    pi.usar("ia")                                                    # en uso la copia: igual se puede ver cada juego
+    # También se puede inspeccionar una copia antigua sin habilitar su uso.
     def seo(juego):
         partes = c.post("/api/prompts/vista-previa", json={"juego": juego}).get_json()["partes"]
         return next(p["texto"] for p in partes if p["clave"] == "seo")
@@ -235,3 +243,97 @@ def test_un_json_roto_de_la_ia_se_repara(monkeypatch, base):
 def test_tambien_se_repara_la_coma_que_falta_entre_dos_problemas():
     roto = '{"resumen": "x",\n "problemas": [\n  {"titulo": "A", "pieza": "seo"}\n  {"titulo": "B", "pieza": "formato"}\n ]}'
     assert [p["titulo"] for p in prompts_ia._leer_json(roto)["problemas"]] == ["A", "B"]
+
+
+@pytest.mark.parametrize("respuesta", [
+    {"comentario": "Listo, cambié el SEO.", "cambios": []},
+    {"cambios": [{"clave": "seo", "contenido": redaccion.PIEZAS["seo"]}]},
+    {"cambios": [{"clave": "desconocida", "contenido": SEO_IA}]},
+    {"cambios": [{"clave": "seo", "contenido": {"texto": SEO_IA}}]},
+    {"cambios": "Cambié las reglas."},
+])
+def test_reintenta_si_la_respuesta_no_modifica_ninguna_pieza(monkeypatch, base, respuesta):
+    pedidos = _ia(monkeypatch, respuesta, {"cambios": [{"clave": "seo", "contenido": SEO_IA}]})
+    m = prompts_ia.mejorar("Poné la palabra clave en un subtítulo", base=base)
+    assert len(pedidos) == 2 and "Corregí tu respuesta anterior" in pedidos[1][1]
+    assert not m.get("error") and m["cambios"][0]["aplicado"]
+    assert base.prompts_ia.find_one({"clave": "seo"})["contenido"] == SEO_IA
+
+
+def test_no_oculta_el_motivo_si_el_pedido_no_se_puede_aplicar(monkeypatch, base):
+    pedidos = _ia(monkeypatch, {"cambios": [], "comentario": "Este cambio necesita la pieza Imágenes."})
+    m = prompts_ia.mejorar("Permití personas en portada", claves=["seo"], base=base)
+    assert len(pedidos) == 2 and "necesita la pieza Imágenes" in m["error"]
+    assert base.prompts_ia.count_documents({}) == 0
+
+
+def test_un_pedido_manual_no_se_desvia_al_diagnostico_anterior(monkeypatch, base):
+    base.prompts_ia_analisis.insert_one({"fecha": "2026-01-01", "diagnostico": DIAGNOSTICO})
+    texto = "## Imágenes\n- Descartá multitudes o grupos posando que no ilustren el tema concreto de la nota."
+    pedidos = _ia(monkeypatch, {"cambios": [{"clave": "imagenes", "contenido": texto}]})
+    m = prompts_ia.mejorar("Restringí las imágenes: nada de grupos de personas sin relación con la nota", base=base)
+    assert m["cambios"][0]["clave"] == "imagenes" and m["cambios"][0]["aplicado"]
+    assert "grupos de personas sin relación" in pedidos[0][1] and '<pieza clave="imagenes"' in pedidos[0][1]
+    assert "Pierden puntos por el SEO" not in pedidos[0][1]
+    assert base.prompts.count_documents({}) == 0
+    assert prompts_ia.deshacer("imagenes", base=base)["ia"] == redaccion.PIEZAS["imagenes"]
+
+
+def test_respeta_la_pieza_elegida_y_no_amplia_el_alcance(monkeypatch, base):
+    pedidos = _ia(monkeypatch, {"cambios": [{"clave": "formato", "contenido": FORMATO_IA}]},
+                  {"cambios": [{"clave": "seo", "contenido": SEO_IA},
+                               {"clave": "formato", "contenido": FORMATO_IA}]})
+    m = prompts_ia.mejorar("Cambiá el SEO para incluir la palabra clave", claves=["seo"], base=base)
+    assert len(pedidos) == 2 and [c["clave"] for c in m["cambios"]] == ["seo"]
+    assert base.prompts_ia.find_one({"clave": "formato"}) is None
+
+
+def test_reparar_no_cuenta_el_texto_original_como_cambio(monkeypatch, base):
+    pedidos = _ia(monkeypatch, {"cambios": [{"clave": "formato", "contenido": "## Formato\n- Texto breve."}]},
+                  {"cambios": [{"clave": "formato", "contenido": redaccion.PIEZAS["formato"]}]})
+    m = prompts_ia.mejorar("Escribí oraciones de diez palabras como máximo", base=base)
+    assert "diez palabras" in pedidos[1][1]
+    assert m["error"] and not m["cambios"][0]["aplicado"]
+    assert base.prompts_ia.count_documents({}) == 0
+
+
+def test_un_pedido_incompleto_falla_sin_aplicar_un_subconjunto(monkeypatch, base):
+    _ia(monkeypatch, {"cambios": [{"clave": "seo", "contenido": SEO_IA},
+                                {"clave": "persona_comercial", "contenido": "Un rol sin secciones."}]})
+    m = prompts_ia.mejorar("Mejorá el SEO y usá voseo en la persona Comercial", base=base)
+    assert "incompleta" in m["error"] and not any(c["aplicado"] for c in m["cambios"])
+    monkeypatch.setattr(prompts_ia, "mejorar", lambda **kw: m)
+    assert prompts_ia.main(["--pedido", m["pedido"]]) == 1
+
+
+@pytest.mark.parametrize("body", [
+    {"pedido": "x" * (prompts_ia.PEDIDO_MAX + 1)},
+    {"pedido": {"texto": "No convertir objetos en pedidos"}},
+    {"pedido": "Cambiá las imágenes", "claves": ["desconocida"]},
+    {"pedido": "Cambiá las imágenes", "claves": "imagenes"},
+])
+def test_pedidos_invalidos_no_se_recortan_ni_se_encolan(api, monkeypatch, body):
+    flask_api, _ = api
+    monkeypatch.setattr(flask_api.cola, "encolar", lambda *a, **kw: pytest.fail("No debe encolarse"))
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    assert c.post("/api/prompts-ia/mejorar", json=body).status_code == 400
+    with pytest.raises(prompts_ia.ErrorPromptIA):
+        prompts_ia.mejorar(**body)
+
+
+def test_la_vista_previa_muestra_imagenes_sin_enviarlas_al_redactor(api, monkeypatch, base):
+    monkeypatch.setattr(prompts_ia, "_base", lambda b=None: base if b is None else b)
+    nuevo = "## Imágenes\n- Permití personas en portada y en el cuerpo."
+    base.prompts_ia.insert_one({"clave": "imagenes", "contenido": nuevo})
+    flask_api, _ = api
+    c = flask_api.app.test_client()
+    with c.session_transaction() as s:
+        s["usuario"] = "admin"
+    for juego, texto in (("actuales", redaccion.PIEZAS["imagenes"]), ("ia", nuevo)):
+        r = c.post("/api/prompts/vista-previa", json={"juego": juego}).get_json()
+        assert r["adicionales"] == [{"clave": "imagenes", "titulo": "Imágenes", "editable": True, "texto": texto}]
+        assert texto not in r["prompt"] and "imagenes" not in [p["clave"] for p in r["partes"]]
+    r = c.post("/api/prompts/vista-previa", json={"juego": "actuales", "clave": "imagenes", "contenido": nuevo}).get_json()
+    assert r["adicionales"][0]["texto"] == nuevo

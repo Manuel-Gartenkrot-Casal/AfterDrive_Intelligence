@@ -66,13 +66,16 @@ Solo un JSON, sin texto alrededor:
 """
 
 
-def _checklist_alephee() -> str:
+def _checklist_alephee(piezas=None) -> str:
     from afterdrive.ia import redaccion
 
+    if piezas is None:
+        from afterdrive.prompts_ia import textos
+        piezas = textos("actuales")
     puntos = "\n".join(f"- {k}: {v}" for k, v in CHECKLIST_ALEPHEE.items())
     return ("## Checklist de Alephee (respondé cada punto en \"alephee\": true, false o null si no aplica)\n"
             f"{puntos}\n\nLo único que se puede afirmar de Alephee es lo que dice este bloque:\n"
-            f"{redaccion.texto('enfoque_alephee')}")
+            f"{redaccion.texto('enfoque_alephee', piezas)}")
 
 
 def _alephee(valor) -> dict:
@@ -111,7 +114,7 @@ def _lista(valor) -> list:
     return list(valor) if isinstance(valor, list) else []
 
 
-def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
+def juzgar(nota: str, noticias_texto: str, reglas=(), *, piezas=None, estricto=False) -> dict:
     """Juicio del editor crítico. Siempre devuelve un dict; con "error" si no se pudo juzgar."""
     if not llm.disponible():
         return {"error": "Proveedor de IA no disponible para juzgar."}
@@ -119,12 +122,18 @@ def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
     if reglas:
         user += "## Lo que el equipo viene corrigiendo (respetalo al juzgar)\n" + \
                 "\n".join(f"- {r}" for r in reglas) + "\n\n"
-    user += _checklist_alephee() + "\n\n"
+    user += _checklist_alephee(piezas) + "\n\n"
     user += f"## Noticias de contexto\n{(noticias_texto or '')[:NOTICIAS_MAX]}\n\n## Nota a juzgar\n{nota}"
     try:
         data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=1000, tarea="evaluacion"))
+    except llm.Cancelada:
+        raise
     except Exception as e:
         return {"error": f"No se pudo juzgar la nota: {e}"}
+    if estricto:
+        score = data.get("calificacion")
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 5:
+            return {"error": "El juez no dio una calificación válida."}
     if not isinstance(data.get("pasa"), bool):
         return {"error": "El juez no dijo si la nota pasa."}
     return {

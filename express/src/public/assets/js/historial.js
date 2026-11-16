@@ -427,8 +427,9 @@ function bloqueImagenesNoticias(d, propia) {
     + _fotosNoticias.map(function(f, i) {
         var descartada = f.apta === false, personas = !descartada && f.personas === true;
         var detalle = f.titulo + (f.motivo ? ' — ' + (descartada ? 'La IA la descartó: ' : 'IA: ') + f.motivo : '');
-        var marca = descartada ? 'IA: no apta' : personas ? 'Tiene personas: no va de portada' : '';
-        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada || personas ? ' descartada' : '') + '"'
+        var sinPortada = f.portada === false || (f.portada == null && personas);
+        var marca = descartada ? 'IA: no apta' : sinPortada ? 'No cumple las reglas de portada' : '';
+        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada || sinPortada ? ' descartada' : '') + '"'
           + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(detalle) + '" aria-label="' + escHtml(f.titulo) + '">'
           + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
           + (marca ? '<span class="previa-foto-marca">' + marca + '</span>' : '') + '</button>';

@@ -111,6 +111,8 @@ def _build_system_prompt(
     ajustes: "llm.Redaccion | None" = None,
     largo: str | None = None,
     prohibidos: list[dict] | None = None,
+    piezas: dict | None = None,
+    idioma: str | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     base = redaccion.system_prompt(
@@ -119,7 +121,8 @@ def _build_system_prompt(
         compacto=ajustes.compacto,
         extension=redaccion.extension(largo),
         puntapie_url=puntapie_url,
-        idioma=redaccion.idioma_principal(),
+        idioma=idioma or redaccion.idioma_principal(),
+        piezas=piezas,
     )
     extra = []
     if regiones:
@@ -553,6 +556,9 @@ def generar_nota(
 
 def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
                   indicaciones=None) -> dict:
+    from afterdrive import prompts_ia
+
+    prompts = prompts_ia.instantanea()
     clientes_ids = clientes_ids or []
     regiones = regiones or []
     indicaciones = (indicaciones or "").strip()[:INDICACIONES_MAX] or None
@@ -628,7 +634,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print(f"  Memoria: {len(mem.angulos)} ángulo(s), {len(mem.palabras_clave)} palabra(s) clave y "
               f"{len(mem.tratados)} tema(s) ya tratado(s)", flush=True)
     print("  Planificando la nota...", flush=True)
-    estructura = redaccion.persona(persona)["estructura"]
+    estructura = redaccion.persona(persona, piezas=prompts["piezas"])["estructura"]
     plan_nota = plan.planificar(
         noticias, _pedido(categorias, tema, indicaciones), estructura,
         publicadas=mem.titulos, angulos=mem.angulos, palabras_clave=mem.palabras_clave, tratados=mem.tratados,
@@ -640,7 +646,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print(f"  Plan: {plan_nota['titulo']}", flush=True)
 
     system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo,
-                                  prohibidos)
+                                  prohibidos, piezas=prompts["piezas"], idioma=idioma)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
                                   cal.aciertos, propios, blog, indicaciones, archivo)
 
@@ -754,7 +760,17 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "enlaces_quitados": mejor.enlaces_quitados,
         "calibracion_usada": cal.como_dict(),
         # Con qué prompts se escribió: los actuales o la copia de la IA (Prompts con IA compara los dos).
-        "prompts_juego": _prompts_juego(),
+        "prompts_juego": prompts["juego"],
+        "prompts_huella": prompts["huella"],
+        "prompts_prueba": {
+            "user": user_msg, "contexto": _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),
+            "reglas": cal.reglas,
+            "opciones": {"categorias": categorias,
+                         "clientes": [{k: c[k] for k in ("nombre", "descripcion", "productos") if k in c}
+                                      for c in clientes_docs], "puntapie_url": puntapie_url,
+                         "persona": persona, "regiones": regiones, "largo": largo,
+                         "prohibidos": [{"nombre": c.get("nombre", "")} for c in prohibidos], "idioma": idioma},
+        },
         "largo": largo,
         "proveedor": llm.proveedor_activo(),
         "correcciones_usadas": cal.reglas,
@@ -801,12 +817,14 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             if veredicto:
                 f["imagen_apta"], f["imagen_motivo"] = veredicto["apta"], veredicto["motivo"]
                 f["imagen_personas"] = veredicto.get("personas", False)
+                if "portada" in veredicto:
+                    f["imagen_portada"] = veredicto["portada"]
         return f
     doc["fuentes"] = [_fuente(n) for n in noticias]
     # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.
     print("  Juzgando la nota (editor crítico)...", flush=True)
     doc["juicio"] = juez.juzgar(articulo, _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),
-                                cal.reglas)
+                                cal.reglas, piezas=prompts["referencia"])
     if doc["juicio"].get("error"):
         print(f"  [AVISO] {doc['juicio']['error']}", flush=True)
     else:
@@ -814,7 +832,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
               f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
     # Corrector de estilo: lo que la IA hizo mal al redactar, para mostrar al calificarla.
     print("  Revisando la redacción (gramática, tono y estructura)...", flush=True)
-    doc["critica"] = critica.criticar(articulo, persona, regiones, idioma)
+    doc["critica"] = critica.criticar(articulo, persona, regiones, idioma, piezas=prompts["referencia"])
     if doc["critica"].get("error"):
         print(f"  [AVISO] {doc['critica']['error']}", flush=True)
     else:
@@ -832,7 +850,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
-    meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo")}
+    meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo", "prompts_prueba")}
     return {"success": True, "contenido": articulo, "meta": meta, "id": str(nota_id) if nota_id else None}
 
 
