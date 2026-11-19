@@ -195,7 +195,7 @@ def _corridas(b, desde_largo):
 def _gasto(b, dias):
     from afterdrive.ia import consumo
 
-    hoy = datetime.datetime.now(datetime.UTC)
+    hoy = datetime.datetime.now(ZONA)   # el mes en hora de Argentina, igual que consumo.gastado_mes()
     por_dia: dict[str, float] = defaultdict(float)
     por_tarea: dict[str, float] = defaultdict(float)
     total = 0.0
