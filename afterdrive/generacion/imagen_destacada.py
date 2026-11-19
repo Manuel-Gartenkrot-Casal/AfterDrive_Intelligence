@@ -26,8 +26,13 @@ Solo si después de todo eso faltan, la nota sale con menos y el motivo queda
 para mostrarlo al revisarla.
 
 Una foto guardada que el sitio ya no sirve (404) se vuelve a buscar en la
-página de la noticia. Si la IA falla, no se agregan fotos sin evaluar: la nota
-conserva solo las que ya pasaron los criterios editoriales.
+página de la noticia. Si la IA falla, se reintenta una vez; si vuelve a fallar,
+van las primeras (sin evaluar, con aviso para revisarlas).
+
+Una nota nunca sale sin destacada mientras haya alguna foto: si ninguna cumple
+las reglas de portada, la mejor que no pide crédito pasa a portada igual; y si
+no quedó ninguna, va la primera que se pueda bajar. En los dos casos el motivo
+pide revisarla.
 """
 
 from __future__ import annotations
@@ -76,9 +81,10 @@ def _permite_portada(veredicto: dict) -> bool:
 @dataclass
 class Eleccion:
     imagenes: list[dict]                # campo `imagen` de cada una, en orden (la primera es la destacada)
-    metodo: str                         # "ia", "ia-texto", "sin-evaluar" o "ninguna"
+    metodo: str                         # "ia", "ia-texto", "sin-evaluar", "ultimo-recurso" o "ninguna"
     veredictos: dict = field(default_factory=dict)   # url -> {apta, portada, personas, motivo}
     motivo: str = ""                    # por qué no hay imagen o por qué no decidió la IA
+    portada_forzada: bool = False       # último recurso (forzar_portada): la primera va de portada igual
 
     def _no_portada(self, im: dict) -> bool:
         """El prompt no la admite de portada, o pide crédito (HubSpot no lo muestra ahí)."""
@@ -86,8 +92,10 @@ class Eleccion:
 
     @property
     def imagen(self) -> dict | None:
-        """La portada: la primera foto, si cumple las reglas vigentes y no pide crédito."""
-        return self.imagenes[0] if self.imagenes and not self._no_portada(self.imagenes[0]) else None
+        """La portada: la primera foto, si cumple las reglas vigentes y no pide crédito (o si se forzó)."""
+        if not self.imagenes:
+            return None
+        return self.imagenes[0] if self.portada_forzada or not self._no_portada(self.imagenes[0]) else None
 
     @property
     def cuerpo(self) -> list[dict]:
@@ -103,6 +111,21 @@ class Eleccion:
             self.motivo = SIN_PORTADA
         self.imagenes = self.imagenes[:cantidad]
         return self
+
+    def forzar_portada(self) -> bool:
+        """Último recurso: si ninguna cumple las reglas de portada, la mejor pasa a portada igual (primero
+        las que no piden crédito; si todas lo piden, hubspot.py pone su crédito al final del texto).
+        Una nota nunca sale sin destacada mientras tenga alguna foto."""
+        if self.imagen or not self.imagenes:
+            return False
+        im = next((i for i in self.imagenes if not i.get("atribucion")), self.imagenes[0])
+        self.veredictos[im["url"]] = {**self.veredictos.get(im["url"], {}), "portada": True}
+        self.portada_forzada = True
+        self.imagenes = [im] + [i for i in self.imagenes if i is not im]
+        aviso = "Ninguna foto cumplía las reglas de portada: va de portada la mejor que había (revisala)."
+        self.motivo = f"{self.motivo} {aviso}".strip()
+        print(f"  [AVISO] {aviso}", flush=True)
+        return True
 
     def como_dict(self) -> dict:
         return {"metodo": self.metodo, "motivo": self.motivo, "cantidad": len(self.imagenes)}
@@ -187,8 +210,9 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
     else:
         eleccion = Eleccion([], "ninguna", motivo="Ninguna noticia de la nota tiene foto.")
     eleccion.ordenar(cantidad)
-    if eleccion.metodo == "sin-evaluar":   # sin evaluador no se agregan fotos sin revisar
-        return eleccion
+    # Para el último recurso, si al final no hay ninguna foto: también las que ya están en otras notas
+    # (repetir una foto es mejor que una nota sin imagen).
+    revisadas = candidatas + [n for n in todas if n not in candidatas]
     vistas = {n.imagen["url"] for n in candidatas} | set(excluir)
     urls_nota = {n.url for n in noticias}
 
@@ -203,7 +227,8 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         pasos.append(("otras noticias del tema", de_otras_noticias))
     if respaldo is not None:
         pasos += [("bancos de imágenes", lambda r=r: respaldo(r)) for r in range(MAX_RONDAS_RESPALDO)]
-    for nombre, buscar in pasos:
+    # La IA no responde (ni reintentando): seguir buscando no sirve, ya van las primeras sin evaluar.
+    for nombre, buscar in ([] if eleccion.metodo == "sin-evaluar" else pasos):
         faltan = _faltan(eleccion, cantidad)
         if faltan <= 0:
             break
@@ -220,21 +245,48 @@ def elegir(noticias: list, titulo: str, angulo: str = "", cantidad: int = CANTID
         if not nuevas:
             continue
         vistas |= {n.imagen["url"] for n in nuevas} | {n.url for n in nuevas if n.id is None}
+        revisadas += nuevas
         que = "la portada" if solo_portada else f"{faltan} imagen(es) apta(s)"
         print(f"  Falta {que}: se busca entre {len(nuevas)} foto(s) de {nombre}.", flush=True)
         otra = _ronda(nuevas, titulo, angulo, faltan, portada=solo_portada)
-        if otra.metodo == "sin-evaluar":
-            if not eleccion.imagenes:
-                return otra
-            eleccion.veredictos.update(otra.veredictos)
-            eleccion.motivo = f"{eleccion.motivo} {otra.motivo}".strip()
-            return eleccion
+        if otra.metodo == "sin-evaluar":   # la IA dejó de responder: no se sigue buscando
+            if not eleccion.imagenes:      # sin fotos aprobadas, van estas antes que ninguna
+                eleccion = otra
+            else:                          # con aprobadas, no se mezclan fotos sin evaluar
+                eleccion.veredictos.update({u: v | {"apta": False, "portada": False}
+                                            for u, v in otra.veredictos.items()})
+                eleccion.motivo = f"{eleccion.motivo} {otra.motivo}".strip()
+            break
         eleccion = _sumar(eleccion, otra, cantidad)
+    if not eleccion.imagenes:
+        eleccion = _cualquiera_bajable(eleccion, revisadas, cantidad)
+    eleccion.forzar_portada()
     faltan = _faltan(eleccion, cantidad)
     if faltan > 0 and eleccion.imagenes:
         aviso = f"Se consiguieron {len(eleccion.imagenes)} de {cantidad} fotos: no hubo más aptas sin repetir."
         eleccion.motivo = f"{eleccion.motivo} {aviso}".strip()
         print(f"  [AVISO] {aviso}", flush=True)
+    return eleccion
+
+
+def _cualquiera_bajable(eleccion: Eleccion, revisadas: list, cantidad: int) -> Eleccion:
+    """Último recurso si después de todas las búsquedas no quedó ninguna foto: la primera que se pueda
+    bajar y no pida crédito, aunque la IA la haya descartado. Mejor una foto para cambiar al revisar
+    que una nota sin imagen."""
+    from afterdrive.generacion import contexto_noticias
+
+    bajables = [n for n in revisadas
+                if not str(eleccion.veredictos.get(n.imagen["url"], {}).get("motivo", "")).startswith("No se pudo descargar")]
+    # Primero las que no piden crédito; las otras van con su crédito al final del texto (hubspot.py).
+    bajables.sort(key=lambda n: bool(n.imagen.get("atribucion")))
+    for n in bajables[:MAX_FOTOS]:
+        if _bajables([n], [REFRESCOS], eleccion.veredictos):
+            aviso = "Ninguna foto pasó la revisión: va la primera que se pudo bajar (revisala y cambiala si no va)."
+            print(f"  [AVISO] {aviso}", flush=True)
+            eleccion.veredictos[n.imagen["url"]] = {**eleccion.veredictos.get(n.imagen["url"], {}),
+                                                    "portada": True, "motivo": aviso}
+            return Eleccion([contexto_noticias.imagen_de(n)], "ultimo-recurso", eleccion.veredictos,
+                            motivo=f"{eleccion.motivo} {aviso}".strip())
     return eleccion
 
 
@@ -321,30 +373,42 @@ def _ronda_con(enviadas: list, imagenes, titulo: str, angulo: str, cantidad: int
     con_vista = imagenes is not None
     print(f"  Eligiendo las imágenes con IA entre {len(enviadas)} foto(s)"
           f"{'' if con_vista else ' (sin verlas: por su noticia y su texto)'}...", flush=True)
-    if con_vista:
-        lista = "\n".join(f"{i}. Foto de la noticia \"{n.titulo}\"" for i, n in enumerate(enviadas, 1))
-    else:
-        lista = "\n".join(f"{i}. Noticia: \"{n.titulo}\" | texto alternativo: \"{n.imagen.get('alt', '')}\" | "
-                          f"archivo: {_archivo(n.imagen['url'])}" for i, n in enumerate(enviadas, 1))
-    pedido = f"Título de la nota: {titulo}\n" + (f"Ángulo: {angulo}\n" if angulo else "") + f"\nFotos:\n{lista}"
-    if portada:
-        pedido += ("\n\nLa nota ya tiene sus fotos del texto: solo falta la PORTADA. Elegí primero una foto "
-                   "apta que cumpla las reglas editoriales vigentes de portada.")
-    try:
+    for intento in range(2):   # un JSON roto es común y casi siempre sale bien al reintentar
+        if con_vista:
+            lista = "\n".join(f"{i}. Foto de la noticia \"{n.titulo}\"" for i, n in enumerate(enviadas, 1))
+        else:
+            lista = "\n".join(f"{i}. Noticia: \"{n.titulo}\" | texto alternativo: \"{n.imagen.get('alt', '')}\" | "
+                              f"archivo: {_archivo(n.imagen['url'])}" for i, n in enumerate(enviadas, 1))
+        pedido = f"Título de la nota: {titulo}\n" + (f"Ángulo: {angulo}\n" if angulo else "") + f"\nFotos:\n{lista}"
+        if portada:
+            pedido += ("\n\nLa nota ya tiene sus fotos del texto: solo falta la PORTADA. Elegí primero una foto "
+                       "apta que cumpla las reglas editoriales vigentes de portada.")
         system = (_SYSTEM_VISION if con_vista else _SYSTEM_TEXTO).format(
             cantidad=cantidad, criterios=redaccion.texto("imagenes"))
-        crudo = llm.completar(system, pedido,
-                              temperature=0, max_tokens=1500, tarea="clasificacion",
-                              **({"imagenes": imagenes} if con_vista else {}))
-        respuesta = _leer(crudo, len(enviadas))
-    except llm.Cancelada:
-        raise
-    except Exception as e:
-        motivo = f"No se agregaron fotos sin evaluar: la IA no pudo comprobar su relación con la nota ({e})."
-        print(f"  [AVISO] {motivo}", flush=True)
-        for n in enviadas:
-            veredictos[n.imagen["url"]] = {"apta": False, "portada": False, "motivo": motivo}
-        return Eleccion([], "sin-evaluar", veredictos, motivo=motivo)
+        try:
+            # ~150 tokens por foto (el motivo de cada una): con 10 fotos, 1500 fijos se cortaban.
+            crudo = llm.completar(system, pedido,
+                                  temperature=0, max_tokens=max(1500, 300 * len(enviadas)), tarea="clasificacion",
+                                  **({"imagenes": imagenes} if con_vista else {}))
+            respuesta = _leer(crudo, len(enviadas))
+            break
+        except llm.Cancelada:
+            raise
+        except Exception as e:
+            if not intento:
+                # Sin las imágenes: Bedrock rechaza a veces el lote entero («media inputs exceed the
+                # remaining encoded media budget») y reintentar igual fallaba igual.
+                print(f"  [AVISO] La IA no pudo juzgar las fotos ({e}): se reintenta"
+                      f"{' sin verlas, por su texto' if con_vista else ''}.", flush=True)
+                con_vista, imagenes = False, None
+                continue
+            # Antes del 16/11 iban las primeras; después, ninguna, y las notas salían sin imagen.
+            motivo = f"La IA no pudo juzgar las fotos ({e}): van las primeras sin evaluar (revisalas)."
+            print(f"  [AVISO] {motivo}", flush=True)
+            for n in enviadas:
+                veredictos[n.imagen["url"]] = {"apta": True, "portada": True, "personas": False, "motivo": motivo}
+            return Eleccion([contexto_noticias.imagen_de(n) for n in enviadas[:cantidad]], "sin-evaluar",
+                            veredictos, motivo=motivo)
 
     for i, n in enumerate(enviadas, 1):
         veredictos[n.imagen["url"]] = respuesta["fotos"].get(i, {"apta": False, "motivo": "La IA no la evaluó."})

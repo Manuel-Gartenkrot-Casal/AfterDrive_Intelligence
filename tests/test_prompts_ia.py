@@ -160,6 +160,16 @@ def test_la_mejora_automatica_corre_cada_cinco_notas_nuevas(monkeypatch, base, p
     assert prompts_ia_en_memoria["auto"] is False and prompts_ia.mejora_automatica(base=base) is None
 
 
+def test_una_pieza_que_se_infla_no_se_aplica(monkeypatch, base):
+    """Apilar reglas mejora tras mejora era lo que bajaba las notas de 8 a 6: una pieza no crece más de un 25%."""
+    inflada = redaccion.PIEZAS["formato"] + "\n" + "\n".join(f"- Regla extra número {i} para la nota." for i in range(30))
+    pedidos = _ia(monkeypatch, {"cambios": [{"clave": "formato", "contenido": inflada}]})   # la corrección también infla
+    m = prompts_ia.mejorar("Que las notas cumplan más reglas de formato", claves=["formato"], base=base)
+    assert not m["cambios"][0]["aplicado"] and any("Creció de" in e for e in m["cambios"][0]["errores"])
+    assert any("Creció de" in p[1] for p in pedidos)                    # se le pidió achicarla
+    assert not prompts_ia.pieza("formato", base=base)["cambiada"]
+
+
 def test_la_copia_se_marca_desactualizada_si_cambian_los_actuales(monkeypatch, base):
     _ia(monkeypatch, {"cambios": [{"clave": "seo", "contenido": SEO_IA}]})
     prompts_ia.mejorar("Más SEO en los subtítulos", base=base)

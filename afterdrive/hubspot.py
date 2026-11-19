@@ -389,6 +389,24 @@ def _figura(im: dict) -> str:
             + (f'<br><small style="{_ESTILO_EPIGRAFE}">{pie}</small>' if pie else "") + '</p>')
 
 
+_CREDITO_PORTADA = {"es": "Foto de portada", "pt": "Foto de capa", "en": "Cover photo"}
+
+
+def _cuerpo(html: str, nota: dict, cod: str | None = None) -> str:
+    """El cuerpo del post con sus imágenes y, si la portada pide atribución (último recurso de
+    imagen_destacada: no había otra), su crédito al final: HubSpot no lo muestra en la destacada."""
+    from html import escape
+
+    html = con_imagenes(html, imagenes_cuerpo(nota, cod))
+    portada = nota.get("imagen") or {}
+    se_usa = portada.get("hubspot_url") or (portada.get("url") and not _sin_link_usable(portada))   # como _imagen()
+    if se_usa and portada.get("atribucion") and portada.get("credito"):
+        credito = portada["credito"].removeprefix("Foto: ")
+        etiqueta = _CREDITO_PORTADA.get(cod or idioma(nota), _CREDITO_PORTADA["es"])
+        html += f'<p><small style="{_ESTILO_EPIGRAFE}">{etiqueta}: {escape(credito)}</small></p>'
+    return html
+
+
 def con_imagenes(html: str, imagenes: list[dict]) -> str:
     """Reparte las imágenes entre las secciones del cuerpo: antes de los subtítulos a 1/3 y 2/3 de la nota.
 
@@ -462,7 +480,7 @@ def vista_previa(nota: dict) -> dict:
         lugar = destino(nota)
     except ErrorHubSpot as e:
         lugar = {"error": str(e), "etiquetas": []}
-    partes["html"] = con_imagenes(partes["html"], imagenes_cuerpo(nota))
+    partes["html"] = _cuerpo(partes["html"], nota)
     return {
         **partes,
         "imagen": _imagen(nota, partes["titulo"]),
@@ -485,7 +503,7 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
     cuerpo = {
         "name": partes["titulo"],
         "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": _cuerpo(partes["html"], nota),
         "metaDescription": partes["meta"],
         "state": "PUBLISHED" if publicar else "DRAFT",
     }
@@ -572,7 +590,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
     cuerpo = {
         "name": partes["titulo"], "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota, cod)),
+        "postBody": _cuerpo(partes["html"], nota, cod),
         "metaDescription": partes["meta"], "state": "DRAFT",
     }
     imagen = _imagen(nota, partes["titulo"])

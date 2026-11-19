@@ -631,7 +631,7 @@ def test_el_script_sale_bien_si_la_nota_se_genero(monkeypatch):
 
 
 @pytest.mark.parametrize("evaluada", [True, False])
-def test_la_imagen_destacada_solo_se_guarda_si_una_foto_usada_fue_evaluada(entorno, monkeypatch, evaluada):
+def test_la_nota_siempre_guarda_destacada_aunque_la_ia_no_evalue_las_fotos(entorno, monkeypatch, evaluada):
     _, col, _ = entorno
     noticias = [
         Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió en su planta de Caxias.", url="https://n/1",
@@ -655,9 +655,10 @@ def test_la_imagen_destacada_solo_se_guarda_si_una_foto_usada_fue_evaluada(entor
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
     if not evaluada:
-        assert "imagen" not in guardada and not guardada.get("imagenes_cuerpo")
+        # Antes del arreglo la nota salía sin imagen: ahora van las primeras, con aviso para revisarlas.
+        assert guardada["imagen"]["url"] == "https://n/1.jpg"
         assert guardada["imagen_eleccion"]["metodo"] == "sin-evaluar"
-        assert "No se agregaron fotos sin evaluar" in guardada["imagen_eleccion"]["motivo"]
+        assert "revisalas" in guardada["imagen_eleccion"]["motivo"]
         return
     # La 1 la asigna el plan a una sección y pasa la evaluación de imágenes.
     assert guardada["imagen"] == {"url": "https://n/1.jpg", "alt": "El catálogo digital llega al mostrador",

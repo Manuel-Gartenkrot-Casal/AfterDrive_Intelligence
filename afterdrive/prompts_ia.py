@@ -61,6 +61,8 @@ PEDIDO_MAX = 1500
 EJEMPLOS_POR_TIPO = 4
 CAMBIOS_MAX = len(pe.CLAVES)  # piezas que puede reescribir una mejora (todas)
 MEJORAS_A_LA_VISTA = 8
+CRECIMIENTO_MAX = 1.25  # una pieza puede crecer hasta un 25% por mejora...
+CRECIMIENTO_MIN = 150   # ...o 150 caracteres, lo que sea más (las piezas cortas necesitan margen)
 
 ASPECTOS = {"gramatica": "Gramática", "ortografia": "Ortografía", "redaccion": "Redacción", "tono": "Tono",
             "estructura": "Estructura"}
@@ -426,7 +428,7 @@ def analizar(limite: int = NOTAS_ANALISIS, base=None) -> dict:
         user = (f"## Calificaciones de las últimas {est['notas']} notas\n{json.dumps(est, ensure_ascii=False)}\n\n"
                 f"## Piezas vigentes\n{_piezas_texto({k: {'contenido': v} for k, v in instantanea(base)['piezas'].items()}, base)}")
         try:
-            data = _pedir_json(_SYSTEM_ANALISIS, user, 2500, "evaluacion")
+            data = _pedir_json(_SYSTEM_ANALISIS, user, 4000, "evaluacion")   # con 2500 la API paga lo cortaba
             doc["diagnostico"] = _diagnostico(data)
         except llm.Cancelada:
             raise
@@ -471,10 +473,23 @@ funciona, el formato de cada pieza (títulos ##, listas) y las llaves como {exte
 persona mantené el rol arriba y las secciones ## Tu tarea, ## Estructura (lista numerada) y ## Estilo. No
 inventes datos de Alephee: lo que se puede afirmar está en el enfoque Alephee.
 Cada pieza admite hasta 4000 caracteres (identidad: 600). No copies "Uso:" ni las etiquetas <pieza> al contenido.
+No apiles reglas: un prompt con demasiadas reglas escribe peor. Si una regla nueva se superpone con otra,
+fusionalas o reemplazala. Cada pieza puede crecer como mucho un 25% por cambio (achicarla está bien).
 
 Respondé SOLO un JSON válido: en "contenido", escapá las comillas dobles (\\") y los saltos de línea (\\n).
 {"comentario": "una oración sobre qué cambiaste",
  "cambios": [{"clave": "clave de la pieza", "explicacion": "qué cambiaste y por qué", "contenido": "la pieza completa nueva"}]}"""
+
+
+def _validar(clave: str, antes: str, despues: str) -> dict:
+    """La validación de la pieza y, además, que no se infle: apilar reglas mejora tras mejora bajaba las notas
+    de 8 a 6 (las piezas pasaron de ~400-1000 a ~3900 caracteres)."""
+    v = pe.validar(clave, despues)
+    tope = max(int(len(antes) * CRECIMIENTO_MAX), len(antes) + CRECIMIENTO_MIN)
+    if len(despues) > tope:
+        v["errores"].append(f"Creció de {len(antes)} a {len(despues)} caracteres: el máximo es {tope}. "
+                            "Fusioná o reemplazá reglas en vez de agregarlas.")
+    return v
 
 
 def _pedido_del_diagnostico(diagnostico: dict) -> str:
@@ -521,7 +536,7 @@ def _leer_propuesta(data, claves: list[str], docs: dict, base=None) -> tuple[lis
         antes = _texto_copia(clave, docs, base)
         if not despues or despues == antes.strip():
             continue
-        v = pe.validar(clave, despues)
+        v = _validar(clave, antes, despues)
         cambios.append({"clave": clave, "titulo": pe._titulo(clave), "antes": antes, "despues": despues,
                         "explicacion": str(c.get("explicacion") or "").strip()[:600],
                         "errores": v["errores"], "avisos": v["avisos"]})
@@ -560,7 +575,7 @@ def _reparar(cambios: list[dict], pedido: str) -> None:
     for c in rotos:
         texto = nuevos.get(c["clave"])
         if texto:
-            v = pe.validar(c["clave"], texto)
+            v = _validar(c["clave"], c["antes"], texto)
             if not v["errores"]:
                 c.update(despues=texto, errores=[], avisos=v["avisos"])
 

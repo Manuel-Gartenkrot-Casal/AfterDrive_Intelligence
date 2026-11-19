@@ -22,7 +22,8 @@ Bancos, en orden:
 - Wikimedia Commons (siempre, sin clave): solo licencias que permiten uso
   comercial (dominio público, CC0, CC BY y CC BY-SA). Las CC BY/BY-SA piden
   atribución: llevan `credito` y `atribucion: True`, van con su crédito dentro
-  del texto y nunca de portada (HubSpot no muestra crédito en la destacada).
+  del texto y de portada solo como último recurso (HubSpot no muestra crédito en
+  la destacada: hubspot.py lo agrega al final del texto).
 
 Las búsquedas son en inglés (los bancos tienen mucho más material así): la IA
 las arma con el título de la nota y, si falla, se usan búsquedas del sector.
