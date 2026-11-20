@@ -124,12 +124,17 @@ def juzgar(nota: str, noticias_texto: str, reglas=(), *, piezas=None, estricto=F
                 "\n".join(f"- {r}" for r in reglas) + "\n\n"
     user += _checklist_alephee(piezas) + "\n\n"
     user += f"## Noticias de contexto\n{(noticias_texto or '')[:NOTICIAS_MAX]}\n\n## Nota a juzgar\n{nota}"
-    try:
-        data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=1000, tarea="evaluacion"))
-    except llm.Cancelada:
-        raise
-    except Exception as e:
-        return {"error": f"No se pudo juzgar la nota: {e}"}
+    # 2500 y un reintento: el razonamiento cuenta en la salida y con 1000 la respuesta se cortaba sin JSON
+    # (20/11: cortaba la comparación de Prompt IA y dejaba notas sin juicio).
+    for intento in range(2):
+        try:
+            data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=2500, tarea="evaluacion"))
+            break
+        except llm.Cancelada:
+            raise
+        except Exception as e:
+            if intento:
+                return {"error": f"No se pudo juzgar la nota: {e}"}
     if estricto:
         score = data.get("calificacion")
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 5:

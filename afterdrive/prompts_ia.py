@@ -61,8 +61,10 @@ PEDIDO_MAX = 1500
 EJEMPLOS_POR_TIPO = 4
 CAMBIOS_MAX = len(pe.CLAVES)  # piezas que puede reescribir una mejora (todas)
 MEJORAS_A_LA_VISTA = 8
-CRECIMIENTO_MAX = 1.5   # una pieza de la copia puede llegar a 1,5 veces su largo aprobado...
-CRECIMIENTO_MIN = 400   # ...o 400 caracteres más, lo que sea más (las piezas cortas necesitan margen)
+# Solo frena el inflado descontrolado (Formato llegó a 11 veces su largo): si un cambio empeora las notas
+# lo frena la comparación (prompts_evaluacion). Con 1,5x / +400 el modelo se pasaba siempre por poco.
+CRECIMIENTO_MAX = 2.0   # una pieza de la copia puede llegar al doble de su largo aprobado...
+CRECIMIENTO_MIN = 800   # ...o 800 caracteres más, lo que sea más (las piezas cortas necesitan margen)
 
 ASPECTOS = {"gramatica": "Gramática", "ortografia": "Ortografía", "redaccion": "Redacción", "tono": "Tono",
             "estructura": "Estructura"}
@@ -474,12 +476,20 @@ persona mantené el rol arriba y las secciones ## Tu tarea, ## Estructura (lista
 inventes datos de Alephee: lo que se puede afirmar está en el enfoque Alephee.
 Cada pieza admite hasta 4000 caracteres (identidad: 600). No copies "Uso:" ni las etiquetas <pieza> al contenido.
 No apiles reglas: un prompt con demasiadas reglas escribe peor. Si una regla nueva se superpone con otra,
-fusionalas o reemplazala. Una pieza puede llegar como mucho a 1,5 veces el largo de la aprobada (o 400
+fusionalas o reemplazala. Una pieza puede llegar como mucho al doble del largo de la aprobada (o 800
 caracteres más); achicarla siempre está bien.
 
 Respondé SOLO un JSON válido: en "contenido", escapá las comillas dobles (\\") y los saltos de línea (\\n).
 {"comentario": "una oración sobre qué cambiaste",
  "cambios": [{"clave": "clave de la pieza", "explicacion": "qué cambiaste y por qué", "contenido": "la pieza completa nueva"}]}"""
+
+
+def _limpiar(texto: str) -> str:
+    """El contenido de una pieza tal como lo devolvió la IA, sin lo que copia del pedido aunque se le diga
+    que no: la línea «Uso: ...» de arriba y las etiquetas <pieza>. El 20/11 la «Uso:» delante de «## Formato»
+    hizo fallar la validación y se rechazó la propuesta entera."""
+    texto = re.sub(r"</?pieza\b[^>]*>", "", str(texto or "").replace("\r\n", "\n")).strip()
+    return re.sub(r"\AUso:[^\n]*\n+", "", texto).strip()
 
 
 def _tope(antes: str, aprobada: str) -> int:
@@ -494,9 +504,12 @@ def _validar(clave: str, despues: str, tope: int) -> dict:
     de 8 a 6 (las piezas pasaron de ~400-1000 a ~3900 caracteres)."""
     v = pe.validar(clave, despues)
     if len(despues) > tope:
-        v["errores"].append(f"Quedó de {len(despues)} caracteres y el máximo es {tope}. "
+        v["errores"].append(f"{_INFLADA}{len(despues)} caracteres y el máximo es {tope}. "
                             "Fusioná o reemplazá reglas en vez de agregarlas.")
     return v
+
+
+_INFLADA = "Quedó de "   # comienzo del error de largo (mejorar() distingue ese error de los de formato)
 
 
 def _pedido_del_diagnostico(diagnostico: dict) -> str:
@@ -539,7 +552,7 @@ def _leer_propuesta(data, claves: list[str], docs: dict, base=None) -> tuple[lis
         if (not isinstance(clave, str) or clave not in pe.CLAVES or (claves and clave not in claves)
                 or any(x["clave"] == clave for x in cambios) or not isinstance(c.get("contenido"), str)):
             continue
-        despues = str(c.get("contenido") or "").replace("\r\n", "\n").strip()
+        despues = _limpiar(c.get("contenido"))
         antes = _texto_copia(clave, docs, base)
         if not despues or despues == antes.strip():
             continue
@@ -577,7 +590,7 @@ def _reparar(cambios: list[dict], pedido: str) -> None:
         print(f"[PROMPTS IA] [AVISO] No se pudieron corregir: {e}", flush=True)
         return
     propuestas = data.get("cambios") if isinstance(data, dict) else None
-    nuevos = {c["clave"]: c["contenido"].replace("\r\n", "\n").strip()
+    nuevos = {c["clave"]: _limpiar(c["contenido"])
               for c in (propuestas if isinstance(propuestas, list) else [])
               if isinstance(c, dict) and isinstance(c.get("clave"), str) and isinstance(c.get("contenido"), str)}
     for c in rotos:
@@ -677,13 +690,22 @@ def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base
             c["aplicado"] = False
             if c["despues"].strip() == c["antes"].strip():
                 c["errores"].append("La reparación devolvió el texto anterior.")
+        # Sin pedido, una pieza que solo se pasó de largo queda afuera y las demás siguen: el 20/11 la IA
+        # inflaba «Formato» aunque se le pidiera achicarla, y eso tumbaba la propuesta entera una y otra vez.
+        # Con pedido no: el usuario pidió todo junto (no se aplica un subconjunto).
+        infladas = [] if pedido else [c for c in cambios
+                                      if c["errores"] and all(e.startswith(_INFLADA) for e in c["errores"])]
+        evaluables = [c for c in cambios if c not in infladas]
+        if infladas:
+            mejora["avisos"] = [f"{c['titulo']} quedó afuera: {c['errores'][0]}" for c in infladas]
+            print(f"[PROMPTS IA] [AVISO] {' '.join(mejora['avisos'])}", flush=True)
         if not cambios:
             mejora["error"] = mejora.get("error") or "La IA no propuso cambios. " + comentario
-        elif any(c["errores"] for c in cambios):
+        elif not evaluables or any(c["errores"] for c in evaluables):
             detalle = " ".join(f"{c['titulo']}: {c['errores'][0]}" for c in cambios if c["errores"])
             mejora["error"] = f"La propuesta está incompleta o es inválida. No se aplicó ninguna pieza. {detalle}"
         else:
-            candidata = inicial | {c["clave"]: c["despues"] for c in cambios}
+            candidata = inicial | {c["clave"]: c["despues"] for c in evaluables}
             evaluacion = prueba.comparar(inicial, candidata, referencia, b, automatico=not bool(pedido))
             mejora["evaluacion"] = evaluacion
             llm.verificar_cancelacion()
@@ -695,7 +717,7 @@ def mejorar(pedido: str | None = None, claves=None, origen: str = "manual", base
             else:
                 # Restaurar piezas heredadas sin validar, sin perder su historial.
                 for clave, anterior in textos("ia", base).items():
-                    if clave not in {c["clave"] for c in cambios} and anterior != candidata[clave]:
+                    if clave not in {c["clave"] for c in evaluables} and anterior != candidata[clave]:
                         cambios.append({"clave": clave, "titulo": pe._titulo(clave), "antes": anterior,
                                         "despues": candidata[clave], "errores": [], "avisos": [],
                                         "explicacion": "Se recupera la base aprobada: esta pieza no tenía una prueba vigente."})

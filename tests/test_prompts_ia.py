@@ -171,12 +171,34 @@ def test_una_pieza_que_se_infla_no_se_aplica(monkeypatch, base):
     assert not prompts_ia.pieza("formato", base=base)["cambiada"]
 
 
+def test_la_linea_uso_que_copia_la_ia_se_quita_y_la_pieza_se_aplica(monkeypatch, base):
+    """El 20/11 la IA puso «Uso: ...» delante de «## Formato»: no pasaba la validación y no se aplicaba nada."""
+    copiada = "Uso: Markdown, títulos y extensión.\n" + FORMATO_IA
+    _ia(monkeypatch, {"cambios": [{"clave": "formato", "contenido": f"<pieza clave=\"formato\">\n{copiada}\n</pieza>"}]})
+    m = prompts_ia.mejorar("Una sola llamada a la acción por nota", claves=["formato"], base=base)
+    assert m["cambios"][0]["aplicado"] and m["cambios"][0]["despues"] == FORMATO_IA and not m.get("error")
+
+
+def test_sin_pedido_una_pieza_inflada_queda_afuera_y_las_demas_se_aplican(monkeypatch, base):
+    """El 20/11 la IA inflaba «Formato» una y otra vez y la propuesta entera se rechazaba."""
+    base.notas_fase2.insert_many([_nota(7, 4), _nota(8, 3)])
+    inflada = redaccion.PIEZAS["formato"] + "\n" + "\n".join(f"- Regla extra número {i}." for i in range(40))
+    _ia(monkeypatch, DIAGNOSTICO, {"cambios": [{"clave": "seo", "contenido": SEO_IA},
+                                               {"clave": "formato", "contenido": inflada}]})
+    m = prompts_ia.mejorar(base=base)
+    assert not m.get("error") and [(c["clave"], c["aplicado"]) for c in m["cambios"][:2]] == [
+        ("seo", True), ("formato", False)]
+    assert m["avisos"][0].startswith("Formato quedó afuera") and prompts_ia.pieza("seo", base=base)["ia"] == SEO_IA
+    assert prompts_ia.estado(base)["validada"]                           # la copia queda validada y se puede usar
+
+
 def test_el_tope_se_mide_contra_la_aprobada_y_achicar_siempre_vale():
     """Una pieza corta se puede cambiar (el 20/11 «Formato» de 354 a 623 se rechazaba) y una ya inflada
     puede bajar de a poco, pero no seguir creciendo."""
     corta = "x" * 354
-    assert prompts_ia._tope(corta, corta) == 754
-    assert not prompts_ia._validar("formato", "## Formato\n- {extension}\n" + "y" * 590, 754)["errores"]
+    assert prompts_ia._tope(corta, corta) == 1154                       # 841 caracteres (20/11) ahora entra
+    assert not prompts_ia._validar("formato", "## Formato\n- {extension}\n" + "y" * 800, 1154)["errores"]
+    assert prompts_ia._tope("x" * 3876, corta) == 3876                  # la que llegó a 11x no crece más
     inflada = "x" * 2165
     assert prompts_ia._tope(inflada, corta) == 2165                     # no crece más, pero puede achicarse
     assert prompts_ia._validar("formato", "## Formato\n- {extension}\n" + "y" * 2200, 2165)["errores"]

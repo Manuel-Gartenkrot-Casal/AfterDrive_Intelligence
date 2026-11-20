@@ -51,6 +51,15 @@ def test_juicio_roto_queda_con_error(monkeypatch, texto):
     assert "error" in juez.juzgar(NOTA, "")
 
 
+def test_una_respuesta_cortada_se_reintenta_con_margen(monkeypatch):
+    """El 20/11 el razonamiento llenaba los 1000 tokens y el juicio venía sin JSON."""
+    respuestas, limites = ["", json.dumps({"pasa": True, "confianza": 0.8, "calificacion": 4})], []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    monkeypatch.setattr(llm, "completar", lambda s, u, **k: limites.append(k["max_tokens"]) or respuestas.pop(0))
+    j = juez.juzgar("nota", "noticias", estricto=True)
+    assert "error" not in j and j["calificacion"] == 4 and limites == [2500, 2500]
+
+
 def test_sin_proveedor_no_juzga(monkeypatch):
     monkeypatch.setattr(llm, "disponible", lambda: False)
     assert "error" in juez.juzgar(NOTA, "")

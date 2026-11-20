@@ -86,7 +86,9 @@ def _numero(valor, default: int | None) -> int | None:
         return default
     try:
         numero = float(valor)
-        return int(numero) if 1 <= numero <= 10 and numero.is_integer() else default
+        # Un 7,5 se redondea: antes se descartaba y el aspecto quedaba sin evaluar (la comparación de
+        # Prompt IA se cortaba con «La crítica no evaluó todos los aspectos»).
+        return int(numero + 0.5) if 1 <= numero <= 10 else default
     except (TypeError, ValueError, OverflowError):
         return default
 
@@ -117,7 +119,7 @@ def _leer(texto: str) -> dict:
 
 def _pedir(user: str) -> tuple[dict | None, str]:
     """Hasta INTENTOS llamadas: (datos con puntaje, "") o (None, motivo del último fallo)."""
-    motivo = ""
+    motivo, incompleta = "", None
     for _ in range(INTENTOS):
         try:
             data = _leer(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=MAX_TOKENS, tarea="evaluacion"))
@@ -127,9 +129,13 @@ def _pedir(user: str) -> tuple[dict | None, str]:
             motivo = f"No se pudo criticar la nota: {e}"
             continue
         if isinstance(data, dict) and _numero(data.get("puntaje"), None) is not None:
-            return data, ""
+            aspectos = data.get("aspectos") if isinstance(data.get("aspectos"), dict) else {}
+            if all(_numero(aspectos.get(k), None) is not None for k in ASPECTOS):
+                return data, ""
+            incompleta = data   # tiene puntaje pero le falta algún aspecto: se reintenta, y si no, se usa esta
+            continue
         motivo = "La IA no dio un puntaje para la redacción."
-    return None, motivo
+    return (incompleta, "") if incompleta else (None, motivo)
 
 
 def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str | None = None, *, piezas=None) -> dict:
