@@ -165,9 +165,21 @@ def test_una_pieza_que_se_infla_no_se_aplica(monkeypatch, base):
     inflada = redaccion.PIEZAS["formato"] + "\n" + "\n".join(f"- Regla extra número {i} para la nota." for i in range(30))
     pedidos = _ia(monkeypatch, {"cambios": [{"clave": "formato", "contenido": inflada}]})   # la corrección también infla
     m = prompts_ia.mejorar("Que las notas cumplan más reglas de formato", claves=["formato"], base=base)
-    assert not m["cambios"][0]["aplicado"] and any("Creció de" in e for e in m["cambios"][0]["errores"])
-    assert any("Creció de" in p[1] for p in pedidos)                    # se le pidió achicarla
+    assert not m["cambios"][0]["aplicado"] and any("el máximo es" in e for e in m["cambios"][0]["errores"])
+    assert any("el máximo es" in p[1] for p in pedidos)                 # se le pidió achicarla
+    assert "Formato: Quedó de" in m["error"]                             # el aviso dice qué pieza y por qué
     assert not prompts_ia.pieza("formato", base=base)["cambiada"]
+
+
+def test_el_tope_se_mide_contra_la_aprobada_y_achicar_siempre_vale():
+    """Una pieza corta se puede cambiar (el 20/11 «Formato» de 354 a 623 se rechazaba) y una ya inflada
+    puede bajar de a poco, pero no seguir creciendo."""
+    corta = "x" * 354
+    assert prompts_ia._tope(corta, corta) == 754
+    assert not prompts_ia._validar("formato", "## Formato\n- {extension}\n" + "y" * 590, 754)["errores"]
+    inflada = "x" * 2165
+    assert prompts_ia._tope(inflada, corta) == 2165                     # no crece más, pero puede achicarse
+    assert prompts_ia._validar("formato", "## Formato\n- {extension}\n" + "y" * 2200, 2165)["errores"]
 
 
 def test_la_copia_se_marca_desactualizada_si_cambian_los_actuales(monkeypatch, base):
