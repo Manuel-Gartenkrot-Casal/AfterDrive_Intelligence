@@ -243,6 +243,13 @@ _SALIDA = """\
 Respondé solo con la nota terminada, empezando por el título. No escribas tu plan, notas, \
 explicaciones ni comentarios antes o después."""
 
+# Va al final de "Para esta nota" (generacion/filtros.py, filtro "datos sensibles"): después se revisa el texto.
+_PRIVACIDAD = """\
+## Privacidad
+- No escribas datos personales ni sensibles de nadie: emails, teléfonos, documentos (DNI, CUIT, CPF, CNPJ), \
+tarjetas, cuentas bancarias, claves ni montos de contratos de clientes.
+- Si una noticia o un dato del pedido los trae, contá el hecho sin ellos."""
+
 
 # ── Personas ──────────────────────────────────────────────────────────────────
 
@@ -420,6 +427,7 @@ PIEZAS = {
     "formato": _FORMATO,
     "seo": _SEO,
     "salida": _SALIDA,
+    "privacidad": _PRIVACIDAD,
     "imagenes": _IMAGENES,
     **{f"persona_{slug}": persona_a_markdown(p) for slug, p in PERSONAS.items()},
 }

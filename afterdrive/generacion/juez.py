@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 
 from afterdrive.calibracion import ETIQUETAS
+from afterdrive.generacion import filtros
 from afterdrive.ia import llm
 from afterdrive.ia.lm_studio import _extraer_json
 
@@ -167,8 +168,7 @@ def filtro_duro(doc: dict, umbral: int | None = None) -> list[str]:
         motivos.append(f"problemas graves de estilo o SEO: {graves[0]}")
     if doc.get("parecida_a"):
         motivos.append("se parece a una nota reciente")
-    if doc.get("empresas_prohibidas"):
-        motivos.append(f"nombra empresas que no se pueden mencionar: {', '.join(doc['empresas_prohibidas'][:3])}")
+    motivos += filtros.motivos(doc)   # los filtros de la redacción que frenan (generacion/filtros.py)
     if not doc.get("imagen"):
         motivos.append("no tiene imagen destacada")
     minimo = umbral if umbral is not None else UMBRAL_DEFAULT

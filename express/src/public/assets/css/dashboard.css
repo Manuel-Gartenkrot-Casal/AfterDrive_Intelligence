@@ -3766,3 +3766,29 @@ html[data-modo="cliente"] .terminal { display: none !important; }
   [data-modo="cliente"] .ayuda-menu .ayuda-dev { display: flex; }
   [data-modo="dev"] .ayuda-menu .ayuda-cliente { display: flex; }
 }
+
+/* ── Carpetas de clientes (carpetas.js): la tarjeta de Fuentes, pero crece con su contenido ── */
+.carpetas-seccion { padding: var(--s6); margin-bottom: var(--s7); border-radius: var(--r-lg); box-shadow: var(--raised); }
+.carpetas-seccion .fuentes-cols { gap: 20px; }
+.carpetas-seccion .fuentes-lista { max-height: none; padding: 0; border: 0; border-radius: 0; background: var(--bg); box-shadow: none; }
+.carpetas-seccion .fuente-fila { padding: 12px 0; gap: 10px; }
+.carpetas-seccion .fuente-url { font-size: 0.85rem; }
+.carpetas-barra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; margin-bottom: 20px; }
+.carpetas-barra > * { flex: 1 1 260px; min-width: 0; }
+.carpetas-barra .select-field { width: 100%; }
+.carpetas-barra .control-label { display: block; margin-bottom: 8px; }
+.carpetas-nueva .input-row .input-field { flex: 1 1 auto; }
+.carpetas-paneles { margin: 0; padding: 0; border: 0; min-width: 0; }
+.carpetas-paneles:disabled .carpeta-form { opacity: 0.5; }
+.carpeta-form { display: flex; flex-direction: column; gap: 8px; }
+.carpeta-form .control-label { margin: 4px 0 0; }
+.carpeta-form textarea { resize: vertical; font: inherit; }
+.carpeta-form .btn { align-self: flex-start; margin-top: 4px; }
+.carpeta-dos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.carpeta-dos .input-field { width: 100%; }
+.carpeta-fila { align-items: flex-start; }
+.carpeta-texto { margin: 4px 0 0; font-size: 0.82rem; line-height: 1.5; color: var(--text-mid); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .carpetas-seccion { padding: 16px; }
+  .carpetas-seccion .fuentes-cols, .carpeta-dos { grid-template-columns: minmax(0, 1fr); }
+}

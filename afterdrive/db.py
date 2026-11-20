@@ -56,6 +56,8 @@ col_afterdrive = db["afterdrive"]
 col_afterdrive_ejemplos = db["afterdrive_ejemplos"]  # Notas reales scrapeadas del blog
 col_notas_fase2 = db["notas_fase2"]                  # Notas generadas por Fase 2
 col_clientes = db["clientes"]                        # Clientes para mencionar en notas
+# Carpeta de cada cliente: datos y eventos que sube el equipo (carpetas.py).
+col_carpetas = db["carpetas_clientes"]
 
 # Notas que el modelo llegó a escribir pero se descartaron (el saneo las
 # rechazó). Antes solo se imprimían en la consola y se perdían.
@@ -96,6 +98,7 @@ INDICES = {
     "afterdrive_ejemplos": [[("tag_slug", 1)]],
     "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],
     "prompts": [[("clave", 1), ("estado", 1)], [("clave", 1), ("version", -1)]],
+    "carpetas_clientes": [[("cliente_slug", 1), ("tipo", 1)]],
 }
 
 

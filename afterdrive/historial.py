@@ -338,10 +338,10 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
         # La versión que escribió el modelo, una sola vez: de la diferencia con la
         # editada salen las lecciones de calibracion.lecciones_de_ediciones.
         cambios["contenido_original"] = doc["contenido"]
-    # El aviso de empresas que no se nombran se recalcula con el texto nuevo (la edición pudo sacarlas o sumarlas).
-    from afterdrive import clientes
-    cambios["empresas_prohibidas"] = clientes.nombrados(_sin_fuentes(contenido),
-                                                        clientes.no_mencionar(_base(base)["clientes"]))
+    # Lo que marcan los filtros (empresas que no se nombran, datos sensibles…) se recalcula con el texto nuevo:
+    # la edición pudo sacarlo o sumarlo.
+    from afterdrive.generacion import filtros
+    cambios.update(filtros.revisar(_sin_fuentes(contenido), filtros.contexto(_base(base)["clientes"])))
     col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
 

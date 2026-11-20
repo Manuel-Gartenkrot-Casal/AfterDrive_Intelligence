@@ -9,7 +9,7 @@
    otra sección; el logo también lleva a Inicio.
    Antes de salir se consultan los guardianes (cambios sin guardar).
    ═══════════════════════════════════════════════════════════════════════ */
-var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'prompts', 'corridas'];
+var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'clientes', 'prompts', 'corridas'];
 var _seccion = null;
 var _guardianes = [];
 
@@ -201,7 +201,7 @@ document.addEventListener('keydown', function(e) {
    queda como siempre.
    ═══════════════════════════════════════════════════════════════════════ */
 var NOMBRE_SECCION = { inicio: 'Inicio', crear: 'Nueva nota', historial: 'Notas', programacion: 'Programación',
-                       fuentes: 'Fuentes', prompts: 'Prompts', corridas: 'Actividad' };
+                       fuentes: 'Fuentes', clientes: 'Clientes', prompts: 'Prompts', corridas: 'Actividad' };
 var _escritorio = window.matchMedia('(min-width: 901px)');
 
 function pintarMiga(id) {

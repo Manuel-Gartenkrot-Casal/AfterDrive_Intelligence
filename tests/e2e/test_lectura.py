@@ -171,7 +171,7 @@ def test_marco_de_la_vista_cliente_y_buscador(pagina):
     assert pagina.locator(".sidebar").bounding_box()["width"] <= 57
     # Las secciones en el orden de siempre.
     orden = pagina.evaluate("[...document.querySelectorAll('.nav-link')].map(a => a.dataset.seccion)")
-    assert orden == ["inicio", "crear", "historial", "programacion", "fuentes", "prompts", "corridas"]
+    assert orden == ["inicio", "crear", "historial", "programacion", "fuentes", "clientes", "prompts", "corridas"]
     ys = [pagina.locator(f'.nav-link[data-seccion="{s}"]').bounding_box()["y"] for s in orden]
     assert ys == sorted(ys)
     # La barra se despliega con los nombres y se recuerda al volver a entrar.

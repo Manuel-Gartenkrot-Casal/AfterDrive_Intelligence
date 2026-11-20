@@ -8,7 +8,7 @@
    para cerrar. */
 
 var SECCIONES_BUSCADOR = [['inicio', 'Inicio'], ['historial', 'Notas'], ['crear', 'Nueva nota'], ['programacion', 'Programación'],
-                          ['fuentes', 'Fuentes'], ['prompts', 'Prompts'], ['corridas', 'Actividad']];
+                          ['fuentes', 'Fuentes'], ['clientes', 'Clientes'], ['prompts', 'Prompts'], ['corridas', 'Actividad']];
 var _bus = { items: [], i: 0, timer: null, pedido: 0 };
 
 function abrirBuscador() {

@@ -19,7 +19,7 @@ from tests.e2e.conftest import abrir, elegir_idioma, pasar_a_dev
 
 pytestmark = pytest.mark.e2e
 
-SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "prompts", "corridas"]
+SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "clientes", "prompts", "corridas"]
 
 
 def _visible(pg, seccion):
@@ -1133,3 +1133,37 @@ def test_propuesta_que_baja_de_ocho_a_seis_muestra_comparacion_y_no_se_activa(pa
     expect(pagina.locator("#pia-pedido")).to_have_value(pedido)
     expect(pagina.locator("#pia-usar")).to_be_disabled()
     expect(pagina.locator("#pia-uso-estado")).to_contain_text("Sin usar")
+
+
+def test_carpeta_de_cliente_guarda_datos_y_eventos(pagina):
+    pagina.click('.sidebar a[data-seccion="clientes"]')
+    expect(pagina.locator("#dato-titulo")).to_be_disabled()   # sin cliente elegido no se carga nada
+    pagina.locator('#carpeta-cliente option[value="acme"]').wait_for(state="attached")
+    pagina.select_option("#carpeta-cliente", "acme")
+    expect(pagina.locator("#dato-titulo")).to_be_enabled()
+
+    pagina.fill("#dato-titulo", "Contacto comercial")
+    pagina.fill("#dato-contenido", "Ana Gómez, gerenta de compras")
+    pagina.click("#carpeta-form-dato button[type=submit]")
+    fila = pagina.locator("#carpeta-datos .carpeta-fila", has_text="Contacto comercial")
+    expect(fila).to_contain_text("Ana Gómez, gerenta de compras")
+    expect(pagina.locator("#carpeta-fb-datos")).to_have_text("Guardado.")
+
+    pagina.fill("#evento-nombre", "Lanzamiento en Automechanika")
+    pagina.fill("#evento-fecha", "2026-12-03")
+    pagina.fill("#evento-lugar", "Buenos Aires")
+    pagina.click("#carpeta-form-evento button[type=submit]")
+    evento = pagina.locator("#carpeta-eventos .carpeta-fila", has_text="Lanzamiento en Automechanika")
+    expect(evento).to_contain_text("Buenos Aires")
+    expect(pagina.locator("#carpeta-fb-eventos")).to_have_text("Guardado.")
+    expect(pagina.locator("#carpeta-n-eventos")).to_have_text("1")
+
+    evento.locator(".icon-btn").click()
+    pagina.click("#confirmar-si")
+    evento.wait_for(state="detached")
+    expect(pagina.locator("#carpeta-n-eventos")).to_have_text("0")
+
+    # En portugués se traduce la interfaz, no lo que se cargó.
+    elegir_idioma(pagina, "pt")
+    expect(pagina.locator("#carpetas-title")).to_have_text("Pastas de clientes")
+    expect(fila).to_contain_text("Contacto comercial")

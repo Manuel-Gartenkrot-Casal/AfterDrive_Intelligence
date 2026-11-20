@@ -789,6 +789,19 @@ def test_si_la_correccion_no_la_saca_queda_marcada_y_no_se_aprueba_sola(entorno,
     assert any("no se pueden mencionar: Frasle" in m for m in juez.filtro_duro(doc))
 
 
+def test_un_dato_sensible_en_la_nota_queda_marcado_sin_corregirla(entorno, monkeypatch):
+    from afterdrive.generacion import juez
+    _, col, _ = entorno
+    con_mail = NOTA.replace("La compañía busca", "Pedidos a ventas@frasle.com.br. La compañía busca")
+    tareas = _con_tareas(monkeypatch, [con_mail])
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert doc["datos_sensibles"] == ["email"]
+    assert "ventas@frasle.com.br" in doc["contenido"]            # solo avisa: el texto no se toca
+    assert "correccion" not in tareas
+    assert not any("sensible" in m for m in juez.filtro_duro(doc))
+
+
 def test_un_cliente_marcado_no_mencionar_no_se_usa_como_caso(entorno, monkeypatch):
     llamadas, _, _ = entorno
 

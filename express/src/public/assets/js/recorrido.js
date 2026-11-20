@@ -127,6 +127,10 @@ function enCelular() { return window.matchMedia('(max-width: 900px)').matches; }
 
 /* ── Paso 1: Revisar ────────────────────────────────────────────────────── */
 
+/* Cómo mostrar cada filtro de la redacción. Mientras no llega, las notas se ven sin esos avisos. */
+var FILTROS_NOTA = [];
+pedir('/api/filtros').then(function(d) { FILTROS_NOTA = d.filtros || []; }).catch(function() {});
+
 /* Lo que se chequeó, como filas: c = ok | warn | err, un titular, una línea,
    el detalle (HTML) y, si hay, una acción. Cada fila lleva un punto del color de su estado. */
 function chequeosDeNota(nota) {
@@ -142,11 +146,14 @@ function chequeosDeNota(nota) {
           titulo: sin.length ? 'Datos sin respaldo' : 'Datos contra las noticias',
           linea: ok + ' de ' + v.total + ' datos aparecen en las noticias.', detalle: det });
   }
-  if ((nota.empresas_prohibidas || []).length) {
-    out.push({ c: 'err', id: 'prohibidas', titulo: 'Nombra empresas que no se mencionan',
-               linea: nota.empresas_prohibidas.join(', ') + '. Sacalas antes de aprobar.',
+  // Los filtros de la redacción (generacion/filtros.py, GET /api/filtros): los que frenan, en rojo; los demás, aviso.
+  FILTROS_NOTA.forEach(function(f) {
+    var hallazgos = nota[f.campo] || [];
+    if (!hallazgos.length) return;
+    out.push({ c: f.frena ? 'err' : 'warn', id: f.campo, titulo: f.titulo,
+               linea: hallazgos.map(function(h) { return tr(f.nombres[h] || h); }).join(', ') + '. ' + tr(f.indicacion),
                accion: { texto: 'Editar', onclick: 'editarNota()' } });
-  }
+  });
   if (nota.parecida_a) {
     out.push({ c: 'err', id: 'parecida', titulo: 'Parecida a una nota reciente',
                linea: 'Se parece a “' + nota.parecida_a.titulo + '” (' + Math.round(nota.parecida_a.similitud * 100) + '%).' });

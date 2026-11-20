@@ -757,6 +757,9 @@ def prompts_vista_previa():
         partes = redaccion.system_prompt_partes(
             persona, compacto=bool(body.get("compacto")), extension=redaccion.extension(body.get("largo")),
             idioma=redaccion.idioma_principal(), piezas=piezas)
+        # Las piezas de los filtros: la generación las suma al final, en "Para esta nota" (generacion/filtros.py).
+        from afterdrive.generacion import filtros
+        partes = [*partes, *filtros.piezas_editables(piezas)]
         titulos = {c["clave"]: c["titulo"] for c in pe.catalogo()}
         return jsonify({
             "success": True, "persona": persona, "prompt": "\n\n".join(t for _, t in partes),
@@ -1501,8 +1504,56 @@ def fase2_modo_cliente(slug: str):
 
 @app.route("/api/fase2/clientes/<slug>", methods=["DELETE"])
 def fase2_eliminar_cliente(slug: str):
-    from afterdrive.db import col_clientes
+    from afterdrive.db import col_carpetas, col_clientes
     col_clientes.delete_one({"slug": slug})
+    col_carpetas.delete_many({"cliente_slug": slug})   # su carpeta no queda huérfana
+    return jsonify({"success": True})
+
+
+# ── Carpeta de cada cliente: datos y eventos (carpetas.py) ───────────────────
+
+def _cliente_existe(slug: str) -> bool:
+    from afterdrive.db import col_clientes
+    return col_clientes.find_one({"slug": slug}, {"_id": 1}) is not None
+
+
+@app.route("/api/carpetas/<slug>", methods=["GET"])
+def carpeta_cliente(slug: str):
+    from afterdrive import carpetas
+    if not _cliente_existe(slug):
+        return jsonify({"success": False, "error": "Cliente no encontrado."}), 404
+    entradas = carpetas.listar(slug)
+    return jsonify({"success": True,
+                    "datos": [e for e in entradas if e["tipo"] == carpetas.DATO],
+                    "eventos": [e for e in entradas if e["tipo"] == carpetas.EVENTO]})
+
+
+@app.route("/api/carpetas/<slug>/<any(datos, eventos):tipo>", methods=["POST"])
+def carpeta_subir(slug: str, tipo: str):
+    """Sube un dato ({titulo, contenido}) o un evento ({nombre, fecha, lugar, descripcion})."""
+    from afterdrive import carpetas
+    from afterdrive.db import col_carpetas
+    if not _cliente_existe(slug):
+        return jsonify({"success": False, "error": "Cliente no encontrado."}), 404
+    body = request.get_json(silent=True)
+    doc, error = carpetas.nueva_entrada(carpetas.DATO if tipo == "datos" else carpetas.EVENTO,
+                                        body if isinstance(body, dict) else {})
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    doc["cliente_slug"] = slug
+    doc["id"] = str(col_carpetas.insert_one(doc).inserted_id)
+    doc.pop("_id", None)
+    return jsonify({"success": True, "entrada": doc})
+
+
+@app.route("/api/carpetas/<slug>/<entrada_id>", methods=["DELETE"])
+def carpeta_borrar(slug: str, entrada_id: str):
+    from bson import ObjectId
+
+    from afterdrive.db import col_carpetas
+    if not ObjectId.is_valid(entrada_id) or not col_carpetas.delete_one(
+            {"_id": ObjectId(entrada_id), "cliente_slug": slug}).deleted_count:
+        return jsonify({"success": False, "error": "Entrada no encontrada."}), 404
     return jsonify({"success": True})
 
 
@@ -1569,6 +1620,13 @@ def fase2_ultima_nota():
     doc["_id"] = str(doc["_id"])
     doc.pop("embedding", None)
     return jsonify({"success": True, "nota": _nota_para_dashboard(doc)})
+
+
+@app.route("/api/filtros", methods=["GET"])
+def filtros_de_redaccion():
+    """Cómo mostrar lo que encontró cada filtro de la redacción en una nota (recorrido.js)."""
+    from afterdrive.generacion import filtros
+    return jsonify({"success": True, "filtros": filtros.para_el_dashboard()})
 
 
 @app.route("/api/fase2/notas/<nota_id>", methods=["GET"])

@@ -63,6 +63,9 @@ _CATALOGO = [
     ("formato", "Formato", "base", "Markdown, títulos y extensión. {extension} se reemplaza por el largo elegido."),
     ("seo", "SEO", "base", "Título, palabra clave y enlaces."),
     ("salida", "Respuesta", "base", "Qué devuelve el modelo: solo la nota, sin comentarios."),
+    ("privacidad", "Privacidad", "base",
+     "Qué datos personales o sensibles no pueden aparecer en una nota. Después se revisa el texto y, si aparece "
+     "alguno, la nota queda marcada para revisar."),
     ("imagenes", "Imágenes", "base",
      "Qué fotos se aceptan y cuáles pueden ser portada. Se usa al elegir imágenes, no al redactar el texto."),
     *[(f"persona_{slug}", nombre, "persona",

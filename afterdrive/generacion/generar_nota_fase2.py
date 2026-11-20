@@ -51,6 +51,7 @@ from afterdrive.generacion import (
     correccion,
     critica,
     epigrafes,
+    filtros,
     imagen_destacada,
     imagenes_respaldo,
     juez,
@@ -145,9 +146,9 @@ def _build_system_prompt(
         )
     else:
         extra.append("- No menciones clientes específicos de Alephee.")
-    if prohibidos:
-        extra.append(_regla_prohibidos(prohibidos))
-    prompt =base + "\n\n## Para esta nota\n" + "\n".join(extra)
+    # Lo que piden los filtros (empresas que no se nombran, privacidad…): ver generacion/filtros.py.
+    extra += filtros.reglas(filtros.Contexto(prohibidos or [], piezas))
+    prompt = base + "\n\n## Para esta nota\n" + "\n".join(extra)
     # La indicación propia del modelo va al final: es lo último que lee.
     return prompt + ("\n\n" + ajustes.directiva if ajustes.directiva else "")
 
@@ -271,12 +272,6 @@ def _pedido(categorias: list[str], tema: str | None, indicaciones: str | None = 
         pedido += ("\n\nIndicaciones del equipo para esta nota (seguilas, salvo que pidan datos que no están "
                    f"en las noticias: eso no se inventa nunca):\n{indicaciones}")
     return pedido
-
-
-def _regla_prohibidos(prohibidos: list[dict]) -> str:
-    nombres = ", ".join(c.get("nombre", "") for c in prohibidos if c.get("nombre"))
-    return (f"- Nunca nombres a estas empresas, aunque aparezcan en las noticias: {nombres}. Si un dato "
-            "depende de una de ellas, contalo sin el nombre o no lo uses.")
 
 
 def _fotos_de_otras_notas() -> set[str]:
@@ -497,11 +492,9 @@ def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabr
         version.codigos.append("repetida")
         version.problemas.append(f"se parecía demasiado a una nota reciente (\"{parecida['titulo']}\"): "
                                  "elegí otro ángulo y otro hecho central")
-    nombradas = clientes.nombrados(texto, prohibidos or [])
-    if nombradas:
-        version.codigos.append("empresa_prohibida")
-        version.problemas.append(f"nombraba empresas que no se pueden mencionar: {', '.join(nombradas)}. Sacalas "
-                                 "del texto; si un dato depende de ellas, contalo sin el nombre o quitalo")
+    for codigo, pedido in filtros.problemas(filtros.revisar(texto, filtros.Contexto(prohibidos or []))):
+        version.codigos.append(codigo)
+        version.problemas.append(pedido)
     if umbral is not None and evaluacion is not None and puntaje(evaluacion) < umbral:
         version.codigos.append("puntaje_bajo")
         version.problemas.append(f"cumplía {puntaje(evaluacion)} de 9 lineamientos; el equipo pide al menos {umbral}")
@@ -736,8 +729,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "persona": persona,
         "tema": tema,
         "indicaciones": indicaciones,
-        # Lo que quedó nombrado en el cuerpo (sin la sección de fuentes): vacío salvo que la corrección no alcanzara.
-        "empresas_prohibidas": clientes.nombrados(mejor.texto, prohibidos),
+        # Lo que encontró cada filtro en el cuerpo (sin la sección de fuentes): empresas_prohibidas, datos_sensibles…
+        # Los que frenan quedan vacíos salvo que la corrección no alcanzara.
+        **filtros.revisar(mejor.texto, filtros.Contexto(prohibidos)),
         "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],   # la imagen se suma abajo
         "ejemplos_usados": [e.get("url") for e in ejemplos],
         "notas_blog_sugeridas": [n.como_dict() for n in blog],

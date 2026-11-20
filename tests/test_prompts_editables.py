@@ -175,7 +175,8 @@ def test_vista_previa_por_partes_para_verla_como_archivo(client):
     partes = r["partes"]
     assert "\n\n".join(p["texto"] for p in partes) == r["prompt"]
     assert [p["clave"] for p in partes] == ["identidad", "audiencia", "persona_comercial", "reglas_datos", "oficio",
-                                            "enfoque_alephee", "formato", "seo", "secciones_fijas", "cierre", "salida"]
+                                            "enfoque_alephee", "formato", "seo", "secciones_fijas", "cierre", "salida",
+                                            "privacidad"]
     automaticas = {p["clave"]: p for p in partes if not p["editable"]}
     assert set(automaticas) == {"secciones_fijas", "cierre"} and automaticas["cierre"]["titulo"] == "Idioma y cierre"
     assert partes[2]["titulo"] == "Comercial" and partes[2]["texto"].startswith("## Tu tarea")
