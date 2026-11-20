@@ -30,6 +30,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from collections.abc import Iterator
 
 TIMEOUT_S = 1800  # 30 min
@@ -120,6 +121,9 @@ def _scrapear(max_articulos: int | None) -> dict:
 
     print(f"Procesando {len(fuentes)} fuentes (max {max_articulos} artículos/fuente)...", flush=True)
     aprobados = 0
+    # Dónde se pierde lo scrapeado: links que no dieron artículo (por motivo) y artículos que la IA
+    # rechazó o dejó pendientes.
+    perdidos = Counter()
     for doc in fuentes:
         if _cancelar.is_set():
             print("[CANCELADA] Scraping cortado a pedido del usuario.", flush=True)
@@ -127,10 +131,13 @@ def _scrapear(max_articulos: int | None) -> dict:
         url = doc["url"]
         print(f"Scrapeando: {url}", flush=True)
         try:
-            items = start([url], modo="list", max_articulos=max_articulos, omitir=ya_procesadas).items
+            resultado = start([url], modo="list", max_articulos=max_articulos, omitir=ya_procesadas)
+            items = resultado.items
+            perdidos.update(resultado.descartes)
             if items:
                 res = ingerir(items)
                 aprobados += res["aprobados"]
+                perdidos.update({"rechazado_ia": res["rechazados"], "pendiente_ia": res.get("pendientes", 0)})
                 print(f"  [OK] {res['aprobados']} nuevos artículos aprobados.", flush=True)
             else:
                 print(f"  [WARN] No se encontraron artículos nuevos en {url}", flush=True)
@@ -141,7 +148,11 @@ def _scrapear(max_articulos: int | None) -> dict:
             print(f"  [ERROR] Fallo al procesar {url}: {e}", flush=True)
 
     print(f"[{datetime.datetime.now()}] Scraping finalizado.", flush=True)
-    return {"success": True, "aprobados": aprobados}
+    perdidos = {k: v for k, v in perdidos.items() if v}
+    if perdidos:
+        from afterdrive.ingesta.scraper import resumen_descartes
+        print(f"[RESUMEN] {aprobados} guardado(s). No se guardaron: {resumen_descartes(perdidos)}", flush=True)
+    return {"success": True, "aprobados": aprobados, "descartes": perdidos}
 
 
 def ya_procesadas(urls: list[str]) -> set[str]:
@@ -161,16 +172,20 @@ def parametros_guardados() -> dict | None:
     gen = config_store.get_generacion_config()
     if not fase2.get("categorias"):
         return None
+    categorias = list(fase2["categorias"])
+    if fase2.get("rotar_categorias"):
+        from afterdrive.generacion import rotacion
+        categorias = rotacion.rotar(categorias)
     puntapie_url = None
     if fase2.get("puntapie_activo"):
         puntapie_url = fase2.get("puntapie_url") or gen.get("puntapie_url") or None
     return {
-        "categorias": fase2["categorias"],
+        "categorias": categorias,
         "clientes_ids": fase2.get("clientes") or [],
         "puntapie_url": puntapie_url,
         "persona": gen.get("persona") or "comercial",
         "largo": gen.get("largo") or "medio",
-        "tema": gen.get("tema") or None,
+        "tema": None,   # el tema puntual es de un solo uso (Crear nota): las automáticas no lo llevan
         "regiones": fase2.get("regiones") or [],
     }
 
@@ -201,6 +216,12 @@ def _generar(params: dict | None, programada: bool = False) -> dict:
         return {"success": False, "error": "Cancelada."}
     if resultado.get("success"):
         print("[Generación] [OK] Nota generada y guardada en 'notas_fase2'.", flush=True)
+        # Prompts con IA: cada pocas notas nuevas, la IA mejora sola la copia de los prompts.
+        try:
+            from afterdrive import prompts_ia
+            prompts_ia.mejora_automatica()
+        except Exception as e:   # la nota ya está guardada: la mejora queda para la próxima
+            print(f"[PROMPTS IA] [AVISO] No se pudo mejorar la copia: {e}", flush=True)
         if programada and resultado.get("id"):
             try:
                 from afterdrive import aprobacion_auto

@@ -12,13 +12,32 @@ guarda: si contara sola, la IA se enseñaría a sí misma.
 
 Ante la duda no pasa: si el modelo no responde o el JSON viene roto, el juicio
 queda con error y la nota espera a una persona.
+
+Checklist de Alephee: el juez también revisa cómo aparece Alephee, con el bloque
+"Enfoque Alephee" activo (redaccion.py) como la única verdad sobre la empresa.
+Cada punto es sí, no o no aplica (por ejemplo, si la nota no nombra a Alephee);
+un "no" frena la aprobación automática y queda como motivo.
 """
 
 from __future__ import annotations
 
+import math
+
 from afterdrive.calibracion import ETIQUETAS
 from afterdrive.ia import llm
 from afterdrive.ia.lm_studio import _extraer_json
+
+# Checklist específica de Alephee: código -> qué se pregunta (lo que el juez responde).
+CHECKLIST_ALEPHEE = {
+    "mencion_con_motivo": "Si nombra a Alephee, lo hace donde resuelve un problema que la nota planteó, no de relleno.",
+    "nada_inventado": "No le atribuye a Alephee funciones, precios, cifras, clientes ni casos que no estén en el "
+                      "enfoque Alephee, las noticias o el pedido.",
+    "beneficio_concreto": "Lo que aporta Alephee se dice en concreto (catálogo, marketplaces, stock, fitment), "
+                          "no con frases generales.",
+    "informa_primero": "El cuerpo informa: Alephee no es el tema salvo que el pedido lo diga, y no hay tono "
+                       "publicitario (superlativos, \"la mejor solución\").",
+    "cta_unico": "Hay una sola llamada a la acción, al final, con un link a Alephee o al puntapié.",
+}
 
 CONFIANZA_MIN = 0.8
 UMBRAL_DEFAULT = 7          # puntaje del evaluador (0 a 9) si todavía no hay umbral calibrado
@@ -42,8 +61,27 @@ Solo un JSON, sin texto alrededor:
  "calificacion": entero 1 a 5 (la que le pondría el equipo),
  "etiquetas": [códigos de la lista de abajo que apliquen],
  "comentario": "una o dos oraciones concretas: lo mejor y lo que hay que arreglar",
- "motivos": ["por qué no pasa", ...] (vacío si pasa)}
+ "motivos": ["por qué no pasa", ...] (vacío si pasa),
+ "alephee": {"código de la checklist": true, false o null si no aplica}}
 """
+
+
+def _checklist_alephee(piezas=None) -> str:
+    from afterdrive.ia import redaccion
+
+    if piezas is None:
+        from afterdrive.prompts_ia import textos
+        piezas = textos("actuales")
+    puntos = "\n".join(f"- {k}: {v}" for k, v in CHECKLIST_ALEPHEE.items())
+    return ("## Checklist de Alephee (respondé cada punto en \"alephee\": true, false o null si no aplica)\n"
+            f"{puntos}\n\nLo único que se puede afirmar de Alephee es lo que dice este bloque:\n"
+            f"{redaccion.texto('enfoque_alephee', piezas)}")
+
+
+def _alephee(valor) -> dict:
+    """{código: True | False | None} con los puntos de la checklist; lo que no vino, None (no se sabe)."""
+    valor = valor if isinstance(valor, dict) else {}
+    return {k: valor[k] if isinstance(valor.get(k), bool) else None for k in CHECKLIST_ALEPHEE}
 
 
 def _lista_etiquetas() -> str:
@@ -51,13 +89,32 @@ def _lista_etiquetas() -> str:
 
 
 def _numero(valor, minimo, maximo, default):
+    """El valor acotado a [minimo, maximo]; default si no es un número usable.
+
+    Un bool o un NaN no cuentan como número: antes `true` o `NaN` en la
+    confianza daban 1.0 y la nota podía aprobarse sola con un JSON roto.
+    """
+    if isinstance(valor, bool):
+        return default
     try:
-        return max(minimo, min(maximo, type(default)(valor)))
+        numero = float(valor)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(numero):
+        return default
+    if isinstance(default, int):
+        numero = round(numero)
+    return type(default)(max(minimo, min(maximo, numero)))
 
 
-def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
+def _lista(valor) -> list:
+    """Una lista aunque el modelo mande un solo texto (si no, se partiría letra por letra)."""
+    if isinstance(valor, str):
+        return [valor] if valor.strip() else []
+    return list(valor) if isinstance(valor, list) else []
+
+
+def juzgar(nota: str, noticias_texto: str, reglas=(), *, piezas=None, estricto=False) -> dict:
     """Juicio del editor crítico. Siempre devuelve un dict; con "error" si no se pudo juzgar."""
     if not llm.disponible():
         return {"error": "Proveedor de IA no disponible para juzgar."}
@@ -65,20 +122,33 @@ def juzgar(nota: str, noticias_texto: str, reglas=()) -> dict:
     if reglas:
         user += "## Lo que el equipo viene corrigiendo (respetalo al juzgar)\n" + \
                 "\n".join(f"- {r}" for r in reglas) + "\n\n"
+    user += _checklist_alephee(piezas) + "\n\n"
     user += f"## Noticias de contexto\n{(noticias_texto or '')[:NOTICIAS_MAX]}\n\n## Nota a juzgar\n{nota}"
-    try:
-        data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=800, tarea="evaluacion"))
-    except Exception as e:
-        return {"error": f"No se pudo juzgar la nota: {e}"}
+    # 2500 y un reintento: el razonamiento cuenta en la salida y con 1000 la respuesta se cortaba sin JSON
+    # (20/11: cortaba la comparación de Prompt IA y dejaba notas sin juicio).
+    for intento in range(2):
+        try:
+            data = _extraer_json(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=2500, tarea="evaluacion"))
+            break
+        except llm.Cancelada:
+            raise
+        except Exception as e:
+            if intento:
+                return {"error": f"No se pudo juzgar la nota: {e}"}
+    if estricto:
+        score = data.get("calificacion")
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 5:
+            return {"error": "El juez no dio una calificación válida."}
     if not isinstance(data.get("pasa"), bool):
         return {"error": "El juez no dijo si la nota pasa."}
     return {
         "pasa": data["pasa"],
         "confianza": _numero(data.get("confianza"), 0.0, 1.0, 0.0),
         "calificacion": _numero(data.get("calificacion"), 1, 5, 3),
-        "etiquetas": [e for e in data.get("etiquetas") or [] if e in ETIQUETAS],
+        "etiquetas": [e for e in _lista(data.get("etiquetas")) if isinstance(e, str) and e in ETIQUETAS],
         "comentario": str(data.get("comentario") or "")[:300],
-        "motivos": [str(m)[:200] for m in data.get("motivos") or []][:5],
+        "motivos": [str(m)[:200] for m in _lista(data.get("motivos")) if str(m).strip()][:5],
+        "alephee": _alephee(data.get("alephee")),
         "modelo": "evaluacion",
     }
 
@@ -97,12 +167,20 @@ def filtro_duro(doc: dict, umbral: int | None = None) -> list[str]:
         motivos.append(f"problemas graves de estilo o SEO: {graves[0]}")
     if doc.get("parecida_a"):
         motivos.append("se parece a una nota reciente")
+    if doc.get("empresas_prohibidas"):
+        motivos.append(f"nombra empresas que no se pueden mencionar: {', '.join(doc['empresas_prohibidas'][:3])}")
     if not doc.get("imagen"):
         motivos.append("no tiene imagen destacada")
     minimo = umbral if umbral is not None else UMBRAL_DEFAULT
     if calidad.get("puntaje") is None or calidad["puntaje"] < minimo:
         motivos.append(f"puntaje del evaluador {calidad.get('puntaje')}/9, por debajo de {minimo}")
     return motivos
+
+
+def fallas_alephee(juicio: dict | None) -> list[str]:
+    """Los puntos de la checklist de Alephee que el juez marcó en falso, como motivos."""
+    checklist = (juicio or {}).get("alephee") or {}
+    return [f"checklist de Alephee: {CHECKLIST_ALEPHEE[k]}" for k in CHECKLIST_ALEPHEE if checklist.get(k) is False]
 
 
 def decidir(doc: dict, confianza_min: float = CONFIANZA_MIN) -> dict:
@@ -118,5 +196,6 @@ def decidir(doc: dict, confianza_min: float = CONFIANZA_MIN) -> dict:
         motivos += juicio.get("motivos") or ["el juez dijo que no pasa"]
     elif juicio.get("confianza", 0) < confianza_min:
         motivos.append(f"el juez no está seguro (confianza {juicio['confianza']:.2f} < {confianza_min})")
+    motivos += fallas_alephee(juicio)
     return {"pasa": not motivos, "motivos": motivos, "umbral": umbral if umbral is not None else UMBRAL_DEFAULT,
             "confianza_min": confianza_min}

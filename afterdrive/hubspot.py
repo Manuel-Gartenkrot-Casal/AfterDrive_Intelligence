@@ -8,6 +8,7 @@ Interfaz:
                                             la versión en otro idioma, como borrador vinculado al post original
     destino(nota) -> dict                   blog, idioma, etiquetas y autor que le tocan
     autores(idioma) -> [{"id", "nombre"}]   autores del blog en ese idioma
+    autor_en_idioma(autor_id, idioma)       el mismo autor en otro idioma (translatedFromId)
     vista_previa(nota) -> dict              lo que se mandaría, sin llamar a HubSpot
     subir_imagen(contenido, mime, nombre) -> url pública (scope "files")
     preparar(contenido) -> dict             título, cuerpo HTML y meta description
@@ -37,6 +38,8 @@ Si eso falla (por ejemplo, si los tres blogs no están configurados como
 versiones de un mismo blog multilenguaje), se crea un borrador normal en el
 blog de ese idioma y se intenta vincularlo (attach-to-lang-group). Si tampoco
 se puede, queda como borrador suelto, con un aviso. Siempre como borrador.
+La traducción la firma el mismo autor que el original, en su versión de ese
+idioma (autor_traduccion); si no tiene, el autor por defecto del idioma.
 Los códigos de idioma de HubSpot salen de LENGUAJES (HUBSPOT_LENGUAJES los cambia).
 """
 
@@ -101,6 +104,18 @@ class ErrorHubSpot(RuntimeError):
     """Fallo al publicar, con un mensaje apto para el usuario."""
 
 
+class SinPermisoArchivos(ErrorHubSpot):
+    """El token no puede subir archivos (falta el scope "files"): falla igual con todas las imágenes."""
+
+
+AYUDA_SCOPE_ARCHIVOS = (
+    "HubSpot no dejó copiar las imágenes a sus archivos: la app privada del token (HUBSPOT_TOKEN) no tiene "
+    "el scope 'files'. En HubSpot: Configuración → Integraciones → Apps privadas (en cuentas nuevas, "
+    "\"Apps heredadas\") → tu app → Ámbitos → buscá \"files\", tildalo y confirmá con \"Confirmar cambios\". "
+    "El token sigue siendo el mismo: no hay que cambiar nada en el servidor."
+)
+
+
 def configurado() -> bool:
     return bool(os.getenv("HUBSPOT_TOKEN"))
 
@@ -155,8 +170,17 @@ def destino(nota: dict) -> dict:
     }
 
 
-def autores(cod: str) -> list[dict]:
-    """Autores del blog en ese idioma, por nombre: para elegir quién firma la nota."""
+def _idioma_base(lenguaje) -> str:
+    """"pt-br" -> "pt": HubSpot guarda el idioma del autor con variante regional (ver LENGUAJES)."""
+    return str(lenguaje or "").strip().lower().split("-")[0]
+
+
+def _nombre_autor(a: dict) -> str:
+    return (a.get("fullName") or a.get("name") or a.get("displayName") or "").strip()
+
+
+def _autores_hubspot() -> list[dict]:
+    """Todos los autores de la cuenta, tal como los devuelve HubSpot."""
     if not configurado():
         raise ErrorHubSpot("HubSpot no está configurado: falta HUBSPOT_TOKEN.")
     try:
@@ -165,9 +189,64 @@ def autores(cod: str) -> list[dict]:
         raise ErrorHubSpot(f"No se pudo conectar con HubSpot: {e}") from e
     if resp.status_code >= 400:
         raise _error(resp)
-    lista = [{"id": str(a["id"]), "nombre": (a.get("fullName") or a.get("name") or "").strip()}
-             for a in resp.json().get("results", []) if a.get("language") == cod]
+    return [a for a in (resp.json() or {}).get("results", []) if isinstance(a, dict) and a.get("id")]
+
+
+def autores(cod: str) -> list[dict]:
+    """Autores del blog en ese idioma, por nombre: para elegir quién firma la nota.
+
+    El idioma se compara sin la variante: antes se pedía "pt" exacto y los autores
+    guardados como "pt-br" no aparecían (la lista en portugués salía vacía).
+    """
+    lista = [{"id": str(a["id"]), "nombre": _nombre_autor(a)}
+             for a in _autores_hubspot() if _idioma_base(a.get("language")) == cod]
     return sorted(lista, key=lambda a: a["nombre"].lower())
+
+
+def autor_en_idioma(autor_id: str, cod: str, lista: list[dict] | None = None) -> str | None:
+    """El mismo autor en el idioma `cod`, o None si no tiene versión en ese idioma.
+
+    En HubSpot cada autor existe una vez por idioma: las versiones se vinculan con
+    `translatedFromId` (apunta a la original). Si no están vinculadas, se busca
+    uno con el mismo nombre en ese idioma. Un autor sin idioma sirve para todos.
+    """
+    lista = _autores_hubspot() if lista is None else lista
+    por_id = {str(a["id"]): a for a in lista}
+    autor = por_id.get(str(autor_id))
+    if not autor:
+        return None
+    if _idioma_base(autor.get("language")) in (cod, ""):
+        return str(autor["id"])
+    grupo = str(autor.get("translatedFromId") or autor["id"])
+    del_idioma = [a for a in lista if _idioma_base(a.get("language")) == cod]
+    for a in del_idioma:
+        if grupo in (str(a["id"]), str(a.get("translatedFromId") or "")):
+            return str(a["id"])
+    nombre = _nombre_autor(autor).lower()
+    for a in del_idioma:
+        if nombre and _nombre_autor(a).lower() == nombre:
+            return str(a["id"])
+    return None
+
+
+def autor_traduccion(nota: dict, cod: str) -> str:
+    """Quién firma la versión en `cod`: el equivalente del autor elegido para el original.
+
+    Antes las traducciones firmaban siempre con el autor por defecto de cada idioma,
+    aunque el original lo firmara otra persona. Sin autor elegido, o si HubSpot no
+    responde o esa persona no tiene versión en ese idioma, el autor por defecto.
+    """
+    elegido = nota.get("hubspot_autor_id")
+    if elegido:
+        try:
+            equivalente = autor_en_idioma(str(elegido), cod)
+        except ErrorHubSpot as e:
+            print(f"  [AVISO] No se pudo buscar el autor en {cod}: {e}. Se usa el autor por defecto.", flush=True)
+            equivalente = None
+        if equivalente:
+            return equivalente
+        print(f"  [AVISO] El autor elegido no tiene versión en {cod}: se usa el autor por defecto.", flush=True)
+    return AUTOR_POR_DEFECTO[cod]
 
 
 def _slug(texto: str, sufijo: str = "") -> str:
@@ -263,15 +342,69 @@ def _imagen(nota: dict, titulo: str) -> dict:
     """
     propia = nota.get("imagen") or {}
     # Una subida desde la computadora tiene una ruta de este servidor: solo sirve su copia en HubSpot.
-    externa = propia.get("url") if not str(propia.get("url") or "").startswith("/") else ""
+    # Si no se pudo copiar, el link de la noticia tampoco: el sitio la bloquea o ya no existe, y en el
+    # blog salía rota.
+    externa = propia.get("url") if not _sin_link_usable(propia) else ""
     url = propia.get("hubspot_url") or externa or os.getenv("HUBSPOT_IMAGEN_DEFAULT", "").strip()
     return {"url": url, "alt": propia.get("alt") or titulo} if url else {}
 
 
-def imagenes_cuerpo(nota: dict) -> list[dict]:
-    """[{url, alt}] de las imágenes que van dentro del texto (la copia en HubSpot si ya se hizo)."""
-    return [{"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or ""}
-            for im in nota.get("imagenes_cuerpo") or [] if im.get("hubspot_url") or im.get("url")]
+def _sin_link_usable(im: dict) -> bool:
+    """La imagen no tiene un link que sirva en el blog: es una ruta de este servidor o su copia a
+    HubSpot falló (historial marca `copia_fallida`: el sitio la bloquea o ya no existe)."""
+    return str(im.get("url") or "").startswith("/") or bool(im.get("copia_fallida"))
+
+
+def imagenes_cuerpo(nota: dict, cod: str | None = None) -> list[dict]:
+    """[{url, alt, credito, epigrafe}] de las imágenes que van dentro del texto (la copia en HubSpot si
+    ya se hizo). `credito` solo en las de bancos de imágenes que piden atribución; `epigrafe`, la bajada
+    en el idioma `cod` (por defecto, el de la nota), si la tiene. Sin copia en HubSpot, una imagen sin
+    link usable queda afuera: mejor una foto menos que una rota."""
+    from afterdrive.generacion.epigrafes import texto
+
+    cod = cod or idioma(nota)
+    resultado = []
+    for im in nota.get("imagenes_cuerpo") or []:
+        if not (im.get("hubspot_url") or (im.get("url") and not _sin_link_usable(im))):
+            continue
+        item = {"url": im.get("hubspot_url") or im.get("url"), "alt": im.get("alt") or ""}
+        if im.get("atribucion") and im.get("credito"):
+            item["credito"] = im["credito"]
+        if texto(im, cod):
+            item["epigrafe"] = texto(im, cod)
+        resultado.append(item)
+    return resultado
+
+
+# Debajo de la foto, en chico y gris: se ve como bajada en cualquier plantilla del blog.
+_ESTILO_EPIGRAFE = "display:block; margin-top:6px; font-size:0.85em; line-height:1.4; color:#5f6368; font-style:italic;"
+
+
+def _figura(im: dict) -> str:
+    from html import escape
+
+    pie = " · ".join(escape(t) for t in (im.get("epigrafe"), im.get("credito")) if t)
+    return (f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
+            f'style="max-width:100%; height:auto;" loading="lazy">'
+            + (f'<br><small style="{_ESTILO_EPIGRAFE}">{pie}</small>' if pie else "") + '</p>')
+
+
+_CREDITO_PORTADA = {"es": "Foto de portada", "pt": "Foto de capa", "en": "Cover photo"}
+
+
+def _cuerpo(html: str, nota: dict, cod: str | None = None) -> str:
+    """El cuerpo del post con sus imágenes y, si la portada pide atribución (último recurso de
+    imagen_destacada: no había otra), su crédito al final: HubSpot no lo muestra en la destacada."""
+    from html import escape
+
+    html = con_imagenes(html, imagenes_cuerpo(nota, cod))
+    portada = nota.get("imagen") or {}
+    se_usa = portada.get("hubspot_url") or (portada.get("url") and not _sin_link_usable(portada))   # como _imagen()
+    if se_usa and portada.get("atribucion") and portada.get("credito"):
+        credito = portada["credito"].removeprefix("Foto: ")
+        etiqueta = _CREDITO_PORTADA.get(cod or idioma(nota), _CREDITO_PORTADA["es"])
+        html += f'<p><small style="{_ESTILO_EPIGRAFE}">{etiqueta}: {escape(credito)}</small></p>'
+    return html
 
 
 def con_imagenes(html: str, imagenes: list[dict]) -> str:
@@ -279,13 +412,11 @@ def con_imagenes(html: str, imagenes: list[dict]) -> str:
 
     Nunca antes de la primera sección (la nota abre con texto) ni después de
     la última. Sin subtítulos suficientes, van después del primer párrafo.
+    Debajo de cada imagen va su epígrafe y, si la licencia pide atribución, el crédito.
     """
-    from html import escape
-
     if not imagenes:
         return html
-    figuras = [f'<p><img src="{escape(im["url"], quote=True)}" alt="{escape(im["alt"], quote=True)}" '
-               f'style="max-width:100%; height:auto;" loading="lazy"></p>' for im in imagenes]
+    figuras = [_figura(im) for im in imagenes]
     titulos = [m.start() for m in re.finditer(r"<h3\b", html)]
     n = len(titulos)
     if n >= 3:
@@ -321,13 +452,24 @@ def subir_imagen(contenido: bytes, mime: str, nombre: str) -> str:
     except requests.RequestException as e:
         raise ErrorHubSpot(f"No se pudo subir la imagen a HubSpot: {e}") from e
     if resp.status_code in (401, 403):
-        raise ErrorHubSpot("HubSpot no dejó subir la imagen: la app privada necesita el scope 'files'.")
+        raise SinPermisoArchivos(AYUDA_SCOPE_ARCHIVOS + _detalle_scopes(resp))
     if resp.status_code >= 400:
         raise _error(resp)
     url = (resp.json() or {}).get("url") or ""
     if not url:
         raise ErrorHubSpot("HubSpot subió la imagen pero no devolvió su URL.")
     return url
+
+
+def _detalle_scopes(resp) -> str:
+    """Los scopes que HubSpot dice que faltan (viene en `errors[].context.requiredScopes`), si los dice."""
+    try:
+        data = resp.json() or {}
+    except Exception:
+        return ""
+    faltan = sorted({sc for e in data.get("errors") or [] if isinstance(e, dict)
+                     for sc in ((e.get("context") or {}).get("requiredScopes") or []) if isinstance(sc, str)})
+    return f" (HubSpot pide: {', '.join(faltan)})" if faltan else ""
 
 
 def vista_previa(nota: dict) -> dict:
@@ -338,7 +480,7 @@ def vista_previa(nota: dict) -> dict:
         lugar = destino(nota)
     except ErrorHubSpot as e:
         lugar = {"error": str(e), "etiquetas": []}
-    partes["html"] = con_imagenes(partes["html"], imagenes_cuerpo(nota))
+    partes["html"] = _cuerpo(partes["html"], nota)
     return {
         **partes,
         "imagen": _imagen(nota, partes["titulo"]),
@@ -361,7 +503,7 @@ def enviar(nota: dict, publicar: bool = False) -> dict:
     cuerpo = {
         "name": partes["titulo"],
         "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": _cuerpo(partes["html"], nota),
         "metaDescription": partes["meta"],
         "state": "PUBLISHED" if publicar else "DRAFT",
     }
@@ -448,7 +590,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
     categorias = [c for c in nota.get("categorias") or [] if c in ETIQUETAS]
     cuerpo = {
         "name": partes["titulo"], "htmlTitle": partes["titulo"],
-        "postBody": con_imagenes(partes["html"], imagenes_cuerpo(nota)),
+        "postBody": _cuerpo(partes["html"], nota, cod),
         "metaDescription": partes["meta"], "state": "DRAFT",
     }
     imagen = _imagen(nota, partes["titulo"])
@@ -462,7 +604,7 @@ def enviar_traduccion(nota: dict, cod: str, contenido: str, primario_id: str, pr
             raise _error(resp)
         return {**_resultado(resp.json(), cuerpo, previo), "vinculada": previo.get("vinculada", False), "aviso": ""}
 
-    cuerpo["blogAuthorId"] = AUTOR_POR_DEFECTO[cod]
+    cuerpo["blogAuthorId"] = autor_traduccion(nota, cod)
     if categorias:
         cuerpo["tagIds"] = [ETIQUETAS[c][_COLUMNA[cod]] for c in categorias]
     cuerpo["slug"] = _slug(partes["titulo"], f"{str(nota.get('_id', ''))[-6:]}-{cod}")

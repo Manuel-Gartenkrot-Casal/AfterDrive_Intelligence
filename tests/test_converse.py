@@ -83,6 +83,16 @@ def test_converse_registra_tokens_y_costo_por_tarea(bedrock, consumo_en_memoria)
     assert consumo.gastado_mes() == pytest.approx(19.80)
 
 
+def test_el_gasto_vuelve_a_cero_el_dia_1_en_hora_de_argentina(consumo_en_memoria):
+    """El mes del gasto es el de Argentina: en UTC el contador volvía a 0 a las 21:00 del último día."""
+    import datetime
+    utc = datetime.UTC
+    assert consumo._mes(datetime.datetime(2026, 12, 1, 2, 0, tzinfo=utc)) == "2026-11"   # 30/11 23:00 en Argentina
+    assert consumo._mes(datetime.datetime(2026, 12, 1, 3, 0, tzinfo=utc)) == "2026-12"   # 01/12 00:00 en Argentina
+    consumo_en_memoria.insert_many([{"mes": "2026-10", "costo_usd": 30.0}, {"mes": consumo._mes(), "costo_usd": 2.5}])
+    assert consumo.gastado_mes() == pytest.approx(2.5)                                    # el mes pasado no suma
+
+
 def test_precio_sale_del_modelo_que_contesto(bedrock, monkeypatch):
     monkeypatch.setenv("PAGA_MODEL_CLASIFICACION", "arn-luna")
     monkeypatch.setenv("PAGA_PRECIO_CLASIFICACION", "1/2")

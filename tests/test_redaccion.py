@@ -58,3 +58,80 @@ def test_puntapie_y_directiva_del_proveedor():
 
 def test_persona_desconocida_usa_analitico():
     assert redaccion.system_prompt("inexistente") == redaccion.system_prompt("analitico")
+
+
+# ── Piezas editables desde el dashboard ──────────────────────────────────────
+
+from afterdrive import prompts_editables  # noqa: E402
+
+
+def _activar(col, clave, contenido, version=1):
+    col.insert_one({"clave": clave, "contenido": contenido, "estado": "activo", "version": version})
+    prompts_editables.invalidar_cache()
+
+
+@pytest.mark.parametrize("persona", list(redaccion.PERSONAS))
+def test_cada_persona_ida_y_vuelta_por_markdown(persona):
+    md = redaccion.PIEZAS[f"persona_{persona}"]
+    assert md.startswith(redaccion.PERSONAS[persona]["rol"]) and "## Estructura\n1. " in md
+    assert redaccion.parsear_persona(md) == redaccion.PERSONAS[persona]
+
+
+def test_parsear_persona_tolera_titulos_y_lineas_de_continuacion():
+    p = redaccion.parsear_persona(
+        "# Comercial\nSos redactor.\n\n## Tu tarea:\nVender\nbien.\n\n## Estructura (en orden)\n"
+        "1) Gancho\n   con un dato.\n2. Solución\n\n## Otra cosa\nse ignora\n\n## Estilo\nSobrio."
+    )
+    assert p == {"rol": "Sos redactor.", "tarea": "Vender bien.", "estructura": ["Gancho con un dato.", "Solución"],
+                 "estilo": "Sobrio."}
+
+
+def test_sin_ediciones_el_prompt_suma_el_enfoque_alephee():
+    p = redaccion.system_prompt("comercial")
+    assert "## Enfoque Alephee" in p and p.index("## Oficio del sector") < p.index("## Enfoque Alephee") < p.index("## Formato")
+    assert "## Enfoque Alephee" not in redaccion.system_prompt("comercial", compacto=True)
+
+
+def test_la_version_activa_reemplaza_al_texto_original(prompts_en_memoria):
+    _activar(prompts_en_memoria, "seo", "## SEO\n- REGLA-SEO-NUEVA")
+    _activar(prompts_en_memoria, "formato", "## Formato\n- Largo: {extension}. {otra} llave")
+    _activar(prompts_en_memoria, "persona_comercial",
+             "Sos ROL-NUEVO.\n\n## Tu tarea\nTAREA\n\n## Estructura\n1. Uno\n2. Dos\n\n## Estilo\nESTILO")
+    p = redaccion.system_prompt("comercial", extension="entre 1 y 2 palabras")
+    assert "REGLA-SEO-NUEVA" in p and "Mostrá cómo una solución" not in p
+    assert "- Largo: entre 1 y 2 palabras. {otra} llave" in p
+    assert p.startswith("Sos ROL-NUEVO. Escribís notas") and "1. Uno\n2. Dos" in p
+    assert redaccion.persona("comercial")["estructura"] == ["Uno", "Dos"]
+    assert redaccion.persona("analitico") == redaccion.PERSONAS["analitico"]
+
+
+def test_una_persona_activa_ilegible_usa_la_original(prompts_en_memoria):
+    _activar(prompts_en_memoria, "persona_ejecutivo", "Sos alguien.\n\n## Tu tarea\nAlgo")
+    assert redaccion.persona("ejecutivo") == redaccion.PERSONAS["ejecutivo"]
+
+
+def test_las_piezas_de_la_vista_previa_pisan_lo_activo(prompts_en_memoria):
+    _activar(prompts_en_memoria, "salida", "## Respuesta\nACTIVA")
+    p = redaccion.system_prompt("comercial", piezas={"salida": "## Respuesta\nBORRADOR"})
+    assert "BORRADOR" in p and "ACTIVA" not in p
+    assert "ACTIVA" in redaccion.system_prompt("comercial")
+
+
+def test_lo_activo_se_lee_de_mongo_una_vez_por_minuto(prompts_en_memoria, monkeypatch):
+    _activar(prompts_en_memoria, "seo", "## SEO\nPRIMERA")
+    assert "PRIMERA" in redaccion.system_prompt("comercial")
+    prompts_en_memoria.update_one({"clave": "seo"}, {"$set": {"contenido": "## SEO\nSEGUNDA"}})
+    assert "PRIMERA" in redaccion.system_prompt("comercial")      # sigue la caché
+    t = prompts_editables.time.monotonic() + prompts_editables.CACHE_S + 1
+    monkeypatch.setattr(prompts_editables.time, "monotonic", lambda: t)
+    assert "SEGUNDA" in redaccion.system_prompt("comercial")
+
+
+def test_si_mongo_falla_se_usan_los_textos_originales(monkeypatch):
+    def roto(base=None):
+        raise RuntimeError("Mongo caído")
+    monkeypatch.setattr(prompts_editables, "_col", roto)
+    prompts_editables.invalidar_cache()
+    assert redaccion.system_prompt("analitico") == "\n\n".join(
+        redaccion.system_prompt("analitico", piezas=dict(redaccion.PIEZAS)).split("\n\n"))
+    assert "## Oficio del sector" in redaccion.system_prompt("analitico")

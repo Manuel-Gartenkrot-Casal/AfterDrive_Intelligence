@@ -34,8 +34,13 @@ Todo vive en **un solo proceso**: la API, el programador de tareas y la cola. No
 | Ejecutor externo | `afterdrive/ejecutor_externo.py` | Corre las tareas programadas en GitHub Actions (opcional, ver [08](08-despliegue.md)) |
 | Cola | `afterdrive/cola.py` | Guarda en Mongo las Corridas pendientes y las corre de a una |
 | Corridas | `afterdrive/corridas.py` | Ejecuta scraping, generación o scripts, con un lock para que nunca corran dos |
-| Historial | `afterdrive/historial.py` | Notas y artículos guardados o descartados; estados de revisión y edición de notas |
-| HubSpot | `afterdrive/hubspot.py` | Publica notas aprobadas en el blog |
+| Historial | `afterdrive/historial.py` | Notas y artículos guardados o descartados; estados de revisión, edición, imagen subida desde la computadora y envío a HubSpot |
+| HubSpot | `afterdrive/hubspot.py` | Sube notas aprobadas como borrador al blog de su idioma (o al blog de pruebas) |
+| Traducciones | `afterdrive/traducciones.py` | Traduce cada nota a los otros dos idiomas y sube esas versiones a HubSpot |
+| Aprobación automática | `afterdrive/aprobacion_auto.py` | Si el interruptor está prendido, aprueba la nota programada que pasa el juez (`generacion/juez.py`) y la sube como borrador |
+| Calibración | `afterdrive/calibracion.py` | Lo que la generación aprende de calificaciones, rechazos y ediciones |
+| Métricas | `afterdrive/metricas.py` | Números del tablero de la vista Desarrollador |
+| Descarga de imágenes | `afterdrive/imagen_web.py` | Baja fotos de terceros validando cada redirección (para la IA y para copiarlas a HubSpot) |
 | Ingesta | `afterdrive/ingesta/` | Scrapear, clasificar, vectorizar y guardar noticias |
 | Generación | `afterdrive/generacion/` | Escribir Notas (Fase 2 es el generador principal) |
 | IA | `afterdrive/ia/` | Hablar con los proveedores (`llm.py`), prompts (`redaccion.py`, `lm_studio.py`), limpiar la salida (`saneo.py`) |
@@ -61,7 +66,7 @@ botón / scheduler / cron
 - **Corre una sola a la vez.** En el plan free de Render (512 MB) dos Corridas juntas se quedan sin memoria.
 - **Las que llegan mientras otra corre esperan en la cola**, no se rechazan. Una idéntica a otra pendiente no se duplica. Máximo 5 esperando.
 - **La cola sobrevive reinicios.** Si el servidor se cae con una Corrida a medias, queda marcada `interrumpida`; las pendientes se retoman.
-- **Se pueden cancelar**, salvo una generación ya empezada.
+- **Se pueden cancelar**, también la que está corriendo: el pedido queda en Mongo (`cancelar_pedido`), así lo ve el proceso que la corre (este servidor o GitHub Actions). Una generación se corta en la próxima llamada a la IA y no guarda nada.
 
 El porqué está en [ADR-0001](adr/0001-corridas-serializadas-en-un-proceso.md) y [ADR-0002](adr/0002-cola-de-corridas.md).
 
@@ -70,8 +75,8 @@ El porqué está en [ADR-0001](adr/0001-corridas-serializadas-en-un-proceso.md) 
 | Tipo | Cómo corre | Quién la pide |
 |---|---|---|
 | `scraping` | Dentro del proceso | Programador, botón "Buscar noticias", cron externo |
-| `generacion` | Dentro del proceso, con la config guardada | Programador, cron externo |
-| `script` | Subproceso de Python | "Generar nota" (con lo que hay en pantalla), "Sincronizar ejemplos", "Probar y agregar", "Buscar recomendaciones" |
+| `generacion` | Dentro del proceso, con la config guardada. Al terminar, si está prendida, pasa por la aprobación automática | Programador, cron externo |
+| `script` | Subproceso de Python | "Generar nota" (con lo que hay en pantalla), "Sincronizar ejemplos", "Probar y agregar", "Buscar recomendaciones", subir las traducciones a HubSpot y "Volver a traducir" |
 
 Con GitHub Actions activado, las programadas las ejecuta el runner de GitHub (`ejecutor: "github"`): quedan en la misma colección y el dashboard las ve igual, con su log en vivo.
 
@@ -80,6 +85,6 @@ Con GitHub Actions activado, las programadas las ejecuta el runner de GitHub (`e
 | Dónde | Qué | Cuándo cambia |
 |---|---|---|
 | `.env` / variables de Render | Secretos, URLs y modelos de IA, Mongo, usuario | Al desplegar |
-| Colección `config` en Mongo | Horarios, categorías de la nota automática, proveedor elegido | Desde el dashboard, con "Guardar cambios" |
+| Colección `config` en Mongo | Horarios, categorías de la nota automática, proveedor elegido, interruptores de blog de pruebas y aprobación automática | Desde el dashboard: "Guardar cambios" o al tocar el interruptor |
 
 El proveedor de IA guardado en Mongo **pisa** a `AI_PROVIDER` del entorno, salvo que exista `AI_PROVIDER_OVERRIDE`.

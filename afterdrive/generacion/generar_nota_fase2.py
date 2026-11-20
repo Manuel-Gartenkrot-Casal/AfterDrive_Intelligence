@@ -24,7 +24,8 @@ Recorrido de una nota:
   7. El largo (corto, medio, largo) se elige en Crear nota.
   8. Lo que gastó la API paga en esta nota queda en `costo`. La imagen
      destacada es una foto de las noticias usadas (la guardó el scraper),
-     elegidas con IA contra el tema de la nota: la destacada y 2 para el cuerpo (imagen_destacada.py).
+     elegidas con IA contra el tema de la nota: la destacada y 4 para el cuerpo (imagen_destacada.py).
+     Si las noticias no alcanzan, se completan con bancos de imágenes (imagenes_respaldo.py).
   9. Sección de fuentes con las noticias usadas, y todo lo revisado se guarda
      con la nota para mostrarlo al revisarla.
 
@@ -42,14 +43,16 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from afterdrive import calibracion
-from afterdrive.db import ESTADO_BORRADOR, db, registrar_nota_descartada
+from afterdrive import calibracion, clientes, config_store
+from afterdrive.db import ESTADO_APROBADA, ESTADO_BORRADOR, ESTADO_PUBLICADO, db, registrar_nota_descartada
 from afterdrive.generacion import (
     calidad,
     contexto_noticias,
     correccion,
     critica,
+    epigrafes,
     imagen_destacada,
+    imagenes_respaldo,
     juez,
     notas_blog,
     plan,
@@ -65,6 +68,7 @@ col_clientes = db["clientes"]
 
 EJEMPLOS_POR_CATEGORIA = 2
 NOTICIAS_POR_NOTA = 5
+ARCHIVO_POR_NOTA = 2      # noticias de más de 90 días parecidas al tema, para dar perspectiva
 
 
 def _recortar_parrafos(texto: str, limite: int) -> str:
@@ -107,6 +111,9 @@ def _build_system_prompt(
     regiones: list[str] | None = None,
     ajustes: "llm.Redaccion | None" = None,
     largo: str | None = None,
+    prohibidos: list[dict] | None = None,
+    piezas: dict | None = None,
+    idioma: str | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     base = redaccion.system_prompt(
@@ -115,7 +122,8 @@ def _build_system_prompt(
         compacto=ajustes.compacto,
         extension=redaccion.extension(largo),
         puntapie_url=puntapie_url,
-        idioma=redaccion.idioma_principal(),
+        idioma=idioma or redaccion.idioma_principal(),
+        piezas=piezas,
     )
     extra = []
     if regiones:
@@ -137,7 +145,9 @@ def _build_system_prompt(
         )
     else:
         extra.append("- No menciones clientes específicos de Alephee.")
-    prompt = base + "\n\n## Para esta nota\n" + "\n".join(extra)
+    if prohibidos:
+        extra.append(_regla_prohibidos(prohibidos))
+    prompt =base + "\n\n## Para esta nota\n" + "\n".join(extra)
     # La indicación propia del modelo va al final: es lo último que lee.
     return prompt + ("\n\n" + ajustes.directiva if ajustes.directiva else "")
 
@@ -153,6 +163,8 @@ def _build_user_prompt(
     aciertos: list[str] | None = None,
     propios: list[dict] | None = None,
     blog: list | None = None,
+    indicaciones: str | None = None,
+    archivo: list | None = None,
 ) -> str:
     ajustes = ajustes or llm.Redaccion()
     partes = []
@@ -168,6 +180,8 @@ def _build_user_prompt(
             "No hay noticias recientes para este tema. Escribí un análisis sin cifras, empresas ni "
             "casos concretos: explicá el tema con criterio de negocio."
         )
+    if archivo:
+        partes.append(_bloque_archivo(archivo, ajustes.compacto))
     if ejemplos:
         partes.append(
             "## Notas publicadas de referencia\n"
@@ -193,16 +207,76 @@ def _build_user_prompt(
         partes.append("## Lo que el equipo valoró en notas anteriores\n" + "\n".join(f"- {m}" for m in aciertos))
     if plan_nota:
         partes.append(plan.formatear(plan_nota))
-    partes.append("## Pedido\n" + _pedido(categorias, tema))
+    partes.append("## Pedido\n" + _pedido(categorias, tema, indicaciones))
     return "\n\n".join(partes)
 
 
-def _pedido(categorias: list[str], tema: str | None) -> str:
+INDICACIONES_MAX = 2000
+
+
+def _bloque_archivo(archivo: list, compacto: bool = False) -> str:
+    """Las noticias viejas parecidas al tema, con su fecha, y cómo usarlas sin inventar la evolución."""
+    return (
+        "## Archivo: noticias anteriores\n"
+        "Noticias de hace más de tres meses sobre temas parecidos. Sirven para dar perspectiva "
+        "(\"hace un año…\", \"pasó de X a Y\"); el hecho principal de la nota sale de las noticias de contexto.\n"
+        "- Compará cifras en el tiempo solo cuando tengas las dos puntas: la de antes acá y la de ahora en "
+        "las noticias de contexto. No inventes valores intermedios ni digas que algo creció o cayó de forma "
+        "sostenida si no hay datos en el medio.\n"
+        "- Decí de cuándo es cada dato viejo (el mes y el año, o \"hace un año\") y enlazá la noticia como "
+        "a las de contexto.\n"
+        "- Si no aportan al tema, no las uses.\n\n"
+        + contexto_noticias.formatear_archivo(archivo, max_chars=1200 if compacto else 2500)
+    )
+
+
+def _contexto(noticias: list, archivo: list, max_chars: int = 7000) -> str:
+    """Todo lo que respalda datos: las noticias de contexto y, si hay, las del archivo."""
+    texto = contexto_noticias.formatear(noticias, max_chars=max_chars)
+    if archivo:
+        texto += "\n\n## Archivo (noticias anteriores)\n" + contexto_noticias.formatear_archivo(archivo)
+    return texto
+
+
+def _historia(archivo: list, usadas_ids: set) -> dict:
+    """Lo que se guarda en la nota sobre el archivo: qué se ofreció, qué se usó y de cuándo era."""
+    articulos = [{
+        "titulo": n.titulo, "url": n.url,
+        "fecha": n.fecha.date().isoformat() if n.fecha else None,
+        "antiguedad_dias": n.antiguedad_dias,
+        "parecido": round(n.puntaje, 3),
+        "usado": id(n) in usadas_ids,
+        "ya_usado_en_otra_nota": bool(n.usada),
+    } for n in archivo]
+    usados = [a["antiguedad_dias"] for a in articulos if a["usado"] and a["antiguedad_dias"] is not None]
+    return {
+        "articulos": articulos,
+        "usados": sum(a["usado"] for a in articulos),
+        "antiguedad_media_dias": round(sum(usados) / len(usados)) if usados else None,
+    }
+
+
+def _pedido(categorias: list[str], tema: str | None, indicaciones: str | None = None) -> str:
+    """El pedido de la nota. Las indicaciones son lo que se escribió en la caja de Crear nota."""
     if tema:
-        return f"Escribí la nota sobre este tema: {tema}."
-    if categorias:
-        return f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
-    return "Escribí la nota."
+        pedido = f"Escribí la nota sobre este tema: {tema}."
+    elif categorias:
+        pedido = f"Escribí la nota sobre {', '.join(CATEGORIAS.get(s, s) for s in categorias).lower()}."
+    else:
+        pedido = "Escribí la nota."
+    indicaciones = (indicaciones or "").strip()[:INDICACIONES_MAX]
+    if indicaciones:
+        # Mandan sobre el enfoque y el tono, nunca sobre la regla de datos: si piden
+        # una cifra o un caso que no está en las noticias, no se inventa.
+        pedido += ("\n\nIndicaciones del equipo para esta nota (seguilas, salvo que pidan datos que no están "
+                   f"en las noticias: eso no se inventa nunca):\n{indicaciones}")
+    return pedido
+
+
+def _regla_prohibidos(prohibidos: list[dict]) -> str:
+    nombres = ", ".join(c.get("nombre", "") for c in prohibidos if c.get("nombre"))
+    return (f"- Nunca nombres a estas empresas, aunque aparezcan en las noticias: {nombres}. Si un dato "
+            "depende de una de ellas, contalo sin el nombre o no lo uses.")
 
 
 def _fotos_de_otras_notas() -> set[str]:
@@ -227,12 +301,18 @@ CRITICOS = ("sin_alucinaciones", "sin_paywall", "no_repetitivo", "estructura_cor
 MAX_INTENTOS = 2
 
 
+PARECIDO_MAX = 0.85
+
+
 def parecido_maximo() -> float:
-    """Similitud (coseno) a partir de la cual una nota repite a una reciente."""
+    """Similitud (coseno) a partir de la cual una nota repite a una reciente.
+
+    0.85: con 0.93 salían notas casi iguales a otras (mismo tema y ángulo con
+    otras palabras). Más bajo es más exigente: más notas se reescriben."""
     try:
-        return float(os.getenv("NOTA_PARECIDO_MAX", "0.93"))
+        return float(os.getenv("NOTA_PARECIDO_MAX", str(PARECIDO_MAX)))
     except ValueError:
-        return 0.93
+        return PARECIDO_MAX
 
 
 def fallas_criticas(evaluacion: dict | None) -> list[str]:
@@ -281,16 +361,75 @@ def _coseno(a, b) -> float:
     return contexto_noticias._coseno(a, b)
 
 
-def _recientes(limite: int = 15) -> list[dict]:
-    """Las últimas notas: sus títulos van al plan y sus vectores detectan repeticiones."""
+MEMORIA_NOTAS = 50         # notas recientes cuyos ángulos y palabras clave no se repiten
+TITULOS_AL_PLAN = 15       # de esas, cuántos títulos van al plan
+TRATADAS_MAX = 40          # aprobadas o publicadas que se recuerdan como temas ya tratados
+
+
+def _resumen_nota(d: dict) -> dict:
+    plan_nota = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+    return {"titulo": calibracion._titulo(d.get("contenido", "")), "embedding": d.get("embedding"),
+            "embedding_modelo": d.get("embedding_modelo"), "estado": d.get("estado"),
+            "angulo": " ".join(str(plan_nota.get("angulo") or "").split())[:160],
+            "palabra_clave": " ".join(str(plan_nota.get("palabra_clave") or "").split())[:80]}
+
+
+_CAMPOS_MEMORIA = {"contenido": 1, "embedding": 1, "embedding_modelo": 1, "estado": 1,
+                   "plan.angulo": 1, "plan.palabra_clave": 1}
+
+
+def _recientes(limite: int = MEMORIA_NOTAS) -> list[dict]:
+    """Las últimas notas: sus títulos, ángulos y palabras clave van al plan, y sus vectores
+    detectan repeticiones."""
     try:
-        docs = list(col_notas_fase2.find({}, {"contenido": 1, "embedding": 1, "embedding_modelo": 1})
-                    .sort("generado_en", -1).limit(limite))
+        docs = list(col_notas_fase2.find({}, _CAMPOS_MEMORIA).sort("generado_en", -1).limit(limite))
     except Exception as e:
         print(f"  [AVISO] No se pudieron leer las notas recientes: {e}", flush=True)
         return []
-    return [{"titulo": calibracion._titulo(d.get("contenido", "")), "embedding": d.get("embedding"),
-             "embedding_modelo": d.get("embedding_modelo")} for d in docs]
+    return [_resumen_nota(d) for d in docs]
+
+
+def _tratadas(limite: int = TRATADAS_MAX) -> list[dict]:
+    """Las aprobadas o publicadas más recientes: temas que el blog ya cubrió (o está por cubrir)."""
+    estados = (ESTADO_APROBADA, ESTADO_PUBLICADO)
+    try:
+        docs = list(col_notas_fase2.find({"estado": {"$in": list(estados)}}, _CAMPOS_MEMORIA)
+                    .sort("generado_en", -1).limit(limite))
+    except Exception as e:
+        print(f"  [AVISO] No se pudieron leer las notas aprobadas: {e}", flush=True)
+        return []
+    return [_resumen_nota(d) for d in docs if d.get("estado") in estados]
+
+
+@dataclass
+class Memoria:
+    """Lo que la nota nueva tiene que evitar repetir."""
+    titulos: list[str] = field(default_factory=list)          # las últimas notas
+    angulos: list[str] = field(default_factory=list)          # de las últimas MEMORIA_NOTAS
+    palabras_clave: list[str] = field(default_factory=list)   # de las últimas MEMORIA_NOTAS
+    tratados: list[str] = field(default_factory=list)         # aprobadas o publicadas: "título (ángulo)"
+
+
+def _unicos(valores) -> list[str]:
+    vistos, salida = set(), []
+    for v in valores:
+        clave = v.lower()
+        if v and clave not in vistos:
+            vistos.add(clave)
+            salida.append(v)
+    return salida
+
+
+def memoria(recientes: list[dict], tratadas: list[dict]) -> Memoria:
+    titulos = _unicos(r["titulo"] for r in recientes[:TITULOS_AL_PLAN])
+    ya = {t.lower() for t in titulos}
+    return Memoria(
+        titulos=titulos,
+        angulos=_unicos(r["angulo"] for r in recientes),
+        palabras_clave=_unicos(r["palabra_clave"] for r in recientes),
+        tratados=_unicos(f"{t['titulo']} ({t['angulo']})" if t["angulo"] else t["titulo"]
+                         for t in tratadas if t["titulo"] and t["titulo"].lower() not in ya),
+    )
 
 
 def _parecida(emb, modelo: str, recientes: list[dict]) -> dict | None:
@@ -326,7 +465,8 @@ class _Version:
 
 
 def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabra_clave: str,
-             permitidas: tuple, recientes: list[dict], umbral: int | None) -> _Version:
+             permitidas: tuple, recientes: list[dict], umbral: int | None,
+             prohibidos: list[dict] | None = None) -> _Version:
     from afterdrive.ia.lm_studio import evaluar_lineamientos
 
     texto, quitados = verificacion.sanear_enlaces(texto, noticias, permitidas, DOMINIOS_PROPIOS)
@@ -357,6 +497,11 @@ def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabr
         version.codigos.append("repetida")
         version.problemas.append(f"se parecía demasiado a una nota reciente (\"{parecida['titulo']}\"): "
                                  "elegí otro ángulo y otro hecho central")
+    nombradas = clientes.nombrados(texto, prohibidos or [])
+    if nombradas:
+        version.codigos.append("empresa_prohibida")
+        version.problemas.append(f"nombraba empresas que no se pueden mencionar: {', '.join(nombradas)}. Sacalas "
+                                 "del texto; si un dato depende de ellas, contalo sin el nombre o quitalo")
     if umbral is not None and evaluacion is not None and puntaje(evaluacion) < umbral:
         version.codigos.append("puntaje_bajo")
         version.problemas.append(f"cumplía {puntaje(evaluacion)} de 9 lineamientos; el equipo pide al menos {umbral}")
@@ -367,6 +512,14 @@ def _revisar(texto: str, noticias: list, extra: str, voz, compacto: bool, palabr
 DOMINIOS_PROPIOS = ("alephee.com",)
 
 
+def _prompts_juego() -> str:
+    try:
+        from afterdrive import prompts_ia
+        return prompts_ia.juego()
+    except Exception:
+        return "actuales"
+
+
 def generar_nota(
     categorias: list[str],
     clientes_ids: list[str] | None = None,
@@ -375,19 +528,43 @@ def generar_nota(
     tema: str | None = None,
     regiones: list[str] | None = None,
     largo: str = redaccion.LARGO_DEFAULT,
+    indicaciones: str | None = None,
 ) -> dict:
-    """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo)."""
+    """Genera, revisa y guarda una Nota. Lo que gasta la API paga queda en la nota (costo).
+
+    `indicaciones`: texto libre de la caja de Crear nota (enfoque, tono, qué destacar).
+    Sin `tema`, usa el primero de la lista de temas (config_store.get_temas) y lo descarta si la nota se guarda.
+    """
+    de_lista = None
+    if not (tema or "").strip():
+        temas = config_store.get_temas()
+        if temas:
+            tema = de_lista = temas[0]
+            print(f"  Tema de la lista: {tema} (quedan {len(temas) - 1} después de esta)", flush=True)
     with consumo.medir() as costo:
-        resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo)
+        resultado = _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
+                                  indicaciones)
+    if de_lista and resultado.get("success"):
+        try:
+            config_store.descartar_tema(de_lista)
+        except Exception as e:   # la nota ya está guardada: no la marca como fallida
+            print(f"  [AVISO] No se pudo sacar el tema de la lista: {e}", flush=True)
     if costo.llamadas:
         detalle = ", ".join(f"{k} {v:.3f}" for k, v in sorted(costo.por_tarea.items(), key=lambda t: -t[1]))
         print(f"  [COSTO] Esta nota: USD {costo.total:.3f} ({detalle})", flush=True)
     return resultado
 
 
-def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo) -> dict:
+def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regiones, largo, costo,
+                  indicaciones=None) -> dict:
+    from afterdrive import prompts_ia
+
+    prompts = prompts_ia.instantanea()
     clientes_ids = clientes_ids or []
     regiones = regiones or []
+    indicaciones = (indicaciones or "").strip()[:INDICACIONES_MAX] or None
+    if indicaciones:
+        print(f"  Indicaciones del equipo: {indicaciones[:120]}", flush=True)
     ajustes = llm.ajustes_redaccion()
     # Todas las notas se escriben en el idioma principal (portugués); las
     # regiones eligen el mercado. Las otras versiones se traducen al final.
@@ -396,16 +573,41 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
 
     clientes_docs = []
     for cid in clientes_ids:
-        doc = col_clientes.find_one({"slug": cid}) or col_clientes.find_one({"nombre": {"$regex": cid, "$options": "i"}})
-        if doc:
+        doc = clientes.buscar(col_clientes, cid)
+        if doc and clientes.modo(doc) == clientes.MENCIONAR:
             clientes_docs.append(doc)
 
-    noticias = contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=NOTICIAS_POR_NOTA)
+    # Empresas que ninguna nota puede nombrar: se avisa en el prompt, se dejan afuera las
+    # noticias que las tienen en el título y se revisa el texto escrito.
+    prohibidos = clientes.no_mencionar(col_clientes)
+    if prohibidos:
+        print(f"  Empresas que no se pueden nombrar: {len(prohibidos)}", flush=True)
+    noticias = contexto_noticias.seleccionar(_consulta(categorias, tema, regiones),
+                                             limite=NOTICIAS_POR_NOTA + (3 if prohibidos else 0))
+    if prohibidos:
+        sin_prohibidas = [n for n in noticias if not clientes.nombrados(n.titulo, prohibidos)]
+        if len(sin_prohibidas) < len(noticias):
+            print(f"  Se dejaron afuera {len(noticias) - len(sin_prohibidas)} noticia(s) sobre empresas que no se "
+                  "nombran.", flush=True)
+        noticias = sin_prohibidas
+    noticias = noticias[:NOTICIAS_POR_NOTA]
     print(f"  Noticias de contexto: {len(noticias)}", flush=True)
+    reutilizadas = [n for n in noticias if getattr(n, "liberada", False)]
+    if reutilizadas:
+        print(f"  Reutilizadas de notas rechazadas: {len(reutilizadas)}", flush=True)
     for n in noticias:
         print(f"    - {n.titulo[:80]}", flush=True)
     if not noticias:
         print("  [WARN] No hay noticias scrapeadas: la nota se escribe sin datos concretos.", flush=True)
+    # Perspectiva: 1 o 2 noticias de hace más de 3 meses parecidas al tema.
+    archivo = contexto_noticias.seleccionar_archivo(_consulta(categorias, tema, regiones),
+                                                    limite=1 if ajustes.compacto else ARCHIVO_POR_NOTA,
+                                                    excluir=[n.id for n in noticias])
+    if prohibidos:
+        archivo = [n for n in archivo if not clientes.nombrados(n.titulo, prohibidos)]
+    for n in archivo:
+        print(f"  Archivo ({contexto_noticias.antiguedad(n.antiguedad_dias)}): {n.titulo[:80]}", flush=True)
+    con_archivo = noticias + archivo   # lo que respalda datos y enlaces al revisar
 
     ejemplos = get_ejemplos_por_tags(categorias, regiones=regiones or None, limit=EJEMPLOS_POR_CATEGORIA)
     ejemplos = ejemplos[: ajustes.max_ejemplos]
@@ -426,20 +628,28 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         print(f"  Umbral del evaluador calibrado con las calificaciones: {cal.umbral}/9", flush=True)
 
     recientes = _recientes()
+    # Memoria: títulos de las últimas notas, ángulos y palabras clave de las últimas 50,
+    # y las aprobadas o publicadas como temas ya tratados.
+    mem = memoria(recientes, _tratadas())
+    if mem.angulos or mem.tratados:
+        print(f"  Memoria: {len(mem.angulos)} ángulo(s), {len(mem.palabras_clave)} palabra(s) clave y "
+              f"{len(mem.tratados)} tema(s) ya tratado(s)", flush=True)
     print("  Planificando la nota...", flush=True)
-    estructura = (redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["analitico"])["estructura"]
+    estructura = redaccion.persona(persona, piezas=prompts["piezas"])["estructura"]
     plan_nota = plan.planificar(
-        noticias, _pedido(categorias, tema), estructura,
-        publicadas=[r["titulo"] for r in recientes if r["titulo"]], reglas=cal.reglas,
+        noticias, _pedido(categorias, tema, indicaciones), estructura,
+        publicadas=mem.titulos, angulos=mem.angulos, palabras_clave=mem.palabras_clave, tratados=mem.tratados,
+        reglas=cal.reglas,
         contexto=contexto_noticias.formatear(noticias, max_chars=5000), idioma=voz.idioma,
         notas_blog=[f"{n.titulo}: {n.resumen}" if n.resumen else n.titulo for n in blog],
     )
     if plan_nota:
         print(f"  Plan: {plan_nota['titulo']}", flush=True)
 
-    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo)
+    system = _build_system_prompt(categorias, clientes_docs, puntapie_url, persona, regiones, ajustes, largo,
+                                  prohibidos, piezas=prompts["piezas"], idioma=idioma)
     user_msg = _build_user_prompt(noticias, ejemplos, categorias, tema, ajustes, cal.reglas, plan_nota,
-                                  cal.aciertos, propios, blog)
+                                  cal.aciertos, propios, blog, indicaciones, archivo)
 
     # Lo que dicen los resúmenes de las notas del blog también respalda datos (al citarlas).
     extra = " ".join([_formatear_clientes(clientes_docs), tema or "", *(n.resumen for n in blog)])
@@ -461,7 +671,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             # Retocar con el modelo de corrección (barato) en lugar de pagar otra redacción entera.
             segundo_intento = "correccion"
             print("  Corrigiendo la nota...", flush=True)
-            articulo = correccion.corregir(anterior.texto, anterior.problemas, contexto_noticias.formatear(noticias),
+            articulo = correccion.corregir(anterior.texto, anterior.problemas, _contexto(noticias, archivo),
                                            max_tokens=ajustes.max_tokens)
             if articulo is None:
                 break
@@ -485,8 +695,8 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
             )
             continue
 
-        version = _revisar(articulo, noticias, extra, voz, ajustes.compacto, palabra_clave, permitidas,
-                           recientes, cal.umbral)
+        version = _revisar(articulo, con_archivo, extra, voz, ajustes.compacto, palabra_clave, permitidas,
+                           recientes, cal.umbral, prohibidos)
         if mejor is None or version.orden < mejor.orden:
             mejor = version
         anterior = version
@@ -506,10 +716,14 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     # y las que el plan asignó a una sección. Sin ninguna señal, todas.
     citadas = verificacion.urls_citadas(mejor.texto)
     del_plan = {id(n) for n in plan.noticias_del_plan(plan_nota, noticias)}
-    usadas = [n for i, n in enumerate(noticias)
-              if (n.url and n.url.strip().rstrip("/").lower() in citadas) or i in mejor.verificacion.noticias_citadas
-              or id(n) in del_plan]
-    articulo = verificacion.agregar_fuentes(mejor.texto, usadas or noticias, voz.titulo_fuentes)
+    # Los índices de la verificación son de con_archivo (noticias + archivo).
+    usadas_todas = [n for i, n in enumerate(con_archivo)
+                    if (n.url and n.url.strip().rstrip("/").lower() in citadas) or i in mejor.verificacion.noticias_citadas
+                    or id(n) in del_plan]
+    ids_archivo = {id(n) for n in archivo}
+    usadas = [n for n in usadas_todas if id(n) not in ids_archivo]   # la foto sale de las noticias frescas
+    del_archivo = [n for n in usadas_todas if id(n) in ids_archivo]
+    articulo = verificacion.agregar_fuentes(mejor.texto, (usadas or noticias) + del_archivo, voz.titulo_fuentes)
     evaluacion = mejor.evaluacion
 
     doc = {
@@ -521,6 +735,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "puntapie_url": puntapie_url,
         "persona": persona,
         "tema": tema,
+        "indicaciones": indicaciones,
+        # Lo que quedó nombrado en el cuerpo (sin la sección de fuentes): vacío salvo que la corrección no alcanzara.
+        "empresas_prohibidas": clientes.nombrados(mejor.texto, prohibidos),
         "fuentes": [{"titulo": n.titulo, "url": n.url} for n in noticias],   # la imagen se suma abajo
         "ejemplos_usados": [e.get("url") for e in ejemplos],
         "notas_blog_sugeridas": [n.como_dict() for n in blog],
@@ -538,9 +755,23 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         "estilo": mejor.revision.como_dict()["hallazgos"],
         "seo": mejor.revision.seo,
         "plan": plan_nota,
+        # Perspectiva histórica: las noticias del archivo que se ofrecieron, cuáles se usaron y su antigüedad.
+        "historia": _historia(archivo, {id(n) for n in del_archivo}),
         "parecida_a": mejor.parecida,
         "enlaces_quitados": mejor.enlaces_quitados,
         "calibracion_usada": cal.como_dict(),
+        # Con qué prompts se escribió: los actuales o la copia de la IA (Prompts con IA compara los dos).
+        "prompts_juego": prompts["juego"],
+        "prompts_huella": prompts["huella"],
+        "prompts_prueba": {
+            "user": user_msg, "contexto": _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),
+            "reglas": cal.reglas,
+            "opciones": {"categorias": categorias,
+                         "clientes": [{k: c[k] for k in ("nombre", "descripcion", "productos") if k in c}
+                                      for c in clientes_docs], "puntapie_url": puntapie_url,
+                         "persona": persona, "regiones": regiones, "largo": largo,
+                         "prohibidos": [{"nombre": c.get("nombre", "")} for c in prohibidos], "idioma": idioma},
+        },
         "largo": largo,
         "proveedor": llm.proveedor_activo(),
         "correcciones_usadas": cal.reglas,
@@ -561,7 +792,9 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
         usadas + [n for n in noticias if id(n) not in usadas_ids], titulo, (plan_nota or {}).get("angulo", ""),
         # Si las fotos de estas noticias no alcanzan, más noticias del mismo tema.
         extra=lambda: contexto_noticias.seleccionar(_consulta(categorias, tema, regiones), limite=15),
-        excluir=_fotos_de_otras_notas())
+        excluir=_fotos_de_otras_notas(),
+        # Y si tampoco, bancos de imágenes: la nota no sale con menos fotos mientras haya de dónde sacar.
+        respaldo=imagenes_respaldo.buscador(titulo, (plan_nota or {}).get("angulo", "")))
     if eleccion.imagen:
         doc["imagen"] = {**eleccion.imagen, "alt": titulo or eleccion.imagen["alt"]}
         print(f"  Imagen destacada: la de '{eleccion.imagen['origen']['titulo'][:60]}'", flush=True)
@@ -571,22 +804,31 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     doc["imagenes_cuerpo"] = [{**im, "alt": im.get("alt") or im["origen"]["titulo"]} for im in eleccion.cuerpo]
     if doc["imagenes_cuerpo"]:
         print(f"  Imágenes en el cuerpo: {len(doc['imagenes_cuerpo'])}", flush=True)
+    # Las de Pixabay no se pueden enlazar para siempre: se guardan en la base ahora, mientras el link vale.
+    imagenes_respaldo.guardar_las_que_caducan([doc.get("imagen"), *doc["imagenes_cuerpo"]])
     doc["imagen_eleccion"] = eleccion.como_dict()
 
     def _fuente(n) -> dict:
         f = {"titulo": n.titulo, "url": n.url}
+        if getattr(n, "liberada", False):
+            f["reutilizada"] = True   # venía de una nota rechazada
         if n.imagen:
             f["imagen"] = n.imagen["url"]
             veredicto = eleccion.veredictos.get(n.imagen["url"])
             if veredicto:
                 f["imagen_apta"], f["imagen_motivo"] = veredicto["apta"], veredicto["motivo"]
                 f["imagen_personas"] = veredicto.get("personas", False)
+                if "portada" in veredicto:
+                    f["imagen_portada"] = veredicto["portada"]
         return f
     doc["fuentes"] = [_fuente(n) for n in noticias]
+    # La bajada de cada foto del texto, en los tres idiomas (hubspot.py la pone debajo de la foto).
+    if doc["imagenes_cuerpo"] and epigrafes.completar(doc, eleccion.veredictos):
+        print(f"  Epígrafes de las fotos: {sum(1 for im in doc['imagenes_cuerpo'] if im.get('epigrafe'))}", flush=True)
     # Editor crítico (modelo de evaluación): calificación sugerida y si podría aprobarse sola.
     print("  Juzgando la nota (editor crítico)...", flush=True)
-    doc["juicio"] = juez.juzgar(articulo, contexto_noticias.formatear(noticias, max_chars=juez.NOTICIAS_MAX),
-                                cal.reglas)
+    doc["juicio"] = juez.juzgar(articulo, _contexto(noticias, archivo, max_chars=juez.NOTICIAS_MAX),
+                                cal.reglas, piezas=prompts["referencia"])
     if doc["juicio"].get("error"):
         print(f"  [AVISO] {doc['juicio']['error']}", flush=True)
     else:
@@ -594,7 +836,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
               f"(confianza {doc['juicio']['confianza']:.2f}, sugiere {doc['juicio']['calificacion']}/5)", flush=True)
     # Corrector de estilo: lo que la IA hizo mal al redactar, para mostrar al calificarla.
     print("  Revisando la redacción (gramática, tono y estructura)...", flush=True)
-    doc["critica"] = critica.criticar(articulo, persona, regiones, idioma)
+    doc["critica"] = critica.criticar(articulo, persona, regiones, idioma, piezas=prompts["referencia"])
     if doc["critica"].get("error"):
         print(f"  [AVISO] {doc['critica']['error']}", flush=True)
     else:
@@ -612,7 +854,7 @@ def _generar_nota(categorias, clientes_ids, puntapie_url, persona, tema, regione
     contexto_noticias.marcar_usadas(noticias)
     print("[OK] Nota guardada en 'notas_fase2'.", flush=True)
 
-    meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo")}
+    meta = {k: v for k, v in doc.items() if k not in ("embedding", "embedding_modelo", "prompts_prueba")}
     return {"success": True, "contenido": articulo, "meta": meta, "id": str(nota_id) if nota_id else None}
 
 
@@ -646,18 +888,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--persona", default="comercial",
                         choices=["analitico", "periodistico", "comercial", "divulgativo", "ejecutivo"])
     parser.add_argument("--tema", type=str, default=None)
+    parser.add_argument("--indicaciones", type=str, default=None,
+                        help="Indicaciones libres para la IA (la caja de Crear nota)")
     parser.add_argument("--largo", choices=list(redaccion.LARGOS), default=redaccion.LARGO_DEFAULT)
+    parser.add_argument("--rotar", action="store_true",
+                        help="Rotación de categorías: usa 1 o 2 de las pedidas, las menos usadas últimamente")
     parser.add_argument("--regiones", nargs="+", choices=REGION_SLUGS, default=[],
                         help="Regiones objetivo (argentina, brasil, mexico, latinoamerica, europa, china, asia)")
     args = parser.parse_args(argv)
     _validar_entorno()
+    categorias = args.categorias
+    if args.rotar:
+        from afterdrive.generacion import rotacion
+        categorias = rotacion.rotar(categorias)
 
     resultado = generar_nota(
-        categorias=args.categorias,
+        categorias=categorias,
         clientes_ids=args.clientes,
         puntapie_url=args.puntapie,
         persona=args.persona,
         tema=args.tema,
+        indicaciones=args.indicaciones,
         regiones=args.regiones,
         largo=args.largo,
     )

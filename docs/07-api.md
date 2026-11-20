@@ -22,6 +22,7 @@ Login y guardia en `afterdrive/auth.py`.
 | `GET /api/health` | Lo consulta el dashboard para el indicador "Online" |
 | `GET /api/db-check` | Diagnóstico de la conexión a Mongo (sin credenciales) |
 | `POST /api/login`, `POST /api/logout` | |
+| `GET /api/sesion` | `{usuario}`: quién está conectado (el perfil del pie de la barra lateral) |
 
 **Corridas (la cola)**
 
@@ -30,14 +31,14 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | | |
 |---|---|
 | `POST /api/corridas/scraping` | Scraping de todas las fuentes activas |
-| `POST /api/corridas/generacion` | Una nota con los parámetros del body (`categorias`, `regiones`, `clientes`, `persona`, `tema`, `puntapie_url`) |
+| `POST /api/corridas/generacion` | Una nota con los parámetros del body (`categorias`, `regiones`, `clientes`, `persona`, `tema`, `puntapie_url`, `indicaciones`: texto libre de hasta 2000 caracteres para la IA, `rotar_categorias`: `true` para usar 1 o 2 de las categorías, rotando) |
 | `POST /api/corridas/ejemplos` | Sincronizar ejemplos (`tags`, `max`) |
 | `POST /api/corridas/probar-fuente` | Probar y agregar una fuente (`url`) |
 | `POST /api/corridas/recomendaciones` | Buscar fuentes recomendadas |
 | `POST /api/run-automation`, `POST /api/run-generacion` | Scraping / nota automática con la config guardada (para el cron) |
 | `GET /api/corridas` | `en_curso`, `pendientes` y `recientes` |
 | `GET /api/corridas/<id>/log?desde=N` | Líneas nuevas del log desde la N, estado y posición en la cola |
-| `POST /api/corridas/<id>/cancelar` | Cancela (409 si es una generación ya empezada en el servidor) |
+| `POST /api/corridas/<id>/cancelar` | Cancela una pendiente (`cancelada`) o una en curso (`cancelando`: el proceso que la corre la corta, sea este servidor o GitHub Actions) |
 
 **Historial y revisión de notas**
 
@@ -48,16 +49,29 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | `GET /api/historial/<seccion>/<coleccion>/<id>` | Un ítem con su contenido completo |
 | `POST /api/historial/estado` | `{coleccion, id, estado, motivo}`: `borrador`, `aprobada`, `rechazada` (pide `motivo`, mínimo 3 caracteres) o `publicado` |
 | `PATCH /api/historial/contenido` | `{coleccion, id, contenido}`: editar el texto de una nota no publicada. La primera edición guarda la versión generada |
+| `PATCH /api/historial/traduccion` | `{coleccion, id, idioma, contenido}`: guardar la versión editada de una traducción |
+| `POST /api/historial/retraducir` | `{coleccion, id, idioma}`: encola volver a traducir una nota a ese idioma. 202 con el id de la corrida |
+| `POST /api/historial/critica` | `{coleccion, id}`: pide (o repite) la calificación de la IA y la guarda en la nota. 503 si la IA no pudo |
+| `POST /api/historial/critica/traduccion` | `{coleccion, id, idioma}` (`es`, `pt`, `en`): resumen y problemas de la calificación de la IA en el idioma del dashboard; se guarda la primera vez |
 | `POST /api/generacion-config` también acepta `largo` | `corto`, `medio` o `largo`: largo aproximado de la nota automática. `POST /api/corridas/generacion` lo acepta igual para la manual |
 | `POST /api/historial/calificacion` | `{coleccion, id, puntaje (1-5), etiquetas, comentario}`: calificar una nota. Alimenta la calibración |
 | `GET /api/calibracion` | Lo que la generación aprendió: calificaciones, promedios por persona y proveedor, reglas activas, aciertos, notas propias de referencia y umbral del evaluador |
 | `GET /ayuda` | Página de documentación (sin sesión, redirige al login) |
 | `GET /api/docs` · `GET /api/docs/<slug>` | Lista de documentos de Ayuda y el Markdown de uno (solo los de `DOCUMENTOS`) |
+| `POST /api/carrusel/<nota_id>` | `{idiomas?}` (por defecto los 3: es, pt, en): encola los carruseles para redes, uno por idioma (textos con IA, 3 PNG de 1080×1350 y un PDF cada uno). 202 con el id de la corrida |
+| `POST /api/carrusel/<nota_id>/textos` | `{idioma, titulo, subtitulo, puntos, cta}`: guarda los textos editados de ese idioma y encola volver a dibujar, sin IA, solo las diapositivas que cambiaron (1: título y subtítulo, 2: puntos, 3: llamada a la acción); devuelve cuáles en `diapositivas`. Si no cambió nada, 200 sin encolar |
+| `GET /api/carrusel/<nota_id>/pdf?idioma=pt` | El PDF de las 3 diapositivas de ese idioma (descarga), para LinkedIn. Las imágenes se sirven en `/api/imagenes/<id>` |
 | `POST /api/hubspot/traducciones` | `{coleccion, id}`: encola la traducción a los otros idiomas y su subida a HubSpot como borradores (la nota tiene que estar subida en su idioma). 202 con el id de la corrida. `POST /api/hubspot/enviar` también la encola y lo devuelve en `traducciones` |
-| `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública). `url` vacía la quita |
+| `GET /api/metricas?dias=14` | Números del tablero de la vista Desarrollador (scraping, notas, corridas, consumo de IA), con el período anterior para comparar |
+| `PATCH /api/historial/imagen` | `{coleccion, id, url, alt}`: imagen destacada (https pública o una foto de sus noticias, que sale del cuerpo si estaba). `url` vacía la quita |
+| `POST /api/historial/imagen/archivo` | Multipart con `archivo`, `coleccion`, `id` y `alt`: imagen destacada desde la computadora (JPG, PNG, WebP o GIF, hasta 5 MB, validada por sus bytes) |
+| `GET /api/imagenes/<id>` | Una imagen subida (con sesión, como todo `/api`) |
 | `GET /api/historial/vista-previa/<coleccion>/<id>` | Cómo saldría en el blog: `titulo`, `meta`, `slug`, `etiquetas`, `imagen`, `html`, `imagenes_noticias` (fotos de las noticias de la nota, para elegir otra) |
 | `GET /api/hubspot/estado` | `{configurado}` |
-| `POST /api/hubspot/enviar` | `{coleccion, id, publicar}`: manda una nota aprobada a HubSpot (502 si HubSpot falla) |
+| `GET/POST /api/hubspot/blog-pruebas` | Interruptor del blog de pruebas: `{disponible, blog_id, activo}`; el POST recibe `{"activo": bool}` |
+| `GET/POST /api/aprobacion-auto` | Interruptor de la aprobación automática: `{activo, confianza_min}`; el POST recibe `{"activo": bool}` |
+| `GET /api/hubspot/destino/<coleccion>/<id>` | Blog, etiquetas y autor que le tocan a la nota, y los autores de ese idioma para elegir (422 si no hay blog en su idioma) |
+| `POST /api/hubspot/enviar` | `{coleccion, id, publicar, autor_id?}`: sube una nota aprobada a HubSpot como borrador (o actualiza el mismo). `publicar: true` responde 400 mientras publicar desde el dashboard esté desactivado. 502 si HubSpot falla |
 
 **Fuentes**
 
@@ -74,19 +88,34 @@ Encolar responde **202** con `id`, `posicion` y `duplicada`; **429** si ya hay 5
 | | |
 |---|---|
 | `GET/POST /api/scraping-config` | Hora, frecuencia, activación, artículos por fuente |
-| `GET/POST /api/generacion-config` | Hora, frecuencia, activación, persona, tema |
-| `GET/POST /api/fase2/config` | Categorías, regiones, clientes y puntapié de la nota automática. Solo cambia las claves que vienen |
+| `GET/POST /api/generacion-config` | Hora, `horas_extra` (lista HH:MM, hasta 7: más notas por día), frecuencia, activación, persona. El GET suma `costo_nota_usd` (promedio de la API paga por nota, o `null`) y `tope_usd`. El tema ya no se guarda |
+| `GET/POST /api/fase2/config` | Categorías, regiones, clientes, puntapié y `rotar_categorias` de la nota automática. Solo cambia las claves que vienen |
+| `GET/POST /api/fase2/temas` | La lista de temas para las próximas notas. `POST {texto}` la reemplaza: un tema por línea, sin viñetas (`- `, `• `, `1. `), vacíos ni repetidos; hasta 200 temas de 300 caracteres |
 | `GET/POST /api/providers` | Proveedor de IA. El GET informa también el modo pago (`modo_pago_activo`, `modo_pago_hasta`, `modo_pago_restante_s`) y el proveedor elegido en Desarrollador (`provider_base`) |
-| `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes |
+| `POST /api/modo-pago` | Prende o apaga el modo API paga: `{"activo": true\|false}`. Dura 24 h como máximo; 400 si la API paga no está configurada o se alcanzó el tope del mes. Hoy el dashboard no lo usa |
 
 **Notas**
 
 | | |
 |---|---|
 | `GET /api/fase2/categorias`, `GET /api/fase2/regiones` | Opciones con la cantidad de ejemplos |
-| `GET/POST /api/fase2/clientes`, `DELETE /api/fase2/clientes/<slug>` | Clientes |
+| `GET/POST /api/fase2/clientes`, `DELETE /api/fase2/clientes/<slug>` | Clientes. `POST` acepta `modo`: `mencionar` (default) o `no_mencionar` |
+| `POST /api/fase2/clientes/importar` | Carga una lista (`texto`, una empresa por línea: `Nombre \| descripción \| alias1, alias2`) con un `modo` para todas. Crea las nuevas y cambia de modo las que ya estaban |
+| `PATCH /api/fase2/clientes/<slug>` | `{"modo"}`: si se puede nombrar. Pasar a `no_mencionar` la saca de los clientes de la nota automática |
 | `GET /api/fase2/ultima-nota`, `GET /api/fase2/notas/<id>` | Leer una nota |
 | `POST /api/evaluate-article` | Checklist de calidad a demanda |
+
+**Prompts con IA** (`prompts_ia.py`)
+
+| | |
+|---|---|
+| `GET /api/prompts-ia` | Con qué prompts escribe la redacción (`usar`: `actuales` o `ia`), si la mejora es automática (`auto`, `auto_cada`, `faltan`), la copia pieza por pieza, el último análisis y las últimas mejoras |
+| `POST /api/prompts-ia/usar` | `{"usar": "actuales" \| "ia"}` |
+| `POST /api/prompts-ia/auto` | `{"auto": bool}`: que la IA mejore la copia sola cada 5 notas nuevas |
+| `POST /api/prompts-ia/mejorar` | Encola una mejora (202, se sigue como cualquier Corrida). Sin cuerpo: analiza las notas y con ese diagnóstico la IA cambia la copia. `{"pedido", "claves"?}`: un cambio a mano. Los cambios válidos se aplican directo en la copia |
+| `POST /api/prompts-ia/deshacer` | `{"clave"}`: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA |
+| `GET /api/prompts-ia/pieza/<clave>` | El texto actual y el de la copia de una pieza, con sus cambios |
+| `POST /api/prompts-ia/restablecer` | `{"clave"?}`: la copia (o esa pieza) vuelve a ser igual a los prompts actuales |
 
 Los endpoints viejos que corrían fuera de la cola (`/api/add-url`, `/api/discover-sources`, `/api/stream/*`, `/api/fase2/stream/*`, `/api/fase2/generar`, `/api/fase2/scrape`, Fase 1) se borraron.
 

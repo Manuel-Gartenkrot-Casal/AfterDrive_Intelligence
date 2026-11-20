@@ -2,10 +2,12 @@
 
 Interfaz:
     resumen(dias=14, base=None) -> dict
+    costo_por_nota(base=None) -> float | None   USD promedio de la API paga por nota
 
 Todo sale de colecciones que ya existen, sin guardar nada nuevo:
     articulos / articulos_descartados   lo que trajo el scraping, por día y por sitio
-    notas_fase2 / notas_descartadas     notas escritas y versiones descartadas
+    notas_fase2 / notas_descartadas     notas escritas y versiones descartadas (y su `historia`:
+                                        las noticias del archivo que se usaron para dar perspectiva)
     corridas                            resultado y duración de cada corrida
     consumo_ia                          tokens de cada llamada a la IA y gasto de la API paga
 
@@ -109,7 +111,8 @@ def _inicio_del_dia(dia: datetime.date) -> datetime.datetime:
 def _notas(b, desde_corto, desde_largo, dias):
     escritas_dia, puntajes, intentos, estrellas = [], [], [], []
     estados = Counter()
-    campos = {"generado_en": 1, "estado": 1, "calidad": 1, "calificacion": 1}
+    archivo = {"evaluadas": 0, "con_archivo": 0, "antiguedades": [], "urls": set()}
+    campos = {"generado_en": 1, "estado": 1, "calidad": 1, "calificacion": 1, "historia": 1}
     for doc in b["notas_fase2"].find({"generado_en": {"$gte": desde_largo.isoformat()}}, campos):
         cuando = _fecha(doc.get("generado_en"))
         if not cuando:
@@ -125,6 +128,7 @@ def _notas(b, desde_corto, desde_largo, dias):
         cal = doc.get("calificacion") or {}
         if isinstance(cal.get("puntaje"), (int, float)):
             estrellas.append(cal["puntaje"])
+        _sumar_historia(archivo, doc.get("historia"))
     descartadas = [_dia(d["_id"]) for d in b["notas_descartadas"].find(_desde_oid(desde_corto), {"_id": 1})]
     return {
         "escritas": _por_dia(escritas_dia, dias),
@@ -134,6 +138,34 @@ def _notas(b, desde_corto, desde_largo, dias):
         "intentos_promedio": _promedio(intentos),
         "calificacion_promedio": _promedio(estrellas),    # estrellas del equipo, 1 a 5
         "calificadas": len(estrellas),
+        "archivo": _resumen_archivo(archivo),
+    }
+
+
+def _sumar_historia(archivo: dict, historia) -> None:
+    """Las notas anteriores a `historia` no cuentan: no se sabe si hubo archivo para ofrecerles."""
+    if not isinstance(historia, dict):
+        return
+    archivo["evaluadas"] += 1
+    usados = [a for a in historia.get("articulos") or [] if isinstance(a, dict) and a.get("usado")]
+    if usados:
+        archivo["con_archivo"] += 1
+    for a in usados:
+        if isinstance(a.get("antiguedad_dias"), (int, float)):
+            archivo["antiguedades"].append(a["antiguedad_dias"])
+        archivo["urls"].add(a.get("url") or a.get("titulo"))
+
+
+def _resumen_archivo(archivo: dict) -> dict:
+    """% de notas que usaron el archivo, antigüedad media de lo usado y cuántos artículos viejos se reutilizaron."""
+    evaluadas = archivo["evaluadas"]
+    return {
+        "evaluadas": evaluadas,
+        "con_archivo": archivo["con_archivo"],
+        "porcentaje": round(archivo["con_archivo"] / evaluadas, 3) if evaluadas else None,
+        "antiguedad_media_dias": round(sum(archivo["antiguedades"]) / len(archivo["antiguedades"]))
+        if archivo["antiguedades"] else None,
+        "reutilizados": len(archivo["urls"]),
     }
 
 
@@ -163,7 +195,7 @@ def _corridas(b, desde_largo):
 def _gasto(b, dias):
     from afterdrive.ia import consumo
 
-    hoy = datetime.datetime.now(datetime.UTC)
+    hoy = datetime.datetime.now(ZONA)   # el mes en hora de Argentina, igual que consumo.gastado_mes()
     por_dia: dict[str, float] = defaultdict(float)
     por_tarea: dict[str, float] = defaultdict(float)
     total = 0.0
@@ -184,7 +216,42 @@ def _gasto(b, dias):
         "tope_usd": consumo.tope(),
         "por_tarea": {k: round(v, 4) for k, v in sorted(por_tarea.items(), key=lambda kv: -kv[1])},
         "por_dia": [round(por_dia.get(d, 0.0), 4) for d in dias],
+        "meses_anteriores": _gasto_meses_anteriores(b, hoy),
     }
+
+
+MESES_ANTERIORES = 6
+
+
+def _gasto_meses_anteriores(b, hoy: datetime.datetime, meses: int = MESES_ANTERIORES) -> list[dict]:
+    """[{"mes": "YYYY-MM", "usd": float}] de los `meses` anteriores al actual, del más reciente al más viejo.
+
+    Solo la API paga (los gratuitos no cuestan). Un mes sin gasto va con 0: así se ve que no se usó.
+    """
+    lista, anio, mes = [], hoy.year, hoy.month
+    for _ in range(meses):
+        anio, mes = (anio - 1, 12) if mes == 1 else (anio, mes - 1)
+        lista.append(f"{anio:04d}-{mes:02d}")
+    totales: dict[str, float] = defaultdict(float)
+    filtro = {"mes": {"$in": lista}, "proveedor": {"$in": ["paga", None]}}
+    for doc in b["consumo_ia"].find(filtro, {"mes": 1, "costo_usd": 1}):
+        totales[doc["mes"]] += float(doc.get("costo_usd") or 0)
+    return [{"mes": m, "usd": round(totales.get(m, 0.0), 4)} for m in lista]
+
+
+NOTAS_PARA_COSTO = 20
+
+
+def costo_por_nota(base=None, ultimas: int = NOTAS_PARA_COSTO) -> float | None:
+    """USD promedio que gastó la API paga en cada una de las últimas notas que la usaron.
+
+    None si ninguna la usó todavía: no hay con qué estimar.
+    """
+    b = _base(base)
+    costos = [float((d.get("costo") or {}).get("total_usd") or 0)
+              for d in b["notas_fase2"].find({"costo.total_usd": {"$gt": 0}}, {"costo.total_usd": 1})
+              .sort("_id", -1).limit(ultimas)]
+    return round(sum(costos) / len(costos), 4) if costos else None
 
 
 def _tokens(b, desde_corto, dias):

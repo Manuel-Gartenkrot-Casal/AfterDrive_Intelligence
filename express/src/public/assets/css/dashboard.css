@@ -1,6 +1,39 @@
 /* Estilos del dashboard (index.html). */
 
 /* ═══════════════════════════════════════════════════════════════════════
+   SÍMBOLOS
+   IBM Plex Sans y JetBrains Mono no traen ✓ ✕ ★ ✦ ✎ ⚠ ▲ ▼ ▸ ▾ ● ↗ → ↺:
+   sin esto, cada sistema los toma de otra fuente (en Windows, Segoe UI
+   Symbol/Emoji) y quedaban más abajo que el texto. Van en un subset de
+   Noto Sans Symbols 2, Noto Sans Symbols y Noto Sans Math (licencia OFL,
+   assets/fonts/OFL.txt), con las métricas de Plex para que no estiren la
+   línea: el centro de cada símbolo cae a media altura de las mayúsculas.
+   Para sumar un símbolo nuevo: regenerar el subset y su unicode-range.
+   ═══════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/simbolos.woff2') format('woff2');
+  unicode-range: U+2318, U+25B2, U+25B6, U+25B8, U+25BC, U+25BE, U+25CF, U+2605-2606, U+2661, U+26A0,
+                 U+270E, U+2713, U+2715, U+2717, U+2726;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/flechas.woff2') format('woff2');
+  unicode-range: U+2190-2193, U+2197;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'AD Simbolos';
+  src: url('../fonts/giro.woff2') format('woff2');
+  unicode-range: U+21BA;
+  font-display: swap;
+  ascent-override: 102.5%; descent-override: 27.5%; line-gap-override: 0%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    SUPERFICIES PLANAS
    La jerarquía sale del color de superficie y del borde, no de la sombra:
      --canvas   fondo de la página
@@ -113,8 +146,8 @@
 
   --z-content:1; --z-toast:900; --z-modal:1000;
 
-  --font: 'IBM Plex Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font: 'IBM Plex Sans', 'AD Simbolos', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'AD Simbolos', ui-monospace, monospace;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -176,7 +209,9 @@ body {
 .header.active::after { opacity: 1; animation: scanline 1.8s linear infinite; }
 @keyframes scanline { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-.header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; border-radius: var(--r-md); color: inherit; text-decoration: none; }
+.header-brand:hover .header-title { color: var(--brand); }
+.header-brand:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
 
 /* Isologo de AfterDrive: el ícono original de Alephee, siempre en su rosa,
    con "afterdrive" y la bajada en el color de texto de cada tema. */
@@ -623,6 +658,7 @@ body {
   color: var(--text-lo);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.suggestion-meta { font-size: 0.72rem; color: var(--text-lo); margin-top: 2px; }
 .suggestion-actions { display: flex; align-items: center; gap: var(--s2); flex-shrink: 0; }
 .suggestion-actions .icon-btn { margin-left: 0; }
 .btn-sm { min-height: 34px; padding: 6px 14px; font-size: 0.78rem; }
@@ -721,11 +757,23 @@ body {
 .puntapie-toggle.active .toggle-switch::after { transform: translateX(18px); background: #F6F7FA; }
 
 .cliente-item { margin-bottom: var(--s3); }
+/* Empresas que no se nombran: chips con borde de alerta, siempre aplicadas (no se eligen). */
+.clientes-prohibidos-titulo { margin-top: var(--s4); }
+.clientes-prohibidos { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.cliente-prohibido { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px;
+  border: 1px solid var(--err, #c0392b); color: var(--text-hi, inherit); font-size: 0.8rem; }
+.cliente-prohibido .icon-btn { width: 24px; height: 24px; font-size: 0.75rem; }
+.clientes-importar { margin-top: var(--s3); }
+.clientes-importar summary { cursor: pointer; font-size: 0.85rem; color: var(--text-lo); }
+.clientes-importar[open] summary { margin-bottom: var(--s2); }
+.f2-indicaciones { resize: vertical; min-height: 88px; font-family: inherit; }
 .cliente-nombre { font-size: 0.85rem; font-weight: 600; color: var(--text-hi); }
 .cliente-item.active .cliente-nombre { color: var(--brand); }
 .cliente-sector { font-size: 0.72rem; color: var(--text-lo); }
 
 .puntapie-row { margin-bottom: var(--s3); }
+.f2-rotacion { margin-top: var(--s3); display: flex; flex-direction: column; gap: 4px; }
+.f2-rotacion .puntapie-toggle { align-self: flex-start; }
 .puntapie-toggle {
   display: inline-flex; align-items: center; gap: var(--s3);
   padding: 8px 16px 8px 10px;
@@ -1388,7 +1436,18 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
   font: inherit;
   cursor: pointer;
 }
-.inicio-nota:hover span { color: var(--brand); }
+.inicio-nota:hover .inicio-nota-texto > span { color: var(--brand); }
+/* Con la miniatura de la imagen destacada a la izquierda. */
+.inicio-nota { flex-direction: row; align-items: center; gap: 14px; padding: 14px 0; }
+.inicio-nota-texto { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.nota-mini {
+  flex-shrink: 0; width: 88px; aspect-ratio: 16 / 10; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well);
+}
+.nota-mini img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform var(--t-med) var(--ease-out); }
+.inicio-nota:hover .nota-mini img { transform: scale(1.04); }
+.nota-mini.vacia { display: grid; place-items: center; color: var(--text-lo); }
+@media (max-width: 640px) { .nota-mini { width: 64px; } }
 .inicio-nota small { color: var(--text-lo); font-size: 0.8rem; }
 .inicio-estado { color: var(--text-mid); margin-bottom: 20px; }
 .crear-resumen { flex: 1; font-size: 0.875rem; color: var(--text-mid); min-width: 150px; }
@@ -1418,37 +1477,6 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
 .modal-footer .btn { min-height: 40px; font-size: 0.85rem; }
 .modal-body > :is(h1,h2,h3,p,ul,ol) { max-width: 75ch; margin-left: auto; margin-right: auto; }
 .modal-body > h1 { max-width: 45ch; }
-.actividad-dock {
-  position: fixed;
-  right: 24px;
-  bottom: 16px;
-  z-index: 100;
-  width: min(460px,calc(100vw - 32px));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-  box-shadow: var(--shadow-float);
-}
-.actividad-dock summary { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; font-weight: 500; }
-.actividad-chevron { margin-left: auto; transition: transform 180ms; }
-.actividad-dock[open] .actividad-chevron { transform: rotate(180deg); }
-.actividad-punto { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
-.actividad-dock[data-estado="en_curso"] .actividad-punto { background: var(--info); animation: nodeBeat 1.2s infinite; }
-.actividad-dock[data-estado="error"] .actividad-punto { background: var(--err); }
-.actividad-dock[data-estado="pendiente"] .actividad-punto { background: var(--warn); }
-.actividad-detalle { padding: 0 16px 16px; }
-.actividad-detalle p { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 10px; }
-#actividad-log {
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 0.75rem/1.7 var(--mono);
-  padding: 12px;
-  margin-bottom: 12px;
-  background: var(--well);
-  border-radius: var(--r-sm);
-}
 .contenido > .activa { animation: seccionEntrada 180ms ease-out; }
 @keyframes seccionEntrada { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @supports (interpolate-size: allow-keywords) {
@@ -1456,7 +1484,7 @@ textarea.confirmar-campo { resize: vertical; font: inherit; }
   details::details-content { height: 0; overflow: clip; transition: height 200ms ease, content-visibility 200ms allow-discrete; }
   details[open]::details-content { height: auto; }
 }
-html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.actividad-dock) {
+html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2-section,.fase2-grupo,.btn,.toggle-item,.historial-seccion,.agenda-card,.modal,.modal-body,.kpi,.terminal) {
   transition: background-color 240ms ease, color 160ms ease, border-color 240ms ease;
 }
 @media (max-width: 1100px) {
@@ -1507,8 +1535,6 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
   .modal-sidebar { max-height: 110px; }
   .hist-item { flex-wrap: wrap; }
   .hist-lado { flex-direction: row; align-items: center; }
-  .actividad-dock { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
-  .actividad-dock summary { font-size: 0.85rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after,*::details-content {
@@ -1527,11 +1553,12 @@ html.theme-changing :is(body,.header,.sidebar,.inicio-panel,.hero-cliente,.fase2
    no entra se desplaza dentro del panel. La vista Desarrollador conserva la
    distribución anterior: suma consola y estadísticas debajo y estirar los
    paneles las encimaba.
-   --shell-pie es el lugar que se deja al final del contenido para el dock de
-   actividad, que flota encima.
+   --shell-pie es el aire que se deja al final del contenido. En escritorio la
+   terminal ocupa su propia fila debajo del contenido (no flota encima).
    ═══════════════════════════════════════════════════════════════════════ */
 body { --shell-pie: 24px; }
-body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 32px); }
+/* En el celular la terminal flota abajo: se deja su alto al final de la página. */
+@media (max-width: 900px) { html[data-modo="dev"] body:has(.terminal:not([hidden])) { --shell-pie: calc(var(--dock-height, 56px) + 24px); } }
 /* En el celular scrollea la página: el lugar para el dock va al final de todo. */
 @media (max-width: 900px) {
   [data-modo="cliente"] .app-container { padding-bottom: var(--shell-pie); }
@@ -1804,11 +1831,59 @@ body:has(.actividad-dock:not([hidden])) { --shell-pie: calc(var(--dock-height, 5
 
 .revision-bloque { padding: var(--s3) 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
 .revision-bloque h4 { margin-bottom: 6px; }
+/* Carrusel para redes (carrusel.js) */
+.carrusel-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0; }
+.carrusel-fila .control-label { margin: 0; }
+/* Vista previa como post de Instagram: una imagen 4:5 que se desliza, con contador, flechas y puntitos. */
+.ig-post { max-width: 380px; margin: var(--s2) auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); overflow: hidden; font-size: 0.85rem; }
+.ig-cabeza { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.ig-avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; padding: 6px;
+  background: #fff; color: #C93D58; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #C93D58; font-weight: 700; }
+.ig-avatar svg { width: 100%; height: 100%; }
+.ig-cuenta { display: flex; flex-direction: column; line-height: 1.2; }
+.ig-cuenta small { color: var(--text-lo); font-size: 0.72rem; }
+.ig-mas { margin-left: auto; color: var(--text-mid); letter-spacing: 1px; }
+.ig-marco { position: relative; }
+.ig-pista { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4 / 5; background: #111; }
+.ig-pista::-webkit-scrollbar { display: none; }
+.ig-pista:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.ig-pista img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: start; user-select: none; display: block; }
+.ig-contador { position: absolute; top: 10px; right: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(0,0,0,.65);
+  color: #fff; font-size: 0.72rem; font-weight: 600; }
+.ig-flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border: 0; border-radius: 50%;
+  background: rgba(255,255,255,.88); color: #222; font-size: 1.2rem; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.ig-ant { left: 8px; } .ig-sig { right: 8px; }
+.ig-flecha[hidden] { display: none; }
+.ig-acciones { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px 12px 2px; }
+.ig-iconos { display: flex; gap: 14px; }
+.ig-acciones svg { width: 22px; height: 22px; fill: none; stroke: var(--text-hi); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.ig-guardar { justify-self: end; }
+.ig-puntos { display: flex; gap: 4px; }
+.ig-puntos i { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.ig-puntos i.activo { background: #0095F6; }
+.ig-pie { padding: 6px 12px 12px; line-height: 1.4; }
+.carrusel-descargas { font-size: 0.8rem; text-align: center; color: var(--text-mid); }
+.carrusel-tira { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: var(--s2) 0; }
+.carrusel-tira figure { margin: 0; }
+.carrusel-tira img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.carrusel-tira figcaption { margin-top: 4px; text-align: center; }
+.carrusel-textos { margin-top: var(--s2); }
+.carrusel-idiomas { display: inline-flex; margin: var(--s2) 0; }
+.carrusel-idiomas button:disabled { opacity: .45; cursor: not-allowed; }
+.carrusel-textos summary { cursor: pointer; }
+.carrusel-textos .input-field { width: 100%; margin-bottom: var(--s2); }
+.carrusel-textos .control-label { margin-top: var(--s2); }
 .revision-bloque .hubspot-autor { width: 100%; max-width: 100%; margin-top: 4px; }
 .revision-bloque.con-fallas h4::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-right: 6px; vertical-align: 1px; }
 .revision-ok { color: var(--ok); }
 .revision-mal { color: var(--err); font-weight: 500; }
 .revision-sub { font-size: 0.75rem; color: var(--text-lo); margin-top: 6px; }
+.check-alephee ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.8125rem; color: var(--text-mid); }
+.check-alephee li { display: flex; gap: 6px; align-items: baseline; }
+.check-alephee .marca-check { width: 1em; text-align: center; font-weight: 600; flex: none; }
+.check-alephee .ok .marca-check { color: var(--ok); }
+.check-alephee .mal { color: var(--err); }
+.check-alephee .na { color: var(--text-lo); }
 .revision-lista { margin: 4px 0 0 18px; display: flex; flex-direction: column; gap: 3px; color: var(--text-mid); }
 .revision-lista.mal li { color: var(--err); }
 .revision-lista.dudoso li::marker { color: var(--warn); }
@@ -1942,6 +2017,13 @@ i.serie-2 { background: var(--serie-2); }
 .estados-notas b, .gasto-tareas b { color: var(--text-hi); font-family: var(--mono); font-weight: 500; }
 .gasto-metricas { display: flex; flex-direction: column; gap: 10px; }
 .gasto-nota { font-size: 0.78rem; color: var(--text-mid); }
+/* Meses anteriores de la API paga: una fila chica de meses con sus dólares. */
+.gasto-meses { border-top: 1px solid var(--border); padding-top: 8px; }
+.gasto-meses-titulo { font-size: 0.7rem; color: var(--text-lo); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.gasto-meses ul { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 4px 12px; font-size: 0.72rem; }
+.gasto-meses li { display: flex; justify-content: space-between; gap: 6px; color: var(--text-mid); }
+.gasto-meses li b { color: var(--text-hi); font-family: var(--mono); font-weight: 500; }
+.gasto-meses li.sin-gasto b { color: var(--text-lo); font-weight: 400; }
 
 @media (max-width: 1100px) {
   .tablero-grid { grid-template-columns: minmax(0, 1fr); }
@@ -2033,18 +2115,11 @@ body.trabajando .nav-actividad { display: inline-flex; }
 body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .nav-badge:not(:empty) { font-variant-numeric: tabular-nums; }
 
-/* Dock de actividad corriendo: franja que avanza arriba. */
-.actividad-dock[data-estado="en_curso"] { overflow: hidden; }
-.actividad-dock[data-estado="en_curso"]::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
-  background: linear-gradient(90deg, transparent, var(--info), transparent);
-  background-size: 50% 100%; background-repeat: no-repeat;
-  animation: franja 1.4s linear infinite;
-}
 @keyframes franja { from { background-position: -50% 0; } to { background-position: 150% 0; } }
 
 /* Pasos de la nota: el actual late, los hechos quedan tildados. */
 .f2-pasos { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin-top: 10px; counter-reset: paso; }
+.f2-pasos:not(.en-marcha), .f2-pasos-titulo { display: none; }
 .f2-pasos li {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
   padding: 9px 12px; border-radius: var(--r-sm);
@@ -2121,7 +2196,9 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .revision-imagen { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--well); }
 .revision-imagenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s2); }
 .revision-imagenes figure { margin: 0; min-width: 0; }
-.revision-imagenes figcaption { margin-top: var(--s1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.revision-imagenes figcaption { margin-top: var(--s1); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.revision-imagenes figcaption .revision-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.revision-epigrafe { font-size: 0.8rem; line-height: 1.4; font-style: italic; color: var(--text-mid); }
 .nota-cambio { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s3);
   padding: var(--s2) var(--s3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: 0.85rem; }
 

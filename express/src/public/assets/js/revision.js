@@ -79,11 +79,34 @@ function juicioHtml(nota, sugerida) {
     html += '<p class="revision-sub">La IA no la aprobó sola: ' + escHtml(a.motivos.join('; ')) + '</p>';
   }
   if (j && j.error) html += '<p class="revision-sub">' + escHtml(j.error) + '</p>';
+  html += checklistAlepheeHtml(j);
   if (sugerida) {
     html += '<p class="revision-sub"><span class="marca">Sugerida por IA</span> Revisala y cambiala si hace falta: '
       + 'solo cuenta para el aprendizaje cuando la guardás.</p>';
   }
   return html;
+}
+
+// La checklist de Alephee del juez (ver CHECKLIST_ALEPHEE en generacion/juez.py).
+// Sin respuesta del juez (null) el punto no aplica a esta nota.
+var CHECKLIST_ALEPHEE = [
+  ['mencion_con_motivo', 'Nombra a Alephee donde resuelve algo'],
+  ['nada_inventado', 'No inventa nada sobre Alephee'],
+  ['beneficio_concreto', 'Dice en concreto qué aporta'],
+  ['informa_primero', 'Informa primero, sin tono publicitario'],
+  ['cta_unico', 'Una sola llamada a la acción, al final'],
+];
+
+function checklistAlepheeHtml(j) {
+  var a = j && !j.error && j.alephee;
+  if (!a || !CHECKLIST_ALEPHEE.some(function(c) { return a[c[0]] === true || a[c[0]] === false; })) return '';
+  return '<div class="check-alephee"><p class="revision-sub">Checklist de Alephee</p><ul>'
+    + CHECKLIST_ALEPHEE.map(function(c) {
+      var v = a[c[0]], clase = v === true ? 'ok' : v === false ? 'mal' : 'na';
+      var marca = v === true ? '✓' : v === false ? '✗' : '–';
+      return '<li class="' + clase + '"><span class="marca-check" aria-hidden="true">' + marca + '</span>'
+        + '<span>' + c[1] + '</span></li>';
+    }).join('') + '</ul></div>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -312,9 +335,13 @@ function pintarImagen(nota, contenedor) {
                      + escHtml(im.origen.titulo || im.origen.url) + '</a></p>' : '')
       + (eleccion.metodo === 'ia' ? '<p class="revision-sub">La eligió la IA entre las fotos de las noticias.</p>' : '')
       + (im.subida ? '<p class="revision-sub">Subida desde la computadora' + (im.subida.nombre ? ': ' + escHtml(im.subida.nombre) : '') + '.</p>' : '');
-  } else if (/muestran personas/.test(eleccion.motivo || '')) {
-    html = '<p class="revision-mal">Sin imagen destacada: las fotos aptas muestran personas y la portada no puede tenerlas.</p>';
-  } else if (eleccion.metodo === 'ia') {
+  } else if (/muestran personas|reglas de portada/.test(eleccion.motivo || '')) {
+    html = '<p class="revision-mal">Sin imagen destacada: ninguna foto cumple las reglas de portada.</p>'
+      + '<p class="revision-sub">' + escHtml(eleccion.motivo) + '</p>';
+  } else if (eleccion.metodo === 'sin-evaluar') {
+    html = '<p class="revision-mal">No se agregaron fotos sin evaluar.</p>'
+      + '<p class="revision-sub">' + escHtml(eleccion.motivo || '') + '</p>';
+  } else if (eleccion.metodo === 'ia' || eleccion.metodo === 'ia-texto') {
     html = '<p class="revision-mal">Sin imagen: la IA descartó las fotos de las noticias.</p>'
       + '<p class="revision-sub">' + escHtml(resumenMotivoImagen(eleccion.motivo)) + '</p>';
   } else {
@@ -329,18 +356,24 @@ function pintarImagen(nota, contenedor) {
   pintarImagenesCuerpo(nota, contenedor);
 }
 
-/* Las fotos que van dentro del texto (hasta 2), con la noticia de la que salió cada una. */
+/* Las fotos que van dentro del texto (hasta 4), con su epígrafe (en el idioma de la nota, como va a
+   HubSpot) y la noticia o el banco de imágenes de la que salió cada una. */
 function pintarImagenesCuerpo(nota, contenedor) {
   var imgs = (nota.imagenes_cuerpo || []).filter(function(im) {
     return im && urlSegura(im.hubspot_url || im.url || '') !== '#';
-  }).slice(0, 2);
+  }).slice(0, 4);
   var html = imgs.length
     ? '<div class="revision-imagenes">' + imgs.map(function(im) {
+        // Las notas viejas no guardan su idioma: HubSpot lo deduce de las regiones (casi siempre español).
+        var ep = im.epigrafe || {}, epigrafe = ep[nota.idioma] || ep.es || ep.pt || ep.en;
         return '<figure><img class="revision-imagen" src="' + urlSegura(im.hubspot_url || im.url) + '" alt="' + escHtml(im.alt || '') + '"'
           + ' referrerpolicy="no-referrer" loading="lazy">'
-          + (im.origen ? '<figcaption class="revision-sub"><a href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
-                         + escHtml(im.origen.titulo || im.origen.url) + '</a></figcaption>' : '')
-          + '</figure>';
+          + '<figcaption>'
+          + (epigrafe ? '<span class="revision-epigrafe" translate="no">' + escHtml(epigrafe) + '</span>'
+                      : '<span class="revision-sub">Sin epígrafe: se escribe al subirla a HubSpot.</span>')
+          + (im.origen ? '<a class="revision-sub" href="' + urlSegura(im.origen.url) + '" target="_blank" rel="noopener" translate="no">'
+                         + escHtml(im.credito || im.origen.titulo || im.origen.url) + '</a>' : '')
+          + '</figcaption></figure>';
       }).join('') + '</div>'
     : '<p class="revision-sub">No tiene imágenes dentro del texto: no hubo otras fotos aptas en sus noticias.</p>';
   contenedor.appendChild(bloqueRevision('Imágenes en el texto', html));

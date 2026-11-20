@@ -37,7 +37,11 @@ Nota escrita a partir de un tópico de Artículos elegido por similitud. El gene
 Nota escrita imitando notas reales publicadas de AfterDrive (Ejemplos), según Categorías, Regiones y Clientes elegidos.
 
 **Estado de una Nota**:
-Dónde está en la revisión: borrador (recién generada), aprobada, rechazada (con un motivo, que pasa a ser una Corrección) o publicado (en el blog de HubSpot).
+Dónde está en la revisión: borrador (recién generada), aprobada (por una persona o por la Aprobación automática; al aprobarla se sube a HubSpot como borrador), rechazada (con un motivo, que pasa a ser una Corrección) o publicado (en el blog de HubSpot). Hoy el dashboard no publica: el paso a publicado se hace en HubSpot.
+
+**Imagen destacada**:
+Foto de portada de una Nota, elegida entre las fotos de sus Artículos; nunca muestra personas. Cada Nota lleva además 2 fotos dentro del texto.
+_Avoid_: portada IA, imagen generada
 
 **Corrección**:
 Motivo de rechazo reciente que se le pasa al modelo al escribir notas nuevas, como error a no repetir.
@@ -47,7 +51,7 @@ _Avoid_: status
 Respuesta del modelo que el Saneo rechazó; se guarda con el motivo, nunca se publica.
 
 **Traducción**:
-Versión de una Nota en otro idioma del blog (español, portugués o inglés), que se sube a HubSpot como borrador vinculado al post original.
+Versión de una Nota en otro idioma del blog. Las Notas se escriben en portugués y se traducen al español y al inglés al crearse; cada versión se edita por separado y se sube a HubSpot como borrador vinculado al post original.
 _Avoid_: variante, copia
 
 **Ejemplo**:
@@ -73,7 +77,7 @@ Ejecución puntual de una etapa del pipeline (scraping, generación u otro scrip
 _Avoid_: job, tarea, ejecución
 
 **Cola**:
-Lista de Corridas esperando su turno; la que llega mientras otra corre espera en vez de rechazarse. Puede estar pendiente, en curso, ok, error, cancelada o interrumpida (el servidor se reinició mientras corría).
+Lista de Corridas esperando su turno; la que llega mientras otra corre espera en vez de rechazarse. Puede estar pendiente, en curso, ok, error, cancelada o interrumpida (el servidor se reinició mientras corría). En el dashboard se ve en la sección **Actividad** (el código y la API siguen diciendo "corridas").
 _Avoid_: queue, fila
 
 **Proveedor**:
@@ -87,12 +91,22 @@ Resumen estructurado de un Artículo (resumen, hechos, cifras, empresas, fecha) 
 Ángulo, título, palabra clave y secciones de una Nota, decididos antes de redactarla.
 
 **Calificación**:
-Puntaje de 1 a 5 estrellas, con etiquetas y comentario, que una persona le pone a una Nota.
+Puntaje de 1 a 5 estrellas, con etiquetas y comentario, que una persona le pone a una Nota. Es la única que cuenta para la Calibración.
 _Avoid_: rating, voto
+
+**Juez**:
+IA que actúa de editor exigente: al generar cada Nota dice si podría aprobarse sola, con qué confianza, y sugiere una Calificación. La sugerencia aparece precargada al revisar, pero no cuenta hasta que una persona la guarda.
+
+**Aprobación automática**:
+Interruptor de la vista Desarrollador: la Nota de la generación programada que pasa el filtro sin IA y el Juez (con confianza de 0,8 o más) se aprueba sola y sube a HubSpot como borrador. Nunca publica.
+
+**Calificación de la IA**:
+Crítica de la redacción de una Nota (gramática, ortografía, redacción, tono y estructura) con puntaje de 1 a 10 y cada error marcado. Es informativa: no toca la Calificación ni la Calibración.
+_Avoid_: crítica (en la interfaz), corrección
 
 **Calibración**:
 Lo que la generación aprende de calificaciones, rechazos y ediciones: correcciones, referencias propias y el umbral del evaluador.
 
 **Modo pago**:
-Estado en que todo el pipeline usa la API paga por 24 horas como máximo; se prende desde la vista Cliente y se apaga solo.
+Estado en que todo el pipeline usa la API paga por 24 horas como máximo y después se apaga solo. Hoy el dashboard no tiene el interruptor: se prende por la API (`POST /api/modo-pago`). Elegir "API paga" como proveedor, en cambio, no vence.
 _Avoid_: modo premium, API paga activada

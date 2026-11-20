@@ -3,7 +3,8 @@ ejecutor_externo.py — Corre las Corridas programadas fuera de Render (GitHub A
 
 Uso (lo llama .github/workflows/corridas.yml una vez por hora):
     python -m afterdrive.ejecutor_externo --pendientes          imprime los tipos que tocan ahora
-    python -m afterdrive.ejecutor_externo --correr scraping generacion   (corre ya, sin mirar la hora)
+    python -m afterdrive.ejecutor_externo --correr scraping generacion   (corre ya, sin mirar la hora;
+                                                                         un tipo repetido corre dos veces)
 
 Lee la MISMA programación que el dashboard (hora, cada cuántos días, activada)
 y corre lo que tocaba desde la última vez que se revisó. Así los horarios se
@@ -34,6 +35,10 @@ def _ahora() -> datetime.datetime:
 def pendientes(ahora: datetime.datetime | None = None) -> list[str]:
     """Los tipos cuya hora programada pasó desde la última revisión, y la marca como revisada.
 
+    Un tipo con varias horas (la generación) aparece una vez por cada hora que
+    pasó: con 11:00 y 11:30 en la misma ventana, se escriben dos notas. Cada
+    hora cuenta una sola vez aunque la ventana abarque varios días.
+
     Se marca ANTES de correr: si el runner muere a mitad, la siguiente hora no
     repite la misma Corrida (queda 'interrumpida' en el panel y se ve).
     """
@@ -43,13 +48,14 @@ def pendientes(ahora: datetime.datetime | None = None) -> list[str]:
     revisado = config_store.get_ejecutor_externo()
     tocan = []
     for tipo in TIPOS:
-        habilitado, hora, minuto, dias = scheduler.programacion(tipo)
+        habilitado, horas, dias = scheduler.horarios(tipo)
         desde_txt = revisado.get(tipo)
         desde = datetime.datetime.fromisoformat(desde_txt) if desde_txt else ahora - VENTANA_INICIAL
         if habilitado:
-            proxima = scheduler.trigger(hora, minuto, dias).get_next_fire_time(None, desde)
-            if proxima is not None and proxima <= ahora:
-                tocan.append(tipo)
+            for hora, minuto in horas:
+                proxima = scheduler.trigger(hora, minuto, dias).get_next_fire_time(None, desde)
+                if proxima is not None and proxima <= ahora:
+                    tocan.append(tipo)
         revisado[tipo] = ahora.isoformat()
     config_store.set_ejecutor_externo(revisado)
     return tocan

@@ -77,7 +77,8 @@ def _normalizar(data: dict, n_noticias: int, n_blog: int = 0) -> dict | None:
 
 def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: list[str] = (),
                reglas: list[str] = (), contexto: str = "", idioma: str = "",
-               notas_blog: list[str] = ()) -> dict | None:
+               notas_blog: list[str] = (), angulos: list[str] = (), palabras_clave: list[str] = (),
+               tratados: list[str] = ()) -> dict | None:
     """Plan de la nota, o None si el modelo no devolvió uno válido. Nunca lanza."""
     from afterdrive.ia.lm_studio import _extraer_json
 
@@ -86,6 +87,15 @@ def planificar(noticias: list, pedido: str, estructura: list[str], publicadas: l
         partes.append("## Estructura que pide el estilo de la nota\n" + "\n".join(f"- {e}" for e in estructura))
     if publicadas:
         partes.append("## Notas ya publicadas (no repitas su ángulo)\n" + "\n".join(f"- {t}" for t in publicadas))
+    if angulos:
+        partes.append("## Ángulos de las últimas notas (elegí uno distinto)\n" + "\n".join(f"- {a}" for a in angulos))
+    if palabras_clave:
+        partes.append("## Palabras clave ya usadas (elegí otra; repetir una compite con nuestra propia nota)\n"
+                      + ", ".join(palabras_clave))
+    if tratados:
+        partes.append("## Temas que el blog ya trató (notas aprobadas o publicadas)\n"
+                      "Si el tema es el mismo, buscá un aspecto nuevo o una noticia que lo actualice; "
+                      "no vuelvas a contar lo mismo.\n" + "\n".join(f"- {t}" for t in tratados))
     if notas_blog:
         partes.append("## Notas de AfterDrive by Alephee que se pueden citar (solo si encajan)\n"
                       + "\n".join(f"{i}. {t}" for i, t in enumerate(notas_blog, 1)))

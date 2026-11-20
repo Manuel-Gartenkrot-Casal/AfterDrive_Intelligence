@@ -30,7 +30,7 @@ _CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src https://fonts.gstatic.com",
+    "font-src 'self' https://fonts.gstatic.com",   # 'self': los símbolos (assets/fonts)
     "img-src 'self' data: https:",
     "connect-src 'self'",
     "frame-ancestors 'none'",
@@ -141,12 +141,12 @@ def leer_doc(slug: str):
 
 @app.route("/assets/<path:archivo>")
 def assets(archivo: str):
-    """CSS y JS del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
+    """CSS, JS y fuentes del dashboard. Piden sesión (la guardia de auth.py), como el dashboard.
 
     no-cache: el navegador revalida con el ETag, así un deploy nuevo se ve sin
     tener que forzar la recarga.
     """
-    if not archivo.endswith((".css", ".js")):
+    if not archivo.endswith((".css", ".js", ".woff2")):
         return jsonify({"success": False, "error": "Recurso no encontrado"}), 404
     resp = send_from_directory(os.path.join(_STATIC_DIR, "assets"), archivo)
     resp.headers["Cache-Control"] = "no-cache"
@@ -340,8 +340,18 @@ _LARGOS = ("corto", "medio", "largo")   # redaccion.LARGOS, sin importar el mód
 
 @app.route("/api/generacion-config", methods=["GET"])
 def get_generacion_config():
+    from afterdrive import metricas
+    from afterdrive.ia import consumo
+
     cfg = config_store.get_generacion_config()
-    return jsonify({**cfg, "success": True, "zona": scheduler.ZONA, "next_execution": scheduler.proximas()["generacion"]})
+    # Para calcular cuántas notas por día entran en el presupuesto de la API paga.
+    presupuesto = {"costo_nota_usd": None, "tope_usd": consumo.tope()}
+    try:
+        presupuesto["costo_nota_usd"] = metricas.costo_por_nota()
+    except Exception as e:
+        print(f"[AVISO] No se pudo calcular el costo por nota: {e}", flush=True)
+    return jsonify({**cfg, **presupuesto, "success": True, "zona": scheduler.ZONA,
+                    "next_execution": scheduler.proximas()["generacion"]})
 
 
 @app.route("/api/generacion-config", methods=["POST"])
@@ -360,12 +370,19 @@ def set_generacion_config():
         return jsonify({"success": False, "error": "Se requiere 'interval_days' como un entero >= 1."}), 400
     if hora is not None and not _hora_valida(hora):
         return jsonify({"success": False, "error": _ERROR_HORA}), 400
+    horas_extra = body.get("horas_extra")
+    if horas_extra is not None:
+        if not isinstance(horas_extra, list) or not all(_hora_valida(h) for h in horas_extra):
+            return jsonify({"success": False, "error": "Se requiere 'horas_extra' como una lista de horas HH:MM (24 h)."}), 400
+        if len(set(horas_extra)) > config_store.HORAS_EXTRA_MAX:
+            return jsonify({"success": False,
+                            "error": f"Como máximo {config_store.HORAS_EXTRA_MAX} horarios extra por día."}), 400
 
     config_store.set_generacion_config(
         enabled=body.get("enabled"),
+        horas_extra=horas_extra,
         interval_days=days,
         persona=persona,
-        tema=body.get("tema"),
         puntapie_url=body.get("puntapie_url"),
         hora=hora,
         largo=largo,
@@ -391,6 +408,9 @@ def set_fase2_config():
     activo = body.get("puntapie_activo")
     if activo is not None and not isinstance(activo, bool):
         return jsonify({"success": False, "error": "Parámetro 'puntapie_activo' inválido."}), 400
+    rotar = body.get("rotar_categorias")
+    if rotar is not None and not isinstance(rotar, bool):
+        return jsonify({"success": False, "error": "Parámetro 'rotar_categorias' inválido."}), 400
     puntapie_url = body.get("puntapie_url")
     if puntapie_url is not None:
         if not isinstance(puntapie_url, str):
@@ -406,8 +426,41 @@ def set_fase2_config():
         clientes=listas.get("clientes"),
         puntapie_activo=activo,
         puntapie_url=puntapie_url,
+        rotar_categorias=rotar,
     )
     return jsonify({"success": True, **cfg})
+
+
+@app.route("/api/fase2/temas", methods=["GET"])
+def get_temas():
+    return jsonify({"success": True, "temas": config_store.get_temas()})
+
+
+_VINETA = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+")   # "- ", "• ", "1. ", "2) " (no "1.6 turbo" ni "-5 °C")
+
+
+@app.route("/api/fase2/temas", methods=["POST"])
+def set_temas():
+    """Reemplaza la lista con el texto pegado o importado: un tema por línea (viñetas y números se ignoran)."""
+    texto = (request.get_json(silent=True) or {}).get("texto")
+    if not isinstance(texto, str):
+        return jsonify({"success": False, "error": "Parámetro 'texto' inválido."}), 400
+    if len(texto) > 200_000:   # tope antes de recorrer: un texto gigante no traba el servidor
+        return jsonify({"success": False, "error": "El texto es muy largo."}), 400
+    temas = []
+    for linea in texto.split("\n"):   # como el navegador (generador.js lineasTemas)
+        tema = _VINETA.sub("", linea).strip()
+        if tema and tema not in temas:
+            temas.append(tema)
+            if len(temas) > config_store.TEMAS_MAX:
+                break
+    if len(temas) > config_store.TEMAS_MAX:
+        return jsonify({"success": False, "error": f"Son muchos temas (máximo {config_store.TEMAS_MAX})."}), 400
+    largo = next((t for t in temas if len(t) > config_store.TEMA_MAX_CHARS), None)
+    if largo:
+        return jsonify({"success": False, "error": f"Un tema es muy largo (máximo {config_store.TEMA_MAX_CHARS} "
+                                                   f"caracteres): {largo[:60]}…"}), 400
+    return jsonify({"success": True, "temas": config_store.set_temas(temas)})
 
 
 def _encolar(tipo: str, params: dict | None = None, origen: str = "manual", etiqueta: str | None = None):
@@ -603,6 +656,120 @@ def historial_critica_traducida():
     return jsonify({"success": True, "traduccion": resultado})
 
 
+# ── Prompts de redacción editables (Borrador → Revisión → Activo) ─────────────
+
+
+def _prompts(accion):
+    """Corre una acción de prompts_editables: ErrorPrompt es un 400 con su mensaje."""
+    from afterdrive import prompts_editables
+
+    try:
+        return accion(prompts_editables)
+    except prompts_editables.ErrorPrompt as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/prompts", methods=["GET"])
+def prompts_listar():
+    """Las piezas editables con su versión activa y lo que tienen pendiente."""
+    return _prompts(lambda pe: jsonify({"success": True, "piezas": pe.listar()}))
+
+
+@app.route("/api/prompts/<clave>", methods=["GET"])
+def prompts_detalle(clave):
+    """Activa, pendiente, original e historial de una pieza."""
+    return _prompts(lambda pe: jsonify({"success": True, **pe.detalle(clave)}))
+
+
+@app.route("/api/prompts/<clave>/validar", methods=["POST"])
+def prompts_validar(clave):
+    """Errores que impiden aprobar y avisos de un texto, sin guardarlo: {"contenido"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, **pe.validar(clave, body.get("contenido", ""))}))
+
+
+@app.route("/api/prompts/<clave>/borrador", methods=["POST"])
+def prompts_guardar(clave):
+    """Guarda un borrador: {"contenido", "motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.guardar_borrador(
+        clave, body.get("contenido", ""), body.get("motivo", "")), **pe.validar(clave, body.get("contenido", ""))}))
+
+
+@app.route("/api/prompts/<clave>/borrador", methods=["DELETE"])
+def prompts_descartar(clave):
+    return _prompts(lambda pe: pe.descartar_borrador(clave) or jsonify({"success": True}))
+
+
+@app.route("/api/prompts/<clave>/enviar", methods=["POST"])
+def prompts_enviar(clave):
+    """Borrador -> en revisión (si pasa la validación)."""
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.enviar(clave)}))
+
+
+@app.route("/api/prompts/<clave>/aprobar", methods=["POST"])
+def prompts_aprobar(clave):
+    """En revisión -> activa: {"version"} que se vio en la confirmación."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "activo": pe.aprobar(clave, body.get("version"))}))
+
+
+@app.route("/api/prompts/<clave>/rechazar", methods=["POST"])
+def prompts_rechazar(clave):
+    """En revisión -> borrador: {"motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.rechazar(clave, body.get("motivo", ""))}))
+
+
+@app.route("/api/prompts/<clave>/restaurar", methods=["POST"])
+def prompts_restaurar(clave):
+    """Una versión archivada (0 = original) vuelve a revisión: {"version", "motivo"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts(lambda pe: jsonify({"success": True, "pendiente": pe.restaurar(
+        clave, body.get("version"), body.get("motivo", ""))}))
+
+
+@app.route("/api/prompts/vista-previa", methods=["POST"])
+def prompts_vista_previa():
+    """El system prompt completo, con un texto sin aprobar en lugar de la pieza activa.
+
+    {"persona", "clave", "contenido", "largo", "compacto", "juego"}: sin clave, el prompt activo.
+    "juego": "actuales" o "ia" arma el prompt con ese juego (Prompts con IA), sea cual sea el que está en uso.
+    """
+    from afterdrive.ia import redaccion
+
+    body = request.get_json(silent=True) or {}
+
+    def armar(pe):
+        from afterdrive import prompts_ia
+
+        clave = body.get("clave") or ""
+        piezas = prompts_ia.textos(body["juego"]) if body.get("juego") in prompts_ia.JUEGOS else {}
+        if clave:
+            if clave not in pe.CLAVES:
+                raise pe.ErrorPrompt("Pieza del prompt desconocida.")
+            piezas[clave] = body.get("contenido") or ""
+        persona = body.get("persona") or (clave.removeprefix("persona_") if clave.startswith("persona_") else "comercial")
+        if persona not in redaccion.PERSONAS:
+            raise pe.ErrorPrompt("Persona desconocida.")
+        partes = redaccion.system_prompt_partes(
+            persona, compacto=bool(body.get("compacto")), extension=redaccion.extension(body.get("largo")),
+            idioma=redaccion.idioma_principal(), piezas=piezas)
+        titulos = {c["clave"]: c["titulo"] for c in pe.catalogo()}
+        return jsonify({
+            "success": True, "persona": persona, "prompt": "\n\n".join(t for _, t in partes),
+            # Por pieza, para mostrarlo como un archivo: lo editable se puede abrir; lo automático, no.
+            "partes": [{"clave": c, "titulo": titulos.get(c) or redaccion.AUTOMATICAS.get(c, c),
+                        "editable": c in titulos, "texto": t} for c, t in partes],
+            # Otro paso del pipeline: se muestra en el editor, pero no se envía al redactor.
+            "adicionales": [{"clave": "imagenes", "titulo": titulos["imagenes"], "editable": True,
+                             "texto": redaccion.texto("imagenes", piezas)}],
+        })
+    return _prompts(armar)
+
+
 @app.route("/api/calibracion", methods=["GET"])
 def calibracion_resumen():
     """Lo que la generación aprendió de las calificaciones, rechazos y ediciones."""
@@ -793,6 +960,77 @@ def hubspot_traducciones():
     return jsonify({"success": True, **r}), 202
 
 
+# ── Prompts con IA: análisis de las calificaciones y una copia de los prompts que cambia la IA ──
+
+
+def _prompts_ia(accion):
+    """Corre una acción de prompts_ia: ErrorPromptIA y ErrorPrompt son un 400 con su mensaje."""
+    from afterdrive import prompts_editables, prompts_ia
+
+    try:
+        return accion(prompts_ia)
+    except (prompts_ia.ErrorPromptIA, prompts_editables.ErrorPrompt) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        return _error_interno(e)
+
+
+@app.route("/api/prompts-ia", methods=["GET"])
+def prompts_ia_estado():
+    """Con qué prompts escribe la redacción, si la mejora es automática, la copia, el último análisis y las mejoras."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.estado()}))
+
+
+@app.route("/api/prompts-ia/usar", methods=["POST"])
+def prompts_ia_usar():
+    """{"usar": "actuales" | "ia"}."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.usar(body.get("usar", ""))}))
+
+
+@app.route("/api/prompts-ia/auto", methods=["POST"])
+def prompts_ia_auto():
+    """{"auto": bool}: si la IA mejora sola la copia de los prompts cada pocas notas."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.set_auto(bool(body.get("auto")))}))
+
+
+@app.route("/api/prompts-ia/mejorar", methods=["POST"])
+def prompts_ia_mejorar():
+    """Encola una mejora de la copia: {"pedido"?, "claves"?}. Sin pedido, la IA analiza las notas y
+    con ese diagnóstico cambia la copia. Corre en la cola (el registro se ve en la terminal)."""
+    from afterdrive import prompts_ia
+
+    body = request.get_json(silent=True) or {}
+    try:
+        pedido, claves = prompts_ia.validar_pedido(body.get("pedido"), body.get("claves"))
+    except prompts_ia.ErrorPromptIA as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    argv = (["--pedido", pedido] if pedido else []) + (["--claves", *claves] if claves else [])
+    return _encolar("script", {"modulo": "afterdrive.prompts_ia", "argv": argv},
+                    etiqueta="Cambiar prompts con IA" if pedido else "Mejorar prompts con IA")
+
+
+@app.route("/api/prompts-ia/deshacer", methods=["POST"])
+def prompts_ia_deshacer():
+    """{"clave"}: la copia de esa pieza vuelve a como estaba antes del último cambio de la IA."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.deshacer(str(body.get("clave") or ""))}))
+
+
+@app.route("/api/prompts-ia/pieza/<clave>", methods=["GET"])
+def prompts_ia_pieza(clave):
+    """El texto actual y el de la copia de la IA de una pieza, con sus cambios."""
+    return _prompts_ia(lambda pi: jsonify({"success": True, **pi.pieza(clave)}))
+
+
+@app.route("/api/prompts-ia/restablecer", methods=["POST"])
+def prompts_ia_restablecer():
+    """{"clave"} opcional: la copia (o esa pieza) vuelve a ser igual a los prompts actuales."""
+    body = request.get_json(silent=True) or {}
+    return _prompts_ia(lambda pi: jsonify({"success": True, "restablecidas": pi.restablecer(body.get("clave") or None)}))
+
+
 # ── Cola de Corridas ──────────────────────────────────────────────────────────
 
 
@@ -836,6 +1074,94 @@ def encolar_generacion():
         return error
     return _encolar("script", {"modulo": "afterdrive.generacion.generar_nota_fase2", "argv": argv},
                     etiqueta="Generar nota")
+
+
+# ── Carrusel para redes (carrusel.py) ─────────────────────────────────────────
+
+
+def _id_nota_o_400(nota_id: str):
+    if not re.fullmatch(r"[0-9a-f]{24}", nota_id or ""):
+        return jsonify({"success": False, "error": "Nota inválida."}), 400
+    return None
+
+
+def _idiomas_carrusel(valor):
+    """Lista de idiomas válida (None = los 3) o None, False si es inválida."""
+    if valor is None:
+        return None
+    if isinstance(valor, str):
+        valor = [valor]
+    if not isinstance(valor, list) or not valor or any(v not in ("es", "pt", "en") for v in valor):
+        return False
+    return list(dict.fromkeys(valor))
+
+
+@app.route("/api/carrusel/<nota_id>", methods=["POST"])
+def encolar_carrusel(nota_id: str):
+    """Encola los carruseles de una nota (textos con IA + 3 imágenes y un PDF por idioma).
+
+    {"idiomas"?: ["es", "pt", "en"]}: por defecto los 3. ("idioma": "pt" también se acepta.)
+    """
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    idiomas = _idiomas_carrusel(body.get("idiomas", body.get("idioma")))
+    if idiomas is False:
+        return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
+    argv = [f"--nota={nota_id}"] + (["--idiomas", *idiomas] if idiomas else [])
+    return _encolar("script", {"modulo": "afterdrive.carrusel", "argv": argv},
+                    etiqueta="Crear carrusel" if idiomas and len(idiomas) == 1 else "Crear carruseles")
+
+
+@app.route("/api/carrusel/<nota_id>/textos", methods=["POST"])
+def editar_carrusel(nota_id: str):
+    """{"idioma", "titulo", "subtitulo", "puntos", "cta"}: guarda los textos de ese idioma y
+    encola volver a dibujar sus imágenes (sin IA)."""
+    from afterdrive import carrusel
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    body = request.get_json(silent=True) or {}
+    idioma = body.get("idioma")
+    if idioma not in carrusel.IDIOMAS:
+        return jsonify({"success": False, "error": "Idioma inválido: es, pt o en."}), 400
+    try:
+        textos, cambiadas = carrusel.guardar_textos(nota_id, idioma,
+                                                    {k: body.get(k) for k in ("titulo", "subtitulo", "puntos", "cta")})
+    except carrusel.ErrorCarrusel as e:
+        return jsonify({"success": False, "error": str(e)}), 404 if "no encontrada" in str(e) else 400
+    if not cambiadas:
+        return jsonify({"success": True, "textos": textos, "diapositivas": [], "mensaje": "No cambió ningún texto."})
+    # Solo las diapositivas cuyo texto cambió (1: título y subtítulo, 2: puntos, 3: llamada a la acción).
+    argv = [f"--nota={nota_id}", "--idiomas", idioma, "--solo-imagenes", "--diapositivas", *map(str, cambiadas)]
+    respuesta, status = _encolar("script", {"modulo": "afterdrive.carrusel", "argv": argv},
+                                 etiqueta="Redibujar carrusel")
+    if status == 202:
+        respuesta = jsonify({**respuesta.get_json(), "textos": textos, "diapositivas": cambiadas})
+    return respuesta, status
+
+
+@app.route("/api/carrusel/<nota_id>/pdf", methods=["GET"])
+def pdf_carrusel(nota_id: str):
+    """El PDF de las 3 diapositivas de un idioma (?idioma=pt), para subir a LinkedIn como documento."""
+    from bson import ObjectId
+
+    from afterdrive import carrusel, historial
+    from afterdrive.generacion.generar_nota_fase2 import col_notas_fase2
+    error = _id_nota_o_400(nota_id)
+    if error:
+        return error
+    nota = col_notas_fase2.find_one({"_id": ObjectId(nota_id)}, {"carrusel": 1, "carruseles": 1, "idioma": 1}) or {}
+    guardados = carrusel.carruseles(nota)
+    idioma = request.args.get("idioma") or nota.get("idioma") or next(iter(guardados), "")
+    pdf_id = (guardados.get(idioma) or {}).get("pdf_id")
+    local = historial.imagen_subida(pdf_id) if pdf_id else None
+    if not local:
+        return jsonify({"success": False, "error": "La nota no tiene carrusel en ese idioma."}), 404
+    return app.response_class(local[0], mimetype="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="carrusel-{nota_id[-6:]}-{idioma}.pdf"',
+        "Cache-Control": "private, no-store"})
 
 
 @app.route("/api/corridas/probar-fuente", methods=["POST"])
@@ -947,13 +1273,14 @@ def set_modo_pago():
 
 @app.route("/api/suggested-urls", methods=["GET"])
 def suggested_urls():
-    """Fuentes recomendadas: una por sitio, sin las que ya son confiables."""
+    """Fuentes recomendadas: una por sitio, sin las que ya son confiables, las de mayor puntaje primero
+    (relevancia y popularidad, ver discover_sources.py; las viejas sin puntaje van al final)."""
     from afterdrive.ingesta.discover_sources import dominio
 
     try:
         confiables = {dominio(d["url"]) for d in db["trusted_urls"].find({}, {"url": 1})}
         vistas, urls = set(), []
-        for d in db["suggested_urls"].find({}, {"_id": 0}).sort("fecha_sugerida", -1):
+        for d in db["suggested_urls"].find({}, {"_id": 0}).sort([("puntaje", -1), ("fecha_sugerida", -1)]):
             dom = d.get("dominio") or dominio(d.get("url", ""))
             if not dom or dom in confiables or dom in vistas:
                 continue
@@ -1006,15 +1333,17 @@ def add_trusted_url_direct():
         return error
     nombre = str(body.get("nombre") or "").strip()
     try:
+        # Volver a agregar una fuente que ya existe la reactiva, pero no pisa
+        # cuándo se dio de alta ni cuándo se revisó por última vez.
         col_trusted_urls.update_one(
             {"url": url},
-            {"$set": {
-                "url": url,
-                "nombre_fuente": nombre or url,
-                "estado": "activo",
-                "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
-                "ultima_ejecucion": None,
-            }},
+            {
+                "$set": {"url": url, "nombre_fuente": nombre or url, "estado": "activo"},
+                "$setOnInsert": {
+                    "fecha_agregado": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "ultima_ejecucion": None,
+                },
+            },
             upsert=True,
         )
         return jsonify({"success": True, "message": f"URL '{url}' agregada como activa."})
@@ -1094,21 +1423,80 @@ def fase2_get_clientes():
 
 @app.route("/api/fase2/clientes", methods=["POST"])
 def fase2_crear_cliente():
+    """Agrega (o actualiza) un cliente. `modo`: "mencionar" (default) o "no_mencionar"."""
+    from afterdrive import clientes
     from afterdrive.db import col_clientes
     body = request.get_json(silent=True) or {}
-    nombre = body.get("nombre", "").strip()
-    if not nombre:
+    nombre = body.get("nombre", "")
+    nombre = nombre.strip()[:clientes.MAX_NOMBRE] if isinstance(nombre, str) else ""
+    if not nombre or not clientes.slug(nombre):
         return jsonify({"success": False, "error": "Se requiere 'nombre'."}), 400
+    modo = clientes.normalizar_modo(body.get("modo"))
+    if modo is None:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    descripcion = body.get("descripcion", "")
     doc = {
-        "slug": re.sub(r"[^a-z0-9]+", "-", nombre.lower()).strip("-"),
+        "slug": clientes.slug(nombre),
         "nombre": nombre,
-        "descripcion": body.get("descripcion", ""),
+        "descripcion": descripcion.strip()[:clientes.MAX_DESCRIPCION] if isinstance(descripcion, str) else "",
         "productos": body.get("productos", []),
         "sector": body.get("sector", ""),
         "url": body.get("url", ""),
+        "modo": modo,
     }
     col_clientes.update_one({"slug": doc["slug"]}, {"$set": doc}, upsert=True)
     return jsonify({"success": True, "cliente": doc})
+
+
+@app.route("/api/fase2/clientes/importar", methods=["POST"])
+def fase2_importar_clientes():
+    """Carga la lista que pasan, una empresa por línea ("Nombre | descripción | alias1, alias2").
+
+    {"texto", "modo"}: todas quedan con ese modo. Las que ya existían cambian de modo y, si la
+    línea trae descripción o alias, se actualizan; las demás se crean.
+    """
+    from afterdrive import clientes
+    from afterdrive.db import col_clientes
+    body = request.get_json(silent=True) or {}
+    texto = body.get("texto")
+    if not isinstance(texto, str) or not texto.strip():
+        return jsonify({"success": False, "error": "Pegá la lista: una empresa por línea."}), 400
+    modo = clientes.normalizar_modo(body.get("modo"))
+    if modo is None:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    lista = clientes.parsear_lista(texto)
+    if not lista:
+        return jsonify({"success": False, "error": "No se encontró ningún nombre en la lista."}), 400
+    nuevos = 0
+    for c in lista:
+        cambios = {"nombre": c["nombre"], "modo": modo}
+        if c["descripcion"]:
+            cambios["descripcion"] = c["descripcion"]
+        if c["alias"]:
+            cambios["alias"] = c["alias"]
+        r = col_clientes.update_one({"slug": clientes.slug(c["nombre"])}, {"$set": cambios}, upsert=True)
+        nuevos += 1 if r.upserted_id is not None else 0
+    return jsonify({"success": True, "total": len(lista), "nuevos": nuevos, "actualizados": len(lista) - nuevos,
+                    "modo": modo})
+
+
+@app.route("/api/fase2/clientes/<slug>", methods=["PATCH"])
+def fase2_modo_cliente(slug: str):
+    """Cambia si un cliente se puede nombrar: {"modo": "mencionar" | "no_mencionar"}."""
+    from afterdrive import clientes, config_store
+    from afterdrive.db import col_clientes
+    body = request.get_json(silent=True) or {}
+    modo = body.get("modo")
+    if modo not in clientes.MODOS:
+        return jsonify({"success": False, "error": "Modo inválido: mencionar o no_mencionar."}), 400
+    if not col_clientes.update_one({"slug": slug}, {"$set": {"modo": modo}}).matched_count:
+        return jsonify({"success": False, "error": "Cliente no encontrado."}), 404
+    if modo == clientes.NO_MENCIONAR:
+        # Uno que no se nombra no puede quedar elegido para la nota automática.
+        elegidos = config_store.get_fase2_config().get("clientes") or []
+        if slug in elegidos:
+            config_store.set_fase2_config(clientes=[c for c in elegidos if c != slug])
+    return jsonify({"success": True, "slug": slug, "modo": modo})
 
 
 @app.route("/api/fase2/clientes/<slug>", methods=["DELETE"])
@@ -1128,6 +1516,9 @@ def _nota_para_dashboard(doc: dict) -> dict:
     return doc
 
 
+_INDICACIONES_MAX = 2000   # el mismo tope que generar_nota_fase2.INDICACIONES_MAX
+
+
 def _argv_generar(body: dict):
     """(argv de generar_nota_fase2, None), o (None, respuesta 400)."""
     listas, error = _listas(body, "categorias", "clientes", "regiones")
@@ -1141,6 +1532,13 @@ def _argv_generar(body: dict):
     largo = body.get("largo") or ""
     if largo and largo not in _LARGOS:
         return None, (jsonify({"success": False, "error": "Largo inválido: corto, medio o largo."}), 400)
+    indicaciones = body.get("indicaciones") or ""
+    if not isinstance(indicaciones, str):
+        return None, (jsonify({"success": False, "error": "Parámetro 'indicaciones' inválido."}), 400)
+    indicaciones = indicaciones.strip()
+    if len(indicaciones) > _INDICACIONES_MAX:
+        return None, (jsonify({"success": False,
+                               "error": f"Las indicaciones son muy largas (máximo {_INDICACIONES_MAX} caracteres)."}), 400)
 
     extra = []
     for clave in ("categorias", "clientes", "regiones"):
@@ -1153,8 +1551,12 @@ def _argv_generar(body: dict):
         extra.append(f"--persona={persona}")
     if tema:
         extra.append(f"--tema={tema}")
+    if body.get("rotar_categorias") is True:
+        extra.append("--rotar")
     if largo:
         extra.append(f"--largo={largo}")
+    if indicaciones:
+        extra.append(f"--indicaciones={indicaciones}")
     return extra, None
 
 

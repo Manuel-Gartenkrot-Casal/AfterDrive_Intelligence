@@ -24,13 +24,16 @@ DEFAULT_SCRAPING = {
     "max_articulos": 10,
 }
 
+# horas_extra: otras horas del día en que también se escribe una nota (además de `hora`).
+HORAS_EXTRA_MAX = 7
+
 DEFAULT_GENERACION = {
     "enabled": True,
     "hora": "11:00",
+    "horas_extra": [],
     "interval_days": 1,
     "persona": "comercial",
     "largo": "medio",
-    "tema": "",
     "puntapie_url": "",
 }
 
@@ -40,6 +43,8 @@ DEFAULT_FASE2 = {
     "clientes": [],
     "puntapie_activo": False,
     "puntapie_url": "",
+    # Cada nota usa 1 o 2 de las categorías marcadas, rotando (generacion/rotacion.py).
+    "rotar_categorias": False,
 }
 
 DEFAULT_PROVIDER = {
@@ -111,19 +116,23 @@ def set_scraping_config(
 
 
 def get_generacion_config() -> dict:
-    return _get_section("generacion", DEFAULT_GENERACION)
+    cfg = _get_section("generacion", DEFAULT_GENERACION)
+    cfg.pop("tema", None)   # lo guardaban versiones anteriores: ahora el tema es de un solo uso
+    return cfg
 
 
 def set_generacion_config(
     enabled: bool | None = None,
     interval_days: int | None = None,
     persona: str | None = None,
-    tema: str | None = None,
     puntapie_url: str | None = None,
     hora: str | None = None,
     largo: str | None = None,
+    horas_extra: list[str] | None = None,
 ):
     cfg = get_generacion_config()
+    if horas_extra is not None:
+        cfg["horas_extra"] = sorted(set(horas_extra))[:HORAS_EXTRA_MAX]
     if largo is not None:
         cfg["largo"] = largo
     if hora is not None:
@@ -134,8 +143,6 @@ def set_generacion_config(
         cfg["interval_days"] = max(1, int(interval_days))
     if persona is not None:
         cfg["persona"] = persona
-    if tema is not None:
-        cfg["tema"] = tema
     if puntapie_url is not None:
         cfg["puntapie_url"] = puntapie_url
     _set_section("generacion", cfg)
@@ -155,8 +162,11 @@ def set_fase2_config(
     clientes: list[str] | None = None,
     puntapie_activo: bool | None = None,
     puntapie_url: str | None = None,
+    rotar_categorias: bool | None = None,
 ):
     cfg = get_fase2_config()
+    if rotar_categorias is not None:
+        cfg["rotar_categorias"] = bool(rotar_categorias)
     if categorias is not None:
         cfg["categorias"] = categorias
     if regiones is not None:
@@ -169,6 +179,32 @@ def set_fase2_config(
         cfg["puntapie_url"] = puntapie_url
     _set_section("fase2", cfg)
     return cfg
+
+
+# ── Lista de temas para las próximas notas ────────────────────────────────────
+
+# Cada nota que se genera sin tema puntual usa el primero (generar_nota_fase2.generar_nota)
+# y, si la nota se guarda, se descarta. Se carga pegando o importando texto en Crear nota.
+TEMAS_MAX = 200
+TEMA_MAX_CHARS = 300
+
+
+def get_temas() -> list[str]:
+    return list(_get_section("temas", {"lista": []}).get("lista") or [])
+
+
+def set_temas(lista: list[str]) -> list[str]:
+    _set_section("temas", {"lista": lista})
+    return lista
+
+
+def descartar_tema(tema: str) -> None:
+    """Saca el tema ya usado (la primera vez que aparece)."""
+    # ponytail: leer y escribir sin lock; si justo se guarda la lista en ese instante, gana el último.
+    lista = get_temas()
+    if tema in lista:
+        lista.remove(tema)
+        set_temas(lista)
 
 
 # ── Proveedor de IA ───────────────────────────────────────────────────────────
@@ -207,6 +243,22 @@ def get_blog_pruebas_config() -> bool:
 
 def set_blog_pruebas_config(activo: bool):
     _set_section("blog_pruebas", {"activo": bool(activo)})
+
+
+# ── Prompts con IA ────────────────────────────────────────────────────────────
+
+# Prompts con IA (prompts_ia.py): con qué prompts escribe la redacción (los actuales, aprobados,
+# o la copia que mejora la IA) y si la IA mejora la copia sola cada pocas notas.
+DEFAULT_PROMPTS_IA = {"usar": "actuales", "auto": True}
+
+
+def get_prompts_ia_config() -> dict:
+    c = _get_section("prompts_ia", DEFAULT_PROMPTS_IA)
+    return {"usar": c["usar"] if c.get("usar") in ("actuales", "ia") else "actuales", "auto": bool(c.get("auto", True))}
+
+
+def set_prompts_ia_config(valor: dict):
+    _set_section("prompts_ia", {"usar": valor.get("usar", "actuales"), "auto": bool(valor.get("auto", True))})
 
 
 # ── Aprobación automática (vista Desarrollador) ───────────────────────────────

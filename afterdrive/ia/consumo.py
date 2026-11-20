@@ -29,6 +29,7 @@ import datetime
 import os
 import threading
 import time
+import zoneinfo
 
 # USD por 1M de tokens (entrada, salida), ruta US de Bedrock, medidos el
 # 2026-10-18, para el reparto recomendado: clasificación GPT-6 Luna,
@@ -55,6 +56,8 @@ _VARIABLES = {
 }
 
 _VIGENCIA_S = 60  # el total del mes se relee de Mongo como mucho una vez por minuto
+# El mismo huso que el scheduler y el dashboard: el tope es "por mes" en la hora que ve el usuario.
+ZONA = zoneinfo.ZoneInfo(os.getenv("SCHEDULER_TZ", "America/Argentina/Buenos_Aires"))
 _cache: dict = {}  # {"mes": "YYYY-MM", "total": float | None (None = no se pudo leer), "t": monotonic}
 _sin_registrar: dict = {}  # mes -> USD gastados que no se pudieron guardar en Mongo (este proceso)
 _reloj = time.monotonic  # seam para los tests
@@ -65,8 +68,10 @@ def _coleccion():
     return db["consumo_ia"]
 
 
-def _mes() -> str:
-    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m")
+def _mes(ahora: datetime.datetime | None = None) -> str:
+    """Mes del gasto ("YYYY-MM") en hora de ZONA: el contador vuelve a 0 a las 00:00 del día 1 en
+    Argentina (en UTC volvía a las 21:00 del último día)."""
+    return (ahora or datetime.datetime.now(datetime.UTC)).astimezone(ZONA).strftime("%Y-%m")
 
 
 def tope() -> float:
@@ -155,7 +160,7 @@ def registrar(tarea: str, modelo: str, tokens_entrada: int, tokens_salida: int, 
     _imprimir(tarea, proveedor, tokens_entrada, tokens_salida, max_tokens, truncado, estimado, costo if pago else None)
     try:
         _coleccion().insert_one({
-            "fecha": ahora.isoformat(), "mes": ahora.strftime("%Y-%m"), "tarea": tarea or "general",
+            "fecha": ahora.isoformat(), "mes": _mes(ahora), "tarea": tarea or "general",
             "proveedor": proveedor, "modelo": modelo, "tokens_entrada": tokens_entrada, "tokens_salida": tokens_salida,
             "max_tokens": max_tokens, "truncado": truncado, "costo_usd": costo, "estimado": estimado,
         })
@@ -208,7 +213,7 @@ def _total_mongo(mes: str) -> float | None:
 
 
 def gastado_mes() -> float:
-    """USD gastados en el mes en curso (UTC). Sin registro legible, devuelve el tope."""
+    """USD gastados en el mes en curso (hora de ZONA: vuelve a 0 el día 1). Sin registro legible, devuelve el tope."""
     mes = _mes()
     total = _total_mongo(mes)
     if total is None:

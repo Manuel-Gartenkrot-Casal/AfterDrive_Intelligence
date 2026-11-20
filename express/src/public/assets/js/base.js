@@ -9,7 +9,11 @@ const $ = id => document.getElementById(id);
 // Sesión vencida o cerrada: cualquier 401 recarga la página, que cae en el login.
 const _fetch = window.fetch;
 window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location.reload(); return r; };
-async function salir() { await fetch('/api/logout', { method: 'POST' }); location.reload(); }
+async function salir() {
+  try { sessionStorage.removeItem('ad-modo'); } catch (e) {}
+  await fetch('/api/logout', { method: 'POST' });
+  location.reload();
+}
 function now() { return new Date().toLocaleTimeString(localeUI(), {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 
 function log(msg, type='info') {
@@ -126,6 +130,11 @@ function formulario(id, def) {
       barra.hidden = !sucio;
     },
     descartar: function() { if (base !== null) def.aplicar(JSON.parse(base)); f.marcar(); },
+    ponerEnBase: function(clave, valor) {
+      var b = JSON.parse(base);
+      b[clave] = valor;
+      base = JSON.stringify(b);
+    },
     quitarDeBase: function(clave, valor) {
       var b = JSON.parse(base);
       b[clave] = b[clave].filter(function(v) { return v !== valor; });

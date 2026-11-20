@@ -3,6 +3,8 @@ import ipaddress
 import json
 import re
 import socket
+import threading
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlparse
 
@@ -11,7 +13,7 @@ import trafilatura
 from bs4 import BeautifulSoup
 from urllib3.util import parse_url
 
-from afterdrive.ingesta import imagen_articulo
+from afterdrive.ingesta import feeds, imagen_articulo
 from afterdrive.ingesta.resource_detector import (
     PERFIL_ALTO,
     PERFIL_MEDIO,
@@ -63,8 +65,36 @@ _HEADERS = {
 
 
 class _Result:
-    def __init__(self, items):
+    def __init__(self, items, descartes=None):
         self.items = items
+        self.descartes = dict(descartes or {})   # motivo -> cuántos links no dieron un artículo
+
+
+MIN_CUERPO = 100   # caracteres de texto: menos que eso no es una nota
+
+# Por qué un link no terminó en artículo, para ver en el log dónde se pierden.
+MOTIVOS = {
+    "sin_html": "no se pudo bajar la página",
+    "sin_texto": "la página no tiene texto de nota (portada de sección, video, galería)",
+    "sin_titulo": "sin título",
+    "cuerpo_corto": f"{MIN_CUERPO} caracteres de texto o menos",
+    "error": "error al leer la página",
+    "sin_probar": "no se probaron (tope de candidatos por fuente)",
+}
+_DESCARTES: Counter = Counter()
+_LOCK_DESCARTES = threading.Lock()
+
+
+def _descartar(motivo: str, cuantos: int = 1, url: str = "", detalle: str = "") -> None:
+    with _LOCK_DESCARTES:
+        _DESCARTES[motivo] += cuantos
+    if detalle:
+        print(f"    [DESCARTE {motivo}] {url[:60]}: {detalle[:120]}", flush=True)
+
+
+def resumen_descartes(descartes: dict) -> str:
+    """'cuerpo_corto 4 (...), sin_html 2 (...)', de mayor a menor."""
+    return ", ".join(f"{m} {n} ({MOTIVOS.get(m, m)})" for m, n in sorted(descartes.items(), key=lambda t: -t[1]))
 
 
 def _esta_bloqueado(html: str | None) -> bool:
@@ -247,23 +277,34 @@ def _extraer_titulo(html: str) -> str:
 
 
 def _extraer_articulo(html: str, url: str) -> dict | None:
+    """El artículo de la página, o None (el motivo queda contado en _DESCARTES)."""
     try:
         result = trafilatura.extract(
             html, output_format="json", url=url,
             include_links=False, include_images=False,
         )
-        if result:
-            data = json.loads(result)
-            titulo = (data.get("title") or "").strip() or _extraer_titulo(html)
-            cuerpo = data.get("text") or ""
-            fecha = data.get("date") or ""
-            if titulo and cuerpo and len(cuerpo) > 100:
-                # La foto del artículo: la usa la nota que salga de esta noticia (None si no tiene).
-                return {"titulo": titulo, "cuerpo": cuerpo, "fecha": fecha, "url": url, "fuente": "custom",
-                        "imagen": imagen_articulo.extraer(html, url)}
-    except Exception:
-        pass
-    return None
+        if not result:
+            _descartar("sin_texto")
+            return None
+        data = json.loads(result)
+        titulo = (data.get("title") or "").strip() or _extraer_titulo(html)
+        cuerpo = data.get("text") or ""
+        fecha = data.get("date") or ""
+        if not titulo:
+            _descartar("sin_titulo")
+            return None
+        if len(cuerpo) <= MIN_CUERPO:
+            _descartar("cuerpo_corto")
+            return None
+        # Las fotos del artículo, para la nota que salga de esta noticia: `imagen` es la principal
+        # (None si no tiene) e `imagenes` todas las usables de la página, la principal primero.
+        imagenes = imagen_articulo.extraer_todas(html, url)
+        return {"titulo": titulo, "cuerpo": cuerpo, "fecha": fecha, "url": url, "fuente": "custom",
+                "imagen": imagenes[0] if imagenes else None, "imagenes": imagenes}
+    except Exception as e:
+        # Antes se tragaba sin aviso: ahora se cuenta y se muestra, para ver qué páginas fallan.
+        _descartar("error", url=url, detalle=f"{type(e).__name__}: {e}")
+        return None
 
 
 _PATRON_FECHA = re.compile(r"/\d{4}/\d{2}/\d{2}/")
@@ -309,9 +350,55 @@ def _encontrar_links(html: str, base_url: str) -> list[str]:
     return con_fecha + sin_fecha
 
 
+FEEDS_POR_FUENTE = 2        # feeds anunciados por la portada que se prueban
+SITEMAPS_POR_INDICE = 3     # sitemaps de un índice que se leen (los de notas primero)
+
+
+def _xml_get(url: str) -> str | None:
+    """Un feed o sitemap: una descarga liviana, solo si la dirección es pública."""
+    return _http_get(url) if url_publica(url) else None
+
+
+def _es_nota_de_feed(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    if not url.startswith(("http://", "https://")) or not path or path == "/":
+        return False
+    if any(s in path for s in _PAGINAS_SALTAR):
+        return False
+    return not any(path.endswith(ext) for ext in (".pdf", ".jpg", ".png", ".mp4", ".zip", ".xml", ".json"))
+
+
+def _notas_del_feed(url: str, contenido: str | None) -> list[str]:
+    """Las notas desde el RSS, Atom o sitemap: la fuente misma, o el feed que anuncia su portada.
+
+    [] si no hay feed o no trae notas: entonces se buscan los links en el HTML como siempre.
+    """
+    if contenido and feeds.tipo(contenido):
+        candidatos = [(url, contenido)]
+    else:
+        candidatos = [(f, None) for f in feeds.descubrir(contenido or "", url)[:FEEDS_POR_FUENTE]]
+    for feed_url, xml in candidatos:
+        feed = feeds.leer(xml or _xml_get(feed_url) or "")
+        if feed is None:
+            continue
+        entradas = feed.entradas
+        if feed.tipo == "indice":
+            for hijo_url in feeds.sitemaps_de_notas(feed.sitemaps, SITEMAPS_POR_INDICE):
+                hijo = feeds.leer(_xml_get(hijo_url) or "")
+                entradas += hijo.entradas if hijo else []
+            entradas = feeds.ordenar(entradas)
+        links = list(dict.fromkeys(e.url for e in entradas if _es_nota_de_feed(e.url)))
+        if links:
+            nombre = {"rss": "RSS", "atom": "Atom", "sitemap": "Sitemap", "indice": "Sitemap"}[feed.tipo]
+            print(f"  -> {nombre} {feed_url[:70]}: {len(links)} notas", flush=True)
+            return links
+    return []
+
+
 def _fetch_and_extract(link: str) -> dict | None:
     html = _fetch(link)
     if not html:
+        _descartar("sin_html")
         return None
     return _extraer_articulo(html, link)
 
@@ -320,6 +407,7 @@ def _procesar_individual(url: str, items: list):
     print(f"\n>>> URL (individual): {url}", flush=True)
     html = _fetch(url)
     if not html:
+        _descartar("sin_html")
         print("  [ERROR] No se pudo obtener HTML", flush=True)
         return
     art = _extraer_articulo(html, url)
@@ -333,12 +421,13 @@ def _procesar_individual(url: str, items: list):
 def _procesar_listado(url: str, max_articulos: int, items: list, omitir=None):
     print(f"\n>>> URL (listado): {url}", flush=True)
 
-    html = _fetch(url)
+    # Una fuente que es un feed o un sitemap se baja como XML, sin navegador.
+    html = (_xml_get(url) if feeds.parece_feed(url) else None) or _fetch(url)
     if not html:
         print("  [ERROR] No se pudo obtener HTML del listado", flush=True)
         return
 
-    enlaces = _encontrar_links(html, url)
+    enlaces = _notas_del_feed(url, html) or _encontrar_links(html, url)
     if not enlaces:
         print("  [ERROR] No se encontraron enlaces a artículos", flush=True)
         return
@@ -353,6 +442,8 @@ def _procesar_listado(url: str, max_articulos: int, items: list, omitir=None):
             return
 
     candidatos = enlaces[: max_articulos * 3]
+    if len(enlaces) > len(candidatos):
+        _descartar("sin_probar", len(enlaces) - len(candidatos))
     print(f"  -> {len(enlaces)} enlaces encontrados, procesando {len(candidatos)} candidatos con {_MAX_WORKERS} workers...", flush=True)
 
     lock_items = []
@@ -384,6 +475,8 @@ def start(urls: list[str], max_articulos: int = 5, modo: str = "list", omitir=No
     descargan ni se vuelven a clasificar.
     """
     _ORIGEN_CAIDO.clear()
+    with _LOCK_DESCARTES:
+        _DESCARTES.clear()
     items = []
     for url in urls:
         if modo == "single":
@@ -391,4 +484,8 @@ def start(urls: list[str], max_articulos: int = 5, modo: str = "list", omitir=No
         else:
             _procesar_listado(url, max_articulos, items, omitir)
     print(f"\n>>> Total artículos extraídos: {len(items)}", flush=True)
-    return _Result(items)
+    with _LOCK_DESCARTES:
+        descartes = dict(_DESCARTES)
+    if descartes:
+        print(f">>> Links que no dieron artículo: {resumen_descartes(descartes)}", flush=True)
+    return _Result(items, descartes)

@@ -203,3 +203,13 @@ def test_ya_procesadas_mira_guardadas_y_descartadas(monkeypatch):
     monkeypatch.setattr(db, "col_descartados", base.articulos_descartados)
     assert corridas.ya_procesadas(["https://s.com/a", "https://s.com/b", "https://s.com/c"]) == {
         "https://s.com/a", "https://s.com/b"}
+
+
+def test_el_scraper_cuenta_por_que_descarta_cada_link(monkeypatch):
+    links = [f"https://sitio.com/2026/10/0{i}/nota" for i in range(1, 8)]
+    monkeypatch.setattr(scraper, "_fetch", lambda url: None if url.endswith("01/nota") else "<html>listado</html>")
+    monkeypatch.setattr(scraper, "_encontrar_links", lambda html, base: list(links))
+    monkeypatch.setattr(scraper.trafilatura, "extract", lambda *a, **k: None)
+    r = scraper.start(["https://sitio.com/noticias"], max_articulos=2)   # prueba 6 candidatos de 7
+    assert r.items == [] and r.descartes == {"sin_probar": 1, "sin_html": 1, "sin_texto": 5}
+    assert "sin_texto 5" in scraper.resumen_descartes(r.descartes)

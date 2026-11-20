@@ -34,7 +34,10 @@ def test_subir_imagen_la_guarda_y_la_deja_como_destacada(base):
 
 
 @pytest.mark.parametrize("contenido, motivo", [(b"", "vacío"), (b"<svg></svg>", "no es una imagen"),
-                                                (b"GIF89a" + b"0" * historial.IMAGEN_SUBIDA_MAX, "5 MB")])
+                                                (b"GIF89a" + b"0" * historial.IMAGEN_SUBIDA_MAX, "5 MB")],
+                         # Sin ids, pytest usa los 5 MB como nombre del test y Windows no acepta
+                         # una variable de entorno tan larga (PYTEST_CURRENT_TEST).
+                         ids=["vacio", "svg", "mas-de-5mb"])
 def test_subir_imagen_valida_el_archivo(base, contenido, motivo):
     with pytest.raises(historial.ErrorHistorial, match=motivo):
         historial.subir_imagen("notas_fase2", str(_nota(base)), contenido, base=base)

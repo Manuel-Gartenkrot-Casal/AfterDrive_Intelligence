@@ -115,3 +115,29 @@ def test_crear_indices_crea_los_de_la_cola(monkeypatch):
     db.crear_indices()
     assert "estado_1_creada_1" in base.corridas.index_information()
     assert "url_1" in base.articulos.index_information()
+
+
+def test_varias_horas_de_generacion_son_varios_jobs(config):
+    config["generacion"].update(hora="09:00", horas_extra=["15:00", "21:30", "09:00"], interval_days=1)
+    scheduler.aplicar()
+    ids = sorted(j.id for j in scheduler._scheduler.get_jobs())
+    assert ids == ["generacion", "generacion_2", "generacion_3", "scraping"]
+    assert scheduler.horarios("generacion") == (True, [(9, 0), (15, 0), (21, 30)], 1)
+    # Si se sacan, los jobs de más desaparecen.
+    config["generacion"]["horas_extra"] = []
+    scheduler.aplicar()
+    assert sorted(j.id for j in scheduler._scheduler.get_jobs()) == ["generacion", "scraping"]
+
+
+def test_programacion_sigue_dando_la_hora_principal(config):
+    config["generacion"].update(hora="10:15", horas_extra=["08:00"])
+    assert scheduler.programacion("generacion") == (True, 10, 15, 2)
+
+
+def test_en_modo_externo_la_proxima_es_la_hora_mas_cercana(config, monkeypatch):
+    monkeypatch.setenv("CORRIDAS_EXTERNAS", "github")
+    config["generacion"].update(hora="23:59", horas_extra=["00:01"], interval_days=1)
+    proxima = datetime.datetime.fromisoformat(scheduler.proximas()["generacion"])
+    ahora = datetime.datetime.now(zoneinfo.ZoneInfo(scheduler.ZONA))
+    assert proxima - ahora <= datetime.timedelta(hours=24)
+    assert (proxima.hour, proxima.minute) in ((23, 59), (0, 1))
