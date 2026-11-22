@@ -448,7 +448,7 @@ def set_temas():
     if len(texto) > 200_000:   # tope antes de recorrer: un texto gigante no traba el servidor
         return jsonify({"success": False, "error": "El texto es muy largo."}), 400
     temas = []
-    for linea in texto.split("\n"):   # como el navegador (generador.js lineasTemas)
+    for linea in texto.split("\n"):   # como el navegador (programacion.js lineasTemas)
         tema = _VINETA.sub("", linea).strip()
         if tema and tema not in temas:
             temas.append(tema)

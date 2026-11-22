@@ -2680,6 +2680,15 @@ body.trabajando .nav-actividad + .nav-badge { margin-left: 6px; }
 .agenda-falta { font-size: 0.74rem; color: var(--text-mid); font-variant-numeric: tabular-nums; }
 .agenda-cuerpo .agenda-foot .btn { flex-shrink: 0; }
 
+/* — Lista de temas que van usando las notas (también las automáticas) — */
+.agenda-temas { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s4); padding: var(--s4) var(--s6); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.agenda-temas-titulo { font-size: 0.92rem; font-weight: 600; color: var(--text-hi); }
+.agenda-temas textarea { width: 100%; resize: vertical; }
+.agenda-temas-pie { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s3); }
+.agenda-temas-pie .btn { cursor: pointer; }
+.agenda-temas .field-help { margin: 0; }
+@media (max-width: 640px) { .agenda-temas { padding: var(--s4); } }
+
 /* En escritorio, con las tareas lado a lado, el panel llega hasta el fondo de la
    pantalla: el contenido se reparte a lo alto y los relojes crecen con el alto
    que haya (150 px en pantallas bajas, hasta 250 px en las altas). */
@@ -3275,7 +3284,7 @@ mark.dato.sin { background: color-mix(in srgb, var(--err) 12%, transparent); box
 /* Orden: 1 temas, 2 enfoque (tema puntual e indicaciones), 3 estilo (tono y largo), más opciones. */
 [data-modo="cliente"] .f2-categorias { order: 1; }
 [data-modo="cliente"] .f2-titulo-enfoque { order: 2; }
-[data-modo="cliente"] :is(.f2-campo-tema, .f2-campo-temas) { order: 3; }
+[data-modo="cliente"] .f2-campo-tema { order: 3; }
 [data-modo="cliente"] .f2-campo-indicaciones { order: 4; }
 [data-modo="cliente"] .f2-opciones > .fase2-grupo-title:first-child { order: 5; }
 [data-modo="cliente"] .f2-campo-tono { order: 6; }

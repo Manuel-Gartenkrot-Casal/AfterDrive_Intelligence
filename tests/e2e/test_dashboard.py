@@ -900,6 +900,40 @@ def test_mas_notas_por_dia_en_programacion(pagina):
     barra.wait_for(state="hidden")
 
 
+def test_lista_de_temas_en_programacion(pagina, tmp_path):
+    """La lista de temas vive en Programación (no en Crear nota) y se guarda con su barra."""
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator(".fase2-section #f2-temas")).to_have_count(0)
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    temas, barra = pagina.locator("#f2-temas"), pagina.locator("#barra-programacion")
+    expect(temas).to_be_visible()
+    expect(pagina.locator("#f2-temas-estado")).to_have_text("La lista está vacía.")
+    temas.fill("- Neumáticos en verano")
+    barra.wait_for(state="visible")
+    archivo = tmp_path / "temas.txt"
+    archivo.write_text("1. Autopartes en Mercado Libre\r\nNeumáticos en verano\r\n", encoding="utf-8")
+    pagina.set_input_files("#f2-temas-archivo", str(archivo))
+    expect(pagina.locator("#f2-temas-estado")).to_contain_text("La próxima nota usa: Neumáticos en verano")
+    with pagina.expect_response(lambda r: "/api/fase2/temas" in r.url and r.request.method == "POST"):
+        barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+    expect(temas).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")   # limpia: sin viñetas ni repetidos
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#f2-temas")).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")
+    # Salir con la lista sin guardar pide confirmación.
+    pagina.locator("#f2-temas").fill("Otro tema")
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator("#confirmar")).to_be_visible()
+    pagina.click("#confirmar-si")   # descarta
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#f2-temas")).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")
+    # Se vacía (el servidor de los tests es compartido).
+    pagina.locator("#f2-temas").fill("")
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
 def test_rotar_categorias_se_guarda(pagina):
     pagina.click('.sidebar a[data-seccion="crear"]')
     toggle = pagina.locator("#f2-rotar-toggle")

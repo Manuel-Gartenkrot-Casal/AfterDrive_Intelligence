@@ -20,7 +20,7 @@ var _FILAS_TEXTOS = [
   ['+ Nueva nota', '+ Novo post', '+ New post'],
   // ── Crear nota en la vista Cliente (generador.js) ──
   ['Tu nota', 'Seu post', 'Your post'],
-  ['Solo para esta nota: no se guarda. Si lo dejás vacío, se usa el próximo de la lista de temas.', 'Só para este post: não é salvo. Se deixar vazio, usa o próximo da lista de temas.', 'Just for this post: it isn’t saved. If you leave it empty, the next one from the topic list is used.'],
+  ['Solo para esta nota: no se guarda. Si lo dejás vacío, se usa el próximo de la lista de temas de Programación.', 'Só para este post: não é salvo. Se deixar vazio, usa o próximo da lista de temas de Agendamento.', 'Just for this post: it isn’t saved. If you leave it empty, the next one from the topic list in Schedule is used.'],
   ['Lista de temas para las próximas notas', 'Lista de temas para os próximos posts', 'Topic list for the next posts'],
   ['Importar .txt', 'Importar .txt', 'Import .txt'],
   ['Pegá o importá texto plano, un tema por línea (las viñetas y números se ignoran). Cada nota sin tema puntual, también las automáticas, usa el primero y, si sale bien, lo saca de la lista.', 'Cole ou importe texto simples, um tema por linha (marcadores e números são ignorados). Cada post sem tema específico, também os automáticos, usa o primeiro e, se der certo, o tira da lista.', 'Paste or import plain text, one topic per line (bullets and numbers are ignored). Every post without a specific topic, automatic ones too, uses the first one and, if it works, removes it from the list.'],
@@ -1245,7 +1245,7 @@ _FILAS_TEXTOS.push(
 ["Zona horaria", "Fuso horário", "Time zone"],
 ["Argentina (GMT−3)", "Argentina (GMT−3)", "Argentina (GMT−3)"],
 ["Contenido", "Conteúdo", "Content"],
-["Categorías, regiones y clientes de Crear nota", "Categorias, regiões e clientes de Criar post", "Categories, regions and clients from Create article"],
+["Categorías, regiones y clientes de Crear nota; el tema sale de la lista de abajo", "Categorias, regiões e clientes de Criar post; o tema sai da lista abaixo", "Categories, regions and clients from Create article; the topic comes from the list below"],
 ["En menos de un minuto", "Em menos de um minuto", "In less than a minute"],
 ["Ir al inicio", "Ir para o início", "Go to home"],
 ["Blog de pruebas", "Blog de testes", "Test blog"],

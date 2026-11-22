@@ -47,7 +47,7 @@ async function refrescarVivo() {
     var pedidos = [_vivoMirar('resumen', '/api/historial/resumen', cargarResumenHistorial)];
     if ($('modal-art').classList.contains('open')) pedidos.push(revisarNotaAbierta());
     if (_seccion === 'historial') pedidos.push(_vivoHistorial());
-    if (_seccion === 'crear') pedidos.push(_vivoMirar('temas', '/api/fase2/temas', fase2CargarTemas));   // las automáticas consumen temas
+    if (_seccion === 'programacion') pedidos.push(_vivoMirar('temas', '/api/fase2/temas', cargarTemas));   // las automáticas consumen temas
     if (_seccion === 'fuentes') {
       pedidos.push(_vivoMirar('fuentes', '/api/trusted-urls', loadTrustedUrls),
                    _vivoMirar('sugerencias', '/api/suggested-urls', loadSugerencias));

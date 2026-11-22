@@ -434,7 +434,7 @@
                 </label>
                 <div class="agenda-field">
                   <span class="agenda-field-nombre">Contenido</span>
-                  <span class="agenda-field-control agenda-field-dato">Categorías, regiones y clientes de Crear nota</span>
+                  <span class="agenda-field-control agenda-field-dato">Categorías, regiones y clientes de Crear nota; el tema sale de la lista de abajo</span>
                 </div>
               </div>
               <div class="agenda-foot">
@@ -448,6 +448,18 @@
             </div>
           </article>
         </div>
+      </div>
+      <!-- Lista de temas para las próximas notas (se van usando y descartando) -->
+      <div class="agenda-temas">
+        <label class="agenda-temas-titulo" for="f2-temas">Lista de temas para las próximas notas</label>
+        <textarea id="f2-temas" class="input-field" rows="5" aria-describedby="f2-temas-ayuda f2-temas-estado"
+                  placeholder="Un tema por línea. Ej:&#10;Ventas de neumáticos en el verano&#10;Cómo vender autopartes en Mercado Libre"></textarea>
+        <div class="agenda-temas-pie">
+          <label class="btn btn-sm" for="f2-temas-archivo">Importar .txt</label>
+          <input type="file" id="f2-temas-archivo" accept=".txt,.csv,.md,text/plain" hidden onchange="importarTemas(this)" />
+          <span id="f2-temas-estado" class="field-help" aria-live="polite"></span>
+        </div>
+        <p id="f2-temas-ayuda" class="field-help">Pegá o importá texto plano, un tema por línea (las viñetas y números se ignoran). Cada nota sin tema puntual, también las automáticas, usa el primero y, si sale bien, lo saca de la lista.</p>
       </div>
       <div class="barra-guardar" id="barra-programacion" hidden>
         <span class="barra-texto">Tenés cambios sin guardar en la programación</span>
@@ -525,20 +537,7 @@
             <label class="control-label" for="f2-tema" data-cliente="Tema puntual (opcional)">Tema específico (opcional)</label>
             <input type="text" id="f2-tema" class="input-field" style="width:100%" placeholder="Ej: dropshipping en Argentina…"
                    aria-describedby="f2-tema-ayuda" />
-            <p id="f2-tema-ayuda" class="field-help">Solo para esta nota: no se guarda. Si lo dejás vacío, se usa el próximo de la lista de temas.</p>
-          </div>
-
-          <!-- Lista de temas para las próximas notas (se van usando y descartando) -->
-          <div class="f2-campo f2-campo-temas" style="margin-bottom:var(--s4)">
-            <label class="control-label" for="f2-temas">Lista de temas para las próximas notas</label>
-            <textarea id="f2-temas" class="input-field" rows="5" style="width:100%" aria-describedby="f2-temas-ayuda f2-temas-estado"
-                      placeholder="Un tema por línea. Ej:&#10;Ventas de neumáticos en el verano&#10;Cómo vender autopartes en Mercado Libre"></textarea>
-            <div style="display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-top:var(--s2)">
-              <label class="btn btn-sm" for="f2-temas-archivo" style="cursor:pointer">Importar .txt</label>
-              <input type="file" id="f2-temas-archivo" accept=".txt,.csv,.md,text/plain" hidden onchange="importarTemas(this)" />
-              <span id="f2-temas-estado" class="field-help" aria-live="polite" style="margin:0"></span>
-            </div>
-            <p id="f2-temas-ayuda" class="field-help">Pegá o importá texto plano, un tema por línea (las viñetas y números se ignoran). Cada nota sin tema puntual, también las automáticas, usa el primero y, si sale bien, lo saca de la lista.</p>
+            <p id="f2-tema-ayuda" class="field-help">Solo para esta nota: no se guarda. Si lo dejás vacío, se usa el próximo de la lista de temas de Programación.</p>
           </div>
 
           <!-- Indicaciones libres para la IA -->

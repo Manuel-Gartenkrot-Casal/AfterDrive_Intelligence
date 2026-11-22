@@ -383,6 +383,54 @@ function pintarFalta(tipo) {
     : h ? 'En ' + h + ' h ' + m + ' min' : 'En ' + m + ' min';
 }
 
+/* ── Lista de temas para las próximas notas ─────────────────────────────
+   Cada nota sin tema puntual (también las automáticas) usa el primero y el
+   servidor lo saca de la lista cuando la nota se guarda (generar_nota_fase2.generar_nota).
+   Se guarda con la barra de Programación. */
+// Misma limpieza que el servidor (flask_api._VINETA): sin viñetas, vacíos ni repetidos.
+function lineasTemas() {
+  var temas = [];
+  $('f2-temas').value.split('\n').forEach(function(l) {
+    var t = l.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
+    if (t && temas.indexOf(t) < 0) temas.push(t);
+  });
+  return temas;
+}
+
+function pintarTemas(temas) {
+  $('f2-temas').value = temas.join('\n');
+  pintarEstadoTemas();
+}
+
+function pintarEstadoTemas() {
+  var temas = lineasTemas();
+  $('f2-temas-estado').textContent = temas.length
+    ? temas.length + (temas.length === 1 ? ' tema' : ' temas') + ' en la lista. La próxima nota usa: ' + temas[0]
+    : 'La lista está vacía.';
+}
+
+// La trae del servidor (al entrar y cuando una nota consume un tema). Si la estás editando, no la pisa.
+async function cargarTemas() {
+  var d;
+  try { d = await pedir('/api/fase2/temas'); } catch (e) { return; }
+  var form = FORMULARIOS.programacion, base = form ? form.base() : null;   // null antes de la primera carga
+  if (base && JSON.stringify(lineasTemas()) !== JSON.stringify(base.temas)) return;
+  pintarTemas(d.temas);
+  if (base) { form.ponerEnBase('temas', d.temas); form.marcar(); }
+}
+
+async function importarTemas(input) {
+  var archivo = input.files[0];
+  input.value = '';   // permite volver a elegir el mismo archivo
+  if (!archivo) return;
+  if (archivo.size > 1024 * 1024) { showToast('El archivo es muy grande (máximo 1 MB).', 'error'); return; }
+  var texto = (await archivo.text()).replace(/\r/g, '');
+  var actual = $('f2-temas').value.replace(/\s+$/, '');
+  $('f2-temas').value = (actual ? actual + '\n' : '') + texto;
+  pintarEstadoTemas();
+  marcarProgramacion();
+}
+
 /* forzar: pisar los campos aunque haya cambios sin guardar (carga inicial). */
 async function cargarAgenda(tipo, forzar) {
   try {
@@ -453,8 +501,8 @@ function initAgenda() {
   });
 
   var form = formulario('programacion', {
-    leer: function() { return { scraping: leerAgenda('scraping'), generacion: leerAgenda('generacion') }; },
-    aplicar: function(st) { aplicarAgenda('scraping', st.scraping); aplicarAgenda('generacion', st.generacion); },
+    leer: function() { return { scraping: leerAgenda('scraping'), generacion: leerAgenda('generacion'), temas: lineasTemas() }; },
+    aplicar: function(st) { aplicarAgenda('scraping', st.scraping); aplicarAgenda('generacion', st.generacion); pintarTemas(st.temas || []); },
     guardar: async function(st, base) {
       for (var tipo in AGENDA) {
         if (JSON.stringify(st[tipo]) === JSON.stringify(base[tipo])) continue;
@@ -463,10 +511,19 @@ function initAgenda() {
           method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(st[tipo])
         });
       }
+      if (JSON.stringify(st.temas) !== JSON.stringify(base.temas)) {
+        var d = await pedir('/api/fase2/temas', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ texto: st.temas.join('\n') })
+        });
+        st.temas = d.temas;   // ya limpia (sin viñetas ni repetidos): pasa a ser la base
+        pintarTemas(d.temas);
+      }
     },
     despues: function() { cargarAgenda('scraping'); cargarAgenda('generacion'); updateStats(); }
   });
-  Promise.all([cargarAgenda('scraping', true), cargarAgenda('generacion', true)]).then(form.tomarBase);
+  $('f2-temas').addEventListener('input', function() { pintarEstadoTemas(); marcarProgramacion(); });
+  Promise.all([cargarAgenda('scraping', true), cargarAgenda('generacion', true), cargarTemas()]).then(form.tomarBase);
   setInterval(function() { pintarDia(); Object.keys(AGENDA).forEach(pintarFalta); }, 60000);
   document.addEventListener('idioma', pintarDia);   // los nombres de las tareas cambian de idioma
   // Se dibuja con el ancho real: al entrar a la sección y si cambia la ventana.
