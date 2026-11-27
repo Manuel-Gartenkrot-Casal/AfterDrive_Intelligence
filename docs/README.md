@@ -15,6 +15,7 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 | Agregar o usar un endpoint | [07 API](07-api.md) |
 | Desplegar o revisar producción | [08 Despliegue](08-despliegue.md) |
 | Saber qué está roto o pendiente | [09 Deuda y mejoras](09-deuda-y-mejoras.md) |
+| Preparar o dar la demo de noviembre | [Guion de la demo](demo-noviembre.md) |
 
 ## Primer día en el proyecto
 
@@ -37,15 +38,16 @@ Guías cortas para entender y desarrollar AfterDrive Intelligence. Las rutas de 
 |---|---|
 | [`adr/`](adr/) | Decisiones de arquitectura, una por archivo. Si tomás una decisión que alguien podría querer deshacer sin saber por qué, escribí un ADR |
 | [`superpowers/`](superpowers/) | Specs, planes y prompts de trabajos ya hechos (login y seguridad, mejoras del dashboard). Sirven como historial |
-| [`hubspot-integration.md`](hubspot-integration.md) | Publicación en HubSpot: configuración, imagen, etiquetas y errores |
+| [`hubspot-integration.md`](hubspot-integration.md) | Subida a HubSpot: configuración, blog de pruebas, aprobación automática, imágenes, idiomas y errores |
+| [`interfaz-editorial.md`](interfaz-editorial.md) | Criterios visuales del dashboard (colores, tipografía, Actividad, revisión) |
 
 ## Otros archivos del repo
 
 | Archivo / carpeta | Qué es |
 |---|---|
 | `CONTEXT.md` | Glosario del dominio |
-| `tests/` | Tests con `pytest`: auth, configuración, Corridas, cola, historial, HubSpot, generación, LLM, redacción, saneo, scheduler, scraper. `tests/e2e/`: el dashboard en un navegador |
-| `scripts/demo_mode.py` | Pipeline acelerado para demos en vivo |
+| `tests/` | Tests con `pytest`, un archivo por módulo (`test_<módulo>.py`: cola, historial, HubSpot, generación, juez, crítica, imágenes, traducciones, métricas, LLM, saneo…). `tests/e2e/`: el dashboard en un navegador |
+| `scripts/demo_mode.py`, `scripts/demo_datos.json` | Demo de punta a punta (noticia → nota → revisión → HubSpot de pruebas) y sus noticias de ejemplo. Guion en [`demo-noviembre.md`](demo-noviembre.md) |
 | `scripts/manual/` | Pruebas manuales: conexión con NVIDIA y smoke test del dashboard con Playwright |
 | `data/*.json` | Volcados de artículos de ejemplo |
 | `render.yaml`, `Dockerfile`, `docker-compose.yml` | Despliegue (ver [08](08-despliegue.md)) |

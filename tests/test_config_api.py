@@ -205,6 +205,34 @@ def test_pausar_una_fuente_inexistente_es_404(fuentes):
     assert c.patch("/api/trusted-urls/https://otro.com", json={"estado": "inactivo"}).status_code == 404
 
 
+def test_volver_a_agregar_una_fuente_conserva_alta_y_ultima_revision(fuentes, monkeypatch):
+    from afterdrive.ingesta import scraper
+    c, col = fuentes
+    col.update_one({"url": "https://sitio.com/noticias"}, {"$set": {
+        "estado": "inactivo",
+        "fecha_agregado": "2026-01-01T00:00:00+00:00",
+        "ultima_ejecucion": "2026-10-30T07:00:00+00:00",
+    }})
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    r = c.post("/api/trusted-urls", json={"url": "https://sitio.com/noticias", "nombre": "Sitio nuevo"})
+    assert r.status_code == 200
+    doc = col.find_one({"url": "https://sitio.com/noticias"})
+    assert doc["estado"] == "activo" and doc["nombre_fuente"] == "Sitio nuevo"
+    assert doc["fecha_agregado"] == "2026-01-01T00:00:00+00:00"
+    assert doc["ultima_ejecucion"] == "2026-10-30T07:00:00+00:00"
+    assert col.count_documents({}) == 1
+
+
+def test_agregar_una_fuente_nueva_le_pone_fecha_de_alta(fuentes, monkeypatch):
+    from afterdrive.ingesta import scraper
+    c, col = fuentes
+    monkeypatch.setattr(scraper, "url_publica", lambda u: True)
+    assert c.post("/api/trusted-urls", json={"url": "https://nuevo.com/blog"}).status_code == 200
+    doc = col.find_one({"url": "https://nuevo.com/blog"})
+    assert doc["estado"] == "activo" and doc["nombre_fuente"] == "https://nuevo.com/blog"
+    assert doc["fecha_agregado"] and doc["ultima_ejecucion"] is None
+
+
 # ── Config de la Nota automática (Fase 2) ─────────────────────────────────────
 
 
@@ -296,3 +324,53 @@ def test_switch_del_blog_de_pruebas(client, monkeypatch):
     monkeypatch.delenv("HUBSPOT_BLOG_PRUEBAS")
     assert c.get("/api/hubspot/blog-pruebas").get_json() == {
         "success": True, "disponible": False, "blog_id": "", "activo": False}
+
+
+# ── Tema de un solo uso, rotación de categorías y más notas por día ──────────
+
+
+def test_el_tema_ya_no_se_guarda_en_la_config(client):
+    c, store = client
+    store["generacion"] = {"tema": "dropshipping"}   # lo guardaba una versión anterior
+    assert "tema" not in c.get("/api/generacion-config").json
+    assert c.post("/api/generacion-config", json={"tema": "otro", "largo": "corto"}).status_code == 200
+    assert "tema" not in store["generacion"] and store["generacion"]["largo"] == "corto"
+
+
+def test_guardar_horarios_extra_de_generacion(client):
+    c, store = client
+    r = c.post("/api/generacion-config", json={"horas_extra": ["19:00", "15:30", "15:30"]})
+    assert r.status_code == 200 and store["generacion"]["horas_extra"] == ["15:30", "19:00"]
+
+
+@pytest.mark.parametrize("horas", ["15:00", ["25:00"], [1500], ["08:00", "9:00"],
+                                   [f"{h:02d}:00" for h in range(8)]])
+def test_horarios_extra_invalidos(client, horas):
+    c, store = client
+    assert c.post("/api/generacion-config", json={"horas_extra": horas}).status_code == 400
+    assert "generacion" not in store
+
+
+def test_la_config_de_generacion_informa_el_costo_por_nota(client, monkeypatch):
+    from afterdrive import metricas
+    monkeypatch.setattr(metricas, "costo_por_nota", lambda: 0.12)
+    monkeypatch.setenv("PAGA_TOPE_MENSUAL_USD", "40")
+    d = client[0].get("/api/generacion-config").json
+    assert d["costo_nota_usd"] == 0.12 and d["tope_usd"] == 40.0 and d["horas_extra"] == []
+
+
+def test_rotar_categorias_se_guarda_y_se_valida(client):
+    c, store = client
+    assert c.post("/api/fase2/config", json={"rotar_categorias": True}).status_code == 200
+    assert store["fase2"]["rotar_categorias"] is True
+    assert c.post("/api/fase2/config", json={"rotar_categorias": "si"}).status_code == 400
+
+
+def test_generar_con_rotacion_pasa_la_opcion(client, monkeypatch):
+    from afterdrive import cola
+    encolado = {}
+    monkeypatch.setattr(cola, "encolar", lambda tipo, params=None, **k: encolado.update(params) or {"id": "x", "posicion": 0})
+    r = client[0].post("/api/corridas/generacion", json={"categorias": ["autopartes", "neumaticos"], "rotar_categorias": True})
+    assert r.status_code == 202 and "--rotar" in encolado["argv"]
+    client[0].post("/api/corridas/generacion", json={"categorias": ["autopartes"], "rotar_categorias": "true"})
+    assert "--rotar" not in encolado["argv"]

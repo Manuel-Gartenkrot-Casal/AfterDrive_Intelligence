@@ -51,9 +51,55 @@ def test_juicio_roto_queda_con_error(monkeypatch, texto):
     assert "error" in juez.juzgar(NOTA, "")
 
 
+def test_una_respuesta_cortada_se_reintenta_con_margen(monkeypatch):
+    """El 20/11 el razonamiento llenaba los 1000 tokens y el juicio venía sin JSON."""
+    respuestas, limites = ["", json.dumps({"pasa": True, "confianza": 0.8, "calificacion": 4})], []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    monkeypatch.setattr(llm, "completar", lambda s, u, **k: limites.append(k["max_tokens"]) or respuestas.pop(0))
+    j = juez.juzgar("nota", "noticias", estricto=True)
+    assert "error" not in j and j["calificacion"] == 4 and limites == [2500, 2500]
+
+
 def test_sin_proveedor_no_juzga(monkeypatch):
     monkeypatch.setattr(llm, "disponible", lambda: False)
     assert "error" in juez.juzgar(NOTA, "")
+
+
+@pytest.mark.parametrize("confianza", ["NaN", "Infinity", "true", '"alta"', "null", "[0.9]"])
+def test_confianza_que_no_es_un_numero_cuenta_como_cero(monkeypatch, confianza):
+    _responde(monkeypatch, '{"pasa": true, "confianza": ' + confianza + ', "calificacion": 5}')
+    j = juez.juzgar(NOTA, "")
+    assert j["confianza"] == 0.0
+    doc = dict(BUENA, juicio=j)
+    decision = juez.decidir(doc)
+    assert not decision["pasa"] and "no está seguro" in decision["motivos"][0]
+
+
+def test_confianza_como_texto_numerico_se_acepta(monkeypatch):
+    _responde(monkeypatch, '{"pasa": true, "confianza": "0.85"}')
+    assert juez.juzgar(NOTA, "")["confianza"] == 0.85
+
+
+@pytest.mark.parametrize("calificacion, esperada", [(4.6, 5), ("2", 2), (0, 1), (True, 3), ("NaN", 3)])
+def test_calificacion_se_redondea_y_acota(monkeypatch, calificacion, esperada):
+    _responde(monkeypatch, json.dumps({"pasa": True, "confianza": 0.9, "calificacion": calificacion}))
+    assert juez.juzgar(NOTA, "")["calificacion"] == esperada
+
+
+def test_motivos_como_texto_no_se_parten_en_letras(monkeypatch):
+    _responde(monkeypatch, json.dumps({"pasa": False, "confianza": 0.9, "motivos": "inventa una cifra de ventas"}))
+    assert juez.juzgar(NOTA, "")["motivos"] == ["inventa una cifra de ventas"]
+
+
+def test_etiquetas_raras_no_rompen_el_juicio(monkeypatch):
+    _responde(monkeypatch, json.dumps({"pasa": True, "confianza": 0.9,
+                                       "etiquetas": [{"codigo": "generica"}, ["tono"], 7, "tono"]}))
+    assert juez.juzgar(NOTA, "")["etiquetas"] == ["tono"]
+
+
+def test_una_etiqueta_sola_como_texto_se_respeta(monkeypatch):
+    _responde(monkeypatch, json.dumps({"pasa": True, "confianza": 0.9, "etiquetas": "generica"}))
+    assert juez.juzgar(NOTA, "")["etiquetas"] == ["generica"]
 
 
 @pytest.mark.parametrize("cambio, texto", [
@@ -134,3 +180,37 @@ def test_switch_de_aprobacion_automatica(api, monkeypatch):
     assert c.get("/api/aprobacion-auto").get_json()["activo"] is False
     assert c.post("/api/aprobacion-auto", json={"activo": True}).get_json()["activo"] is True
     assert c.post("/api/aprobacion-auto", json={}).status_code == 400
+
+
+# ── Checklist de Alephee ─────────────────────────────────────────────────────
+
+
+def test_el_juez_recibe_la_checklist_y_el_enfoque_alephee(monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+
+    def completar(system, user, **k):
+        pedidos.append(user)
+        return json.dumps({"pasa": True, "confianza": 0.9, "calificacion": 4, "motivos": [],
+                           "alephee": {"mencion_con_motivo": True, "nada_inventado": False, "cta_unico": "sí",
+                                       "otro": False}})
+    monkeypatch.setattr(llm, "completar", completar)
+    j = juez.juzgar(NOTA, "noticias")
+    assert "## Checklist de Alephee" in pedidos[0] and "## Enfoque Alephee" in pedidos[0]
+    assert all(k in pedidos[0] for k in juez.CHECKLIST_ALEPHEE)
+    assert j["alephee"] == {"mencion_con_motivo": True, "nada_inventado": False, "beneficio_concreto": None,
+                            "informa_primero": None, "cta_unico": None}
+
+
+def test_un_no_de_la_checklist_frena_la_aprobacion_automatica():
+    juicio = {**BUENA["juicio"], "alephee": {"nada_inventado": False, "cta_unico": None, "informa_primero": True}}
+    d = juez.decidir({**BUENA, "juicio": juicio})
+    assert not d["pasa"] and d["motivos"] == [f"checklist de Alephee: {juez.CHECKLIST_ALEPHEE['nada_inventado']}"]
+    # "No aplica" (null) no frena: por ejemplo, una nota que no nombra a Alephee.
+    todo_ok = {k: None for k in juez.CHECKLIST_ALEPHEE}
+    assert juez.decidir({**BUENA, "juicio": {**BUENA["juicio"], "alephee": todo_ok}})["pasa"]
+
+
+def test_un_juicio_viejo_sin_checklist_sigue_andando():
+    assert juez.decidir(BUENA)["pasa"]
+    assert juez.fallas_alephee(None) == []

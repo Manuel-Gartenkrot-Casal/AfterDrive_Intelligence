@@ -40,12 +40,50 @@ FOTO_E2E = "https://s.com/fotos/catalogo.jpg"
 CUERPO = "## Qué pasó\n\n" + "El mercado de repuestos crece y los distribuidores ajustan su stock. " * 8
 
 
+def _png(color: tuple[int, int, int]) -> bytes:
+    """Un PNG de 4x5 de un color, sin dependencias: alcanza para las diapositivas de prueba."""
+    import struct
+    import zlib
+
+    def bloque(tipo: bytes, datos: bytes) -> bytes:
+        return struct.pack(">I", len(datos)) + tipo + datos + struct.pack(">I", zlib.crc32(tipo + datos) & 0xFFFFFFFF)
+    filas = b"".join(b"\x00" + bytes(color) * 4 for _ in range(5))
+    return (b"\x89PNG\r\n\x1a\n" + bloque(b"IHDR", struct.pack(">IIBBBBB", 4, 5, 8, 2, 0, 0, 0))
+            + bloque(b"IDAT", zlib.compress(filas)) + bloque(b"IEND", b""))
+
+
+def sembrar_nota_de_lectura() -> None:
+    """Una nota con datos verificados (uno dudoso) y un carrusel en portugués: la revisión de la vista Cliente."""
+    diapositivas = [str(dbm.db.imagenes_subidas.insert_one({"contenido": _png(c), "mime": "image/png", "carrusel": True}).inserted_id)
+                    for c in ((30, 27, 41), (246, 244, 248), (201, 61, 88))]
+    pdf = dbm.db.imagenes_subidas.insert_one({"contenido": b"%PDF-1.4 e2e", "mime": "application/pdf", "carrusel": True}).inserted_id
+    dbm.db.notas_fase2.insert_one({
+        "contenido": "# Peças para elétricos: o canal independente\n\n## O que aconteceu\n\n"
+                     "As oficinas independentes representaram **72%** da capacidade de reparo; as concessionárias, **28%**. "
+                     "O mercado global, estimado em **US$ 2,65 trilhões**, cresce.\n\n*A oficina independente concentra o reparo.*",
+        "generado_en": "2026-10-10T14:00:00+00:00", "estado": "aprobada", "idioma": "pt", "persona": "divulgativo",
+        "categorias": ["autopartes"], "fuentes": [{"titulo": "AAPEX 2026", "url": "https://s.com/aapex"}],
+        # Un paso en negrita guardado como "dato" (notas viejas): no se marca.
+        "verificacion": {"total": 4, "respaldados": ["72%", "28%"], "sin_respaldo": [],
+                         "dudosos": ["US$ 2,65 trilhões", "1. Escolha as aplicações com mais circulação."]},
+        "traducciones": {"es": {"contenido": "# Repuestos para eléctricos: el canal independiente\n\n## Qué pasó\n\n"
+                                             "Los talleres independientes representaron el **72 %** de la capacidad de reparación. "
+                                             "El mercado global, estimado en **US$ 2.65 billones**, crece.", "huella": "x", "al_dia": True}},
+        "calidad": {"puntaje": 8, "fallas_criticas": [], "intentos": 1, "reescrita_por": []},
+        "carruseles": {"pt": {"idioma": "pt", "textos": {"titulo": "Peças para elétricos", "subtitulo": "Comece pela oficina.",
+                                                         "puntos": ["Teste a demanda."], "cta": "Leia o artigo"},
+                              "diapositivas": ["/api/imagenes/" + d for d in diapositivas], "pdf_id": str(pdf),
+                              "generado_en": "2026-10-10T15:00:00+00:00", "origen_textos": "ia"}},
+    })
+
+
 def sembrar() -> None:
     dbm.col_trusted_urls.insert_many([
         {"url": "https://fuente-uno.com/noticias", "estado": "activo", "fecha_agregado": "2026-10-01T00:00:00+00:00"},
         {"url": "https://fuente-dos.com/blog", "estado": "inactivo", "fecha_agregado": "2026-10-02T00:00:00+00:00"},
     ])
     dbm.col_clientes.insert_one({"slug": "acme", "nombre": "ACME Autopartes"})
+    sembrar_nota_de_lectura()
     dbm.db.notas_fase2.insert_many([
         {"contenido": "# Frenos: la demanda sube\n\n" + CUERPO + "\n*La demanda de frenos crece.*",
          "generado_en": "2026-10-17T14:00:00+00:00", "estado": "borrador", "categorias": ["autopartes"],
@@ -103,7 +141,9 @@ def sembrar() -> None:
                     "origen": {"titulo": "Baterías al alza", "url": "https://s.com/bat"}},
          "imagenes_cuerpo": [
              {"url": "https://s.com/fotos/deposito.jpg", "alt": "Depósito",
-              "origen": {"titulo": "Depósitos llenos", "url": "https://s.com/dep"}},
+              "origen": {"titulo": "Depósitos llenos", "url": "https://s.com/dep"},
+              "epigrafe": {"pt": "Estoque de baterias pronto para o balcão", "es": "Stock de baterías listo para el mostrador",
+                           "en": "Battery stock ready for the counter"}},
              {"url": "https://s.com/fotos/mostrador.jpg", "alt": "Mostrador",
               "origen": {"titulo": "El mostrador vende más", "url": "https://s.com/mos"}}]},
     ])
@@ -176,8 +216,15 @@ def hubspot_falso() -> None:
                            "subir": lambda url, **kw: _RespArchivo()}
 
 
+def epigrafes_falsos() -> None:
+    """Sin IA: las fotos sin epígrafe siguen sin él (la llamada real esperaría a un proveedor que no está)."""
+    from afterdrive.generacion import epigrafes
+    epigrafes.completar = lambda nota, veredictos=None: 0
+
+
 if __name__ == "__main__":
     sembrar()
+    epigrafes_falsos()
     corridas._scrapear_fuentes = scraping_falso
     hubspot_falso()
     descarga_de_imagenes_falsa()

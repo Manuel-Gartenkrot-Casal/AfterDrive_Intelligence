@@ -4,11 +4,12 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
    SECCIONES: una a la vez, elegida en la barra lateral.
-   La sección activa vive en el hash (#crear), así andan atrás/adelante y
-   los links directos; también se recuerda para la próxima visita.
+   La sección activa vive en el hash (#crear), así andan atrás/adelante.
+   Al abrir la app siempre se arranca en Inicio, aunque la dirección traiga
+   otra sección; el logo también lleva a Inicio.
    Antes de salir se consultan los guardianes (cambios sin guardar).
    ═══════════════════════════════════════════════════════════════════════ */
-var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'corridas'];
+var SECCIONES = ['inicio', 'crear', 'historial', 'programacion', 'fuentes', 'clientes', 'prompts', 'corridas'];
 var _seccion = null;
 var _guardianes = [];
 
@@ -40,6 +41,7 @@ async function irASeccion(id, opts) {
   }
   var anterior = _seccion;
   _seccion = id;
+  pintarMiga(id);
   document.querySelectorAll('#contenido [data-seccion]').forEach(function(el) {
     el.classList.toggle('activa', el.dataset.seccion === id);
   });
@@ -47,7 +49,6 @@ async function irASeccion(id, opts) {
     if (a.dataset.seccion === id) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  try { localStorage.setItem('ad-seccion', id); } catch(e) {}
   if (!opts.desdeHash && location.hash !== '#' + id) {
     if (anterior) history.pushState(null, '', '#' + id);
     else history.replaceState(null, '', '#' + id);
@@ -61,18 +62,24 @@ async function irASeccion(id, opts) {
 }
 
 function initSecciones() {
+  // Con una nota abierta (vista Cliente), la barra de íconos sigue andando: cierra la nota y va a la sección.
+  var ir = async function(id) { if (await cerrarNotaParaNavegar()) irASeccion(id); };
   document.querySelectorAll('.nav-link').forEach(function(a) {
     a.addEventListener('click', function(ev) {
       ev.preventDefault();
-      irASeccion(a.dataset.seccion);
+      ir(a.dataset.seccion);
     });
   });
   window.addEventListener('popstate', function() {
+    if (notaAbierta()) cerrar();
     irASeccion(seccionDelHash() || 'inicio', { desdeHash: true });
   });
-  var guardada = null;
-  try { guardada = localStorage.getItem('ad-seccion'); } catch(e) {}
-  irASeccion(seccionDelHash() || guardada || 'inicio', { forzar: true });
+  $('ir-inicio').addEventListener('click', function(ev) {
+    ev.preventDefault();
+    ir('inicio');
+  });
+  try { localStorage.removeItem('ad-seccion'); } catch(e) {}   // lo guardaban versiones anteriores
+  irASeccion('inicio', { forzar: true });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -81,7 +88,7 @@ function initSecciones() {
 function setModo(modo) {
   modo = modo === 'dev' ? 'dev' : 'cliente';
   document.documentElement.setAttribute('data-modo', modo);
-  try { localStorage.setItem('ad-modo', modo); } catch(e) {}
+  try { sessionStorage.setItem('ad-modo', modo); } catch(e) {}   // al volver a entrar, arranca en Cliente
 
   document.querySelectorAll('.modo-switch button').forEach(function(b) {
     b.setAttribute('aria-checked', b.dataset.modo === modo);
@@ -91,8 +98,13 @@ function setModo(modo) {
     if (el.dataset.dev === undefined) el.dataset.dev = el.textContent;
     if (!el.classList.contains('loading')) el.textContent = modo === 'cliente' ? el.dataset.cliente : el.dataset.dev;
   });
+  if (typeof pintarDia === 'function') pintarDia();   // el día de Programación nombra las tareas
+  ajustarMarcoCliente();
   // Si la sección actual no existe en esta vista, se vuelve al inicio.
   if (_seccion && !seccionVisible(_seccion)) irASeccion('inicio', { forzar: true });
+  // Una nota abierta se vuelve a abrir en la vista nueva (en Cliente se lee como documento).
+  if ($('modal-art') && $('modal-art').classList.contains('open') && typeof _notaActual !== 'undefined' && _notaActual
+      && _notaActual.coleccion === 'notas_fase2') fase2MostrarUltima(_notaActual.id);
 }
 
 // Desde los botones de la barra lateral: pide confirmación antes de cambiar.
@@ -113,7 +125,8 @@ function toggleMasOpciones() {
   var sec = document.querySelector('.fase2-section');
   var abierto = sec.classList.toggle('mas-abiertas');
   $('btn-mas-opciones').setAttribute('aria-expanded', abierto);
-  $('btn-mas-opciones').textContent = abierto ? 'Menos opciones' : 'Más opciones';
+  $('btn-mas-opciones').querySelector('.mas-opciones-texto').textContent = abierto ? 'Menos opciones' : 'Más opciones';
+  if (abierto) document.querySelector('.f2-regiones').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 /* Tarjeta "Última nota" de la bienvenida */
@@ -175,3 +188,76 @@ document.addEventListener('keydown', function(e) {
     toggleNavegacion(); $('menu-movil').focus();
   }
 });
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MARCO DE LA VISTA CLIENTE (escritorio)
+   Arriba una barra fina con el logo y "afterdrive" como siempre, el idioma, el
+   estado y el tema. A la izquierda la barra de secciones, ordenada como la de
+   ChatGPT: arriba "Nueva nota" (el botón que la pliega, chico al costado); en el
+   medio las secciones; abajo el perfil, que abre Ayuda, el paso a la vista
+   Desarrollador y Cerrar sesión. El buscador se abre con ⌘K / Ctrl+K. Plegada muestra solo los íconos; desplegada, también
+   los nombres (se recuerda en ad-riel). En Desarrollador y en el celular todo
+   queda como siempre.
+   ═══════════════════════════════════════════════════════════════════════ */
+var NOMBRE_SECCION = { inicio: 'Inicio', crear: 'Nueva nota', historial: 'Notas', programacion: 'Programación',
+                       fuentes: 'Fuentes', clientes: 'Clientes', prompts: 'Prompts', corridas: 'Actividad' };
+var _escritorio = window.matchMedia('(min-width: 901px)');
+
+function pintarMiga(id) {
+  document.documentElement.dataset.seccion = id;
+  var miga = $('header-miga');
+  if (miga) miga.textContent = tr(NOMBRE_SECCION[id] || '');
+}
+
+// Pie de la barra (vista Cliente): quién está conectado.
+var _perfilCargado = false;
+async function cargarPerfil() {
+  if (_perfilCargado) return;
+  _perfilCargado = true;
+  try {
+    var s = await pedir('/api/sesion');
+    var nombre = (s && s.usuario) || '';
+    if (!nombre) return;
+    $('perfil-nombre').textContent = nombre;
+  } catch (e) { _perfilCargado = false; }
+}
+
+function ajustarMarcoCliente() {
+  var pie = $('rail-pie');
+  if (!pie) return;
+  var enRiel = document.documentElement.getAttribute('data-modo') === 'cliente' && _escritorio.matches;
+  var ayuda = document.querySelector('.sidebar-ayuda');
+  if (enRiel && ayuda.parentNode !== pie) pie.appendChild(ayuda);
+  if (enRiel) cargarPerfil();
+  else if (!enRiel && ayuda.parentNode === pie) pie.parentNode.insertBefore(ayuda, pie);
+  pintarRiel();
+}
+
+/* Barra plegada (solo íconos) o desplegada (íconos y nombres, como antes). */
+function rielAbierto() {
+  try { return localStorage.getItem('ad-riel') === 'abierto'; } catch (e) { return false; }
+}
+function toggleRiel() {
+  try { localStorage.setItem('ad-riel', rielAbierto() ? 'cerrado' : 'abierto'); } catch (e) {}
+  pintarRiel();
+}
+function pintarRiel() {
+  var abierto = rielAbierto(), btn = $('rail-toggle');
+  var enRiel = document.documentElement.getAttribute('data-modo') === 'cliente' && _escritorio.matches;
+  if (abierto) document.documentElement.dataset.riel = 'abierto';
+  else delete document.documentElement.dataset.riel;
+  if (btn) {
+    btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+    var texto = tr(abierto ? 'Contraer menú' : 'Desplegar menú');
+    btn.setAttribute('aria-label', texto);
+    btn.title = texto;
+  }
+  // Plegada, cada ícono dice qué es al pasar el mouse; desplegada ya se lee el nombre.
+  document.querySelectorAll('.nav-link').forEach(function(a) {
+    if (enRiel && !abierto) a.title = tr(NOMBRE_SECCION[a.dataset.seccion] || '');
+    else a.removeAttribute('title');
+  });
+}
+(_escritorio.addEventListener ? _escritorio.addEventListener('change', ajustarMarcoCliente) : _escritorio.addListener(ajustarMarcoCliente));
+document.addEventListener('idioma', function() { if (_seccion) pintarMiga(_seccion); ajustarMarcoCliente(); });

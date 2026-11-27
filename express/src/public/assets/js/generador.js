@@ -26,20 +26,39 @@ function abrirModal() {
   if (!$('modal-art').classList.contains('open')) _focoAntesNota = document.activeElement;
   $('modal-art').classList.add('open');
   document.body.classList.add('modal-abierto');
-  document.querySelector('.app-container').inert = true;
-  $('actividad-dock').inert = true;
+  fondoInerte(true);
   $('art-body').scrollTop = 0;
   $('modal-art').querySelector('.modal-close').focus();
 }
 function cerrar() {
   $('modal-art').classList.remove('open');
   document.body.classList.remove('modal-abierto');
-  document.querySelector('.app-container').inert = false;
-  $('actividad-dock').inert = false;
+  fondoInerte(false);
   var foco = _focoAntesNota;
   if (!foco || !foco.isConnected || !foco.getClientRects().length) foco = $('contenido');
   foco.focus({preventScroll: true});
 }
+/* Con la nota abierta, lo de atrás no responde. Salvo la barra de íconos (vista Cliente
+   en escritorio): queda a la vista junto a la nota y se puede usar para ir a otra sección. */
+function fondoInerte(si) {
+  var riel = si && document.documentElement.getAttribute('data-modo') === 'cliente' && window.matchMedia('(min-width: 901px)').matches;
+  document.querySelector('.app-container').inert = si && !riel;
+  [$('contenido'), $('menu-movil'), document.querySelector('.header-right')].forEach(function(el) {
+    if (el) el.inert = si && riel;
+  });
+  $('actividad-dock').inert = si;
+}
+function notaAbierta() { return $('modal-art').classList.contains('open'); }
+
+// Ir a otra sección con la nota abierta la cierra (si se está editando el texto, pregunta antes).
+async function cerrarNotaParaNavegar() {
+  if (!notaAbierta()) return true;
+  if ($('editor-nota') && !(await confirmar({ titulo: '¿Salir sin guardar?', mensaje: 'Estás editando el texto de la nota y los cambios no se guardaron.',
+                                                accion: 'Salir sin guardar', cancelar: 'Seguir editando' }))) return false;
+  cerrar();
+  return true;
+}
+
 document.addEventListener('keydown', function(ev) {
   if (!$('modal-art').classList.contains('open') || $('confirmar').open) return;
   if (ev.key === 'Escape') {
@@ -76,10 +95,12 @@ var _f2RegionesActivas = new Set();
 var _f2Clientes = [];
 var _f2ClientesActivos = new Set();
 var _f2PuntapieActivo = false;
+var _f2RotarCategorias = false;
 
 
 async function fase2Init() {
-  ['f2-tema', 'f2-puntapie-url'].forEach(function(id) { $(id).addEventListener('input', marcarCrear); });
+  // El tema y las indicaciones son solo para la próxima nota: no se guardan ni marcan cambios.
+  $('f2-puntapie-url').addEventListener('input', marcarCrear);
   var form = formulario('crear', {
     leer: function() {
       return {
@@ -88,7 +109,7 @@ async function fase2Init() {
         clientes: Array.from(_f2ClientesActivos).sort(),
         puntapie_activo: _f2PuntapieActivo,
         puntapie_url: $('f2-puntapie-url').value.trim(),
-        tema: $('f2-tema').value.trim(),
+        rotar_categorias: _f2RotarCategorias,
         largo: $('f2-largo').value
       };
     },
@@ -100,8 +121,8 @@ async function fase2Init() {
       pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
       renderClientes();
       pintarPuntapie(st.puntapie_activo);
+      pintarRotarCategorias(!!st.rotar_categorias);
       $('f2-puntapie-url').value = st.puntapie_url;
-      $('f2-tema').value = st.tema;
       $('f2-largo').value = st.largo || 'medio';
       resumenCrear();
     },
@@ -110,13 +131,14 @@ async function fase2Init() {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           categorias: st.categorias, regiones: st.regiones, clientes: st.clientes,
-          puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url
+          puntapie_activo: st.puntapie_activo, puntapie_url: st.puntapie_url,
+          rotar_categorias: st.rotar_categorias
         })
       });
-      if (st.tema !== base.tema || st.largo !== base.largo) {
+      if (st.largo !== base.largo) {
         await pedir('/api/generacion-config', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ tema: st.tema, largo: st.largo })
+          body: JSON.stringify({ largo: st.largo })
         });
       }
     }
@@ -138,14 +160,71 @@ var _idiomaPrincipal = 'pt';
 function idiomaNotaElegido() {
   return {es:'Español rioplatense', pt:'Português do Brasil', en:'English'}[_idiomaPrincipal] || 'Português do Brasil';
 }
+var TONOS = { comercial: 'Comercial', analitico: 'Analítico-Técnico', periodistico: 'Periodístico', divulgativo: 'Divulgativo', ejecutivo: 'Ejecutivo' };
+var LARGOS = { corto: 'Corto', medio: 'Medio', largo: 'Largo' };
+
+/* El resumen de la nota: en Desarrollador, una línea ("2 categorías · Comercial · …");
+   en Cliente, el panel "Tu nota" con cada cosa en su renglón. */
 function resumenCrear() {
   pintarToggles('#f2-categorias-grid', _f2CategoriasActivas);
   pintarToggles('#f2-regiones-grid', _f2RegionesActivas);
+  pintarChipsSelect('f2-persona');
+  pintarChipsSelect('f2-largo');
   var n = _f2CategoriasActivas.size;
   $('idioma-nota-valor').textContent = tr(idiomaNotaElegido());
-  var tonos = {comercial:'Comercial', analitico:'Analítico-Técnico', periodistico:'Periodístico', divulgativo:'Divulgativo', ejecutivo:'Ejecutivo'};
-  $('crear-resumen').textContent = (n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') : tr('Elegí las categorías de tu nota'))
-    + ' · ' + tr(tonos[$('f2-persona').value]) + ' · ' + tr(idiomaNotaElegido());
+  var fila = function(clave, valor, clase) {
+    return '<span class="cr-item' + (clase ? ' ' + clase : '') + '"><span class="cr-k">' + escHtml(tr(clave)) + '</span><span class="cr-v">' + escHtml(valor) + '</span></span>';
+  };
+  var temas = n ? n + ' ' + tr(n === 1 ? 'categoría' : 'categorías') + (_f2RotarCategorias && n > 1 ? ' · ' + tr('rotando') : '') : tr('Elegí las categorías de tu nota');
+  $('crear-resumen').innerHTML = fila('Temas', temas, n ? '' : 'falta')
+    + fila('Tono', tr(TONOS[$('f2-persona').value]))
+    + fila('Extensión', tr(LARGOS[$('f2-largo').value] || ''), 'cr-largo')
+    + fila('Idioma', tr(idiomaNotaElegido()));
+}
+
+/* Vista Cliente: el tono y el largo se eligen con botones (el select queda para
+   Desarrollador y para guardar; los botones solo cambian su valor). */
+var AYUDA_CHIPS = {
+  'f2-persona': { comercial: 'Muestra el valor y llama a la acción', analitico: 'Datos, cifras y precisión técnica',
+                  periodistico: 'Cuenta qué pasó y por qué importa', divulgativo: 'Explica simple, para cualquiera',
+                  ejecutivo: 'Directo, para quien decide' },
+  'f2-largo': { corto: '500 a 700 palabras', medio: '700 a 1000 palabras', largo: '1000 a 1400 palabras' }
+};
+function pintarChipsSelect(id) {
+  var sel = $(id), cont = $(id + '-chips');
+  if (!sel || !cont) return;
+  if (!cont.children.length) {
+    cont.innerHTML = Array.from(sel.options).map(function(o) {
+      var nombre = id === 'f2-largo' ? LARGOS[o.value] : TONOS[o.value];
+      return '<button type="button" role="radio" class="f2-chip" data-valor="' + escHtml(o.value) + '" aria-checked="false" tabindex="-1">'
+        + '<b>' + escHtml(nombre || o.textContent) + '</b><small>' + escHtml((AYUDA_CHIPS[id] || {})[o.value] || '') + '</small></button>';
+    }).join('');
+    cont.addEventListener('click', function(ev) {
+      var b = ev.target.closest('.f2-chip');
+      if (b) elegirChip(id, b.dataset.valor);
+    });
+    // Radios: las flechas mueven la elección.
+    cont.addEventListener('keydown', function(ev) {
+      var paso = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      if (!paso) return;
+      ev.preventDefault();
+      var i = (sel.selectedIndex + paso + sel.options.length) % sel.options.length;
+      elegirChip(id, sel.options[i].value);
+      cont.querySelector('[aria-checked="true"]').focus();
+    });
+  }
+  cont.querySelectorAll('.f2-chip').forEach(function(b) {
+    var on = b.dataset.valor === sel.value;
+    b.setAttribute('aria-checked', on);
+    b.tabIndex = on ? 0 : -1;
+  });
+}
+function elegirChip(id, valor) {
+  var sel = $(id);
+  if (sel.value === valor) return;
+  sel.value = valor;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  pintarChipsSelect(id);
 }
 
 function marcarCrear() { resumenCrear(); if (FORMULARIOS.crear) FORMULARIOS.crear.marcar(); }
@@ -183,13 +262,13 @@ async function fase2CargarConfig() {
       _f2ClientesActivos.add(c);
     });
     pintarPuntapie(!!d.puntapie_activo);
+    pintarRotarCategorias(!!d.rotar_categorias);
     if (d.puntapie_url) $('f2-puntapie-url').value = d.puntapie_url;
     renderClientes();
     var genR = await fetch('/api/generacion-config');
     var genD = await genR.json();
     if (genD.success) {
       if (genD.persona) $('f2-persona').value = genD.persona;
-      if (genD.tema) $('f2-tema').value = genD.tema;
       if (genD.largo) $('f2-largo').value = genD.largo;
       if (genD.puntapie_url && !d.puntapie_url) $('f2-puntapie-url').value = genD.puntapie_url;
     }
@@ -286,27 +365,41 @@ async function fase2CargarClientes() {
   } catch(e) {}
 }
 
+function esProhibido(c) { return c.modo === 'no_mencionar'; }
+
 function renderClientes() {
-  var list = $('f2-clientes-list');
-  if (!_f2Clientes.length) {
-    list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin clientes cargados. Podés agregar uno abajo.</div>';
-    return;
+  var list = $('f2-clientes-list'), prohibidos = $('f2-prohibidos-list');
+  var paraMencionar = _f2Clientes.filter(function(c) { return !esProhibido(c); });
+  var noNombrar = _f2Clientes.filter(esProhibido);
+  // Uno que pasó a "no nombrar" deja de estar elegido.
+  noNombrar.forEach(function(c) { _f2ClientesActivos.delete(c.slug); });
+  if (!paraMencionar.length) {
+    list.innerHTML = '<div style="color:var(--text-lo);font-size:0.8rem">Sin clientes para mencionar. Podés agregar uno abajo.</div>';
+  } else {
+    list.innerHTML = '';
+    paraMencionar.forEach(function(c) {
+      var item = document.createElement('div');
+      item.className = 'cliente-item toggle-item' + (_f2ClientesActivos.has(c.slug) ? ' active' : '');
+      item.innerHTML =
+        '<button type="button" class="cliente-seleccion" aria-pressed="' + _f2ClientesActivos.has(c.slug) + '" onclick="fase2ToggleCliente(\'' + encArg(c.slug) + '\', this.parentElement)">' +
+          '<span class="cliente-nombre">' + escHtml(c.nombre) + '</span>' +
+          (c.sector ? '<span class="cliente-sector">' + escHtml(c.sector) + '</span>' : '') +
+        '</button>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<div class="toggle-switch"></div>' +
+          '<button class="icon-btn" onclick="fase2ModoCliente(\'' + encArg(c.slug) + '\', \'no_mencionar\')" title="No nombrar nunca" aria-label="No nombrar nunca a ' + escHtml(c.nombre) + '">⊘</button>' +
+          '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
+        '</div>';
+      list.appendChild(item);
+    });
   }
-  list.innerHTML = '';
-  _f2Clientes.forEach(function(c) {
-    var item = document.createElement('div');
-    item.className = 'cliente-item toggle-item' + (_f2ClientesActivos.has(c.slug) ? ' active' : '');
-    item.innerHTML =
-      '<button type="button" class="cliente-seleccion" aria-pressed="' + _f2ClientesActivos.has(c.slug) + '" onclick="fase2ToggleCliente(\'' + encArg(c.slug) + '\', this.parentElement)">' +
-        '<span class="cliente-nombre">' + escHtml(c.nombre) + '</span>' +
-        (c.sector ? '<span class="cliente-sector">' + escHtml(c.sector) + '</span>' : '') +
-      '</button>' +
-      '<div style="display:flex;align-items:center;gap:6px">' +
-        '<div class="toggle-switch"></div>' +
-        '<button class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar cliente ' + escHtml(c.nombre) + '">✕</button>' +
-      '</div>';
-    list.appendChild(item);
-  });
+  prohibidos.innerHTML = noNombrar.length
+    ? noNombrar.map(function(c) {
+        return '<span class="cliente-prohibido" title="' + escHtml(c.descripcion || '') + '">' + escHtml(c.nombre)
+          + '<button type="button" class="icon-btn" onclick="fase2ModoCliente(\'' + encArg(c.slug) + '\', \'mencionar\')" title="Permitir mencionarla" aria-label="Permitir mencionar a ' + escHtml(c.nombre) + '">↺</button>'
+          + '<button type="button" class="icon-btn" onclick="fase2EliminarCliente(\'' + encArg(c.slug) + '\')" title="Eliminar" aria-label="Eliminar ' + escHtml(c.nombre) + '">✕</button></span>';
+      }).join('')
+    : '<div style="color:var(--text-lo);font-size:0.8rem">Ninguna por ahora.</div>';
 }
 
 function fase2ToggleCliente(slug, el) {
@@ -325,6 +418,7 @@ function fase2ToggleCliente(slug, el) {
 async function fase2AgregarCliente() {
   var nombre = $('f2-cli-nombre').value.trim();
   var desc = $('f2-cli-desc').value.trim();
+  var modo = $('f2-cli-modo').value;
   if (!nombre) return;
   var st = $('f2-cli-status');
   st.className = 'feedback info';
@@ -333,12 +427,12 @@ async function fase2AgregarCliente() {
     var r = await fetch('/api/fase2/clientes', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ nombre: nombre, descripcion: desc })
+      body: JSON.stringify({ nombre: nombre, descripcion: desc, modo: modo })
     });
     var d = await r.json();
     if (d.success) {
       st.className = 'feedback ok';
-      st.textContent = 'Cliente guardado.';
+      st.textContent = modo === 'no_mencionar' ? 'Guardada: ninguna nota la va a nombrar.' : 'Cliente guardado.';
       $('f2-cli-nombre').value = '';
       $('f2-cli-desc').value = '';
       await fase2CargarClientes();
@@ -348,6 +442,64 @@ async function fase2AgregarCliente() {
       st.textContent = d.error || 'Error';
     }
   } catch(e) { st.className = 'feedback err'; st.textContent = 'Error de conexión'; }
+}
+
+/* La lista que pasan, de una vez. Confirma antes: con "Ninguna se nombra" cambia qué pueden decir las notas. */
+async function fase2ImportarClientes() {
+  var texto = $('f2-cli-lista').value.trim();
+  var modo = $('f2-cli-lista-modo').value;
+  var st = $('f2-cli-status');
+  if (!texto) { st.className = 'feedback err'; st.textContent = 'Pegá la lista: una empresa por línea.'; return; }
+  var lineas = texto.split('\n').filter(function(l) { return l.trim(); }).length;
+  var ok = await confirmar({
+    titulo: modo === 'no_mencionar' ? '¿Cargar la lista de empresas que no se nombran?' : '¿Cargar la lista de clientes?',
+    mensaje: lineas + (lineas === 1 ? ' empresa' : ' empresas') + (modo === 'no_mencionar'
+      ? ': ninguna nota las va a nombrar. Las que ya estaban cargadas pasan a este modo.'
+      : ': quedan disponibles para mencionar en las notas. Las que ya estaban cargadas pasan a este modo.'),
+    accion: 'Cargar lista'
+  });
+  if (!ok) return;
+  var btn = $('btn-cli-importar');
+  setBtnLoading(btn, true);
+  try {
+    var d = await pedir('/api/fase2/clientes/importar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ texto: texto, modo: modo })
+    });
+    st.className = 'feedback ok';
+    st.textContent = 'Lista cargada: ' + d.nuevos + ' nuevas y ' + d.actualizados + ' actualizadas.';
+    $('f2-cli-lista').value = '';
+    await fase2CargarClientes();
+    showToast('Lista cargada (' + d.total + ')', 'success');
+  } catch(e) {
+    st.className = 'feedback err';
+    st.textContent = e.message;
+  } finally {
+    setBtnLoading(btn, false);
+  }
+}
+
+async function fase2ModoCliente(slug, modo) {
+  slug = decodeURIComponent(slug);
+  var cliente = _f2Clientes.find(function(c) { return c.slug === slug; });
+  var nombre = cliente ? cliente.nombre : slug;
+  var ok = await confirmar(modo === 'no_mencionar'
+    ? { titulo: '¿No nombrar nunca a ' + nombre + '?', mensaje: 'Ninguna nota nueva la va a nombrar, aunque aparezca en las noticias. Las notas ya generadas no cambian.', accion: 'No nombrar' }
+    : { titulo: '¿Permitir mencionar a ' + nombre + '?', mensaje: 'Vuelve a la lista de clientes que se pueden elegir para una nota.', accion: 'Permitir' });
+  if (!ok) return;
+  try {
+    await pedir('/api/fase2/clientes/' + encodeURIComponent(slug), {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ modo: modo })
+    });
+    if (modo === 'no_mencionar' && FORMULARIOS.crear) {
+      _f2ClientesActivos.delete(slug);
+      FORMULARIOS.crear.quitarDeBase('clientes', slug);   // el servidor ya la sacó de la config guardada
+    }
+    await fase2CargarClientes();
+    marcarCrear();
+  } catch(e) {
+    showToast('No se pudo cambiar el cliente: ' + e.message, 'error');
+  }
 }
 
 async function fase2EliminarCliente(slug) {
@@ -377,6 +529,19 @@ async function fase2EliminarCliente(slug) {
 
 function togglePuntapie() {
   pintarPuntapie(!_f2PuntapieActivo);
+  marcarCrear();
+}
+
+/* Rotación de categorías: cada nota (también las automáticas) usa 1 o 2 de las marcadas. */
+function pintarRotarCategorias(activo) {
+  _f2RotarCategorias = activo;
+  $('f2-rotar-toggle').classList.toggle('active', activo);
+  $('f2-rotar-toggle').setAttribute('aria-checked', activo);
+  if (typeof resumenCrear === 'function' && $('crear-resumen')) resumenCrear();
+}
+
+function toggleRotarCategorias() {
+  pintarRotarCategorias(!_f2RotarCategorias);
   marcarCrear();
 }
 
@@ -431,6 +596,8 @@ async function fase2GenerarStream() {
     clientes: Array.from(_f2ClientesActivos),
     persona: $('f2-persona').value,
     tema: $('f2-tema').value.trim() || null,
+    rotar_categorias: _f2RotarCategorias,
+    indicaciones: $('f2-indicaciones').value.trim() || null,
     largo: $('f2-largo').value,
     puntapie_url: (_f2PuntapieActivo && $('f2-puntapie-url').value.trim()) ? $('f2-puntapie-url').value.trim() : null,
   };
@@ -458,6 +625,10 @@ async function fase2GenerarStream() {
     exito = fin.estado === 'ok' && fullOutput.indexOf('[OK]') >= 0;
 
     if (exito) {
+      // Se usan una sola vez: la próxima nota arranca sin tema ni indicaciones.
+      $('f2-tema').value = '';
+      $('f2-indicaciones').value = '';
+      cargarTemas();   // si usó un tema de la lista (Programación), ya no está
       cargarUltimaNota();
       cargarResumenHistorial();
       st.className = 'feedback ok';

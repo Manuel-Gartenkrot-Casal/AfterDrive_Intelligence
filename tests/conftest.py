@@ -2,15 +2,45 @@
 
 import os
 
+import dotenv
 import mongomock
 import pytest
 from werkzeug.security import generate_password_hash
 
-from afterdrive import config_store
-from afterdrive.ia import consumo
+# afterdrive llama a load_dotenv() al importarse: sin esto, el .env local (MONGO_URI real,
+# PAGA_API, modelos por tarea…) se colaría en los tests. Va antes de importar afterdrive,
+# así los tests corren igual que en la CI, que no tiene .env.
+dotenv.load_dotenv = lambda *a, **k: False
+
+from afterdrive import config_store  # noqa: E402
+from afterdrive.ia import consumo  # noqa: E402
 
 # scrypt es lento a propósito: se calcula una vez para toda la sesión de tests.
 HASH = generate_password_hash("secreta123")
+
+
+def _mongomock_acepta_sort():
+    """pymongo >= 4.11 le pasa `sort` a add_update en bulk_write (UpdateOne/ReplaceOne)
+    y mongomock 4.3, la última versión, no lo conoce. Solo importa con un filtro que
+    matchee varios documentos; los tests no lo usan, así que se descarta."""
+    builder = mongomock.collection.BulkOperationBuilder
+    original = builder.add_update
+    if getattr(original, "_acepta_sort", False):
+        return
+
+    def add_update(self, *args, sort=None, **kwargs):
+        return original(self, *args, **kwargs)
+    add_update._acepta_sort = True
+    builder.add_update = add_update
+
+
+_mongomock_acepta_sort()
+
+
+@pytest.fixture(autouse=True)
+def config_en_memoria(monkeypatch):
+    """La lista de temas nueva tampoco debe consultar Mongo real durante generación."""
+    monkeypatch.setattr(config_store, "_col", mongomock.MongoClient().db.config)
 
 
 @pytest.fixture(autouse=True)
@@ -23,10 +53,71 @@ def consumo_en_memoria(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def sin_buscar_imagenes(monkeypatch):
-    """Los tests no descargan páginas de noticias para buscarles la imagen."""
+def prompts_en_memoria(monkeypatch):
+    """Los prompts editados se leen de un Mongo en memoria (vacío: los textos originales)."""
+    from afterdrive import prompts_editables
+    col = mongomock.MongoClient().db.prompts
+    monkeypatch.setattr(prompts_editables, "_col", lambda base=None: col if base is None else base["prompts"])
+    prompts_editables.invalidar_cache()
+    yield col
+    prompts_editables.invalidar_cache()
+
+
+@pytest.fixture(autouse=True)
+def prompts_ia_en_memoria(monkeypatch):
+    """La copia de los prompts de la IA y su configuración, en memoria (los actuales, mejora automática prendida)."""
+    from afterdrive import prompts_ia
+    db = mongomock.MongoClient().db
+    config = {"usar": "actuales", "auto": True}
+    monkeypatch.setattr(prompts_ia, "_base", lambda base=None: db if base is None else base)
+    monkeypatch.setattr(prompts_ia, "_config", lambda: dict(config))
+    monkeypatch.setattr(prompts_ia, "_guardar_config", lambda **cambios: config.update(cambios))
+    return config
+
+
+@pytest.fixture(autouse=True)
+def sin_epigrafes(monkeypatch):
+    """Los epígrafes de las fotos son una llamada más a la IA: afuera, para no correr el orden de las
+    respuestas falsas de cada test. tests/test_epigrafes.py prueba el original."""
+    from afterdrive.generacion import epigrafes
+    monkeypatch.setattr(epigrafes, "completar", lambda nota, veredictos=None: 0)
+
+
+@pytest.fixture(autouse=True)
+def sin_fotos_de_otras_notas(monkeypatch):
+    """La generación no lee la base real para saber qué fotos usaron otras notas: sin Mongo,
+    cada nota de los tests esperaba 15 s a que la conexión fallara."""
+    from afterdrive.generacion import generar_nota_fase2
+    monkeypatch.setattr(generar_nota_fase2, "_fotos_de_otras_notas", lambda: set())
+
+
+@pytest.fixture(autouse=True)
+def sin_medios_de_otras_notas(monkeypatch):
+    """La selección de noticias no lee la base real para saber qué medios usaron las últimas notas."""
     from afterdrive.generacion import contexto_noticias
+    original = contexto_noticias.fuentes_recientes   # con una colección propia (la de un test), la de verdad
+    monkeypatch.setattr(contexto_noticias, "fuentes_recientes",
+                        lambda col=None, notas=15: {} if col is None else original(col, notas))
+
+
+@pytest.fixture(autouse=True)
+def sin_archivo_de_noticias(monkeypatch):
+    """La generación no busca noticias viejas en la base real; los tests del archivo lo instalan a mano."""
+    from afterdrive.generacion import contexto_noticias
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", lambda consulta, limite=2, dias_min=90, excluir=(): [])
+
+
+@pytest.fixture(autouse=True)
+def sin_buscar_imagenes(monkeypatch):
+    """Los tests no descargan páginas de noticias para buscarles la imagen ni buscan en bancos de imágenes."""
+    from afterdrive.generacion import contexto_noticias, imagenes_respaldo
     monkeypatch.setattr(contexto_noticias, "_buscar_imagen", lambda n: None)
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda *a, **kw: (_ for _ in ()).throw(
+        AssertionError("un test quiso buscar en un banco de imágenes"))})
+    monkeypatch.setattr(imagenes_respaldo, "buscador", lambda titulo, angulo="": None)
+    # Sin la API paga, las fotos elegidas se descargan para comprobar que no estén rotas: en los tests, no.
+    from afterdrive.generacion import imagen_destacada
+    monkeypatch.setattr(imagen_destacada, "_bajables", lambda candidatas, refrescos, veredictos: list(candidatas))
 
 
 @pytest.fixture(autouse=True)

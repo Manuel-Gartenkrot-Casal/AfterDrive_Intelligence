@@ -53,7 +53,8 @@ TAREAS = ("clasificacion", "planificacion", "redaccion", "correccion", "evaluaci
 # El plan y la corrección escriben poco o retocan texto: no necesitan el modelo
 # caro de la redacción, alcanza con el de evaluación.
 # La traducción reescribe un texto ya revisado: alcanza con el de evaluación.
-RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion", "traduccion": "evaluacion"}
+RESPALDO_TAREA = {"planificacion": "evaluacion", "correccion": "evaluacion", "traduccion": "evaluacion",
+                  "carrusel": "evaluacion"}
 
 # Formatos de imagen que aceptan Bedrock Converse y Chat Completions.
 _FORMATOS_IMAGEN = {"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}

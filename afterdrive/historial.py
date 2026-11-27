@@ -181,6 +181,9 @@ def _normalizar(doc: dict, coleccion: str, seccion: str, completo: bool = False)
         item["aprobacion_auto"] = doc.get("aprobacion_auto")
         item["juicio"] = doc.get("juicio")
         item["critica_puntaje"] = (doc.get("critica") or {}).get("puntaje")   # 1 a 10, de critica.py
+        # La imagen destacada, para la miniatura de las listas (la copia de HubSpot si ya se subió).
+        imagen = doc.get("imagen") if isinstance(doc.get("imagen"), dict) else {}
+        item["imagen"] = imagen.get("hubspot_url") or imagen.get("url") or None
         if item["estado"] == _db.ESTADO_RECHAZADA:
             item["motivo"] = doc.get("motivo_rechazo") or None
     if seccion.endswith("descartados"):
@@ -245,11 +248,17 @@ def listar(seccion: str, pagina: int = 1, por_pagina: int = 20, q: str = "", est
     # cada una, se mezclan por fecha y se corta la página. Es exacto porque
     # ninguna página puede necesitar más que eso de una sola colección.
     salto = (pagina - 1) * por_pagina
-    candidatos, total = [], 0
-    for coleccion in cfg["colecciones"]:
-        total += b[coleccion].count_documents(filtro)
-        cursor = b[coleccion].find(filtro, _SIN_EMBEDDING).sort("_id", -1).limit(salto + por_pagina)
-        candidatos += [(doc["_id"], coleccion, doc) for doc in cursor]
+    cuentas = {coleccion: b[coleccion].count_documents(filtro) for coleccion in cfg["colecciones"]}
+    total = sum(cuentas.values())
+    candidatos = []
+    # Una página fuera de rango no trae nada: antes pedir ?pagina=100000 cargaba
+    # en memoria todos los documentos de cada colección para devolver vacío.
+    if salto < total:
+        for coleccion, cuenta in cuentas.items():
+            if not cuenta:
+                continue
+            cursor = b[coleccion].find(filtro, _SIN_EMBEDDING).sort("_id", -1).limit(min(salto + por_pagina, cuenta))
+            candidatos += [(doc["_id"], coleccion, doc) for doc in cursor]
 
     candidatos.sort(key=lambda t: t[0].generation_time, reverse=True)
     pagina_docs = candidatos[salto:salto + por_pagina]
@@ -329,8 +338,30 @@ def editar(coleccion: str, item_id: str, contenido: str, base=None) -> dict | No
         # La versión que escribió el modelo, una sola vez: de la diferencia con la
         # editada salen las lecciones de calibracion.lecciones_de_ediciones.
         cambios["contenido_original"] = doc["contenido"]
+    # Lo que marcan los filtros (empresas que no se nombran, datos sensibles…) se recalcula con el texto nuevo:
+    # la edición pudo sacarlo o sumarlo.
+    from afterdrive.generacion import filtros
+    cambios.update(filtros.revisar(_sin_fuentes(contenido), filtros.contexto(_base(base)["clientes"])))
     col.update_one({"_id": doc["_id"]}, {"$set": cambios})
     return _normalizar(col.find_one({"_id": doc["_id"]}, _SIN_EMBEDDING), coleccion, "generados_aprobados", completo=True)
+
+
+def _sin_fuentes(contenido: str) -> str:
+    """El texto sin la sección de fuentes (verificacion.agregar_fuentes): los títulos de las noticias
+    no son menciones de la nota. La meta description, que va después, sí cuenta."""
+    from afterdrive.ia.redaccion import _VOCES
+
+    titulos = {f"## {v.titulo_fuentes}" for v in _VOCES.values()}
+    salida, en_fuentes = [], False
+    for ln in contenido.splitlines():
+        if ln.strip() in titulos:
+            en_fuentes = True
+            continue
+        if en_fuentes and (not ln.strip() or ln.lstrip().startswith("- [")):
+            continue
+        en_fuentes = False
+        salida.append(ln)
+    return "\n".join(salida)
 
 
 def editar_traduccion(coleccion: str, item_id: str, idioma: str, contenido: str, base=None) -> dict | None:
@@ -408,6 +439,7 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
         doc["hubspot_autor_id"] = str(autor_id)
 
     hubspot.destino(doc)   # sin blog para su idioma: falla antes de subir la imagen
+    _completar_epigrafes(col, doc)
     aviso = _copiar_imagen_a_hubspot(col, doc)
     r = hubspot.enviar(doc, publicar=publicar)   # ErrorHubSpot sube tal cual
     ahora = datetime.datetime.now(datetime.UTC).isoformat()
@@ -421,50 +453,90 @@ def enviar_a_hubspot(coleccion: str, item_id: str, publicar: bool, base=None, au
     return item
 
 
+def _completar_epigrafes(col, doc: dict) -> None:
+    """Las notas de antes de los epígrafes (o a las que les falló) los reciben al subirse. Nunca frena la subida."""
+    from afterdrive.generacion import epigrafes
+    from afterdrive.ia import llm
+
+    try:
+        if epigrafes.completar(doc):
+            col.update_one({"_id": doc["_id"]}, {"$set": {"imagenes_cuerpo": doc["imagenes_cuerpo"]}})
+    except llm.Cancelada:
+        raise
+    except Exception as e:
+        print(f"[AVISO] No se pudieron completar los epígrafes: {e}", flush=True)
+
+
 def _copiar_imagen_a_hubspot(col, doc: dict) -> str:
     """Copia las imágenes de la nota (destacada y del cuerpo) a los archivos de HubSpot.
 
     Así el blog no depende de que el sitio de la noticia la siga sirviendo ni
-    de que acepte que otro sitio la muestre. Si una copia falla, la nota se
-    sube igual con el link original: una imagen no debería frenar una
-    publicación. Devuelve un aviso si alguna no se pudo copiar.
+    de que acepte que otro sitio la muestre. Una imagen nunca frena la subida:
+    - si no se puede bajar del sitio (lo bloquea o ya no existe), queda marcada
+      `copia_fallida` y se deja afuera del post (hubspot.py): antes iba con el
+      link original y en el blog salía rota;
+    - si lo que falla es HubSpot (p. ej. falta el scope "files"), va con el
+      link original, porque la foto en sí está bien.
+    Devuelve un aviso si alguna no se pudo copiar.
     """
     from afterdrive import hubspot, imagen_web
 
-    def copiar(url: str, nombre: str) -> tuple[str, str]:
+    sin_permiso = []   # el token no puede subir archivos: no tiene sentido probar con las demás
+
+    def copiar(url: str, nombre: str) -> tuple[str, str, bool]:
+        """(copia, error, la foto está rota)."""
+        if sin_permiso:
+            return "", "", False
         try:
             if url.startswith(PREFIJO_IMAGEN_SUBIDA):   # subida desde la computadora: está en la base
                 local = imagen_subida(url[len(PREFIJO_IMAGEN_SUBIDA):], base=col.database)
                 if not local:
-                    return "", "la imagen subida ya no está"
+                    return "", "la imagen subida ya no está", True
                 contenido, mime = local
             else:
                 contenido, mime = imagen_web.descargar(url)
+        except imagen_web.ErrorDescarga as e:
+            return "", str(e), True
+        try:
             extension = {"image/png": "png", "image/webp": "webp"}.get(mime, "jpg")
-            return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), ""
-        except (imagen_web.ErrorDescarga, hubspot.ErrorHubSpot) as e:
-            return "", str(e)
+            return hubspot.subir_imagen(contenido, mime, f"{nombre}.{extension}"), "", False
+        except hubspot.SinPermisoArchivos as e:
+            sin_permiso.append(str(e))
+            return "", "", False
+        except hubspot.ErrorHubSpot as e:
+            return "", str(e), False
 
-    errores = []
+    afuera, con_link = [], []
+
+    def anotar(campo: str, im: dict, copia: str, error: str, rota: bool, nombre: str) -> None:
+        if copia:
+            im["hubspot_url"] = copia
+            im.pop("copia_fallida", None)
+            col.update_one({"_id": doc["_id"]}, {"$set": {f"{campo}.hubspot_url": copia},
+                                                  "$unset": {f"{campo}.copia_fallida": ""}})
+        elif rota:
+            im["copia_fallida"] = error
+            col.update_one({"_id": doc["_id"]}, {"$set": {f"{campo}.copia_fallida": error}})
+            afuera.append(f"{nombre} ({error})")
+        elif error:
+            con_link.append(f"{nombre} ({error})")
+
     imagen = doc.get("imagen") or {}
     if imagen.get("url") and not imagen.get("hubspot_url"):
-        copia, error = copiar(imagen["url"], f"nota-{doc['_id']}")
-        if copia:
-            col.update_one({"_id": doc["_id"]}, {"$set": {"imagen.hubspot_url": copia}})
-            doc["imagen"] = {**imagen, "hubspot_url": copia}
-        else:
-            errores.append(f"la destacada ({error})")
+        doc["imagen"] = imagen = dict(imagen)
+        anotar("imagen", imagen, *copiar(imagen["url"], f"nota-{doc['_id']}"), "la destacada")
     for i, im in enumerate(doc.get("imagenes_cuerpo") or []):
         if im.get("url") and not im.get("hubspot_url"):
-            copia, error = copiar(im["url"], f"nota-{doc['_id']}-{i + 2}")
-            if copia:
-                col.update_one({"_id": doc["_id"]}, {"$set": {f"imagenes_cuerpo.{i}.hubspot_url": copia}})
-                im["hubspot_url"] = copia
-            else:
-                errores.append(f"la {i + 2}ª ({error})")
-    if not errores:
-        return ""
-    return f"No se pudo copiar a HubSpot {', '.join(errores)}. Se usa el link original."
+            anotar(f"imagenes_cuerpo.{i}", im, *copiar(im["url"], f"nota-{doc['_id']}-{i + 2}"), f"la {i + 2}ª")
+    avisos = []
+    if afuera:
+        avisos.append(f"No se pudo bajar del sitio {', '.join(afuera)}: se dejó afuera del post para que no "
+                      "salga rota. Podés elegir otra foto y volver a enviarla.")
+    if con_link:
+        avisos.append(f"No se pudo copiar a HubSpot {', '.join(con_link)}. Se usa el link original.")
+    if sin_permiso:
+        avisos.append(f"{sin_permiso[0]} Mientras tanto, las fotos van con el link original.")
+    return " ".join(avisos)
 
 
 def motivos_recientes(limite: int = 5, dias: int = 60, base=None) -> list[str]:
@@ -585,7 +657,9 @@ def vista_previa(coleccion: str, item_id: str, base=None) -> dict | None:
     # Fotos de las noticias de la nota, para elegir otra destacada (con lo que opinó la IA, si las miró).
     de_noticias = [{"url": f["imagen"], "titulo": f.get("titulo", ""), "noticia": f.get("url", ""),
                     **({"apta": f["imagen_apta"], "motivo": f.get("imagen_motivo", ""),
-                        "personas": f.get("imagen_personas", False)} if "imagen_apta" in f else {})}
+                        "personas": f.get("imagen_personas", False),
+                        "portada": f.get("imagen_portada", not f.get("imagen_personas", False))}
+                       if "imagen_apta" in f else {})}
                    for f in doc.get("fuentes") or [] if f.get("imagen")]
     try:
         previa = hubspot.vista_previa(doc)

@@ -7,12 +7,13 @@ import pytest
 from bson import ObjectId
 
 from afterdrive import historial, hubspot, imagen_web
-from afterdrive.generacion import contexto_noticias
+from afterdrive.generacion import contexto_noticias, imagen_destacada
 from afterdrive.generacion.contexto_noticias import Noticia
 from afterdrive.ingesta import imagen_articulo
 
 # Capturada al importar, antes de que conftest la reemplace para que los tests no descarguen páginas.
 _BUSCAR_IMAGEN = contexto_noticias._buscar_imagen
+_BAJABLES = imagen_destacada._bajables   # idem con la comprobación de que las fotos se puedan bajar
 JPG = b"\xff\xd8\xff\xe0falso"
 
 
@@ -206,12 +207,74 @@ def test_hubspot_usa_la_copia_y_si_no_hay_el_link_original(monkeypatch):
     (RespImg(404), "404"), (RespImg(tipo="text/html"), "no es una imagen"), (RespImg(tipo="image/svg+xml"), "no es una imagen"),
     (RespImg(contenido=b""), "vacía"), (RespImg(302, location="https://127.0.0.1/x.jpg"), "https pública"),
 ])
-def test_si_no_se_puede_copiar_se_sube_igual_con_el_link_original(base, nota, monkeypatch, hubspot_falso, resp, texto):
+def test_si_no_se_puede_bajar_del_sitio_queda_afuera_para_que_no_salga_rota(base, nota, monkeypatch, hubspot_falso,
+                                                                           resp, texto):
+    # Antes iba con el link original y, si el sitio bloquea que otros muestren sus fotos, salía rota.
+    monkeypatch.delenv("HUBSPOT_IMAGEN_DEFAULT", raising=False)
     monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: resp)
     monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, n: pytest.fail("no debería subir"))
     item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
-    assert texto in item["aviso"] and "link original" in item["aviso"]
-    assert len(hubspot_falso) == 1 and hubspot_falso[0]["imagen"]["url"] == "https://n.com/1.jpg"
+    assert texto in item["aviso"] and "afuera" in item["aviso"]
+    assert len(hubspot_falso) == 1 and hubspot._imagen(hubspot_falso[0], "T") == {}
+    assert base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]["copia_fallida"]
+
+
+def test_si_falla_hubspot_y_no_la_foto_va_con_el_link_original(base, nota, monkeypatch, hubspot_falso):
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+
+    def sin_scope(c, m, n):
+        raise hubspot.ErrorHubSpot("la app privada necesita el scope 'files'")
+    monkeypatch.setattr(hubspot, "subir_imagen", sin_scope)
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert "link original" in item["aviso"] and "afuera" not in item["aviso"]
+    assert hubspot._imagen(hubspot_falso[0], "T")["url"] == "https://n.com/1.jpg"
+
+
+def test_sin_el_scope_files_se_avisa_una_vez_y_no_se_reintenta_con_cada_foto(base, nota, monkeypatch, hubspot_falso):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagenes_cuerpo": [
+        {"url": f"https://n.com/{i}.jpg", "alt": "x"} for i in (2, 3, 4)]}})
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+    intentos = []
+
+    def sin_scope(c, m, n):
+        intentos.append(n)
+        raise hubspot.SinPermisoArchivos(hubspot.AYUDA_SCOPE_ARCHIVOS)
+    monkeypatch.setattr(hubspot, "subir_imagen", sin_scope)
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert len(intentos) == 1
+    assert item["aviso"].count("scope 'files'") == 1 and "link original" in item["aviso"]
+    assert "Ámbitos" in item["aviso"] and "afuera" not in item["aviso"]
+    assert len(hubspot.imagenes_cuerpo(hubspot_falso[0])) == 3
+
+
+def test_el_aviso_de_scope_nombra_lo_que_pide_hubspot(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_TOKEN", "pat")
+
+    class Resp:
+        status_code = 403
+
+        def json(self):
+            return {"category": "MISSING_SCOPES", "errors": [{"context": {"requiredScopes": ["files"]}}]}
+    monkeypatch.setitem(hubspot._transporte, "subir", lambda *a, **kw: Resp())
+    with pytest.raises(hubspot.SinPermisoArchivos, match=r"HubSpot pide: files"):
+        hubspot.subir_imagen(b"x", "image/png", "a.png")
+
+
+def test_al_reenviar_una_que_ahora_se_copia_vuelve_al_post(base, nota, monkeypatch, hubspot_falso):
+    base.notas_fase2.update_one({"_id": ObjectId(nota)}, {"$set": {"imagen.copia_fallida": "404"}})
+    monkeypatch.setitem(imagen_web._transporte, "get", lambda url, **kw: RespImg())
+    monkeypatch.setattr(hubspot, "subir_imagen", lambda c, m, n: "https://hs/1.jpg")
+    item = historial.enviar_a_hubspot("notas_fase2", nota, publicar=False, base=base)
+    assert "aviso" not in item and hubspot._imagen(hubspot_falso[0], "T")["url"] == "https://hs/1.jpg"
+    assert "copia_fallida" not in base.notas_fase2.find_one({"_id": ObjectId(nota)})["imagen"]
+
+
+def test_en_el_cuerpo_no_van_las_que_no_se_pudieron_copiar_ni_rutas_del_servidor():
+    nota = {"imagenes_cuerpo": [{"url": "https://n.com/1.jpg", "copia_fallida": "403"},
+                                {"url": "/api/imagenes/abc"},
+                                {"url": "/api/imagenes/def", "hubspot_url": "https://hs/def.jpg"},
+                                {"url": "https://n.com/4.jpg"}]}
+    assert [im["url"] for im in hubspot.imagenes_cuerpo(nota)] == ["https://hs/def.jpg", "https://n.com/4.jpg"]
 
 
 def test_la_descarga_valida_cada_redireccion_contra_la_red_interna(monkeypatch):
@@ -271,7 +334,7 @@ def ia_fotos(monkeypatch):
 
     def responder(texto):
         def completar(system, user, **kw):
-            pedidos.append({"user": user, **kw})
+            pedidos.append({"system": system, "user": user, **kw})
             r = texto.pop(0) if isinstance(texto, list) else texto   # una lista: una respuesta por pedido
             if isinstance(r, Exception):
                 raise r
@@ -296,49 +359,149 @@ def test_la_ia_elige_la_foto_mas_apta(ia_fotos):
     assert "Stock en el depósito" in pedidos[0]["user"] and "Noticia 2" in pedidos[0]["user"]
 
 
-def test_si_la_ia_las_descarta_todas_la_nota_queda_sin_imagen(ia_fotos):
+def test_si_la_ia_las_descarta_todas_va_la_primera_que_se_pueda_bajar(ia_fotos):
+    """Una nota nunca sale sin destacada mientras haya una foto: va con aviso para cambiarla al revisar."""
+    from afterdrive.generacion import imagen_destacada
+    responder, descargas, _ = ia_fotos
+    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Banner publicitario."}, '
+              '{"n": 2, "apta": false, "motivo": "Logo."}], "elegida": null}')
+    descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("respondió 404")   # la 1 está rota
+    e = imagen_destacada.elegir(_con_fotos(2), "T")
+    assert e.imagen["url"] == "https://n.com/2.jpg"
+    assert "Ninguna foto pasó la revisión" in e.motivo and e.veredictos["https://n.com/2.jpg"]["apta"] is False
+
+
+def test_si_todas_las_fotos_ya_estan_en_otras_notas_repite_una_antes_que_quedar_sin_imagen(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
-    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Banner publicitario."}], "elegida": null}')
+    responder('{"fotos": [], "elegidas": []}')
+    usadas = {"https://n.com/1.jpg", "https://n.com/2.jpg"}
+    e = imagen_destacada.elegir(_con_fotos(2), "T", excluir=usadas)
+    assert e.imagen["url"] == "https://n.com/1.jpg" and e.metodo == "ultimo-recurso"
+
+
+def test_sin_ninguna_foto_que_se_pueda_bajar_no_inventa_una(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, descargas, _ = ia_fotos
+    responder('{"fotos": [], "elegidas": []}')
+    descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("respondió 404")
     e = imagen_destacada.elegir(_con_fotos(1), "T")
-    assert e.imagen is None and e.metodo == "ia" and "Banner publicitario" in e.motivo
-
-
-def test_una_elegida_marcada_como_no_apta_no_se_usa(ia_fotos):
-    from afterdrive.generacion import imagen_destacada
-    responder, _, _ = ia_fotos
-    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Gráfico."}], "elegida": 1}')
-    assert imagen_destacada.elegir(_con_fotos(1), "T").imagen is None
+    assert e.imagen is None and e.imagenes == []
 
 
 @pytest.mark.parametrize("falla", ["no es json", RuntimeError("Bedrock caído")])
-def test_si_la_ia_falla_va_la_primera(ia_fotos, falla):
+@pytest.mark.parametrize("vision", [True, False])
+def test_si_la_ia_falla_dos_veces_van_las_primeras_sin_evaluar(monkeypatch, ia_fotos, falla, vision):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm
+    responder, _, pedidos = ia_fotos
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    responder(falla)
+    e = imagen_destacada.elegir(_con_fotos(2), "T", respaldo=lambda r: pytest.fail("Sin IA no se sigue buscando"))
+    assert len(pedidos) == 2                                             # reintentó una vez
+    assert e.metodo == "sin-evaluar" and e.imagen["url"] == "https://n.com/1.jpg" and len(e.imagenes) == 2
+    assert "sin evaluar" in e.motivo
+
+
+def test_si_la_ia_falla_una_vez_el_reintento_elige(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder(["no es json", '{"fotos": [{"n": 1, "apta": false}, {"n": 2, "apta": true, "portada": true}], '
+                             '"elegidas": [2]}'])
+    e = imagen_destacada.elegir(_con_fotos(2), "T", cantidad=1)
+    assert len(pedidos) == 2 and e.imagen["url"] == "https://n.com/2.jpg"
+    # El reintento va sin las imágenes: Bedrock a veces rechaza el lote por su tamaño.
+    assert "imagenes" in pedidos[0] and "imagenes" not in pedidos[1] and e.metodo == "ia-texto"
+
+
+def test_una_foto_sin_veredicto_explicito_no_se_usa(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
-    responder(falla)
-    e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.metodo == "primera" and e.imagen["url"] == "https://n.com/1.jpg" and e.motivo
+    # La IA puso la segunda entre las elegidas, pero no la evaluó.
+    responder('{"fotos": [{"n": 1, "apta": true, "portada": true}], "elegidas": [2, 1]}')
+    e = imagen_destacada.elegir(_con_fotos(2), "T", cantidad=1)
+    assert e.imagen["url"] == "https://n.com/1.jpg"
+    assert e.veredictos["https://n.com/2.jpg"]["apta"] is False
 
 
-def test_las_que_no_se_descargan_se_juzgan_sin_verlas_despues_de_las_vistas(ia_fotos):
+def test_si_falla_una_busqueda_posterior_conserva_solo_las_fotos_aprobadas(monkeypatch, ia_fotos):
+    from afterdrive.generacion import contexto_noticias, imagen_destacada
+    responder, _, pedidos = ia_fotos
+    monkeypatch.setattr(contexto_noticias, "mas_fotos", lambda *a, **kw: [])
+    responder(['{"fotos": [{"n": 1, "apta": true, "portada": true}], "elegidas": [1]}',
+               RuntimeError("Servicio caído"), RuntimeError("Servicio caído")])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=2,
+                              extra=lambda: [_noticia(9, "https://n.com/9.jpg")],
+                              respaldo=lambda r: pytest.fail("Sin IA no se sigue buscando"))
+    # Ya había una aprobada: la sin evaluar no se mezcla.
+    assert len(pedidos) == 3 and [im["url"] for im in e.imagenes] == ["https://n.com/1.jpg"]
+    assert "sin evaluar" in e.motivo
+
+
+@pytest.mark.parametrize("vision", [True, False])
+def test_descarta_grupos_sin_relacion_con_la_nota_aunque_vengan_de_sus_noticias(monkeypatch, ia_fotos, vision):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm, redaccion
+    responder, _, pedidos = ia_fotos
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    noticias = _con_fotos(2)
+    noticias[0].imagen["alt"] = "Multitud de asistentes posando en una feria"
+    noticias[1].imagen["alt"] = "Pastillas de freno y discos sobre una mesa de trabajo"
+    responder(json.dumps({"fotos": [
+        {"n": 1, "apta": False, "portada": False, "personas": True,
+         "motivo": "Un grupo posando no muestra las pastillas de freno de la nota."},
+        {"n": 2, "apta": True, "portada": True, "personas": False,
+         "motivo": "Muestra las pastillas y discos cuyo desgaste explica la nota."}], "elegidas": [1, 2]}))
+    e = imagen_destacada.elegir(noticias, "Cómo detectar desgaste en pastillas de freno",
+                              "Inspección de pastillas y discos", cantidad=1)
+    assert e.imagen["url"] == noticias[1].imagen["url"] and e.cuerpo == []
+    assert e.veredictos[noticias[0].imagen["url"]]["apta"] is False
+    assert redaccion.PIEZAS["imagenes"] in pedidos[0]["system"]
+    assert "Pertenecer al sector automotor NO alcanza" in pedidos[0]["system"]
+    assert "Es preferible usar menos imágenes" in pedidos[0]["system"]
+    assert "pastillas de freno" in pedidos[0]["user"]
+
+
+def test_una_foto_que_no_se_puede_descargar_no_se_elige(ia_fotos):
+    # Antes completaba los lugares que faltaban, juzgada por su texto, y en HubSpot salía rota.
     from afterdrive.generacion import imagen_destacada
     responder, descargas, pedidos = ia_fotos
     descargas["https://n.com/1.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 403")
     responder('{"fotos": [{"n": 1, "apta": true, "motivo": "Taller."}], "elegidas": [1]}')
     e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg", "https://n.com/1.jpg"]
-    assert len(pedidos[0]["imagenes"]) == 1 and "imagenes" not in pedidos[1]   # la segunda, sin verla
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg"] and len(pedidos) == 1
+    assert e.veredictos["https://n.com/1.jpg"]["apta"] is False
+    assert "403" in e.veredictos["https://n.com/1.jpg"]["motivo"]
 
 
-def test_si_ninguna_se_descarga_se_juzgan_todas_por_su_texto(ia_fotos):
+def test_si_ninguna_se_descarga_no_se_elige_ninguna(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, descargas, pedidos = ia_fotos
     for i in (1, 2):
         descargas[f"https://n.com/{i}.jpg"] = imagen_web.ErrorDescarga("el sitio respondió 404")
-    responder('{"fotos": [{"n": 1, "apta": false, "motivo": "Billetes."}, {"n": 2, "apta": true, "motivo": "Repuestos."}],'
-              ' "elegidas": [2]}')
+    responder('{"fotos": [], "elegidas": []}')
     e = imagen_destacada.elegir(_con_fotos(2), "T")
-    assert e.metodo == "ia-texto" and e.imagen["url"] == "https://n.com/2.jpg" and len(pedidos) == 1
+    assert e.imagenes == [] and pedidos == [] and "descargar" in e.motivo
+
+
+def test_sin_api_paga_las_elegidas_que_no_se_pueden_bajar_se_descartan(monkeypatch):
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: False)
+    monkeypatch.setattr(imagen_destacada, "_bajables", _BAJABLES)
+    monkeypatch.setattr(contexto_noticias, "refrescar_imagen", lambda n: None)
+
+    def descargar(url, max_bytes=None):
+        if url.endswith("1.jpg"):
+            raise imagen_web.ErrorDescarga("el sitio respondió 403")
+        return JPG, "image/jpeg"
+    monkeypatch.setattr(imagen_web, "descargar", descargar)
+    monkeypatch.setattr(llm, "completar", lambda *a, **k: (
+        '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}],'
+        ' "elegidas": [1, 2]}'))
+    e = imagen_destacada.elegir(_con_fotos(2), "T")
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/2.jpg"]
+    assert e.veredictos["https://n.com/1.jpg"]["apta"] is False
 
 def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(monkeypatch):
     from afterdrive.generacion import imagen_destacada
@@ -357,14 +520,107 @@ def test_sin_api_paga_la_ia_juzga_sin_ver_y_descarta_las_que_no_tienen_que_ver(m
     assert imagen_destacada.elegir([], "T").metodo == "ninguna"
 
 
-def test_elige_hasta_tres_en_orden_sin_repetir(ia_fotos):
+def test_elige_hasta_cinco_en_orden_sin_repetir(ia_fotos):
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
-    fotos = ", ".join(f'{{"n": {i}, "apta": true, "motivo": "ok"}}' for i in range(1, 6))
-    responder('{"fotos": [' + fotos + '], "elegidas": [4, 2, 2, 5, 1]}')
-    e = imagen_destacada.elegir(_con_fotos(5), "T")
-    assert [i["url"] for i in e.imagenes] == ["https://n.com/4.jpg", "https://n.com/2.jpg", "https://n.com/5.jpg"]
-    assert e.imagen["url"] == "https://n.com/4.jpg"
+    fotos = ", ".join(f'{{"n": {i}, "apta": true, "motivo": "ok"}}' for i in range(1, 8))
+    responder('{"fotos": [' + fotos + '], "elegidas": [4, 2, 2, 5, 1, 7, 3]}')
+    e = imagen_destacada.elegir(_con_fotos(7), "T")
+    assert [i["url"] for i in e.imagenes] == [f"https://n.com/{i}.jpg" for i in (4, 2, 5, 1, 7)]
+    assert e.imagen["url"] == "https://n.com/4.jpg" and len(e.cuerpo) == 4 and not e.motivo
+
+
+def test_extrae_varias_fotos_de_la_pagina_sin_miniaturas_ni_repetidas():
+    html = _html('<meta property="og:image" content="https://s.com/f/portada.jpg">'
+                 '<meta property="og:image:alt" content="Portada">',
+                 '<article><img src="/f/portada-300x200.jpg"><img src="https://s.com/f/taller.jpg" alt="Taller">'
+                 '<img src="https://s.com/f/mini.jpg" width="80"><img src="https://s.com/logo.png">'
+                 '<img data-src="https://s.com/f/deposito.webp" alt="Depósito"></article>')
+    assert imagen_articulo.extraer_todas(html, "https://s.com/nota") == [
+        {"url": "https://s.com/f/portada.jpg", "alt": "Portada"}, {"url": "https://s.com/f/taller.jpg", "alt": "Taller"},
+        {"url": "https://s.com/f/deposito.webp", "alt": "Depósito"}]
+    assert imagen_articulo.extraer(html, "https://s.com/nota")["url"] == "https://s.com/f/portada.jpg"
+
+
+def test_las_otras_fotos_de_una_noticia_tambien_son_candidatas(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    n = _noticia(1, "https://n.com/1.jpg")
+    n.imagenes = [{"url": "https://n.com/1.jpg", "alt": ""}, {"url": "https://n.com/1b.jpg", "alt": "b"}]
+    responder('{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}], "elegidas": [2, 1]}')
+    e = imagen_destacada.elegir([n], "T")
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/1b.jpg", "https://n.com/1.jpg"]
+    assert len(pedidos[0]["imagenes"]) == 2 and "Se consiguieron 2 de 5" in e.motivo
+
+
+def test_si_las_noticias_no_alcanzan_completa_con_bancos_de_imagenes(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    banco = [Noticia(id=None, titulo=f"Banco {i}", cuerpo="", url=f"https://banco/{i}", refrescable=False,
+                     imagen={"url": f"https://banco/{i}.jpg", "alt": "", "credito": "Foto: X", "atribucion": i == 1})
+             for i in range(1, 5)]
+    rondas = []
+
+    def respaldo(ronda):
+        rondas.append(ronda)
+        return banco[ronda * 2:ronda * 2 + 2]
+    responder(['{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": false, "motivo": "no"}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}, {"n": 2, "apta": true, "motivo": "ok"}], "elegidas": [1, 2]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=4, respaldo=respaldo)
+    assert rondas[:2] == [0, 1] and len(pedidos) == 3
+    assert [i["url"] for i in e.imagenes] == ["https://n.com/1.jpg", "https://banco/1.jpg", "https://banco/3.jpg",
+                                              "https://banco/4.jpg"]
+    assert e.cuerpo[0]["credito"] == "Foto: X" and e.cuerpo[0]["atribucion"] is True
+
+
+def test_una_foto_que_pide_credito_es_portada_solo_si_no_hay_otra_y_lleva_su_credito(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    banco = [Noticia(id=None, titulo="Banco", cuerpo="", url="https://banco/1", refrescable=False,
+                     imagen={"url": "https://banco/1.jpg", "alt": "", "credito": "Foto: Ana / CC BY", "atribucion": True})]
+    responder(['{"fotos": [], "elegidas": []}', '{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=1, respaldo=lambda r: banco)
+    assert e.portada_forzada and e.imagen["url"] == "https://banco/1.jpg" and e.cuerpo == []
+    assert ">Foto de portada: Ana / CC BY</small>" in hubspot._cuerpo("<p>a</p>", {"imagen": e.imagen}, "es")
+    # Con otra foto apta, la que pide crédito va dentro del texto con su crédito.
+    html = hubspot.con_imagenes("<p>a</p>", hubspot.imagenes_cuerpo({"imagenes_cuerpo": [banco[0].imagen]}))
+    assert ">Foto: Ana / CC BY</small>" in html
+
+
+def test_banco_commons_filtra_licencias_y_marca_las_que_piden_credito(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+
+    def pagina(i, licencia, ancho=1600, mime="image/jpeg"):
+        return {"index": i, "title": f"File:Foto_{i}.jpg", "imageinfo": [{
+            "mime": mime, "width": ancho, "thumburl": f"https://upload.wikimedia.org/{i}.jpg",
+            "descriptionurl": f"https://commons.wikimedia.org/wiki/File:Foto_{i}.jpg",
+            "extmetadata": {"LicenseShortName": {"value": licencia}, "Artist": {"value": "<a>Ana</a>"}}}]}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"query": {"pages": {str(i): p for i, p in enumerate([
+                pagina(1, "CC BY-SA 4.0"), pagina(2, "Public domain"), pagina(3, "CC BY-NC 2.0"),
+                pagina(4, "CC0", ancho=300), pagina(5, "CC0", mime="image/svg+xml")])}}}
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda url, **kw: Resp()})
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    fotos = imagenes_respaldo.buscar("brake pads")
+    assert [f.imagen["url"] for f in fotos] == ["https://upload.wikimedia.org/1.jpg", "https://upload.wikimedia.org/2.jpg"]
+    assert fotos[0].imagen["atribucion"] is True and "Ana" in fotos[0].imagen["credito"]
+    assert "atribucion" not in fotos[1].imagen and fotos[1].refrescable is False
+
+
+def test_las_busquedas_del_banco_son_las_de_la_ia_y_despues_las_del_sector(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    from afterdrive.ia import llm
+    monkeypatch.setattr(llm, "completar", lambda s, u, **kw: '{"consultas": ["brake pads", "auto parts"]}')
+    c = imagenes_respaldo.consultas("Pastillas de freno")
+    assert c[0] == "brake pads" and c.count("auto parts") == 1 and "car repair workshop" in c
+    monkeypatch.setattr(llm, "completar", lambda s, u, **kw: "nada")
+    assert imagenes_respaldo.consultas("T") == imagenes_respaldo.CONSULTAS_SECTOR
 
 
 def test_las_imagenes_del_cuerpo_se_reparten_entre_las_secciones():
@@ -428,8 +684,10 @@ def test_no_repite_fotos_que_ya_estan_en_otras_notas(ia_fotos):
     responder('{"fotos": [{"n": 1, "apta": true, "motivo": "ok"}], "elegidas": [1]}')
     e = imagen_destacada.elegir(_con_fotos(3), "T", excluir={"https://n.com/1.jpg", "https://n.com/2.jpg"})
     assert [i["url"] for i in e.imagenes] == ["https://n.com/3.jpg"] and len(pedidos[0]["imagenes"]) == 1
+    # Si no hay ninguna otra, se repite antes que dejar la nota sin imagen (con aviso para revisarla).
     sin = imagen_destacada.elegir(_con_fotos(1), "T", excluir={"https://n.com/1.jpg"})
-    assert sin.imagenes == [] and "otras notas" in sin.motivo
+    assert [i["url"] for i in sin.imagenes] == ["https://n.com/1.jpg"] and "otras notas" in sin.motivo
+    assert sin.metodo == "ultimo-recurso"
 
 
 def _foto(n, personas, apta=True):
@@ -451,13 +709,81 @@ def test_la_portada_nunca_tiene_personas(ia_fotos):
     assert e.imagen["url"] == "https://n.com/3.jpg" and [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg"]
 
 
-def test_si_todas_tienen_personas_no_hay_portada_pero_si_fotos_en_el_texto(ia_fotos):
+@pytest.mark.parametrize("vision", [True, False])
+def test_el_pedido_de_imagenes_guardado_se_usa_al_activar_la_copia(monkeypatch, ia_fotos, vision):
+    from afterdrive import prompts_ia
+    from afterdrive.generacion import imagen_destacada
+    from afterdrive.ia import llm, redaccion
+
+    responder, _, pedidos = ia_fotos
+    nuevo = "## Imágenes\n- Se permiten personas en portada y en el cuerpo. Priorizá talleres {reales}."
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    responder(json.dumps({"cambios": [{"clave": "imagenes", "contenido": nuevo}]}))
+    m = prompts_ia.mejorar("Permití personas en las imágenes de portada")
+    assert m["cambios"][0]["aplicado"] and redaccion.texto("imagenes") == redaccion.PIEZAS["imagenes"]
+    prompts_ia.usar("ia")
+    monkeypatch.setattr(llm, "ve_imagenes", lambda: vision)
+    responder('{"fotos": [{"n": 1, "apta": true, "personas": true, "portada": true}], "elegidas": [1]}')
+    e = imagen_destacada.elegir(_con_fotos(1), "Mecánicos en el taller", cantidad=1)
+    assert e.imagen["url"] == "https://n.com/1.jpg" and e.veredictos[e.imagen["url"]]["personas"]
+    assert nuevo in pedidos[-1]["system"] and "portada no puede" not in pedidos[-1]["system"]
+    assert e.metodo == ("ia" if vision else "ia-texto")
+    prompts_ia.usar("actuales")
+    imagen_destacada.elegir(_con_fotos(1), "Taller", cantidad=1)
+    assert redaccion.PIEZAS["imagenes"] in pedidos[-1]["system"] and nuevo not in pedidos[-1]["system"]
+
+
+def test_la_restriccion_de_portada_se_respeta_aunque_la_foto_no_tenga_personas(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder(['{"fotos": [{"n": 1, "apta": true, "personas": false, "portada": false}], "elegidas": [1]}',
+               '{"fotos": [{"n": 1, "apta": true, "personas": true, "portada": true}], "elegidas": [1]}'])
+    e = imagen_destacada.elegir(_con_fotos(1), "T", cantidad=1,
+                              extra=lambda: [_noticia(9, "https://n.com/9.jpg")])
+    assert e.imagen["url"] == "https://n.com/9.jpg" and len(pedidos) == 2
+    assert "reglas editoriales vigentes" in pedidos[-1]["user"]
+
+
+def test_las_reglas_editoriales_no_eliminan_el_credito_requerido(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    responder('{"fotos": [{"n": 1, "apta": true, "personas": false, "portada": true}], "elegidas": [1]}')
+    e = imagen_destacada.elegir([_de_banco(1, credito=True)], "T", cantidad=1)
+    # Era la única: va de portada como último recurso y conserva su crédito (hubspot.py lo pone en el texto).
+    assert e.portada_forzada and e.imagen["atribucion"] and e.imagen["credito"]
+
+
+def test_el_credito_de_una_portada_que_lo_pide_va_al_final_del_texto():
+    nota = {"imagen": {"url": "https://c.org/1.jpg", "atribucion": True,
+                       "credito": "Foto: Ana / Wikimedia Commons (CC BY 4.0)"}}
+    assert hubspot._cuerpo("<p>Texto.</p>", nota, "es").endswith(
+        "Foto de portada: Ana / Wikimedia Commons (CC BY 4.0)</small></p>")
+    assert "Cover photo: Ana" in hubspot._cuerpo("<p>Text.</p>", nota, "en")
+    assert "Foto de capa: Ana" in hubspot._cuerpo("<p>Texto.</p>", nota, "pt")
+    falla = {"imagen": {**nota["imagen"], "copia_fallida": "404"}}       # la portada no sale en el post
+    assert hubspot._cuerpo("<p>Texto.</p>", falla, "es") == "<p>Texto.</p>"
+    nota["imagen"].pop("atribucion")                                     # sin atribución, nada extra
+    assert hubspot._cuerpo("<p>Texto.</p>", nota, "es") == "<p>Texto.</p>"
+
+
+def test_el_limite_de_la_respuesta_crece_con_la_cantidad_de_fotos(ia_fotos):
+    """Con 10 fotos, 1500 tokens fijos se cortaban y el JSON quedaba roto (pasó con la API paga)."""
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder('{"fotos": [{"n": 1, "apta": true, "portada": true}], "elegidas": [1]}')
+    imagen_destacada.elegir(_con_fotos(10), "T", cantidad=1)
+    assert pedidos[0]["max_tokens"] == 3000
+
+
+def test_si_ninguna_cumple_las_reglas_de_portada_la_mejor_pasa_a_portada_igual(ia_fotos):
+    """Desde el 16/11 estas notas salían sin destacada: ahora va la mejor, con aviso para revisarla."""
     from afterdrive.generacion import imagen_destacada
     responder, _, _ = ia_fotos
     responder(f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}, {_foto(3, True)}], "elegidas": [1, 2, 3]}}')
     e = imagen_destacada.elegir(_con_fotos(3), "T")
-    assert e.imagen is None and e.motivo == imagen_destacada.SIN_PORTADA
-    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+    assert e.imagen["url"] == "https://n.com/1.jpg" and imagen_destacada.SIN_PORTADA in e.motivo
+    assert "Ninguna foto cumplía las reglas de portada" in e.motivo
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/2.jpg", "https://n.com/3.jpg"]
 
 
 def test_busca_la_portada_sin_personas_en_otras_noticias_del_tema(ia_fotos):
@@ -468,7 +794,7 @@ def test_busca_la_portada_sin_personas_en_otras_noticias_del_tema(ia_fotos):
     otra = [_noticia(9, "https://n.com/9.jpg")]
     e = imagen_destacada.elegir(_con_fotos(3), "T", extra=lambda: otra)
     assert len(pedidos) == 2 and e.imagen["url"] == "https://n.com/9.jpg"
-    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg"]
+    assert [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg", "https://n.com/2.jpg", "https://n.com/3.jpg"]
 
 
 def test_la_foto_elegida_a_mano_de_portada_sale_del_texto():
@@ -490,3 +816,80 @@ def test_fotos_usadas_lee_destacadas_y_del_cuerpo_de_notas_recientes():
          "imagenes_cuerpo": [{"url": "https://b.jpg"}]},
         {"generado_en": "2000-01-01T00:00:00+00:00", "imagen": {"url": "https://vieja.jpg"}}])
     assert imagen_destacada.fotos_usadas(base=base) == {"https://a.jpg", "https://b.jpg"}
+
+
+def _de_banco(i, credito):
+    from afterdrive.generacion import imagenes_respaldo
+    return imagenes_respaldo._foto("garage", f"https://banco/{i}.jpg", "", f"https://banco/{i}", "Wikimedia Commons",
+                                   "Foto: Ana / CC BY" if credito else "", credito)
+
+
+def test_si_solo_falta_la_portada_no_trae_fotos_que_piden_credito_y_se_lo_pide_a_la_ia(ia_fotos):
+    # Las fotos de las noticias muestran personas: falta la portada. Las de Commons que piden
+    # crédito tampoco sirven, así que ni se le muestran a la IA.
+    from afterdrive.generacion import imagen_destacada
+    responder, _, pedidos = ia_fotos
+    responder([f'{{"fotos": [{_foto(1, True)}, {_foto(2, True)}], "elegidas": [1, 2]}}',
+               f'{{"fotos": [{_foto(1, False)}], "elegidas": [1]}}'])
+    banco = [_de_banco(1, credito=True), _de_banco(2, credito=False)]
+    e = imagen_destacada.elegir(_con_fotos(2), "T", cantidad=2, respaldo=lambda r: banco)
+    assert e.imagen["url"] == "https://banco/2.jpg" and [i["url"] for i in e.cuerpo] == ["https://n.com/1.jpg"]
+    assert len(pedidos[-1]["imagenes"]) == 1 and "solo falta la PORTADA" in pedidos[-1]["user"]
+
+
+def test_si_la_ia_elige_una_que_pide_credito_entra_de_portada_una_apta_que_no(ia_fotos):
+    from afterdrive.generacion import imagen_destacada
+    responder, _, _ = ia_fotos
+    responder(f'{{"fotos": [{_foto(1, False)}, {_foto(2, False)}], "elegidas": [1]}}')
+    banco = [_de_banco(1, credito=True), _de_banco(2, credito=False)]
+    e = imagen_destacada.elegir([], "T", cantidad=1, respaldo=lambda r: banco)
+    assert e.imagen["url"] == "https://banco/2.jpg"
+
+
+def test_pixabay_con_clave_trae_fotos_sin_credito_que_hay_que_descargar(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    pedidos = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"hits": [{"largeImageURL": "https://pixabay.com/get/abc_1280.jpg", "pageURL": "https://pixabay.com/photos/frenos-1/",
+                              "tags": "brake, disc", "user": "Leo"}]}
+    monkeypatch.setattr(imagenes_respaldo, "_transporte", {"get": lambda url, **kw: pedidos.append((url, kw)) or Resp()})
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    assert imagenes_respaldo._pixabay("brake disc", 12, 1) == [] and pedidos == []
+    monkeypatch.setenv("PIXABAY_API_KEY", "clave")
+    fotos = imagenes_respaldo._pixabay("brake disc", 12, 1)
+    assert pedidos[0][0] == "https://pixabay.com/api/" and pedidos[0][1]["params"]["key"] == "clave"
+    assert pedidos[0][1]["params"]["image_type"] == "photo"
+    im = fotos[0].imagen
+    assert im["caduca"] is True and "atribucion" not in im and im["banco"] == "Pixabay"
+    assert fotos[0].id is None and fotos[0].url == "https://pixabay.com/photos/frenos-1/"
+
+
+def test_las_fotos_que_caducan_se_guardan_en_la_base_con_url_interna(monkeypatch):
+    from afterdrive.generacion import imagenes_respaldo
+    from afterdrive.historial import PREFIJO_IMAGEN_SUBIDA
+    base = mongomock.MongoClient().db
+    monkeypatch.setattr(imagen_web, "descargar", lambda url, max_bytes=None: (JPG, "image/jpeg"))
+    pixabay = {"url": "https://pixabay.com/get/abc.jpg", "alt": "frenos", "banco": "Pixabay", "caduca": True}
+    noticia = {"url": "https://n.com/1.jpg", "alt": ""}
+    imagenes_respaldo.guardar_las_que_caducan([None, pixabay, noticia], base=base)
+    assert pixabay["url"].startswith(PREFIJO_IMAGEN_SUBIDA) and pixabay["url_banco"] == "https://pixabay.com/get/abc.jpg"
+    assert "caduca" not in pixabay and noticia == {"url": "https://n.com/1.jpg", "alt": ""}
+    assert bytes(base.imagenes_subidas.find_one()["contenido"]) == JPG
+
+
+def test_una_foto_de_banco_ya_usada_no_se_repite_aunque_cambie_su_link():
+    from afterdrive.generacion import imagen_destacada
+    base = mongomock.MongoClient().db
+    base.notas_fase2.insert_one({"generado_en": "2099-01-01T00:00:00+00:00", "imagenes_cuerpo": [
+        {"url": "/api/imagenes/abc", "banco": "Pixabay", "origen": {"titulo": "x", "url": "https://pixabay.com/photos/frenos-1/"}}]})
+    usadas = imagen_destacada.fotos_usadas(base=base)
+    assert "https://pixabay.com/photos/frenos-1/" in usadas
+    otra_vez = _de_banco(1, credito=False)
+    otra_vez.url = "https://pixabay.com/photos/frenos-1/"   # mismo banco y página, link nuevo
+    assert imagen_destacada._vista(otra_vez, usadas)
+    assert not imagen_destacada._vista(_con_fotos(1)[0], {"https://n.com/1"})   # una noticia, solo por su foto

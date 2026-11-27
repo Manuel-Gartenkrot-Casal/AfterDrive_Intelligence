@@ -10,9 +10,12 @@ Archivos: `corridas.py` (`_scrapear_fuentes`), `ingesta/scraper.py`, `ingesta/in
 trusted_urls con estado "activo"
       │  por cada fuente
       ▼
-scraper.py   baja el listado → detecta links de artículos (prioriza URLs con fecha)
+scraper.py   baja el listado → si es un RSS, Atom o sitemap (o la portada anuncia su
+      │      feed), las notas salen de ahí con su fecha (ingesta/feeds.py); si no,
+      │      detecta links de artículos en el HTML (prioriza URLs con fecha)
       │      saltea los links ya guardados o descartados antes
-      │      baja cada artículo nuevo → trafilatura extrae título, cuerpo y fecha
+      │      baja cada artículo nuevo → trafilatura extrae título, cuerpo y fecha,
+      │      y se guardan hasta 8 fotos de la página (imagen_articulo.extraer_todas)
       │      si el sitio bloquea o está caído → copia de Wayback Machine
       ▼
 ingesta.py   el LLM decide si es del rubro
@@ -24,19 +27,24 @@ ingesta.py   el LLM decide si es del rubro
 
 - Máximo de artículos por fuente: `max_articulos` (10 por defecto, se cambia en Programación).
 - **No se vuelve a procesar lo ya visto**: antes de descargar se consultan `articulos` y `articulos_descartados` (`corridas.ya_procesadas`). El contador de "nuevos" es real.
-- Se descartan cuerpos de menos de 100 caracteres.
-- **Pendientes**: si el LLM no responde (caído o con límite de uso), el artículo no se guarda ni se descarta, así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba contenido fuera de tema. La disponibilidad del proveedor se vuelve a chequear al minuto.
+- Se descartan cuerpos de 100 caracteres o menos.
+- **Dónde se pierde lo scrapeado**: cada fuente cierra con una línea "Links que no dieron artículo" con un conteo por motivo (`sin_html`: no se pudo bajar; `sin_texto`: la página no es una nota; `sin_titulo`; `cuerpo_corto`; `error`; `sin_probar`: quedaron fuera de los `max_articulos × 3` candidatos). Al final de la corrida, `[RESUMEN]` suma eso más lo que la IA rechazó (`rechazado_ia`) o dejó pendiente (`pendiente_ia`). Antes los errores de extracción se tragaban sin aviso.
+- **Criterio del filtro** (`lm_studio._SYSTEM_EVALUAR`): aprueba toda noticia útil para el negocio de distribuidoras, fabricantes, talleres y lubricentros (repuestos, mercado de reposición, industria automotriz y autopartista, parque automotor, neumáticos, lubricantes, logística, ferias) y rechaza solo lo claramente ajeno (otros temas, reviews de autos nuevos para consumidores, seguros, contenido vacío). Antes aprobaba "solo si" el artículo trataba de piezas, catálogos o fitment, y rechazaba casi todas las noticias del sector.
+- **Pendientes**: si el LLM no responde (caído o con límite de uso) o responde algo que no se entiende dos veces seguidas, el artículo no se guarda ni se descarta, así la próxima corrida lo vuelve a clasificar. Antes se aprobaba y entraba contenido fuera de tema; y una respuesta rota contaba como rechazo para siempre. La disponibilidad del proveedor se vuelve a chequear al minuto.
+- **Reclasificar descartados** (`python -m afterdrive.ingesta.reclasificar --dias 30`): vuelve a juzgar con el criterio actual los descartados de los últimos días. Los que ahora aprueba pasan a `articulos`. Sirve después de cambiar el filtro; cuesta una llamada por artículo.
 - Cómo baja cada página depende de la RAM (`ingesta/resource_detector.py`). Con menos de 600 MB (Render free) nunca usa Chromium: `requests` y, si falla, Wayback. En GitHub Actions (~7 GB) usa Chromium. Se fuerza con `FORCE_PROFILE=alto|medio|bajo`.
 - Los dominios que no respondieron van directo a Wayback **solo durante esa corrida**.
 - Las fuentes **pausadas** (`estado: "inactivo"`) no se scrapean.
+- Al terminar, el log dice cuánto gastó la corrida en la API paga (`[COSTO] Esta corrida: USD …`).
 
 ## Alta de una fuente
 
 | Botón | Qué hace |
 |---|---|
+| **Recomendadas para Alephee** (`ingesta/fuentes_recomendadas.py`) | Marketplaces, e-commerce automotor y material propio de Alephee: `python -m afterdrive.ingesta.fuentes_recomendadas` las suma a Recomendadas para revisarlas y agregarlas |
 | **Probar y agregar** (`ingesta/add_url.py`, por la cola) | Scrapea la URL y la clasifica. **Solo si aprueba al menos un artículo**, queda como fuente activa |
 | **Agregar** (`POST /api/trusted-urls`) | La agrega directo, sin probarla |
-| **Buscar recomendaciones** (`ingesta/discover_sources.py`, por la cola) | Busca sitios del rubro en DuckDuckGo, DuckDuckGo Lite y Bing (si uno bloquea la búsqueda desde el servidor, pasa al siguiente) y además le pide a la IA medios del sector, que se verifican entrando al sitio. Los deja como sugerencias. Si no puede buscar por ningún camino, la corrida termina con error y el motivo |
+| **Buscar recomendaciones** (`ingesta/discover_sources.py`, por la cola) | Busca sitios del rubro en Google Noticias, DuckDuckGo, DuckDuckGo Lite y Bing (si uno bloquea la búsqueda desde el servidor, pasa al siguiente) y además le pide a la IA medios del sector. Primero junta los candidatos de **todas** las búsquedas sin filtrar por palabras, y los ordena por **popularidad**: en cuántas búsquedas distintas aparece cada sitio (y si la IA también lo conoce). Se visitan en ese orden (45 como mucho). **Todos se verifican entrando a la portada**: tiene que tener notas enlazadas y al menos el 25% de sus titulares (y 3 como mínimo) tiene que ser del sector. Un titular es del sector por lo que **dice**, no por una palabra literal: se compara con embeddings contra titulares de referencia del rubro (los de las noticias guardadas y unos fijos), con un umbral que se calibra solo contra titulares de otros temas; las palabras del nicho también cuentan, y sin embeddings son lo único que se mira. Cada sugerencia guarda `relevancia`, `popularidad` y `puntaje`, y Fuentes las lista por puntaje. Así no entran diarios generales con una sola nota de repuestos, cuyos artículos después rechazaba casi todos la ingesta. Si la portada es general, prueba sus secciones del rubro (`/autos/`, `/motor/`...) y sugiere la que pase. Si no puede buscar por ningún camino, la corrida termina con error y el motivo |
 
 ## Ejemplos del blog AfterDrive
 
@@ -60,43 +68,55 @@ Archivo: `generacion/generar_nota_fase2.py`. Es el **generador principal**.
 
 **Pasos**
 
-1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (65 %), recencia por **fecha de publicación** (25 %) y que no se hayan usado (10 %). Las que ya alimentaron una nota en los **últimos 30 días** quedan para el final: solo entran si no alcanzan las demás. Al prompt va la **ficha** de cada una más un extracto. **Son la única fuente permitida de cifras, empresas y casos.**
+1. **Noticias de contexto** (`contexto_noticias.py`): entre las 200 noticias más recientes (y, con Atlas Vector Search, las 100 más parecidas de toda la base) elige 5, combinando parecido con el pedido (50 %), **tendencia** (20 %: cuántos otros medios publicaron el mismo tema en la última semana, por embeddings o, sin ellos, por las palabras del título; desde qué parecido es "el mismo tema" se **calibra en cada nota**: entre todos los pares de medios distintos, un par cuenta si está 4 desvíos por encima del parecido típico y en el 1 % más alto, y sube si hay títulos casi iguales que muestran cuánto dan las mismas noticias; con menos de 30 pares se miran solo las palabras. Un número fijo no sirve: según el modelo de embeddings, dos noticias distintas del rubro dan 0,90 o 0,30), recencia por **fecha de publicación** (15 %) y que no se hayan usado (10 %). Un medio que alimentó muchas de las últimas 15 notas resta hasta 15 %, y una nota lleva **como mucho 2 noticias del mismo medio** (la segunda resta 10 %); si así no alcanzan, se completa igual. Las que ya alimentaron una nota en los **últimos 30 días** quedan para el final: solo entran si no alcanzan las demás. Las que solo alimentaron notas **rechazadas** vuelven a contar como no usadas (`urls_liberadas`, mira las últimas 300 notas); si la nota vuelve a borrador, dejan de estar libres. Al prompt va la **ficha** de cada una más un extracto. **Son la única fuente permitida de cifras, empresas y casos.**
 2. **Referencias de estilo**: hasta 2 notas reales por categoría. Se suman hasta 2 **notas propias que el equipo calificó con 4 o 5 estrellas**.
    **Notas de AfterDrive para citar** (`generacion/notas_blog.py`): las 4 notas del blog más parecidas al tema (embeddings, con un plus si comparten categoría), en el idioma de la nota: las del blog scrapeado (solo español) y las propias ya publicadas en HubSpot. El plan puede asignar una a una sección y la redacción la cita como análisis propio ("como analizamos en AfterDrive by Alephee, [texto](url)") **solo si encaja**, con lo que dice su resumen y como mucho dos. Lo que dicen esos resúmenes cuenta como respaldo de datos. Las citadas quedan en `notas_blog_citadas`.
 3. **Calibración** (`calibracion.py`, ver abajo): correcciones del equipo (rechazos, calificaciones bajas, etiquetas que se repiten, ediciones), aciertos y el umbral del evaluador.
-4. **Plan** (`generacion/plan.py`): el modelo barato (con la API paga, el de evaluación; 4000 tokens) propone ángulo, título (máx. 60 caracteres), palabra clave, secciones con qué noticia alimenta cada una e implicancias. Recibe los títulos de las últimas 15 notas para **no repetir su ángulo**. Si el plan falla, la nota se escribe sin plan.
+4. **Plan** (`generacion/plan.py`): el modelo barato (con la API paga, el de evaluación; 4000 tokens) propone ángulo, título (máx. 60 caracteres), palabra clave, secciones con qué noticia alimenta cada una e implicancias. Recibe los títulos de las últimas 15 notas para **no repetir su ángulo**. Si el plan falla, la nota se escribe sin plan. **Memoria**: recibe los títulos de las últimas 15 notas, los ángulos y palabras clave de las últimas 50 (para elegir otros) y las aprobadas o publicadas como temas que el blog ya trató.
 5. **Prompt**: `ia/redaccion.py` arma el system prompt (persona + voz de la región + **secciones fijas**: "Qué significa para tu negocio" con 3 a 5 acciones concretas y "Preguntas frecuentes" con 3 preguntas + reglas de SEO + citas con link a la noticia + CTA con link a Alephee). El pedido lleva noticias, referencias, correcciones, aciertos y el plan.
 6. **Redacción** con el LLM y **saneo** (`ia/saneo.py`): limpia la respuesta y **la descarta si el modelo escribió su razonamiento en vez de la nota**. Lo descartado queda en `notas_descartadas` con el motivo.
 7. **Revisión de la versión**:
    - **Enlaces**: se quitan los links a URLs que no salen de las noticias, del blog o de alephee.com (el texto queda).
+   - **Empresas que no se nombran** (`clientes.py`): sin IA, se busca en el texto (sin tildes ni mayúsculas, palabra entera, también por alias) cada empresa marcada `no_mencionar`. Si aparece, es un problema grave: la nota se corrige, y si igual queda, se guarda en `empresas_prohibidas` y la aprobación automática la frena. Antes de escribir ya se avisaron en el prompt y se dejaron afuera las noticias que las tienen en el título.
    - **Datos contra las noticias** (`generacion/verificacion.py`): cifras y nombres en negrita se buscan literal en las noticias, sus fichas, los clientes y el tema; lo que no aparece se le pregunta al modelo de evaluación (una llamada). Si el modelo no responde, una cifra no encontrada cuenta como sin respaldo.
    - **Estilo y SEO sin IA** (`generacion/calidad.py`): título, meta description, secciones fijas, huecos tipo "un X%", muletillas de IA, anglicismos, términos de la casa, párrafos largos, palabra clave.
    - **Evaluación** con el LLM (checklist de 9 puntos).
-   - **Repetición**: si el vector de la nota se parece a una de las últimas 15 más que `NOTA_PARECIDO_MAX` (0.93), es una repetida.
+   - **Repetición**: si el vector de la nota se parece a una de las últimas 50 más que `NOTA_PARECIDO_MAX` (0.85), es una repetida.
 8. **Corrección**: si hay un problema grave (datos sin respaldo, un punto crítico de la evaluación, falta título, meta o la sección de implicancias, huecos, tres o más muletillas, o menos lineamientos que el umbral calibrado), el **modelo de corrección** (`generacion/correccion.py`; con la API paga, el de evaluación, unas 12 veces más barato que el de redacción) recibe la nota y la lista de problemas y devuelve la misma nota con solo eso arreglado. Solo una nota **repetida** se redacta de cero, porque el problema es el ángulo. La corrección se revisa igual que la primera versión y queda la mejor de las dos (`calidad.segundo_intento` dice cuál de los dos caminos se usó).
-9. **Imágenes** (`generacion/imagen_destacada.py`): **3 por nota**, la destacada y 2 dentro del texto. Las candidatas son las fotos de las noticias usadas (primero las que respaldan la nota), hasta 8 sin repetir, que el scraper guardó con el artículo (`ingesta/imagen_articulo.py`: og:image, twitter:image, JSON-LD o la primera foto del cuerpo; sin logos ni íconos, solo https). A los artículos guardados antes de esto se les busca una vez, hasta 5 por nota. El modelo de clasificación las juzga contra el **tema concreto** de la nota (una foto genérica del sector no alcanza) y devuelve las aptas en orden: **con la API paga las mira**; sin ella juzga sin verlas, por la noticia de la que salen, su texto alternativo y el nombre del archivo, y descarta las que no tienen que ver. Si las descarta todas, la nota queda sin imagen y el motivo se ve al revisarla; si la IA falla, van las primeras. La destacada va en `imagen` y las otras en `imagenes_cuerpo`; al subir a HubSpot las 3 se copian a sus archivos y las del cuerpo se reparten entre las secciones (a 1/3 y 2/3 de la nota) en las 3 versiones.
-10. **Traducciones** (`traducciones.py`): apenas se crea, la nota se traduce al español y al inglés (tarea `traduccion`) y se guardan en `traducciones.<idioma>`. Una que falla no frena la nota: queda el error y se reintenta desde el historial.
-10. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
-11. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a` y `calibracion_usada`, y las noticias usadas quedan marcadas con la fecha.
+9. **Imágenes** (`generacion/imagen_destacada.py`): **5 por nota**, la destacada y 4 dentro del texto. El scraper guarda hasta 8 fotos por noticia (`imagenes`, la principal primero: og:image, twitter:image, JSON-LD o la primera del cuerpo, y después las otras `<img>` de la nota; sin logos ni íconos, solo https). Las fotos usadas en notas de los últimos 30 días no se repiten, así que si no se juntan 5 aptas busca **solo las que faltan**, en este orden: (1) las otras fotos de las páginas de sus noticias (a las scrapeadas antes de la lista se les relee la página); (2) otras noticias del mismo tema; (3) **bancos de imágenes** (`generacion/imagenes_respaldo.py`), una búsqueda por ronda y hasta 8, armadas por la IA en inglés a partir del título (si falla, búsquedas genéricas del sector): **Pexels** si está `PEXELS_API_KEY` y **Pixabay** si está `PIXABAY_API_KEY` (los dos sin atribución, así que sirven de portada; Pixabay no deja enlazar sus fotos para siempre, así que las elegidas se descargan a la base al generar la nota, como una imagen subida, y de ahí se copian a HubSpot) y **Wikimedia Commons** siempre, solo con licencias de uso comercial (dominio público, CC0, CC BY, CC BY-SA). El modelo de clasificación juzga las fotos contra el **tema concreto** de la nota (una foto genérica del sector no alcanza): **con la API paga las mira**; sin ella juzga sin verlas, por la noticia de la que salen, su texto alternativo y el nombre del archivo. La pieza editable **Imágenes** decide qué es apto y qué puede ser portada: por defecto descarta caras en todas las fotos y personas en portada. Las fotos que piden crédito (CC BY) solo van dentro del texto, con el crédito debajo. Si la IA falla, no se suman fotos sin evaluar. La destacada va en `imagen` y las otras en `imagenes_cuerpo`; al subir a HubSpot se copian a sus archivos y las del cuerpo se reparten entre las secciones en las 3 versiones.
+10. **Juez** (`generacion/juez.py`, modelo de evaluación, una llamada): un editor exigente decide si la nota pasaría sola, con qué confianza (0 a 1), y sugiere calificación, etiquetas y comentario. Queda en `juicio`. Lo usa la aprobación automática (abajo) y su sugerencia aparece precargada al calificar, sin contar para la calibración hasta que una persona la guarda.
+11. **Calificación de la IA** (`generacion/critica.py`, modelo de evaluación, hasta 3000 tokens y un reintento): un corrector de estilo mira solo la escritura (gramática, ortografía, redacción, tono y estructura) según la persona y la región pedidas, y devuelve un puntaje de 1 a 10, un resumen y hasta 8 errores con el fragmento, qué está mal y cómo arreglarlo. Si la respuesta llega cortada, aprovecha los errores que llegaron completos. Queda en `critica`. Es informativa: no toca la calificación humana ni la calibración.
+12. **Traducciones** (`traducciones.py`): apenas se crea, la nota se traduce al español y al inglés (tarea `traduccion`) y se guardan en `traducciones.<idioma>`. Una que falla no frena la nota: queda el error y se reintenta desde el historial.
+13. Se agrega la sección **Fuentes** (antes de la meta description) con las noticias citadas en el texto, las que respaldaron algún dato y las que el plan asignó a una sección.
+14. Se guarda en `notas_fase2` como **borrador**, con **lo que costó** (`costo`: total, por tarea y cantidad de llamadas a la API paga; se ve al abrir la nota), su evaluación, `calidad`, `verificacion`, `estilo`, `seo`, `plan`, `parecida_a`, `calibracion_usada`, `juicio` y `critica`, y las noticias usadas quedan marcadas con la fecha. Si se canceló en medio de un paso, no se guarda.
+15. **Aprobación automática** (`aprobacion_auto.py`, solo la generación programada y solo con el interruptor prendido): ver abajo.
 
 **Manual o automática**
 
 | | Usa los parámetros de… |
 |---|---|
 | Botón **Generar nota** | Lo que está en pantalla, aunque no esté guardado |
-| Generación automática (11:00) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación |
+| Generación automática (11:00 y los horarios extra) | La config guardada con **Guardar cambios** en Crear nota, y el tono de Programación. El **tema puntual** y las indicaciones son de un solo uso: no se guardan y la automática no los usa. Sí usa la **lista de temas**: el primero, que se descarta si la nota se guarda |
 
 La automática no hace nada si no hay categorías guardadas.
+
+**Rotar categorías** (Crear nota, se guarda): cada nota (la automática y la del botón) usa 1 categoría de las marcadas, o 2 si hay más de 3. Se sortean con más chances para las que menos salieron en las últimas 20 notas, y nunca sale la misma combinación que la nota anterior (`generacion/rotacion.py`).
+
+**Más notas por día** (Programación): además de la hora principal, hasta 7 horarios extra (`horas_extra`); cada uno es un job propio (`generacion`, `generacion_2`...). La tarjeta muestra cuánto cuesta cada nota con la API paga (promedio de las últimas 20 que la usaron) y cuántas entran por día en el tope mensual.
 
 ## Revisión y publicación
 
 ```
-borrador ──Aprobar y subir──► aprobada + borrador en HubSpot ──Publicar en HubSpot──► publicado
-   │                                                                                     │
-   └──Rechazar──► rechazada                                                  Despublicar → aprobada
+borrador ──Aprobar y subir (persona o aprobación automática)──► aprobada + borrador en HubSpot (ES/PT/EN)
+   │                                                                   │
+   └──Rechazar──► rechazada                          se publica desde HubSpot (el dashboard no publica)
 ```
 
 Todo desde **Historial** (`historial.py`). Una nota sin aprobar no se puede enviar a HubSpot.
+
+- **Publicar desde el dashboard está desactivado** (`PUBLICAR_DESDE_DASHBOARD = False` en `historial.py` y en `historial.js`): solo se sube o actualiza el borrador, y el servidor rechaza `publicar: true`. Para volver a habilitarlo, `True` en los dos lugares. El estado `publicado` y **Despublicar** siguen existiendo para las notas que ya estaban publicadas.
+- **Aprobación automática** (interruptor de la vista Desarrollador, `config.aprobacion_auto`, apagado por defecto): al terminar una Corrida de `generacion` programada, `aprobacion_auto.procesar` aplica `juez.decidir`. La nota pasa si no la frena el **filtro duro sin IA** (datos sin respaldo, fallas críticas del evaluador, problemas graves de estilo o SEO, parecida a una reciente, sin imagen destacada o puntaje bajo el umbral calibrado, 7/9 si todavía no hay) y el juez dijo que pasa con confianza ≥ 0,8 (`juez.CONFIANZA_MIN`). Si pasa: estado `aprobada`, `aprobada_por: "ia"`, se sube como borrador (al blog que diga el interruptor de blog de pruebas) y se encolan las traducciones. Si no: queda en borrador con los motivos. La decisión queda en `aprobacion_auto`. Las notas manuales nunca se aprueban solas.
+- **La revisión en el dashboard** tiene tres pasos (`recorrido.js`): **Revisar** (lo chequeado al generarla), **Calificar** (calificación de la IA y humana) y **Publicar** (imagen, destino en HubSpot e idiomas). Si la nota no tiene la calificación de la IA, o se editó después, se pide sola al abrirla (`POST /api/historial/critica`); su resumen y sus problemas se traducen al idioma del dashboard la primera vez (`POST /api/historial/critica/traduccion`) y quedan guardados.
 
 - **Rechazar pide un motivo** (mínimo 3 caracteres): queda en `motivo_rechazo` y alimenta las correcciones de las notas siguientes (paso 3).
 - **Calificar**: al abrir una nota, 1 a 5 estrellas, etiquetas (datos dudosos, genérica, suena a IA, muy larga, tono, poco útil, errores técnicos; y las positivas) y un comentario.
@@ -119,7 +139,7 @@ Archivo: `calibracion.py`. Se lee de Mongo en cada nota; el estado se ve en **Hi
 | 8 o más notas calificadas con evaluación automática | Se calcula el puntaje automático mínimo (0 a 9) que mejor separa lo que el equipo califica con 3 o más; una nota por debajo se reescribe |
 
 Como mucho 8 correcciones por nota. El panel muestra además el promedio por persona y por proveedor, para decidir con datos (eso no cambia nada solo).
-- **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imagen destacada, que se puede cambiar ahí mismo.
+- **Vista previa** muestra la nota como va a salir en el blog: título, meta description, etiquetas, slug, cuerpo e imágenes. La destacada se cambia ahí mismo: otra foto de sus noticias (las que tienen personas aparecen marcadas y la elegida sale del cuerpo para no repetirse), una URL https o un archivo de la computadora (JPG, PNG, WebP o GIF, hasta 5 MB, validado por sus bytes). El archivo se guarda en `imagenes_subidas` y se sirve en `/api/imagenes/<id>` con sesión; al subir la nota a HubSpot se copia desde ahí (una ruta de este servidor nunca va a HubSpot como link).
 
 Detalle en [hubspot-integration.md](hubspot-integration.md).
 

@@ -19,6 +19,13 @@ var _recorrido = { activo: false, paso: 'publicar', nota: null };
 /* ── Armado ─────────────────────────────────────────────────────────────── */
 
 function armarRecorrido(nota, cont) {
+  if (vistaCliente()) { armarLectura(nota, cont); return; }   // vista Cliente: la nota como documento (lectura.js)
+  if ($('art-body').classList.contains('lectura-doc')) {      // venía de la vista Cliente: el texto sin marcas
+    salirDeLectura();
+    $('art-body').classList.remove('lectura-doc');
+    pintarCuerpoNota();
+  }
+  salirDeLectura();
   _recorrido = { activo: true, paso: pasoInicial(nota), nota: nota };
   $('modal-caja').classList.remove('sin-panel');
   cont.classList.add('recorrido');
@@ -39,6 +46,7 @@ function armarRecorrido(nota, cont) {
 
 // Sin recorrido (noticias, otras colecciones): el modal es una sola columna.
 function sinRecorrido() {
+  salirDeLectura();
   _recorrido = { activo: false, paso: 'publicar', nota: null };
   $('modal-caja').classList.add('sin-panel');
   $('check-list').classList.remove('recorrido');
@@ -54,6 +62,7 @@ function pasoInicial(nota) {
 
 function irAPaso(id, opts) {
   opts = opts || {};
+  if (_recorrido.lectura) { irAPasoLectura(id, opts); return; }
   _recorrido.paso = id;
   PASOS.forEach(function(p) {
     var tab = $('tab-' + p.id), panel = $('paso-' + p.id);
@@ -118,6 +127,10 @@ function enCelular() { return window.matchMedia('(max-width: 900px)').matches; }
 
 /* ── Paso 1: Revisar ────────────────────────────────────────────────────── */
 
+/* Cómo mostrar cada filtro de la redacción. Mientras no llega, las notas se ven sin esos avisos. */
+var FILTROS_NOTA = [];
+pedir('/api/filtros').then(function(d) { FILTROS_NOTA = d.filtros || []; }).catch(function() {});
+
 /* Lo que se chequeó, como filas: c = ok | warn | err, un titular, una línea,
    el detalle (HTML) y, si hay, una acción. Cada fila lleva un punto del color de su estado. */
 function chequeosDeNota(nota) {
@@ -133,6 +146,14 @@ function chequeosDeNota(nota) {
           titulo: sin.length ? 'Datos sin respaldo' : 'Datos contra las noticias',
           linea: ok + ' de ' + v.total + ' datos aparecen en las noticias.', detalle: det });
   }
+  // Los filtros de la redacción (generacion/filtros.py, GET /api/filtros): los que frenan, en rojo; los demás, aviso.
+  FILTROS_NOTA.forEach(function(f) {
+    var hallazgos = nota[f.campo] || [];
+    if (!hallazgos.length) return;
+    out.push({ c: f.frena ? 'err' : 'warn', id: f.campo, titulo: f.titulo,
+               linea: hallazgos.map(function(h) { return tr(f.nombres[h] || h); }).join(', ') + '. ' + tr(f.indicacion),
+               accion: { texto: 'Editar', onclick: 'editarNota()' } });
+  });
   if (nota.parecida_a) {
     out.push({ c: 'err', id: 'parecida', titulo: 'Parecida a una nota reciente',
                linea: 'Se parece a “' + nota.parecida_a.titulo + '” (' + Math.round(nota.parecida_a.similitud * 100) + '%).' });
@@ -299,6 +320,9 @@ function pintarGeneracion(nota, cont) {
       + nota.categorias.map(function(c) { return '<span>' + escHtml(c.replace(/-/g, ' ')) + '</span>'; }).join('') + '</span>';
     cont.appendChild(fija);
   }
+  if (nota.indicaciones) {
+    cont.appendChild(itemAcordeon('Indicaciones para la IA', 'Sí', '<p class="acordeon-nota">' + escHtml(nota.indicaciones) + '</p>'));
+  }
   if (nota.plan) {
     var p = nota.plan, secciones = p.secciones || [];
     cont.appendChild(itemAcordeon('Plan de la nota', secciones.length === 1 ? '1 sección' : secciones.length + ' secciones',
@@ -372,6 +396,7 @@ function pintarPasoPublicar(nota, panel) {
   pintarImagen(nota, panel);
   pintarDestinoHubspot(nota, panel);
   pintarTraducciones(nota, panel);
+  pintarCarrusel(nota, panel);   // carrusel.js
 }
 
 // "Elegir imagen" desde Revisar: va a Publicar y abre el selector de archivos
@@ -390,6 +415,7 @@ function imagenCambiada(imagen) {
   var nota = _recorrido.nota;
   if (imagen) { nota.imagen = imagen; nota.imagen_eleccion = { metodo: 'manual' }; }
   else delete nota.imagen;
+  if (_recorrido.lectura) { pintarCuerpoNota(); pintarPanelLectura(); return; }
   pintarPasoRevisar(nota, $('paso-revisar'));
   pintarPasoPublicar(nota, $('paso-publicar'));
   actualizarPasos();

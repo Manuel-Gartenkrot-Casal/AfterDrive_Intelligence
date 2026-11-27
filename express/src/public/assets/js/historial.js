@@ -142,6 +142,7 @@ var PUBLICAR_DESDE_DASHBOARD = false;
    recorrido (ver recorrido.js) y al estado de la nota. */
 function pintarAccionesNota() {
   var cont = $('nota-acciones'), chip = $('modal-estado');
+  if ($('lectura-acciones')) $('lectura-acciones').innerHTML = '';
   if (!_notaActual) {
     chip.hidden = true;
     cont.innerHTML = '<button type="button" class="btn btn-xs" onclick="copiar()">Copiar texto</button>';
@@ -151,6 +152,7 @@ function pintarAccionesNota() {
   chip.hidden = false;
   chip.className = 'estado-chip ' + e;
   chip.textContent = NOMBRE_ESTADO_NOTA[e];
+  if (_recorrido.lectura) { pintarAccionesLectura(); return; }   // vista Cliente (lectura.js)
   // En todas las notas, esté o no configurado HubSpot en este servidor: si falta el
   // token, el bloque de la revisión lo dice y la subida devuelve el motivo.
   var subible = !n.sinDestino;   // sinDestino: no hay blog en su idioma
@@ -425,8 +427,9 @@ function bloqueImagenesNoticias(d, propia) {
     + _fotosNoticias.map(function(f, i) {
         var descartada = f.apta === false, personas = !descartada && f.personas === true;
         var detalle = f.titulo + (f.motivo ? ' — ' + (descartada ? 'La IA la descartó: ' : 'IA: ') + f.motivo : '');
-        var marca = descartada ? 'IA: no apta' : personas ? 'Tiene personas: no va de portada' : '';
-        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada || personas ? ' descartada' : '') + '"'
+        var sinPortada = f.portada === false || (f.portada == null && personas);
+        var marca = descartada ? 'IA: no apta' : sinPortada ? 'No cumple las reglas de portada' : '';
+        return '<button type="button" class="previa-foto' + (f.url === propia.url ? ' elegida' : '') + (descartada || sinPortada ? ' descartada' : '') + '"'
           + ' onclick="elegirImagenNoticia(' + i + ')" title="' + escHtml(detalle) + '" aria-label="' + escHtml(f.titulo) + '">'
           + '<img src="' + urlSegura(f.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
           + (marca ? '<span class="previa-foto-marca">' + marca + '</span>' : '') + '</button>';
@@ -495,6 +498,7 @@ function pintarCuerpoNota() {
   if (n.idioma) html = '<div class="idiomas-cab">' + html + '</div>';
   html += '<div id="nota-texto" translate="no">' + DOMPurify.sanitize(marked.parse(texto)) + '</div>';
   $('art-body').innerHTML = html;
+  decorarLectura();   // vista Cliente: datos marcados y avisos (lectura.js); en Desarrollador no hace nada
 }
 
 function verIdiomaNota(cod) {
@@ -574,12 +578,23 @@ function abrirPendientes() {
   if (_seccion === 'historial') cargarHistorial(1);
   else { _hist.pagina = 1; irASeccion('historial'); }
 }
+/* La imagen destacada de una nota, chica. Sin imagen (o si no carga), un recuadro con un ícono. */
+function miniaturaNota(it) {
+  var vacia = '<span class="nota-mini vacia" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg></span>';
+  var url = it.imagen ? urlSegura(it.imagen) : '#';
+  if (url === '#') return vacia;
+  return '<span class="nota-mini"><img src="' + url + '" alt="" loading="lazy" referrerpolicy="no-referrer"'
+    + ' onerror="this.parentNode.outerHTML=miniaturaNota({})"></span>';
+}
+
 async function cargarPendientesInicio() {
   try {
     var d = await pedir('/api/historial/generados_aprobados?estado=borrador&por_pagina=4&pagina=1');
     $('inicio-lista').innerHTML = d.items.length ? d.items.map(function(it) {
       return '<button class="inicio-nota" onclick="abrirItemHistorial(\'' + it.seccion + '\',\'' + it.coleccion + '\',\'' + it.id + '\')">'
-        + '<span translate="no">' + escHtml(it.titulo) + '</span><small>' + fechaCorta(it.fecha) + ' · Para revisar</small></button>';
+        + miniaturaNota(it)
+        + '<span class="inicio-nota-texto"><span translate="no">' + escHtml(it.titulo) + '</span>'
+        + '<small>' + fechaCorta(it.fecha) + ' · Para revisar</small></span></button>';
     }).join('') + (d.total > d.items.length
       ? '<button class="btn btn-sm inicio-mas" onclick="abrirPendientes()">Ver las ' + d.total + ' notas pendientes</button>'
       : '<p class="corridas-vacio inicio-fin">No hay más notas para revisar. Las nuevas aparecen acá apenas se generan.</p>')

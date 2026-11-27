@@ -11,3 +11,4 @@ apscheduler
 psutil
 tzdata
 markdown
+numpy

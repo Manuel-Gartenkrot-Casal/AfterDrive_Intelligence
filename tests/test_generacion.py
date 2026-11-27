@@ -9,6 +9,9 @@ from afterdrive.generacion import generar_nota_fase2 as g
 from afterdrive.generacion.contexto_noticias import Noticia
 from afterdrive.ia import llm
 
+# conftest reemplaza seleccionar_archivo para que la generación no lea la base: acá se prueba la de verdad.
+SELECCIONAR_ARCHIVO = contexto_noticias.seleccionar_archivo
+
 
 @pytest.fixture(autouse=True)
 def notas_en_espanol(monkeypatch):
@@ -68,6 +71,9 @@ class ColFake:
 
     def find(self, *a, **k):
         docs = self.docs
+        estados = ((a[0] if a else {}).get("estado") or {}).get("$in") if a and isinstance(a[0], dict) else None
+        if estados:   # el único filtro que usa la generación: las aprobadas o publicadas
+            docs = [d for d in docs if d.get("estado") in estados]
 
         class Cursor:
             def sort(self, *a):
@@ -114,6 +120,10 @@ def entorno(monkeypatch):
     monkeypatch.setattr(llm, "ajustes_redaccion", lambda: llm.Redaccion(temperatura=0.55, max_ejemplos=3, chars_ejemplo=400, directiva="DIRECTIVA-X"))
     from afterdrive.ia import lm_studio
     monkeypatch.setattr(lm_studio, "evaluar_lineamientos", lambda texto: {"lineamientos": {"tono_b2b": True}, "comentarios": "ok"})
+    # El juez y la calificación de la IA corren después de la redacción y tienen sus propios tests
+    # (test_juez, test_critica): acá no llaman a la IA, así `llamadas` guarda el pedido de la nota.
+    monkeypatch.setattr(g.juez, "juzgar", lambda *a, **k: {"error": "sin juez en este test"})
+    monkeypatch.setattr(g.critica, "criticar", lambda *a, **k: {"error": "sin crítica en este test"})
     return llamadas, col, usadas
 
 
@@ -126,6 +136,9 @@ def test_la_nota_se_escribe_con_las_noticias_scrapeadas(entorno):
     assert "Argentina" in llamadas["consulta"]
     assert usadas == [1, 2]
     guardada = col.docs[0]
+    assert len(guardada["prompts_huella"]) == 64 and guardada["prompts_juego"] == "actuales"
+    assert guardada["prompts_prueba"]["user"] == llamadas["user"]
+    assert "Frasle" in guardada["prompts_prueba"]["contexto"]
     assert guardada["fuentes"] == [
         {"titulo": "Frasle amplía su planta de pastillas de freno", "url": "https://n/1"},
         {"titulo": "Automechanika Buenos Aires 2026 abre acreditaciones", "url": "https://n/2"},
@@ -617,7 +630,8 @@ def test_el_script_sale_bien_si_la_nota_se_genero(monkeypatch):
     assert g.main(["--categorias", "autopartes"]) == 0
 
 
-def test_la_imagen_destacada_es_la_foto_de_una_noticia_usada(entorno, monkeypatch):
+@pytest.mark.parametrize("evaluada", [True, False])
+def test_la_nota_siempre_guarda_destacada_aunque_la_ia_no_evalue_las_fotos(entorno, monkeypatch, evaluada):
     _, col, _ = entorno
     noticias = [
         Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió en su planta de Caxias.", url="https://n/1",
@@ -626,9 +640,27 @@ def test_la_imagen_destacada_es_la_foto_de_una_noticia_usada(entorno, monkeypatc
                 imagen={"url": "https://n/2.jpg", "alt": ""}, imagen_buscada=True),
     ]
     monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
+    original = llm.completar
+
+    def completar(system, user, **kw):
+        if kw.get("tarea") == "clasificacion":
+            if not evaluada:
+                raise llm.ErrorLLM("No se pudieron evaluar las imágenes")
+            return ('{"fotos": [{"n": 1, "apta": true, "portada": true, "motivo": "Muestra la planta."}, '
+                    '{"n": 2, "apta": false, "portada": false, "motivo": "La feria no ilustra la inversión."}], '
+                    '"elegidas": [1]}')
+        return original(system, user, **kw)
+
+    monkeypatch.setattr(llm, "completar", completar)
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
-    # La 1 la asigna el plan a una sección: va primero.
+    if not evaluada:
+        # Antes del arreglo la nota salía sin imagen: ahora van las primeras, con aviso para revisarlas.
+        assert guardada["imagen"]["url"] == "https://n/1.jpg"
+        assert guardada["imagen_eleccion"]["metodo"] == "sin-evaluar"
+        assert "revisalas" in guardada["imagen_eleccion"]["motivo"]
+        return
+    # La 1 la asigna el plan a una sección y pasa la evaluación de imágenes.
     assert guardada["imagen"] == {"url": "https://n/1.jpg", "alt": "El catálogo digital llega al mostrador",
                                   "origen": {"titulo": "Frasle amplía su planta", "url": "https://n/1"}}
     assert [f.get("imagen") for f in guardada["fuentes"]] == ["https://n/1.jpg", "https://n/2.jpg"]
@@ -646,7 +678,7 @@ def test_lo_que_opino_la_ia_de_cada_foto_queda_en_las_fuentes(entorno, monkeypat
     noticias = [Noticia(id=1, titulo="Frasle amplía su planta", cuerpo="Frasle invirtió.", url="https://n/1",
                         imagen={"url": "https://n/1.jpg", "alt": ""}, imagen_buscada=True)]
     monkeypatch.setattr(contexto_noticias, "seleccionar", lambda consulta, limite=5: noticias)
-    monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="", extra=None, excluir=(): imagen_destacada.Eleccion(
+    monkeypatch.setattr(imagen_destacada, "elegir", lambda ns, titulo, angulo="", extra=None, excluir=(), respaldo=None: imagen_destacada.Eleccion(
         [], "ia", {"https://n/1.jpg": {"apta": False, "motivo": "Es un logo."}}, motivo="La IA descartó todas las fotos."))
     assert g.generar_nota(["autopartes"], persona="comercial")["success"]
     guardada = col.docs[0]
@@ -696,3 +728,456 @@ def test_al_crear_la_nota_se_traduce_a_los_otros_idiomas(entorno, monkeypatch):
     assert pedidas == [("pt", "es"), ("pt", "en")]
     assert traducciones.al_dia(doc["traducciones"]["es"], doc["contenido"])
     assert doc["traducciones"]["en"] == {"error": "vino cortada"}
+
+
+# ── Caja de indicaciones de Crear nota ────────────────────────────────────────
+
+
+def test_las_indicaciones_llegan_al_plan_y_a_la_redaccion(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"], indicaciones="  Enfocá la nota en distribuidores de Córdoba.  ")
+    assert "Enfocá la nota en distribuidores de Córdoba." in llamadas["user"]
+    assert "Enfocá la nota en distribuidores de Córdoba." in llamadas["plan_user"]
+    assert "no se inventa nunca" in llamadas["user"]            # no pisan la regla de datos
+    assert col.docs[0]["indicaciones"] == "Enfocá la nota en distribuidores de Córdoba."
+
+
+def test_sin_indicaciones_el_pedido_queda_como_antes(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"])
+    assert "Indicaciones del equipo" not in llamadas["user"] and col.docs[0]["indicaciones"] is None
+
+
+def test_las_indicaciones_se_recortan_al_maximo():
+    pedido = g._pedido(["autopartes"], None, "x" * (g.INDICACIONES_MAX + 500))
+    assert pedido.count("x") == g.INDICACIONES_MAX
+
+
+# ── Empresas que no se nombran ────────────────────────────────────────────────
+
+
+@pytest.fixture
+def frasle_prohibida(monkeypatch):
+    from afterdrive import clientes
+    monkeypatch.setattr(clientes, "no_mencionar", lambda col=None: [{"nombre": "Frasle", "modo": "no_mencionar"}])
+
+
+def test_una_empresa_prohibida_se_corrige_y_sus_noticias_quedan_afuera(entorno, frasle_prohibida, monkeypatch):
+    _, col, _ = entorno
+    _con_tareas(monkeypatch, [NOTA], correccion=NOTA.replace("Frasle", "Una fabricante brasileña")
+                .replace("la planta de Una fabricante", "la planta de una fabricante"))
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert [f["url"] for f in doc["fuentes"]] == ["https://n/2"]     # la noticia sobre Frasle no se usó
+    assert "empresa_prohibida" in doc["calidad"]["reescrita_por"]
+    assert doc["empresas_prohibidas"] == [] and "Frasle" not in doc["contenido"]
+
+
+def test_el_system_prompt_lista_las_empresas_prohibidas():
+    system = g._build_system_prompt(["autopartes"], [], None, "comercial", prohibidos=[{"nombre": "Frasle"},
+                                                                                      {"nombre": "ZF"}])
+    assert "Nunca nombres a estas empresas, aunque aparezcan en las noticias: Frasle, ZF." in system
+
+
+def test_si_la_correccion_no_la_saca_queda_marcada_y_no_se_aprueba_sola(entorno, frasle_prohibida, monkeypatch):
+    from afterdrive.generacion import juez
+    _, col, _ = entorno
+    _con_tareas(monkeypatch, [NOTA], correccion="")
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert doc["empresas_prohibidas"] == ["Frasle"]
+    assert any("no se pueden mencionar: Frasle" in m for m in juez.filtro_duro(doc))
+
+
+def test_un_dato_sensible_en_la_nota_queda_marcado_sin_corregirla(entorno, monkeypatch):
+    from afterdrive.generacion import juez
+    _, col, _ = entorno
+    con_mail = NOTA.replace("La compañía busca", "Pedidos a ventas@frasle.com.br. La compañía busca")
+    tareas = _con_tareas(monkeypatch, [con_mail])
+    assert g.generar_nota(["autopartes"])["success"]
+    doc = col.docs[0]
+    assert doc["datos_sensibles"] == ["email"]
+    assert "ventas@frasle.com.br" in doc["contenido"]            # solo avisa: el texto no se toca
+    assert "correccion" not in tareas
+    assert not any("sensible" in m for m in juez.filtro_duro(doc))
+
+
+def test_un_cliente_marcado_no_mencionar_no_se_usa_como_caso(entorno, monkeypatch):
+    llamadas, _, _ = entorno
+
+    class Clientes:
+        def find_one(self, filtro, *a, **k):
+            return {"slug": "acme", "nombre": "ACME", "modo": "no_mencionar"} if filtro.get("slug") == "acme" else None
+
+        def find(self, *a, **k):
+            return []
+
+    monkeypatch.setattr(g, "col_clientes", Clientes())
+    g.generar_nota(["autopartes"], clientes_ids=["acme"])
+    assert "Clientes a mencionar" not in llamadas["system"]
+
+
+def test_un_cliente_con_caracteres_especiales_se_encuentra_por_nombre(entorno, monkeypatch):
+    import mongomock
+    llamadas, _, _ = entorno
+    col = mongomock.MongoClient().db.clientes
+    col.insert_many([{"slug": "mann-hummel", "nombre": "Mann+Hummel", "descripcion": "Filtros"},
+                     {"slug": "mann-hummel-ar", "nombre": "Mann+Hummel AR", "descripcion": "Otra"}])
+    monkeypatch.setattr(g, "col_clientes", col)
+    g.generar_nota(["autopartes"], clientes_ids=["Mann+Hummel", "Frenos (AR"])
+    assert "Clientes a mencionar" in llamadas["system"]
+    assert "Mann+Hummel" in llamadas["system"] and "Mann+Hummel AR" not in llamadas["system"]
+
+
+# ── Noticias de notas rechazadas vuelven a estar disponibles ──────────────────
+
+
+def test_las_noticias_de_notas_rechazadas_se_liberan():
+    import mongomock
+    col = mongomock.MongoClient().db.notas_fase2
+    col.insert_many([
+        {"estado": "rechazada", "generado_en": "2026-10-03", "fuentes": [{"url": "https://n/1/"}, {"url": "https://n/2"}]},
+        {"estado": "borrador", "generado_en": "2026-10-02", "fuentes": [{"url": "https://n/2"}]},
+        {"estado": "rechazada", "generado_en": "2026-10-01", "fuentes": [{"url": "https://N/3"}]},
+    ])
+    # La 2 sigue en una nota que no se rechazó: no se libera. Las URLs se comparan sin "/" final ni mayúsculas.
+    assert contexto_noticias.urls_liberadas(col) == {"https://n/1", "https://n/3"}
+
+
+def test_si_mongo_falla_no_se_libera_ninguna():
+    class Rota:
+        def find(self, *a, **k):
+            raise RuntimeError("sin conexión")
+    assert contexto_noticias.urls_liberadas(Rota()) == set()
+
+
+def test_una_noticia_liberada_cuenta_como_no_usada(monkeypatch):
+    import mongomock
+
+    from afterdrive import db as db_module
+    from afterdrive.ingesta import embeddings
+    base = mongomock.MongoClient().db
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+    base.articulos.insert_many([
+        {"titulo": "Usada en rechazada", "cuerpo": "x", "url": "https://n/1", "usado_para_articulo": True, "usado_en": ahora},
+        {"titulo": "Usada en aprobada", "cuerpo": "x", "url": "https://n/2", "usado_para_articulo": True, "usado_en": ahora},
+    ])
+    monkeypatch.setattr(db_module, "col_articulos", base.articulos)
+    monkeypatch.setattr(contexto_noticias, "urls_liberadas", lambda: {"https://n/1"})
+    monkeypatch.setattr(llm, "embeber", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin embeddings")))
+    monkeypatch.setattr(llm, "modelo_embeddings", lambda: "x/y")
+    monkeypatch.setattr(embeddings, "vector_de", lambda d, modelo: None)
+    monkeypatch.setattr(contexto_noticias, "_completar_fichas", lambda ns, col: None)
+    elegidas = contexto_noticias.seleccionar("frenos", limite=2)
+    assert [n.titulo for n in elegidas] == ["Usada en rechazada", "Usada en aprobada"]
+    assert elegidas[0].liberada and not elegidas[0].usada_reciente and elegidas[1].usada_reciente
+
+
+# ── Archivo: noticias viejas para dar perspectiva ────────────────────────────
+
+
+def _viejo(titulo, dias, emb, **extra):
+    """Un artículo guardado hace `dias` días."""
+    from bson import ObjectId
+    cuando = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=dias)
+    return {"_id": ObjectId.from_datetime(cuando), "titulo": titulo, "cuerpo": "La venta online de repuestos creció.",
+            "url": f"https://a/{titulo}", "embedding": emb, **extra}
+
+
+@pytest.fixture
+def archivo(monkeypatch):
+    import mongomock
+
+    from afterdrive import db
+    col = mongomock.MongoClient().db.articulos
+    monkeypatch.setattr(db, "col_articulos", col)
+    monkeypatch.setattr(llm, "embeber", lambda textos, tipo="passage": [[1.0, 0.0]])
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", SELECCIONAR_ARCHIVO)
+    monkeypatch.setattr(contexto_noticias, "_completar_fichas", lambda ns, col: None)
+    monkeypatch.delenv("ATLAS_VECTOR_INDEX", raising=False)
+    return col
+
+
+def test_el_archivo_trae_las_viejas_mas_parecidas_sin_importar_la_recencia(archivo):
+    archivo.insert_many([
+        _viejo("reciente-igual", 5, [1.0, 0.0]),          # muy parecida pero fresca: no es archivo
+        _viejo("vieja-parecida", 400, [0.95, 0.05]),
+        _viejo("menos-vieja-menos-parecida", 120, [0.8, 0.6]),
+        _viejo("vieja-sin-relacion", 200, [0.0, 1.0]),    # por debajo del parecido mínimo
+        _viejo("vieja-ya-usada", 300, [0.9, 0.1], usado_para_articulo=True),
+    ])
+    elegidas = contexto_noticias.seleccionar_archivo("venta online de repuestos", limite=2)
+    assert [n.titulo for n in elegidas] == ["vieja-parecida", "vieja-ya-usada"]
+    assert elegidas[0].antiguedad_dias == 400 and elegidas[1].usada
+    assert contexto_noticias.seleccionar_archivo("x", limite=0) == []
+
+
+def test_el_archivo_mira_la_fecha_de_publicacion_y_excluye_lo_pedido(archivo):
+    publicada_hace_un_anio = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+    vieja = _viejo("scrapeada-hoy-pero-vieja", 1, [1.0, 0.0], fecha=publicada_hace_un_anio)
+    archivo.insert_many([vieja, _viejo("otra", 200, [1.0, 0.0])])
+    titulos = [n.titulo for n in contexto_noticias.seleccionar_archivo("x", excluir=[vieja["_id"]])]
+    assert titulos == ["otra"]
+    assert "scrapeada-hoy-pero-vieja" in [n.titulo for n in contexto_noticias.seleccionar_archivo("x")]
+
+
+def test_sin_embeddings_no_hay_archivo(archivo, monkeypatch):
+    archivo.insert_one(_viejo("vieja", 200, [1.0, 0.0]))
+    monkeypatch.setattr(llm, "embeber", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin embeddings")))
+    assert contexto_noticias.seleccionar_archivo("x") == []
+
+
+@pytest.mark.parametrize("dias, texto", [(45, "hace 45 días"), (120, "hace 4 meses"), (365, "hace 1 año"),
+                                         (400, "hace 1 año y 1 mes"), (800, "hace 2 años y 2 meses")])
+def test_antiguedad(dias, texto):
+    assert contexto_noticias.antiguedad(dias) == texto
+
+
+def _de_archivo(**extra):
+    n = Noticia(id=99, titulo="Las ventas online de repuestos eran el 8% del total",
+                cuerpo="En 2025 la venta online de repuestos era el 8% del total del sector.",
+                url="https://archivo/1", fecha=datetime.datetime(2025, 5, 2, tzinfo=datetime.UTC), **extra)
+    n.antiguedad_dias, n.puntaje = 550, 0.81
+    return n
+
+
+def test_la_nota_recibe_el_archivo_con_fecha_y_guarda_la_historia(entorno, monkeypatch):
+    llamadas, col, usadas = entorno
+    vieja = _de_archivo()
+    pedidas = {}
+
+    def archivo_fake(consulta, limite=2, dias_min=90, excluir=()):
+        pedidas.update(limite=limite, excluir=list(excluir))
+        return [vieja]
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", archivo_fake)
+    r = g.generar_nota(["autopartes"], persona="comercial")
+    assert r["success"]
+    user = llamadas["user"]
+    assert "## Archivo: noticias anteriores" in user and "No inventes valores intermedios" in user
+    assert "[A1] Las ventas online de repuestos eran el 8% del total" in user
+    assert "Fecha: 2025-05-02 (hace 1 año y 6 meses)" in user
+    assert user.index("## Noticias de contexto") < user.index("## Archivo: noticias anteriores")
+    assert pedidas == {"limite": g.ARCHIVO_POR_NOTA, "excluir": [1, 2]}
+    historia = col.docs[0]["historia"]
+    assert historia["articulos"][0] | {"usado": None} == {
+        "titulo": vieja.titulo, "url": "https://archivo/1", "fecha": "2025-05-02", "antiguedad_dias": 550,
+        "parecido": 0.81, "usado": None, "ya_usado_en_otra_nota": False}
+    assert usadas == [1, 2]                                   # las del archivo no se marcan como usadas
+    assert [f["url"] for f in col.docs[0]["fuentes"]] == ["https://n/1", "https://n/2"]
+
+
+def test_un_articulo_del_archivo_citado_cuenta_como_usado(entorno, monkeypatch):
+    llamadas, col, _ = entorno
+    monkeypatch.setattr(contexto_noticias, "seleccionar_archivo", lambda *a, **k: [_de_archivo()])
+    monkeypatch.setattr(llm, "completar", lambda system, user, **kw: PLAN if system.startswith("Sos el editor") else
+                        NOTA.replace("\n\n## ", "\n\nHace un año, [la venta online](https://archivo/1) era el 8%.\n\n## ", 1))
+    g.generar_nota(["autopartes"], persona="comercial")
+    historia = col.docs[0]["historia"]
+    assert historia["usados"] == 1 and historia["antiguedad_media_dias"] == 550 and historia["articulos"][0]["usado"]
+    assert "https://archivo/1" in col.docs[0]["contenido"].split("## Fuentes")[-1]
+
+
+def test_sin_archivo_la_nota_no_lleva_el_bloque(entorno):
+    llamadas, col, _ = entorno
+    g.generar_nota(["autopartes"], persona="comercial")
+    assert "## Archivo" not in llamadas["user"]
+    assert col.docs[0]["historia"] == {"articulos": [], "usados": 0, "antiguedad_media_dias": None}
+
+
+def test_metricas_del_archivo():
+    import mongomock
+
+    from afterdrive import metricas
+    base = mongomock.MongoClient().db
+    ahora = datetime.datetime.now(datetime.UTC).isoformat()
+    usado = {"titulo": "a", "url": "https://archivo/1", "antiguedad_dias": 200, "usado": True}
+    base.notas_fase2.insert_many([
+        {"generado_en": ahora, "historia": {"articulos": [usado, {**usado, "url": "https://archivo/2", "usado": False}]}},
+        {"generado_en": ahora, "historia": {"articulos": [{**usado, "antiguedad_dias": 400}]}},
+        {"generado_en": ahora, "historia": {"articulos": []}},
+        {"generado_en": ahora, "historia": {"articulos": [{**usado, "url": "https://archivo/3", "antiguedad_dias": 300}]}},
+        {"generado_en": ahora},                                      # anterior a la historia: no cuenta
+    ])
+    a = metricas.resumen(base=base)["notas"]["archivo"]
+    assert a == {"evaluadas": 4, "con_archivo": 3, "porcentaje": 0.75, "antiguedad_media_dias": 300, "reutilizados": 2}
+
+
+# ── Memoria de notas previas ─────────────────────────────────────────────────
+
+
+def _nota_previa(titulo, angulo="", clave="", estado="borrador"):
+    return {"contenido": f"# {titulo}\n\nTexto.", "estado": estado,
+            "plan": {"angulo": angulo, "palabra_clave": clave} if angulo or clave else None}
+
+
+def test_el_plan_recibe_angulos_palabras_clave_y_temas_ya_tratados(entorno):
+    llamadas, col, _ = entorno
+    col.docs.extend([
+        _nota_previa("Publicada hace meses", "El costo de no tener catálogo", "catálogo de autopartes", "publicado"),
+        *[_nota_previa(f"Nota {i}", f"Ángulo {i}", f"clave {i % 3}") for i in range(60)],
+    ])
+    g.generar_nota(["autopartes"])
+    plan_user = llamadas["plan_user"]
+    titulos = plan_user.split("## Notas ya publicadas")[1].split("##")[0]
+    assert titulos.count("\n- ") == g.TITULOS_AL_PLAN and "Nota 59" in titulos
+    angulos = plan_user.split("## Ángulos de las últimas notas")[1].split("##")[0]
+    assert "Ángulo 59" in angulos and "Ángulo 10" in angulos and "Ángulo 9\n" not in angulos   # las últimas 50
+    assert "clave 2, clave 1, clave 0\n" in plan_user                                         # sin repetir
+    tratados = plan_user.split("## Temas que el blog ya trató")[1]
+    assert "Publicada hace meses (El costo de no tener catálogo)" in tratados
+
+
+def test_la_memoria_no_repite_lo_que_ya_esta_en_los_titulos():
+    recientes = [g._resumen_nota(_nota_previa("Misma nota", "Un ángulo", "una clave", "aprobada"))]
+    tratadas = [*recientes, g._resumen_nota(_nota_previa("Otra aprobada", estado="aprobada"))]
+    m = g.memoria(recientes, tratadas)
+    assert m.titulos == ["Misma nota"] and m.tratados == ["Otra aprobada"]
+    assert m.angulos == ["Un ángulo"] and m.palabras_clave == ["una clave"]
+
+
+def test_el_umbral_de_parecido_es_085(monkeypatch):
+    monkeypatch.delenv("NOTA_PARECIDO_MAX", raising=False)
+    assert g.parecido_maximo() == 0.85
+    monkeypatch.setenv("NOTA_PARECIDO_MAX", "0.9")
+    assert g.parecido_maximo() == 0.9
+
+
+# ── Tendencia y medios variados ───────────────────────────────────────────────
+
+def _pozo(base_comun=0.0, dims=48, semilla=7):
+    """40 noticias de 40 medios, cada una de otro tema, y una historia que cubren 4 medios:
+    2 con títulos casi iguales y 2 contadas con otras palabras (solo el vector las une).
+    base_comun > 0 suma a todos los vectores una parte en común: el coseno entre noticias
+    distintas sube mucho (como con algunos modelos de embeddings) y un umbral fijo ya no sirve."""
+    import random
+    azar = random.Random(semilla)
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    comun = [azar.gauss(0, 1) for _ in range(dims)]
+    historia = [azar.gauss(0, 1) for _ in range(dims)]
+
+    def vec(centro, ruido):
+        return [base_comun * c + x + azar.gauss(0, ruido) for c, x in zip(comun, centro, strict=True)]
+    letras = "bcdfghjklmnprstvz"
+    palabra = lambda: "".join(azar.choice(letras) + azar.choice("aeiou") for _ in range(3))  # noqa: E731
+    ns = [Noticia(i, " ".join(palabra() for _ in range(5)), "", url=f"https://medio{i}.com/n",
+                  fecha=ahora - datetime.timedelta(days=i % 6), embedding=vec([azar.gauss(0, 1) for _ in range(dims)], 0))
+          for i in range(40)]
+    titulos = ["Bosch sube 8% las bujías desde diciembre", "Bosch sube 8% las bujías a partir de diciembre",
+               "Aumentan los encendidos de la marca alemana el mes próximo", "Fin de año caro para quien cambia el encendido"]
+    ns += [Noticia(100 + k, t, "", url=f"https://historia{k}.com/n", fecha=ahora - datetime.timedelta(days=1),
+                   embedding=vec(historia, 0.15)) for k, t in enumerate(titulos)]
+    return ns, ahora
+
+
+@pytest.mark.parametrize("base_comun", [0.0, 3.0])
+def test_la_tendencia_se_calibra_sola_con_las_noticias(base_comun):
+    ns, ahora = _pozo(base_comun)
+    umbral = contexto_noticias.tendencias(ns, ahora)
+    assert umbral is not None
+    historia = [n for n in ns if n.id >= 100]
+    assert all(n.tendencia == 1.0 for n in historia)          # las 4, también las contadas con otras palabras
+    assert sum(n.tendencia > 0 for n in ns if n.id < 100) == 0
+
+
+def test_con_parecidos_altos_un_umbral_fijo_marcaba_todo_y_el_calibrado_no():
+    ns, ahora = _pozo(base_comun=3.0)
+    contexto_noticias.tendencias(ns, ahora)
+    import math
+    a, b = ns[0].embedding, ns[1].embedding
+    coseno = sum(x * y for x, y in zip(a, b, strict=True)) / math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+    assert coseno > 0.8                                       # con 0,80 fijo, dos noticias distintas eran "tendencia"
+    assert ns[0].tendencia == 0 and ns[1].tendencia == 0
+
+
+def test_una_noticia_en_tendencia_le_gana_a_una_mas_reciente_que_nadie_levanto():
+    ns, ahora = _pozo()
+    sola = Noticia(999, "Un lanzamiento que nadie más cubrió", "", url="https://solitario.com/n", fecha=ahora,
+                   embedding=[1.0] + [0.0] * 47)
+    orden = [n.id for n in contexto_noticias.rankear(ns + [sola], None, ahora)]
+    assert orden.index(999) > max(orden.index(i) for i in range(100, 104))
+
+
+def test_con_pocas_noticias_no_calibra_y_mira_las_palabras():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ayer = ahora - datetime.timedelta(days=1)
+    ns = [Noticia(1, "Bosch sube los precios de las bujías", "", url="https://a.com/1", fecha=ayer, embedding=[1, 0]),
+          Noticia(2, "Bujías: Bosch sube precios", "", url="https://b.com/1", fecha=ayer, embedding=[0, 1])]
+    assert contexto_noticias.tendencias(ns, ahora) is None
+    assert ns[0].tendencia > 0 and ns[1].tendencia > 0
+
+
+def test_calibrar_sin_titulos_iguales_toma_los_valores_atipicos():
+    import numpy as np
+    ns, _ = _pozo()
+    m = np.array([contexto_noticias._normalizado(n.embedding) for n in ns])
+    sim = m @ m.T
+    medios = [contexto_noticias.fuente_de(n) for n in ns]
+    umbral = contexto_noticias.calibrar_tendencia(sim, medios, [set() for _ in ns], [True] * len(ns))
+    cosenos = sim[np.triu_indices(len(ns), k=1)]
+    assert umbral >= float(np.quantile(cosenos, 0.99))
+    historia = [k for k, n in enumerate(ns) if n.id >= 100]
+    assert all(sim[a, b] >= umbral for a in historia for b in historia if a < b)
+    assert ((cosenos >= umbral).sum()) == 6        # solo los 6 pares de la historia
+
+
+def test_la_tendencia_cuenta_medios_distintos_no_notas_del_mismo_medio():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(i, "Suben los precios de las bujías", "", url=f"https://mismo.com/{i}",
+                  fecha=ahora - datetime.timedelta(days=1)) for i in range(4)]
+    contexto_noticias.tendencias(ns, ahora)
+    assert all(n.tendencia == 0 for n in ns)
+
+
+def test_sin_embeddings_la_tendencia_sale_de_las_palabras_del_titulo():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ayer = ahora - datetime.timedelta(days=1)
+    ns = [Noticia(1, "Bosch sube los precios de las bujías", "", url="https://a.com/1", fecha=ayer),
+          Noticia(2, "Bujías: Bosch sube precios", "", url="https://b.com/1", fecha=ayer),
+          Noticia(3, "Récord de ventas de neumáticos", "", url="https://c.com/1", fecha=ayer)]
+    contexto_noticias.tendencias(ns, ahora)
+    assert ns[0].tendencia > 0 and ns[1].tendencia > 0 and ns[2].tendencia == 0
+
+
+def test_una_noticia_vieja_no_es_tendencia():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(1, "Suben las bujías", "", url="https://a.com/1", fecha=ahora - datetime.timedelta(days=40), embedding=[1, 0]),
+          Noticia(2, "Suben las bujías", "", url="https://b.com/1", fecha=ahora, embedding=[1, 0])]
+    contexto_noticias.tendencias(ns, ahora)
+    assert ns[0].tendencia == 0
+
+
+def test_una_nota_lleva_como_mucho_dos_noticias_del_mismo_medio():
+    ns = [Noticia(i, f"n{i}", "", url=f"https://mismo.com/{i}", puntaje=1 - i / 100) for i in range(4)]
+    ns += [Noticia(9, "otra", "", url="https://otro.com/1", puntaje=0.1)]
+    elegidas = contexto_noticias.elegir(ns, 3)
+    assert [n.id for n in elegidas] == [0, 1, 9]
+
+
+def test_si_no_alcanzan_los_medios_se_completa_igual():
+    ns = [Noticia(i, f"n{i}", "", url=f"https://mismo.com/{i}") for i in range(4)]
+    assert len(contexto_noticias.elegir(ns, 4)) == 4
+
+
+def test_la_segunda_del_mismo_medio_pierde_puntos():
+    ns = [Noticia(1, "a", "", url="https://a.com/1", puntaje=0.80), Noticia(2, "b", "", url="https://a.com/2", puntaje=0.75),
+          Noticia(3, "c", "", url="https://b.com/1", puntaje=0.70)]
+    assert [n.id for n in contexto_noticias.elegir(ns, 2)] == [1, 3]   # 0.75 - 0.10 < 0.70
+
+
+def test_un_medio_que_alimento_muchas_notas_recientes_baja():
+    ahora = datetime.datetime(2026, 11, 6, tzinfo=datetime.UTC)
+    ns = [Noticia(1, "x", "", url="https://www.repetido.com/1", fecha=ahora),
+          Noticia(2, "y", "", url="https://nuevo.com/1", fecha=ahora)]
+    orden = contexto_noticias.rankear(ns, None, ahora, {"repetido.com": 0.8})
+    assert [n.id for n in orden] == [2, 1]
+
+
+def test_fuentes_recientes_cuenta_una_vez_por_nota():
+    import mongomock
+    col = mongomock.MongoClient().db.notas_fase2
+    col.insert_many([
+        {"fuentes": [{"url": "https://www.a.com/1"}, {"url": "https://a.com/2"}, {"url": "https://b.com/1"}]},
+        {"fuentes": [{"url": "https://a.com/3"}]},
+        {"titulo": "sin fuentes"},
+    ])
+    assert contexto_noticias.fuentes_recientes(col) == {"a.com": 1.0, "b.com": 0.5}

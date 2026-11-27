@@ -25,6 +25,12 @@ PERFIL_BAJO = "bajo"
 _ram_mb: float = 0.0
 _perfil: str = ""
 
+# Límite de memoria del container según cgroups (v2 primero, Render usa esto).
+CGROUP_MEMORY_PATHS = (
+    "/sys/fs/cgroup/memory.max",                    # cgroups v2
+    "/sys/fs/cgroup/memory/memory.limit_in_bytes",  # cgroups v1
+)
+
 
 def _leer_ram_container_mb() -> float:
     """
@@ -32,11 +38,7 @@ def _leer_ram_container_mb() -> float:
     Intentamos leer el límite real del container desde cgroups.
     Si no está disponible (entorno local sin Docker), usamos psutil como fallback.
     """
-    # cgroups v2 (Linux moderno, Render usa esto)
-    for path in [
-        "/sys/fs/cgroup/memory.max",         # cgroups v2
-        "/sys/fs/cgroup/memory/memory.limit_in_bytes",  # cgroups v1
-    ]:
+    for path in CGROUP_MEMORY_PATHS:
         try:
             with open(path) as f:
                 val = f.read().strip()
@@ -54,17 +56,20 @@ def _leer_ram_container_mb() -> float:
     return psutil.virtual_memory().available / 1024 / 1024
 
 
+def _env(nombre: str) -> str:
+    # Sin espacios ni mayúsculas: en el panel de Render es fácil pegar "True " o " alto".
+    return os.getenv(nombre, "").strip().lower()
+
+
 def _calcular_perfil() -> tuple[str, float]:
-    if os.getenv("DISABLE_BROWSER", "").lower() == "true":
-        ram = _leer_ram_container_mb()
+    ram = _leer_ram_container_mb()
+
+    if _env("DISABLE_BROWSER") == "true":
         return PERFIL_BAJO, ram
 
-    forced = os.getenv("FORCE_PROFILE", "").lower()
+    forced = _env("FORCE_PROFILE")
     if forced in (PERFIL_ALTO, PERFIL_MEDIO, PERFIL_BAJO):
-        ram = _leer_ram_container_mb()
         return forced, ram
-
-    ram = _leer_ram_container_mb()
 
     if ram > 1500:
         return PERFIL_ALTO, ram

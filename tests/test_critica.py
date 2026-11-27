@@ -13,7 +13,7 @@ from afterdrive.ia import llm
 NOTA = "# Frenos en alza\n\nLos repuesteros vendieron mas pastillas. Descubre cómo sumar stock.\n"
 
 RESPUESTA = {
-    "puntaje": 14,
+    "puntaje": 10,
     "resumen": "Buen gancho,   pero mezcla voseo y tuteo.",
     "aspectos": {"gramatica": 8, "redaccion": "6", "tono": 0, "estructura": "x"},
     "errores": [
@@ -47,11 +47,11 @@ def test_criticar_usa_el_modelo_de_evaluacion_con_el_tono_pedido(monkeypatch):
     pedidos = []
     _responde(monkeypatch, json.dumps(RESPUESTA), pedidos)
     c = critica.criticar(NOTA, "comercial", ["argentina"])
-    (user, tarea), = pedidos
+    (user, tarea), _ = pedidos            # le faltaban aspectos válidos: reintentó una vez y usó la respuesta
     assert tarea == "evaluacion"
     assert "redactor comercial" in user and "voseo" in user and NOTA.strip() in user
     assert c["puntaje"] == 10 and c["resumen"] == "Buen gancho, pero mezcla voseo y tuteo."
-    assert c["aspectos"] == {"gramatica": 8, "redaccion": 6, "tono": 1}
+    assert c["aspectos"] == {"gramatica": 8, "redaccion": 6}
     assert [e["tipo"] for e in c["errores"]] == ["ortografia", "tono", "redaccion"]
     assert c["errores"][1]["sugerencia"] == "Descubrí cómo" and c["fecha"]
 
@@ -200,3 +200,19 @@ def test_endpoint_de_traduccion_de_la_critica(client, base, monkeypatch):
                        json={"coleccion": "notas_fase2", "id": nid, "idioma": "xx"}).status_code == 400
     assert client.post("/api/historial/critica/traduccion",
                        json={"coleccion": "notas_fase2", "id": str(ObjectId()), "idioma": "pt"}).status_code == 404
+
+
+def test_aspectos_con_decimales_se_redondean_y_si_falta_uno_se_reintenta(monkeypatch):
+    """El 20/11 la comparación de Prompt IA se cortó con «La crítica no evaluó todos los aspectos»."""
+    completos = {"puntaje": 7.5, "aspectos": {"gramatica": 8.5, "redaccion": 7, "tono": 6.4, "estructura": 9}}
+    respuestas = [json.dumps({"puntaje": 7, "aspectos": {"gramatica": 8}}), json.dumps(completos)]
+    monkeypatch.setattr(llm, "disponible", lambda: True)
+    monkeypatch.setattr(llm, "completar", lambda system, user, **k: respuestas.pop(0))
+    c = critica.criticar(NOTA)
+    assert c["puntaje"] == 8 and c["aspectos"] == {"gramatica": 9, "redaccion": 7, "tono": 6, "estructura": 9}
+
+
+@pytest.mark.parametrize("puntaje", [True, False, 14, 0, -1, float("nan"), float("inf")])
+def test_puntajes_invalidos_no_se_convierten_en_buenas_notas(monkeypatch, puntaje):
+    _responde(monkeypatch, json.dumps({**RESPUESTA, "puntaje": puntaje}))
+    assert "error" in critica.criticar(NOTA)

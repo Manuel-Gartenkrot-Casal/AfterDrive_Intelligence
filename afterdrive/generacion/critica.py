@@ -69,8 +69,11 @@ Solo un JSON, sin texto alrededor:
 """
 
 
-def _pedido(persona: str, regiones, idioma: str | None = None) -> str:
-    p = redaccion.PERSONAS.get(persona) or redaccion.PERSONAS["comercial"]
+def _pedido(persona: str, regiones, idioma: str | None = None, piezas=None) -> str:
+    if piezas is None:
+        from afterdrive.prompts_ia import textos
+        piezas = textos("actuales")
+    p = redaccion.persona(persona if persona in redaccion.PERSONAS else "comercial", piezas=piezas)
     # La voz en que se escribió: el idioma guardado (portugués en las nuevas) o, en las viejas, sus regiones.
     voz = redaccion.voz_de_idioma(idioma) if idioma else redaccion.voz(regiones)
     return (f"## Lo que se le pidió a la IA\n- Rol: {p['rol']}\n- Tarea: {p['tarea']}\n"
@@ -79,9 +82,14 @@ def _pedido(persona: str, regiones, idioma: str | None = None) -> str:
 
 
 def _numero(valor, default: int | None) -> int | None:
+    if isinstance(valor, bool):
+        return default
     try:
-        return max(1, min(10, int(valor)))
-    except (TypeError, ValueError):
+        numero = float(valor)
+        # Un 7,5 se redondea: antes se descartaba y el aspecto quedaba sin evaluar (la comparación de
+        # Prompt IA se cortaba con «La crítica no evaluó todos los aspectos»).
+        return int(numero + 0.5) if 1 <= numero <= 10 else default
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -111,24 +119,30 @@ def _leer(texto: str) -> dict:
 
 def _pedir(user: str) -> tuple[dict | None, str]:
     """Hasta INTENTOS llamadas: (datos con puntaje, "") o (None, motivo del último fallo)."""
-    motivo = ""
+    motivo, incompleta = "", None
     for _ in range(INTENTOS):
         try:
             data = _leer(llm.completar(_SYSTEM, user, temperature=0.1, max_tokens=MAX_TOKENS, tarea="evaluacion"))
+        except llm.Cancelada:
+            raise
         except Exception as e:
             motivo = f"No se pudo criticar la nota: {e}"
             continue
         if isinstance(data, dict) and _numero(data.get("puntaje"), None) is not None:
-            return data, ""
+            aspectos = data.get("aspectos") if isinstance(data.get("aspectos"), dict) else {}
+            if all(_numero(aspectos.get(k), None) is not None for k in ASPECTOS):
+                return data, ""
+            incompleta = data   # tiene puntaje pero le falta algún aspecto: se reintenta, y si no, se usa esta
+            continue
         motivo = "La IA no dio un puntaje para la redacción."
-    return None, motivo
+    return (incompleta, "") if incompleta else (None, motivo)
 
 
-def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str | None = None) -> dict:
+def criticar(nota: str, persona: str = "comercial", regiones=None, idioma: str | None = None, *, piezas=None) -> dict:
     """Crítica de la redacción. Siempre devuelve un dict; con "error" si no se pudo hacer."""
     if not llm.disponible():
         return {"error": "Proveedor de IA no disponible para criticar la nota."}
-    user = _pedido(persona, regiones, idioma) + f"\n## Nota a revisar\n{(nota or '')[:NOTA_MAX]}"
+    user = _pedido(persona, regiones, idioma, piezas) + f"\n## Nota a revisar\n{(nota or '')[:NOTA_MAX]}"
     data, motivo = _pedir(user)
     if data is None:
         print(f"[CRITICA] {motivo}", flush=True)

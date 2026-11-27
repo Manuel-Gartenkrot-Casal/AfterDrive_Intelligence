@@ -56,10 +56,16 @@ col_afterdrive = db["afterdrive"]
 col_afterdrive_ejemplos = db["afterdrive_ejemplos"]  # Notas reales scrapeadas del blog
 col_notas_fase2 = db["notas_fase2"]                  # Notas generadas por Fase 2
 col_clientes = db["clientes"]                        # Clientes para mencionar en notas
+# Carpeta de cada cliente: datos y eventos que sube el equipo (carpetas.py).
+col_carpetas = db["carpetas_clientes"]
 
 # Notas que el modelo llegó a escribir pero se descartaron (el saneo las
 # rechazó). Antes solo se imprimían en la consola y se perdían.
 col_notas_descartadas = db["notas_descartadas"]
+
+# Piezas del prompt de redacción editadas desde el dashboard, una versión por
+# documento (borrador, en revisión, activa o archivada). Ver prompts_editables.py.
+col_prompts = db["prompts"]
 
 # Estado editorial de una Nota guardada. Las notas anteriores a este campo no
 # lo tienen y cuentan como borrador. "publicado" (y no "publicada") por
@@ -87,10 +93,12 @@ INDICES = {
     "articulos_descartados": [[("url", 1)]],
     "trusted_urls": [[("url", 1)], [("estado", 1)]],
     "suggested_urls": [[("dominio", 1)]],
-    "notas_fase2": [[("generado_en", -1)], [("estado", 1)]],
+    "notas_fase2": [[("generado_en", -1)], [("estado", 1)], [("prompts_huella", 1), ("_id", -1)]],
     "notas_descartadas": [[("descartado_en", -1)]],
     "afterdrive_ejemplos": [[("tag_slug", 1)]],
     "corridas": [[("estado", 1), ("creada", 1)], [("fin", -1)]],
+    "prompts": [[("clave", 1), ("estado", 1)], [("clave", 1), ("version", -1)]],
+    "carpetas_clientes": [[("cliente_slug", 1), ("tipo", 1)]],
 }
 
 

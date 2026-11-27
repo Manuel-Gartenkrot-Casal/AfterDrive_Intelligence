@@ -123,6 +123,11 @@ def _logout():
     return jsonify({"success": True})
 
 
+def _sesion():
+    """Quién está conectado: el pie de la barra lateral muestra el usuario."""
+    return jsonify({"usuario": session.get("usuario") or ""})
+
+
 def _avisar_configuracion(secret_key) -> None:
     """Deja en el log de arranque por qué el login no va a andar, sin mostrar valores."""
     faltan = [n for n, v in (("SECRET_KEY", secret_key), ("ADMIN_USER", _credencial("ADMIN_USER")),
@@ -148,3 +153,4 @@ def init_app(app) -> None:
     app.before_request(_guardia)
     app.add_url_rule("/api/login", view_func=_login, methods=["POST"])
     app.add_url_rule("/api/logout", view_func=_logout, methods=["POST"])
+    app.add_url_rule("/api/sesion", view_func=_sesion, methods=["GET"])

@@ -15,17 +15,22 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from tests.e2e.conftest import abrir
+from tests.e2e.conftest import abrir, elegir_idioma, pasar_a_dev
 
 pytestmark = pytest.mark.e2e
 
-SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "corridas"]
+SECCIONES = ["inicio", "crear", "historial", "programacion", "fuentes", "clientes", "prompts", "corridas"]
 
 
 def _visible(pg, seccion):
     """Si algún bloque de la sección se ve (en modo cliente hay bloques solo-dev ocultos)."""
     return pg.evaluate("""s => [...document.querySelectorAll('main [data-seccion="' + s + '"]')]
         .some(el => el.offsetParent !== null)""", seccion)
+
+
+# La revisión con pasos (Revisar → Calificar → Publicar) es la de la vista Desarrollador;
+# en la vista Cliente la nota se lee como documento (ver test_lectura.py).
+VISTA_DEV = pytest.mark.parametrize("pagina", ["dev"], indirect=True)
 
 
 def test_login_carga_el_dashboard_sin_errores(pagina):
@@ -43,8 +48,30 @@ def test_navegar_por_todas_las_secciones(pagina):
         otras = [o for o in SECCIONES if o != s]
         assert not any(_visible(pagina, o) for o in otras), s
     pagina.go_back()
-    pagina.wait_for_function("location.hash === '#fuentes'")
-    assert _visible(pagina, "fuentes")
+    pagina.wait_for_function(f"location.hash === '#{SECCIONES[-2]}'")
+    assert _visible(pagina, SECCIONES[-2])
+
+
+def test_siempre_abre_en_inicio_y_el_logo_lleva_a_inicio(navegador, base_url):
+    pg = abrir(navegador, base_url)
+    try:
+        # Aunque la última vez quedó en Historial y la dirección lo trae, al abrir arranca en Inicio.
+        pg.evaluate("localStorage.setItem('ad-seccion', 'historial')")
+        pg.goto(base_url + "/#historial")
+        pg.reload()
+        pg.wait_for_selector(".sidebar")
+        expect(pg.locator('.nav-link[data-seccion="inicio"]')).to_have_attribute("aria-current", "page")
+        assert _visible(pg, "inicio") and not _visible(pg, "historial")
+        assert pg.evaluate("location.hash") == "#inicio"
+        # El logo vuelve a Inicio desde cualquier sección.
+        pg.click('.sidebar a[data-seccion="fuentes"]')
+        assert _visible(pg, "fuentes")
+        pg.click("#ir-inicio")
+        expect(pg.locator('.nav-link[data-seccion="inicio"]')).to_have_attribute("aria-current", "page")
+        assert _visible(pg, "inicio") and pg.evaluate("location.hash") == "#inicio"
+        assert pg.errores == []
+    finally:
+        pg.context.close()
 
 
 def test_programacion_guarda_con_boton_aparte(pagina):
@@ -101,6 +128,7 @@ def _abrir_nota(pg, titulo):
     pg.locator("#modal-art.open").wait_for()
 
 
+@VISTA_DEV
 def test_rechazar_pide_motivo_y_aprobar_cambia_el_estado(pagina):
     _abrir_nota(pagina, "Frenos")
     acciones = pagina.locator("#nota-acciones")
@@ -147,6 +175,7 @@ def _volver_a_revisar(pg, titulo):
     }""", titulo)
 
 
+@VISTA_DEV
 def test_recorrido_de_revision(pagina):
     # Para revisar: abre en Revisar, con lo que necesita atención primero.
     _volver_a_revisar(pagina, "Frenos")
@@ -183,7 +212,7 @@ def test_recorrido_de_revision(pagina):
 
 
 def test_recorrido_en_el_celular(navegador, base_url):
-    pg = abrir(navegador, base_url, ancho=390, alto=844)
+    pg = abrir(navegador, base_url, ancho=390, alto=844, modo="dev")
     try:
         pg.click("#menu-movil")
         _abrir_nota(pg, "Frenos")
@@ -201,6 +230,7 @@ def test_recorrido_en_el_celular(navegador, base_url):
         pg.context.close()
 
 
+@VISTA_DEV
 def test_vista_previa_de_la_nota(pagina):
     _abrir_nota(pagina, "Marketplaces")
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
@@ -245,7 +275,7 @@ def test_api_paga_solo_desde_el_proveedor_de_desarrollador(pagina):
         ruta.fulfill(json={"success": True, "provider": "paga", "model": "modelo-e2e"})
 
     pagina.route("**/api/providers", cambiar)
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     # Cuesta plata: pide confirmación, y cancelar no cambia nada.
     pagina.click("#prov-paga")
@@ -295,6 +325,7 @@ def test_cancelar_la_nota_en_curso(pagina):
     expect(pagina.locator('#f2-pasos [data-paso="6"]')).to_be_hidden()
 
 
+@VISTA_DEV
 def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
@@ -347,6 +378,7 @@ def test_calificar_una_nota_alimenta_la_calibracion(pagina):
     expect(panel.locator("#calibracion-cuerpo")).to_contain_text("El cierre repite la introducción")
 
 
+@VISTA_DEV
 def test_calificacion_de_la_ia_en_su_apartado(pagina):
     # En la lista, como las estrellas de una persona, con la marca IA (6/10 = 3 de 5).
     pagina.click('.sidebar a[data-seccion="historial"]')
@@ -395,6 +427,7 @@ def test_calificacion_de_la_ia_en_su_apartado(pagina):
     assert len(pedidos) == 1 and pedidos[0]["coleccion"] == "notas_fase2" and pedidos[0]["id"]
 
 
+@VISTA_DEV
 def test_la_calificacion_de_la_ia_sigue_el_idioma_del_dashboard(pagina):
     pedidos = []
 
@@ -425,6 +458,7 @@ def test_la_calificacion_de_la_ia_sigue_el_idioma_del_dashboard(pagina):
     pagina.locator(".header").get_by_role("button", name="ES").click()
 
 
+@VISTA_DEV
 def test_si_la_ia_no_puede_revisar_lo_dice_en_el_apartado(pagina):
     pagina.route("**/api/historial/critica", lambda r: r.fulfill(
         status=503, json={"success": False, "error": "Proveedor de IA no disponible para criticar la nota."}))
@@ -438,12 +472,12 @@ def test_tablero_de_desarrollador(pagina):
     tablero = pagina.locator(".tablero-dev")
     expect(tablero).to_be_hidden()          # en la vista Cliente no aparece
     # Cambiar de vista pide confirmación; cancelar deja todo como estaba.
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     expect(pagina.locator("#confirmar-titulo")).to_have_text("¿Pasar a la vista Desarrollador?")
     pagina.click("#confirmar-no")
     assert pagina.evaluate("document.documentElement.getAttribute('data-modo')") == "cliente"
     expect(tablero).to_be_hidden()
-    pagina.click('.modo-switch button[data-modo="dev"]')
+    pasar_a_dev(pagina)
     pagina.click("#confirmar-si")
     expect(tablero).to_be_visible()
     expect(pagina.locator("#g-articulos svg")).to_be_visible()
@@ -470,6 +504,7 @@ def test_el_largo_de_la_nota_se_guarda(pagina):
     pagina.locator("#barra-crear").locator('[data-accion="guardar"]').click()
 
 
+@VISTA_DEV
 def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
     from tests.e2e.servidor import FOTO_E2E
     _abrir_nota(pagina, "Marketplaces")
@@ -492,6 +527,7 @@ def test_elegir_la_foto_de_una_noticia_como_imagen_destacada(pagina):
     pagina.locator(".previa-sin-imagen").wait_for()
 
 
+@VISTA_DEV
 def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina):
     _abrir_nota(pagina, "Rotación de stock")
     lateral = pagina.locator(".modal-sidebar")
@@ -502,6 +538,28 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
         "href", "https://afterdrive.alephee.com/es/blog/catalogo")
     lateral.locator("#tab-publicar").click()
     expect(lateral).to_contain_text("Sin imagen: la IA descartó las fotos de las noticias.")
+
+
+@VISTA_DEV
+def test_la_revision_explica_cuando_no_se_pudieron_evaluar_las_fotos(pagina):
+    def sin_evaluacion(r):
+        respuesta = r.fetch()
+        d = respuesta.json()
+        d["nota"].pop("imagen", None)
+        d["nota"]["imagenes_cuerpo"] = []
+        d["nota"]["imagen_eleccion"] = {
+            "metodo": "sin-evaluar", "cantidad": 0,
+            "motivo": "No se agregaron fotos sin evaluar: no se pudo comprobar su relación con la nota."}
+        r.fulfill(response=respuesta, json=d)
+
+    pagina.route("**/api/fase2/notas/*", sin_evaluacion)
+    _abrir_nota(pagina, "Rotación de stock")
+    lateral = pagina.locator(".modal-sidebar")
+    lateral.locator("#tab-publicar").click()
+    expect(lateral).to_contain_text("No se agregaron fotos sin evaluar.")
+    expect(lateral).to_contain_text("no se pudo comprobar su relación con la nota")
+    expect(lateral).not_to_contain_text("ninguna noticia de la nota tenía foto")
+    expect(lateral.locator("img.revision-imagen")).to_have_count(0)
     otros = lateral.locator(".revision-bloque", has_text="Otros idiomas")
     expect(otros).to_contain_text("Borrador en HubSpot, vinculado al original")
     expect(otros).to_contain_text("la traducción al inglés vino cortada")
@@ -510,6 +568,7 @@ def test_la_revision_muestra_idiomas_citas_y_la_foto_descartada_por_la_ia(pagina
     expect(otros.get_by_role("button", name="Volver a subir las traducciones")).to_be_visible()
 
 
+@VISTA_DEV
 def test_publicar_muestra_la_destacada_y_las_dos_del_texto(pagina):
     _abrir_nota(pagina, "Baterías en el mostrador")
     pagina.locator("#tab-publicar").click()
@@ -519,6 +578,9 @@ def test_publicar_muestra_la_destacada_y_las_dos_del_texto(pagina):
     cuerpo = lateral.locator(".revision-bloque", has_text="Imágenes en el texto")
     expect(cuerpo.locator("img")).to_have_count(2)
     expect(cuerpo.get_by_role("link", name="El mostrador vende más")).to_have_attribute("href", "https://s.com/mos")
+    # El epígrafe, en el idioma de la nota (sin `idioma` guardado, el de sus regiones: español); la que no lo tiene lo avisa.
+    expect(cuerpo.locator(".revision-epigrafe")).to_have_text("Stock de baterías listo para el mostrador")
+    expect(cuerpo.locator("figure").nth(1)).to_contain_text("Sin epígrafe")
 
 
 def _cambiar_desde_afuera(pg, contenido):
@@ -527,6 +589,7 @@ def _cambiar_desde_afuera(pg, contenido):
         body: JSON.stringify({coleccion: 'notas_fase2', id: _notaActual.id, contenido: c})}).then(r => r.ok)""", contenido)
 
 
+@VISTA_DEV
 def test_la_nota_y_la_lista_se_actualizan_sin_refrescar(pagina):
     _abrir_nota(pagina, "Baterías en el mostrador")
     pagina.locator("#tab-publicar").click()
@@ -556,6 +619,7 @@ def test_la_nota_y_la_lista_se_actualizan_sin_refrescar(pagina):
     expect(pagina.locator(".hist-item", has_text="Baterías: cambió otra persona")).to_be_visible()
 
 
+@VISTA_DEV
 def test_imagen_desde_la_computadora(pagina):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
     _abrir_nota(pagina, "Frenos")
@@ -586,6 +650,7 @@ def test_imagen_desde_la_computadora(pagina):
     expect(pagina.locator(".previa-imagen")).not_to_have_attribute("src", src)
 
 
+@VISTA_DEV
 def test_elegir_imagen_abre_el_selector_y_la_deja_en_la_nota(pagina):
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
     # Los tests comparten servidor: se arranca sin imagen.
@@ -616,6 +681,7 @@ def test_elegir_imagen_abre_el_selector_y_la_deja_en_la_nota(pagina):
     expect(lateral.locator("#paso-publicar .revision-imagen")).not_to_have_attribute("src", src)
 
 
+@VISTA_DEV
 def test_la_vista_previa_marca_las_fotos_que_la_ia_descarto(pagina):
     _abrir_nota(pagina, "Marketplaces")
     pagina.locator("#nota-acciones").get_by_role("button", name="Vista previa").click()
@@ -630,7 +696,7 @@ def test_recorrido_guiado_la_primera_vez_y_desde_ayuda(navegador, base_url):
     # Contexto propio: abrir() marca el recorrido como visto en cada carga.
     from tests.e2e.conftest import _SIN_CDN, CLAVE, USUARIO
     ctx = navegador.new_context(viewport={"width": 1366, "height": 900}, locale="es-AR")
-    ctx.add_init_script(f"localStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
+    ctx.add_init_script(f"sessionStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
     pg = ctx.new_page()
     pg.errores = []
     pg.on("pageerror", lambda e: pg.errores.append(str(e)))
@@ -695,7 +761,7 @@ def test_ayuda_abre_la_documentacion(pagina):
 def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     from tests.e2e.conftest import _SIN_CDN, CLAVE, USUARIO
     ctx = navegador.new_context(viewport={"width": 1366, "height": 900}, locale="es-AR")
-    ctx.add_init_script(f"localStorage.setItem('ad-tour-visto','1');localStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
+    ctx.add_init_script(f"localStorage.setItem('ad-tour-visto','1');sessionStorage.setItem('ad-modo','cliente');{_SIN_CDN}")
     pg = ctx.new_page()
     pg.errores = []
     pg.on("pageerror", lambda e: pg.errores.append(str(e)))
@@ -712,12 +778,12 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
     assert pg.evaluate("document.documentElement.lang") == "en"
 
     # Desde el encabezado, a portugués; queda elegido al recargar.
-    pg.locator(".header-right .selector-idioma").get_by_role("button", name="PT").click()
+    elegir_idioma(pg, "pt")
     expect(nav).to_contain_text("Criar post")
     pg.reload()
     pg.wait_for_selector(".sidebar")
     expect(nav).to_contain_text("Histórico")
-    assert pg.locator(".header-right [data-idioma='pt']").get_attribute("aria-pressed") == "true"
+    assert pg.locator(".selector-idioma [data-idioma='pt']").get_attribute("aria-pressed") == "true"
 
     # Lo que el JS pinta después también sale traducido.
     pg.goto(base_url + "/#crear")
@@ -740,7 +806,7 @@ def test_idioma_desde_el_login_y_el_encabezado(navegador, base_url):
 
 def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, base_url):
     # El botón de HubSpot está en todas las notas. Sin token, el bloque de la revisión lo dice.
-    pg = abrir(navegador, base_url)
+    pg = abrir(navegador, base_url, modo="dev")
     pg.context.route("**/api/hubspot/estado", lambda r: r.fulfill(json={"success": True, "configurado": False}))
     pg.reload()
     pg.wait_for_selector(".sidebar")
@@ -750,3 +816,388 @@ def test_aprobar_y_subir_aparece_en_cada_nota_aunque_falte_el_token(navegador, b
     expect(pg.locator(".revision-bloque", has_text="Publicación en HubSpot")).to_contain_text("falta HUBSPOT_TOKEN")
     assert pg.errores == []
     pg.context.close()
+
+
+def test_prompt_editable_borrador_revision_y_aprobacion(pagina):
+    pg = pagina
+    pg.click('.sidebar a[data-seccion="prompts"]')
+    pg.click('#prompts-lista .prompts-item[data-clave="seo"]')
+    expect(pg.locator("#pe-titulo")).to_have_text("SEO")
+    expect(pg.locator("#pe-estado")).to_contain_text("Activa")
+    # Se ve el prompt completo, con la pieza elegida resaltada; Editar la abre en su lugar.
+    expect(pg.locator(".pa-bloque.elegido")).to_contain_text("## SEO")
+    expect(pg.locator("#pe-texto")).to_be_hidden()
+    pg.click("#pe-editar")
+    expect(pg.locator(".pa-bloque.elegido #pe-texto")).to_be_visible()
+    original = pg.input_value("#pe-texto")
+
+    # Un texto inválido no se puede enviar.
+    pg.fill("#pe-texto", "Sin título")
+    expect(pg.locator("#pe-validacion .err")).to_contain_text("título")
+    expect(pg.locator("#pe-enviar")).to_be_disabled()
+
+    # Válido: se envía (guarda solo el borrador) y queda en revisión.
+    pg.fill("#pe-texto", original + "\n- Regla e2e.")
+    pg.fill("#pe-motivo", "prueba e2e")
+    expect(pg.locator("#pe-validacion .ok")).to_be_visible()
+    # Al terminar de editar, el cambio se ve marcado dentro del prompt completo.
+    pg.click("#pe-editar")
+    expect(pg.locator(".pa-bloque.elegido .pa-linea.pone")).to_contain_text("Regla e2e.")
+    pg.click("#pe-enviar")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    expect(pg.locator('#prompts-lista .prompts-item[data-clave="seo"] .prompts-chip')).to_have_text("En revisión")
+    expect(pg.locator("#nav-badge-prompts")).to_have_text("1")
+
+    # Aprobar pide confirmación con el diff a la vista; cancelar no activa nada.
+    pg.click("#pe-aprobar")
+    expect(pg.locator("#pa-diff .diff-linea.pone")).to_contain_text("Regla e2e.")
+    pg.click("#pa-no")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    pg.click("#pe-aprobar")
+    pg.click("#pa-si")
+    expect(pg.locator("#pe-estado")).to_have_text("Activa · v1")
+    expect(pg.locator("#nav-badge-prompts")).to_have_text("")
+
+    # El prompt completo ya la usa, sin marcas, y el original queda en el historial para restaurarlo.
+    expect(pg.locator(".pa-bloque.elegido")).to_contain_text("Regla e2e.")
+    expect(pg.locator(".pa-bloque.elegido .pa-linea.pone")).to_have_count(0)
+    pg.click("#pe-ver-historial")
+    pg.click('[data-restaurar="0"]')
+    pg.click("#confirmar-si")
+    expect(pg.locator("#pe-estado")).to_contain_text("En revisión")
+    expect(pg.locator("#pe-aviso")).to_contain_text("texto original")
+    pg.click("#pe-aprobar")
+    pg.click("#pa-si")
+    expect(pg.locator("#pe-estado")).to_have_text("Activa · v2")
+    assert "Regla e2e." not in pg.input_value("#pe-texto")
+
+
+def test_mas_notas_por_dia_en_programacion(pagina):
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    pagina.wait_for_function("document.getElementById('hora-generacion').value !== ''")
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(1)
+    pagina.click("#btn-hora-extra")
+    pagina.click("#btn-hora-extra")
+    extras = pagina.locator("#horas-extra-generacion input")
+    expect(extras).to_have_count(2)
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(3)
+    expect(pagina.locator("#agenda-dia-resumen")).to_contain_text("También se escriben notas a las")
+    expect(pagina.locator("#presupuesto-generacion")).to_contain_text("3 notas")
+    barra = pagina.locator("#barra-programacion")
+    with pagina.expect_response(lambda r: "/api/generacion-config" in r.url and r.request.method == "POST") as resp:
+        barra.locator('[data-accion="guardar"]').click()
+    horas = resp.value.request.post_data_json["horas_extra"]
+    assert len(horas) == 2
+    barra.wait_for(state="hidden")
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#horas-extra-generacion input")).to_have_count(2)
+    # Se sacan (el servidor de los tests es compartido).
+    pagina.locator("#horas-extra-generacion .icon-btn").first.click()
+    pagina.locator("#horas-extra-generacion .icon-btn").first.click()
+    expect(pagina.locator(".dia-tarea[data-tipo='generacion']")).to_have_count(1)
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
+def test_lista_de_temas_en_programacion(pagina, tmp_path):
+    """La lista de temas vive en Programación (no en Crear nota) y se guarda con su barra."""
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator(".fase2-section #f2-temas")).to_have_count(0)
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    temas, barra = pagina.locator("#f2-temas"), pagina.locator("#barra-programacion")
+    expect(temas).to_be_visible()
+    expect(pagina.locator("#f2-temas-estado")).to_have_text("La lista está vacía.")
+    temas.fill("- Neumáticos en verano")
+    barra.wait_for(state="visible")
+    archivo = tmp_path / "temas.txt"
+    archivo.write_text("1. Autopartes en Mercado Libre\r\nNeumáticos en verano\r\n", encoding="utf-8")
+    pagina.set_input_files("#f2-temas-archivo", str(archivo))
+    expect(pagina.locator("#f2-temas-estado")).to_contain_text("La próxima nota usa: Neumáticos en verano")
+    with pagina.expect_response(lambda r: "/api/fase2/temas" in r.url and r.request.method == "POST"):
+        barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+    expect(temas).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")   # limpia: sin viñetas ni repetidos
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#f2-temas")).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")
+    # Salir con la lista sin guardar pide confirmación.
+    pagina.locator("#f2-temas").fill("Otro tema")
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator("#confirmar")).to_be_visible()
+    pagina.click("#confirmar-si")   # descarta
+    pagina.click('.sidebar a[data-seccion="programacion"]')
+    expect(pagina.locator("#f2-temas")).to_have_value("Neumáticos en verano\nAutopartes en Mercado Libre")
+    # Se vacía (el servidor de los tests es compartido).
+    pagina.locator("#f2-temas").fill("")
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
+def test_rotar_categorias_se_guarda(pagina):
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    toggle = pagina.locator("#f2-rotar-toggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    barra = pagina.locator("#barra-crear")
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+    pagina.reload()
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    expect(pagina.locator("#f2-rotar-toggle")).to_have_attribute("aria-checked", "true")
+    pagina.locator("#f2-rotar-toggle").click()
+    barra.locator('[data-accion="guardar"]').click()
+    barra.wait_for(state="hidden")
+
+
+def test_el_tema_puntual_es_de_un_solo_uso(pagina):
+    pedidos = []
+
+    def generar(ruta):
+        pedidos.append(ruta.request.post_data_json)
+        ruta.fulfill(json={"success": True, "id": "t1", "estado": "pendiente"})
+    pagina.route("**/api/corridas/generacion", generar)
+    pagina.route("**/api/corridas/t1/log?*", lambda r: r.fulfill(json={
+        "success": True, "lineas": ["[OK] Nota generada"], "siguiente": 1, "estado": "ok"}))
+    pagina.click('.sidebar a[data-seccion="crear"]')
+    pagina.locator("#f2-categorias-grid .toggle-item").first.click()
+    pagina.locator("#barra-crear").locator('[data-accion="descartar"]').click()   # no guardar la categoría
+    pagina.locator("#f2-categorias-grid .toggle-item").first.click()
+    pagina.fill("#f2-tema", "dropshipping en Argentina")
+    pagina.fill("#f2-indicaciones", "cerrá con una pregunta")
+    pagina.click("#btn-f2-generar")
+    expect(pagina.locator("#f2-status")).to_contain_text("correctamente", timeout=10000)
+    assert pedidos[0]["tema"] == "dropshipping en Argentina" and pedidos[0]["indicaciones"] == "cerrá con una pregunta"
+    expect(pagina.locator("#f2-tema")).to_have_value("")
+    expect(pagina.locator("#f2-indicaciones")).to_have_value("")
+
+
+def test_gasto_de_meses_anteriores_en_el_tablero(pagina):
+    pasar_a_dev(pagina)
+    pagina.click("#confirmar-si")
+    meses = pagina.locator("#g-gasto .gasto-meses li")
+    expect(meses).to_have_count(6)
+    expect(pagina.locator("#g-gasto .gasto-meses-titulo")).to_have_text("Meses anteriores")
+
+
+def test_prompts_de_la_ia_en_su_pestana_con_lo_que_cambio_marcado(pagina):
+    """Prompts con IA: "Analizar y mejorar ahora" corre en la cola, aplica los cambios en la copia y al
+    terminar muestra el prompt de la IA con lo que cambió marcado y qué cambió arriba."""
+    seo_ia = "## SEO\n- Título corto.\n- Palabra clave en un subtítulo."
+    estado = {"usar": "actuales", "auto": True, "auto_cada": 5, "faltan": 3, "cambiadas": 0, "analisis": None, "mejoras": [],
+              "copia": [{"clave": "seo", "titulo": "SEO", "grupo": "base", "cambiada": False, "cambios": 0,
+                         "actualizado": None, "desactualizada": False}]}
+    mejora = {"id": "m1", "fecha": "2026-11-06T12:00:00Z", "origen": "manual", "resumen": "Pierden puntos por el SEO.",
+              "cambios": [{"clave": "seo", "titulo": "SEO", "antes": "x", "despues": seo_ia,
+                           "explicacion": "Suma una regla.", "errores": [], "avisos": [], "aplicado": True}]}
+    encoladas = []
+
+    def mejorar(r):
+        encoladas.append(r.request.post_data_json)
+        mejora.update(id="m" + str(len(encoladas)), pedido=r.request.post_data_json.get("pedido", ""))
+        estado.update(cambiadas=1, mejoras=[mejora], faltan=5,
+                      copia=[{**estado["copia"][0], "cambiada": True, "cambios": 1, "actualizado": mejora["fecha"]}])
+        r.fulfill(status=202, json={"success": True, "id": "pia-e2e", "posicion": 0})
+
+    def vista_previa(r):
+        cuerpo = r.request.post_data_json or {}
+        if cuerpo.get("juego") == "ia" and estado["cambiadas"]:
+            r.fulfill(json={"success": True, "persona": "comercial", "prompt": "",
+                            "partes": [{"clave": "seo", "titulo": "SEO", "editable": True, "texto": seo_ia}]})
+        elif cuerpo.get("juego") in ("ia", "actuales"):
+            r.fulfill(json={"success": True, "persona": "comercial", "prompt": "",
+                            "partes": [{"clave": "seo", "titulo": "SEO", "editable": True, "texto": "## SEO\n- Título corto."}]})
+        else:
+            r.continue_()
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json={"success": True, **estado}) if r.request.method == "GET" else r.continue_())
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/prompts/vista-previa", vista_previa)
+    pagina.route("**/api/corridas/pia-e2e/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA] Analizando las calificaciones de las últimas notas...", "[OK] Copia de la IA mejorada: SEO."],
+        "siguiente": 2, "estado": "ok"}))
+
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    expect(pagina.locator('#pv-actuales .pv-uso')).to_be_visible()             # en uso, los actuales
+    pagina.click("#pv-ia")
+    expect(pagina.locator("#pia-vista")).to_be_visible()
+    expect(pagina.locator("#prompts-actuales")).to_be_hidden()
+    expect(pagina.locator("#pia-estado")).to_contain_text("la próxima, en 3 notas")
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("Igual")
+    pagina.click("#pia-mejorar")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("La IA cambió 1 pieza de la copia")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("Suma una regla.")
+    bloque = pagina.locator('#pia-archivo .pa-bloque[data-clave="seo"]')
+    expect(bloque).to_have_class(re.compile("pia-cambiada"))                  # marcada, con el texto limpio
+    expect(bloque).to_contain_text("Palabra clave en un subtítulo.")
+    expect(bloque.locator(".pa-linea.pone")).to_have_count(0)
+    # Las diferencias se ven en el Historial, como en los actuales.
+    pagina.click("#pia-ver-historial")
+    expect(pagina.locator("#pia-archivo")).to_be_hidden()
+    cambio = pagina.locator("#pia-historial .pia-cambio").first
+    cambio.locator("summary").click()
+    expect(cambio.locator(".diff-linea.pone").last).to_contain_text("Palabra clave en un subtítulo.")
+    pagina.click("#pia-ver-historial")
+    expect(pagina.locator("#pia-archivo")).to_be_visible()
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_contain_text("✦ 1")
+    assert encoladas == [{}]
+    # Tocar una pieza la marca en la lista y en el prompt.
+    pagina.click('#pia-lista .prompts-item[data-clave="seo"]')
+    expect(pagina.locator('#pia-lista .prompts-item[data-clave="seo"]')).to_have_class(re.compile("activo"))
+    expect(bloque).to_have_class(re.compile("pia-elegida"))
+    # El pedido a mano también va a la cola: enviar se habilita al escribir (o con una sugerencia).
+    # La pieza del pedido se elige en una lista propia.
+    pagina.click("#pia-pieza-btn")
+    pagina.locator('#pia-pieza-menu [role="option"][data-clave="seo"]').click()
+    expect(pagina.locator("#pia-pieza-btn")).to_contain_text("SEO")
+    expect(pagina.locator("#pia-pieza-menu")).to_be_hidden()
+    expect(pagina.locator("#pia-pedir")).to_be_disabled()
+    pagina.locator(".pia-sugerencia", has_text="Que use voseo en toda la nota").click()
+    expect(pagina.locator("#pia-pedido")).to_have_value("Que use voseo en toda la nota")
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-pedido")).to_have_value("")
+    assert encoladas[-1] == {"pedido": "Que use voseo en toda la nota", "claves": ["seo"]}
+
+
+def test_prompts_de_la_ia_se_usan_y_la_mejora_automatica_se_apaga(pagina):
+    # La activación necesita una copia ya probada. La comparación del backend
+    # se ejercita con proveedor simulado en test_prompts_evaluacion.
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(validada=True, aviso="")
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    def usar(r):
+        estado["usar"] = r.request.post_data_json["usar"]
+        r.fulfill(json=estado)
+    def auto(r):
+        estado["auto"] = r.request.post_data_json["auto"]
+        r.fulfill(json=estado)
+    pagina.route("**/api/prompts-ia/usar", usar)
+    pagina.route("**/api/prompts-ia/auto", auto)
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click("#pv-ia")
+    pagina.get_by_role("button", name="Usar estos prompts").click()
+    expect(pagina.locator('#pv-ia .pv-uso')).to_be_visible()
+    expect(pagina.locator("#pia-uso-estado")).to_contain_text("En uso")
+    pagina.click("#pv-actuales")
+    expect(pagina.locator("#pv-aviso")).to_be_visible()                          # avisa que se usan los de la IA
+    pagina.click("#pv-volver")
+    expect(pagina.locator('#pv-actuales .pv-uso')).to_be_visible()
+    expect(pagina.locator("#pv-aviso")).to_be_hidden()
+    pagina.click("#pv-ia")
+    pagina.click("#pia-auto")
+    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "false")
+    expect(pagina.locator("#pia-auto-estado")).to_have_text("Apagada")
+    pagina.click("#pia-auto")
+    expect(pagina.locator("#pia-auto")).to_have_attribute("aria-checked", "true")
+
+
+def test_imagenes_se_pueden_ver_y_elegir_para_un_pedido(pagina):
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click('#prompts-lista [data-clave="imagenes"]')
+    expect(pagina.locator('#pe-archivo-cuerpo')).to_contain_text(
+        "Imágenes: selección y portada")
+    pagina.click("#pv-ia")
+    pagina.click('#pia-lista [data-clave="imagenes"]')
+    expect(pagina.locator('#pia-archivo .pa-bloque[data-clave="imagenes"]')).to_contain_text(
+        "Para la portada elegí una foto sin personas.")
+    pagina.click("#pia-pieza-btn")
+    pagina.locator('#pia-pieza-menu [role="option"][data-clave="imagenes"]').click()
+    expect(pagina.locator("#pia-pieza-btn")).to_contain_text("Imágenes")
+    expect(pagina.locator("#pia-pieza")).to_have_value("imagenes")
+
+
+@pytest.mark.parametrize("parcial", [False, True])
+def test_un_pedido_fallido_no_muestra_exito_anterior_ni_borra_el_pedido(pagina, parcial):
+    cambio = {"clave": "seo", "titulo": "SEO", "antes": "## SEO\nAntes.", "despues": "## SEO\nDespués.",
+              "explicacion": "Título corto.", "aplicado": True, "errores": [], "avisos": []}
+    vieja = {"id": "anterior", "origen": "pedido", "pedido": "Un pedido anterior", "cambios": [cambio]}
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(usar="actuales", mejoras=[vieja])
+    pedido = "Acortá el título y cambiá las imágenes"
+
+    def mejorar(r):
+        if parcial:
+            nueva = {"id": "nueva", "origen": "pedido", "pedido": pedido, "cambios": [cambio],
+                     "error": "El pedido se aplicó parcialmente: Imágenes no pasó la validación."}
+            # Otra mejora aparece antes: se muestra la identificada por el trabajo, no la primera.
+            estado["mejoras"] = [vieja, nueva]
+        r.fulfill(status=202, json={"success": True, "id": "pedido-fallido", "posicion": 0})
+
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/corridas/pedido-fallido/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA RESULTADO] nueva"] if parcial else ["[ERROR] La IA no está disponible."],
+        "siguiente": 1, "estado": "error", "error": "La IA no está disponible."}))
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click("#pv-ia")
+    pagina.fill("#pia-pedido", pedido)
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("parcialmente" if parcial else "no cambió nada")
+    expect(pagina.locator("#pia-resultado")).to_have_class(re.compile("sin-cambios"))
+    expect(pagina.locator("#pia-pedido")).to_have_value(pedido)
+    if parcial:
+        expect(pagina.locator("#pia-resultado")).to_contain_text("Usar estos prompts")
+    else:
+        expect(pagina.locator("#pia-resultado")).not_to_contain_text("La IA cambió")
+
+
+def test_propuesta_que_baja_de_ocho_a_seis_muestra_comparacion_y_no_se_activa(pagina):
+    estado = pagina.evaluate("async () => (await fetch('/api/prompts-ia')).json()")
+    estado.update(usar="actuales", validada=False, mejoras=[])
+    pedido = "Mejorá la redacción de los títulos"
+    evaluacion = {"estado": "rechazada", "antes": 8, "despues": 6,
+                  "motivo": "La propuesta baja una calificación.", "casos": [
+                      {"persona": "comercial", "antes": {"puntaje": 8}, "despues": {"puntaje": 6}}
+                      for _ in range(3)]}
+    def mejorar(r):
+        estado["mejoras"] = [{"id": "comparacion", "origen": "pedido", "pedido": pedido, "cambios": [],
+                             "error": "Se conservan los prompts anteriores.", "evaluacion": evaluacion}]
+        r.fulfill(status=202, json={"success": True, "id": "prueba-calidad", "posicion": 0})
+    pagina.route("**/api/prompts-ia", lambda r: r.fulfill(json=estado))
+    pagina.route("**/api/prompts-ia/mejorar", mejorar)
+    pagina.route("**/api/corridas/prueba-calidad/log?*", lambda r: r.fulfill(json={
+        "lineas": ["[PROMPTS IA RESULTADO] comparacion"], "siguiente": 1, "estado": "error"}))
+    pagina.click('.nav-link[data-seccion="prompts"]')
+    pagina.click("#pv-ia")
+    expect(pagina.locator("#pia-usar")).to_be_disabled()
+    pagina.fill("#pia-pedido", pedido)
+    pagina.click("#pia-pedir")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("8/10 → 6/10")
+    expect(pagina.locator("#pia-resultado")).to_contain_text("3 casos comparados")
+    expect(pagina.locator("#pia-pedido")).to_have_value(pedido)
+    expect(pagina.locator("#pia-usar")).to_be_disabled()
+    expect(pagina.locator("#pia-uso-estado")).to_contain_text("Sin usar")
+
+
+def test_carpeta_de_cliente_guarda_datos_y_eventos(pagina):
+    pagina.click('.sidebar a[data-seccion="clientes"]')
+    expect(pagina.locator("#dato-titulo")).to_be_disabled()   # sin cliente elegido no se carga nada
+    pagina.locator('#carpeta-cliente option[value="acme"]').wait_for(state="attached")
+    pagina.select_option("#carpeta-cliente", "acme")
+    expect(pagina.locator("#dato-titulo")).to_be_enabled()
+
+    pagina.fill("#dato-titulo", "Contacto comercial")
+    pagina.fill("#dato-contenido", "Ana Gómez, gerenta de compras")
+    pagina.click("#carpeta-form-dato button[type=submit]")
+    fila = pagina.locator("#carpeta-datos .carpeta-fila", has_text="Contacto comercial")
+    expect(fila).to_contain_text("Ana Gómez, gerenta de compras")
+    expect(pagina.locator("#carpeta-fb-datos")).to_have_text("Guardado.")
+
+    pagina.fill("#evento-nombre", "Lanzamiento en Automechanika")
+    pagina.fill("#evento-fecha", "2026-12-03")
+    pagina.fill("#evento-lugar", "Buenos Aires")
+    pagina.click("#carpeta-form-evento button[type=submit]")
+    evento = pagina.locator("#carpeta-eventos .carpeta-fila", has_text="Lanzamiento en Automechanika")
+    expect(evento).to_contain_text("Buenos Aires")
+    expect(pagina.locator("#carpeta-fb-eventos")).to_have_text("Guardado.")
+    expect(pagina.locator("#carpeta-n-eventos")).to_have_text("1")
+
+    evento.locator(".icon-btn").click()
+    pagina.click("#confirmar-si")
+    evento.wait_for(state="detached")
+    expect(pagina.locator("#carpeta-n-eventos")).to_have_text("0")
+
+    # En portugués se traduce la interfaz, no lo que se cargó.
+    elegir_idioma(pagina, "pt")
+    expect(pagina.locator("#carpetas-title")).to_have_text("Pastas de clientes")
+    expect(fila).to_contain_text("Contacto comercial")

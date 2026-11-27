@@ -3,11 +3,16 @@ imagen_articulo.py — La imagen principal de un Artículo, sacada de su HTML.
 
 Interfaz:
     extraer(html, url) -> {"url", "alt"} | None
+    extraer_todas(html, url, limite=MAX_IMAGENES) -> [{"url", "alt"}, ...]   la principal primero
     valida(url) -> bool
 
 Es la foto que el sitio eligió para compartir la noticia, en este orden:
 og:image, twitter:image, la "image" del JSON-LD (schema.org) y, si no hay
 ninguna, la primera <img> dentro de <article> o <main>.
+
+extraer_todas suma las otras fotos del cuerpo de la nota (las <img> de
+<article> o <main>): una nota lleva varias imágenes y con una por noticia
+el pozo de fotos sin repetir se agotaba.
 
 Solo https: el dashboard la muestra directo (la CSP no deja cargar http) y al
 subir la nota se copia a los archivos de HubSpot. Se descartan logos, íconos,
@@ -30,6 +35,10 @@ _NO_ES_FOTO = re.compile(
     re.IGNORECASE,
 )
 _EXTENSIONES_NO = (".svg", ".gif", ".ico")
+MAX_IMAGENES = 8
+ANCHO_MINIMO = 300   # una <img> que declara menos de esto es una miniatura o un ícono
+# El mismo archivo en otro tamaño (WordPress: foto-300x200.jpg): cuenta como la misma foto.
+_TAMANIO = re.compile(r"-\d{2,4}x\d{2,4}(?=\.\w+$)")
 _META = (
     {"property": "og:image:secure_url"}, {"property": "og:image"}, {"property": "og:image:url"},
     {"name": "twitter:image"}, {"name": "twitter:image:src"}, {"property": "twitter:image"},
@@ -64,25 +73,35 @@ def _de_ld(data) -> list[str]:
     return urls
 
 
-def _candidatas(soup: BeautifulSoup) -> list[str]:
+def _ancho_chico(img) -> bool:
+    for attr in ("width", "height"):
+        valor = str(img.get(attr) or "").strip().removesuffix("px")
+        if valor.isdigit() and int(valor) < ANCHO_MINIMO:
+            return True
+    return False
+
+
+def _candidatas(soup: BeautifulSoup) -> list[tuple[str, str]]:
+    """(url, alt) de las imágenes de la página: primero las que el sitio eligió para compartir."""
+    alt_meta = _alt(soup)
     urls = []
     for attrs in _META:
         for tag in soup.find_all("meta", attrs=attrs):
             if tag.get("content"):
-                urls.append(tag["content"])
+                urls.append((tag["content"], alt_meta))
     for link in soup.find_all("link", rel="image_src"):
         if link.get("href"):
-            urls.append(link["href"])
+            urls.append((link["href"], alt_meta))
     for script in soup.find_all("script", type="application/ld+json"):
         try:
-            urls += _de_ld(json.loads(script.string or ""))
+            urls += [(u, alt_meta) for u in _de_ld(json.loads(script.string or ""))]
         except (ValueError, TypeError):
             continue
     cuerpo = soup.find("article") or soup.find("main")
     for img in (cuerpo.find_all("img") if cuerpo else []):
         src = img.get("data-src") or img.get("data-lazy-src") or img.get("src") or ""
-        if src and not src.startswith("data:"):
-            urls.append(src)
+        if src and not src.startswith("data:") and not _ancho_chico(img):
+            urls.append((src, " ".join(str(img.get("alt") or "").split())[:200]))
     return urls
 
 
@@ -93,19 +112,33 @@ def _alt(soup: BeautifulSoup) -> str:
 
 def extraer(html: str | None, url: str) -> dict | None:
     """{"url", "alt"} de la imagen principal, o None si la página no tiene una usable."""
+    todas = extraer_todas(html, url, limite=1)
+    return todas[0] if todas else None
+
+
+def extraer_todas(html: str | None, url: str, limite: int = MAX_IMAGENES) -> list[dict]:
+    """[{"url", "alt"}] de las fotos de la página, sin repetir, la principal primero."""
     if not html:
-        return None
+        return []
     try:
         soup = BeautifulSoup(html, "lxml")
     except Exception:
-        return None
+        return []
+    alt_meta = _alt(soup)
     # Las completas primero: una relativa sin "/" (p. ej. "images/x.jpg" en sitios Joomla sin <base>)
     # se pega a la ruta de la nota y da 404, y el mismo sitio suele repetir la foto completa más abajo.
-    candidatas = sorted(_candidatas(soup), key=lambda c: not re.match(r"\s*(https?:)?//", c, re.I))
-    for candidata in candidatas:
+    candidatas = sorted(_candidatas(soup), key=lambda c: not re.match(r"\s*(https?:)?//", c[0], re.I))
+    vistas, resultado = set(), []
+    for candidata, alt in candidatas:
         absoluta = urljoin(url, candidata.strip())
         if absoluta.startswith("//"):
             absoluta = "https:" + absoluta
-        if valida(absoluta):
-            return {"url": absoluta, "alt": _alt(soup)}
-    return None
+        clave = _TAMANIO.sub("", urlparse(absoluta).path.lower())
+        if not valida(absoluta) or clave in vistas:
+            continue
+        vistas.add(clave)
+        # La principal lleva el alt del og:image (la de la nota), aunque venga de una <img>.
+        resultado.append({"url": absoluta, "alt": alt_meta if not resultado else alt})
+        if len(resultado) >= limite:
+            break
+    return resultado

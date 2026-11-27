@@ -21,7 +21,7 @@ La imagen (`Dockerfile`) instala Python, Chromium (para Scrapling) y copia `afte
 ## Primer despliegue
 
 1. En [Render](https://render.com): **New → Blueprint** con este repo (usa `render.yaml`).
-2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN` (la app privada con los scopes `content` y `files`), `HUBSPOT_BLOG_PRUEBAS` (solo para mandar todo a un blog de pruebas; el viejo `HUBSPOT_BLOG_ID` ya no se usa), `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
+2. Cargá en **Environment** las variables marcadas `sync: false`: `MONGO_URI`, `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`, `NVIDIA_EMB_MODEL`, `RENDER_EXTERNAL_URL`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (en Render va **sin** comillas). `SECRET_KEY` y `CRON_TOKEN` las genera Render. Opcionales: `HUBSPOT_TOKEN` (la app privada con los scopes `content` y `files`), `HUBSPOT_BLOG_PRUEBAS` (el blog de pruebas; con ella cargada, el interruptor **Borradores en HubSpot** de la vista Desarrollador decide si los borradores van ahí o al blog de cada idioma; el viejo `HUBSPOT_BLOG_ID` ya no se usa), `ATLAS_VECTOR_INDEX`, `CORRIDAS_EXTERNAS` y los `PAGA_*` de la API paga (ver [04-ia.md](04-ia.md)).
 3. En Atlas, **Network Access** tiene que permitir `0.0.0.0/0`: Render free no tiene IP fija.
 4. Elegí cómo corren las tareas programadas (abajo).
 
@@ -39,7 +39,7 @@ El programador interno las corre a la hora del dashboard, **si la instancia est�
 
 ### B. En GitHub Actions (recomendado)
 
-`.github/workflows/corridas.yml` corre cada hora en GitHub, lee la programación del dashboard y ejecuta lo que tocaba. Gana ~7 GB de RAM, Chromium y no depende de que Render esté despierto. Las Corridas aparecen igual en el panel del dashboard, con su log, y se pueden cancelar desde ahí.
+`.github/workflows/corridas.yml` corre cada hora en GitHub, lee la programación del dashboard y ejecuta lo que tocaba. Gana ~7 GB de RAM, Chromium y no depende de que Render esté despierto. Las Corridas aparecen igual en **Actividad**, con su log, y se pueden cancelar desde ahí (también la que está corriendo: el runner lee el pedido en Mongo y la corta). Con la aprobación automática prendida, la nota programada también pasa por el juez ahí.
 
 Para activarlo:
 
@@ -53,6 +53,7 @@ Para activarlo:
 Detalles:
 
 - Corre al minuto 7 de cada hora: una tarea programada a las 05:30 se ejecuta a las 06:07. GitHub puede demorar el cron unos minutos; si se saltea una hora, la siguiente la recupera.
+- Con varios horarios de generación, cada uno que pasó desde la última revisión es una nota (11:00 y 11:30 en la misma hora = dos notas). Cada horario cuenta una vez aunque se hayan salteado días.
 - El repo es público: los minutos de Actions son gratis.
 - Los botones del dashboard (Buscar ahora, Generar nota…) siguen corriendo en Render.
 
@@ -90,7 +91,8 @@ Si el índice no existe o Atlas falla, la elección sigue como antes, con un avi
 
 ## Ver qué pasó
 
-- **Dashboard → Corridas**: estado, duración, error y log de cada Corrida (de Render o de GitHub).
+- **Dashboard → Actividad**: estado, duración, error y log de cada Corrida (de Render o de GitHub).
+- **Dashboard → Inicio, vista Desarrollador**: tablero con scraping, notas, corridas y consumo de la IA por día.
 - **Logs de Render** o **GitHub → Actions → Corridas**: todo lo que imprime el proceso.
 
 ## Local igual que producción

@@ -1,0 +1,26 @@
+[
+  {
+    "titulo": "Distribuidores de autopartes suman la venta en marketplaces como segundo canal",
+    "cuerpo": "Ejemplo para la demo. Cada vez más distribuidores y repuesteros venden sus autopartes en marketplaces además del mostrador. El desafío que mencionan es mantener el catálogo al día en varios canales a la vez: precios, stock y compatibilidades cambian seguido y cargar cada publicación a mano lleva tiempo. Los que ya venden online dicen que las devoluciones por una pieza que no corresponde al vehículo son el costo más difícil de controlar.",
+    "url": "https://demo.afterdrive.invalid/marketplaces-segundo-canal",
+    "fuente": "Ejemplo (demo)"
+  },
+  {
+    "titulo": "El fitment, la información que decide si una autoparte se vende online",
+    "cuerpo": "Ejemplo para la demo. En la venta online de autopartes, el comprador necesita saber si la pieza le sirve a su vehículo: marca, modelo, año y motor. Las publicaciones con esa información completa reciben menos consultas y menos devoluciones. Sin embargo, muchos catálogos del sector todavía describen las piezas solo con un código interno y una descripción corta.",
+    "url": "https://demo.afterdrive.invalid/fitment-venta-online",
+    "fuente": "Ejemplo (demo)"
+  },
+  {
+    "titulo": "Repuesteros buscan centralizar el stock de la tienda física y la online",
+    "cuerpo": "Ejemplo para la demo. Los repuesteros que venden por más de un canal señalan como problema frecuente vender una pieza online que ya se vendió en el mostrador. Centralizar el stock en un solo sistema y que las publicaciones se actualicen solas aparece como la prioridad para el próximo año, junto con integrar el sistema de gestión con los marketplaces.",
+    "url": "https://demo.afterdrive.invalid/stock-centralizado",
+    "fuente": "Ejemplo (demo)"
+  },
+  {
+    "titulo": "Catálogos digitales: de la planilla a la integración con los marketplaces",
+    "cuerpo": "Ejemplo para la demo. Muchas empresas del aftermarket arrancaron su catálogo digital en planillas que se suben a mano a cada canal. El paso siguiente que evalúan es integrar el catálogo con los marketplaces para publicar, actualizar precios y pausar sin stock desde un solo lugar.",
+    "url": "https://demo.afterdrive.invalid/catalogos-digitales",
+    "fuente": "Ejemplo (demo)"
+  }
+]
